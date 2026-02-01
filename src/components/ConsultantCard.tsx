@@ -98,6 +98,6 @@ export function ConsultantCard({ consultant }: Props) {
           </ul>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
