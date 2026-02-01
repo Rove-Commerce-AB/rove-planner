@@ -1,0 +1,54 @@
+/* styles/tokens.css */
+/* Rove Design System – Design Tokens */
+
+:root {
+    /* === Brand colors === */
+    --color-brand-signal: #ff6136; /* CTA / signal */
+    --color-brand-lilac: #eec5ff;  /* Accent background */
+    --color-brand-blue: #c9e8ff;   /* Accent background */
+    --color-accent-1: #3b82f6;
+    --color-customer-default: #3b82f6; /* Default when customer has no color – same as accent-1 */
+    --color-accent-2: #22c55e;
+    --color-accent-3: #a855f7;
+    --color-accent-4: #f97316;
+  
+    /* === Neutrals === */
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-gray-900: #262626;
+    --color-gray-100: #f4edea;
+    --color-gray-050: #f3e7e2;
+  
+    /* === Semantic === */
+    --color-bg-default: var(--color-white);
+    --color-bg-muted: var(--color-gray-100);
+    --color-border-default: var(--color-gray-050);
+    --color-grid-border: #dfd6d1;      /* Allocation table – unified grid */
+    --color-grid-border-light: #e8e2de; /* Allocation table – cell dividers */
+    --color-grid-border-subtle: #ebe6e3;   /* Per consultant – softer grid */
+    --color-grid-border-light-subtle: #f0ece9; /* Per consultant – softer dividers */
+    --color-grid-row: #f2eeeb;         /* Allocation table – subtle row dividers */
+    --color-text-primary: var(--color-gray-900);
+    --color-text-inverse: var(--color-white);
+    --color-text-muted: #9ca3af; /* placeholder, secondary text */
+    --color-danger: #dc2626; /* Destructive actions */
+    --color-success: #16a34a; /* Optimal allocation */
+    --color-warning: #d97706; /* Under-allocation */
+  
+    /* === Focus === */
+    --color-focus-ring: var(--color-brand-signal);
+    --focus-ring-offset: 2px;
+
+    /* === Radius === */
+    --radius-sm: 0;
+    --radius-md: 0;
+    --radius-lg: 0;
+  
+    /* === Spacing === */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+  }
+  

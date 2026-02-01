@@ -1,0 +1,38 @@
+@import "../../styles/tokens.css";
+@import "../../styles/typography.css";
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--color-bg-default);
+  --color-foreground: var(--color-text-primary);
+  --font-sans: var(--font-primary);
+  /* Design system tokens from styles/tokens.css */
+  --color-brand-signal: var(--color-brand-signal);
+  --color-brand-lilac: var(--color-brand-lilac);
+  --color-brand-blue: var(--color-brand-blue);
+  --color-bg-default: var(--color-bg-default);
+  --color-bg-muted: var(--color-bg-muted);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-inverse: var(--color-text-inverse);
+  --color-text-muted: var(--color-text-muted);
+  --color-border-default: var(--color-border-default);
+  --color-danger: var(--color-danger);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-accent-1: var(--color-accent-1);
+  --color-customer-default: var(--color-customer-default);
+  --color-accent-2: var(--color-accent-2);
+  --color-accent-3: var(--color-accent-3);
+  --color-accent-4: var(--color-accent-4);
+  --color-grid-border: var(--color-grid-border);
+  --color-grid-border-light: var(--color-grid-border-light);
+  --color-grid-border-subtle: var(--color-grid-border-subtle);
+  --color-grid-border-light-subtle: var(--color-grid-border-light-subtle);
+  --color-grid-row: var(--color-grid-row);
+}
+
+body {
+  background: var(--color-bg-default);
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+}

@@ -1,0 +1,26 @@
+/* styles/typography.css */
+
+@font-face {
+    font-family: "GTF Ekstra";
+    src: url("/fonts/GTF-Ekstra-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+  }
+  
+  @font-face {
+    font-family: "GTF Ekstra";
+    src: url("/fonts/GTF-Ekstra-Semibold.woff2") format("woff2");
+    font-weight: 600;
+    font-style: normal;
+  }
+  
+  :root {
+    --font-primary: "GTF Ekstra", var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
+    --font-secondary: var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
+  }
+  
+  html {
+    font-family: var(--font-primary);
+    color: var(--color-text-primary);
+  }
+  
