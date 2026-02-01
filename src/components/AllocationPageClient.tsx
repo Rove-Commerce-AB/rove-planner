@@ -436,18 +436,18 @@ export function AllocationPageClient({
                     </button>
                   </div>
                 </div>
-                <table className="w-full min-w-[600px] table-fixed border border-border text-[10px]">
+                <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col className="w-[min(180px,25%)]" />
+                    <col className="w-[180px]" />
                     {data.weeks.map((w) => (
-                      <col key={`${w.year}-${w.week}`} className="w-[2.25rem]" />
+                      <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
                   </colgroup>
                   <thead>
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
                       <th
                         rowSpan={2}
-                        className="border-r border-grid-subtle px-3 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+                        className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
                         Consultant / Project
                       </th>
@@ -479,7 +479,7 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr className="border-b border-grid-light-subtle last:border-border">
-                      <td className="border-r border-grid-light-subtle px-3 py-1.5">
+                      <td className="border-r border-grid-light-subtle px-2 py-1.5">
                         <button
                           type="button"
                           onClick={() =>
@@ -559,7 +559,7 @@ export function AllocationPageClient({
                             backgroundColor: `${pr.customerColor}18`,
                           }}
                         >
-                          <td className="border-r border-grid-light-subtle px-3 py-1 pl-10 text-[10px] text-text-primary">
+                          <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             {pr.projectName} ({pr.customerName})
                             {(pr.roleName || row.consultant.defaultRoleName) && (
                               <span className="ml-2 text-text-primary opacity-70">
@@ -617,18 +617,18 @@ export function AllocationPageClient({
                 <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
                   Externa
                 </h3>
-                <table className="w-full min-w-[600px] table-fixed border border-border text-[10px]">
+                <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col className="w-[min(180px,25%)]" />
+                    <col className="w-[180px]" />
                     {data.weeks.map((w) => (
-                      <col key={`ext-${w.year}-${w.week}`} className="w-[2.25rem]" />
+                      <col key={`ext-${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
                   </colgroup>
                   <thead>
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
                       <th
                         rowSpan={2}
-                        className="border-r border-grid-subtle px-3 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+                        className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
                         Consultant / Project
                       </th>
@@ -660,7 +660,7 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr className="border-b border-grid-light-subtle last:border-border">
-                      <td className="border-r border-grid-light-subtle px-3 py-1.5">
+                      <td className="border-r border-grid-light-subtle px-2 py-1.5">
                         <button
                           type="button"
                           onClick={() =>
@@ -757,7 +757,7 @@ export function AllocationPageClient({
                             backgroundColor: `${pr.customerColor}18`,
                           }}
                         >
-                          <td className="border-r border-grid-light-subtle px-3 py-1 pl-10 text-[10px] text-text-primary">
+                          <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             {pr.projectName} ({pr.customerName})
                             {(pr.roleName || row.consultant.defaultRoleName) && (
                               <span className="ml-2 text-text-primary opacity-70">
@@ -838,18 +838,18 @@ export function AllocationPageClient({
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <table className="w-full min-w-[600px] table-fixed border border-border text-[10px]">
+              <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
               <colgroup>
-                <col className="w-[min(180px,25%)]" />
+                <col className="w-[180px]" />
                 {data.weeks.map((w) => (
-                  <col key={`${w.year}-${w.week}`} className="w-[2.25rem]" />
+                  <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                 ))}
               </colgroup>
               <thead>
                 <tr className="border-b border-grid">
                   <th
                     rowSpan={2}
-                    className="border-r border-grid px-3 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+                    className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                   >
                     Customer / Consultant
                   </th>
@@ -881,7 +881,7 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.customer.id}>
                     <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
-                      <td className="border-r border-grid-light px-3 py-1">
+                      <td className="border-r border-grid-light px-2 py-1">
                         <button
                           type="button"
                           onClick={() =>
@@ -921,7 +921,7 @@ export function AllocationPageClient({
                             key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
                             className="border-b border-grid-light last:border-border bg-bg-default"
                           >
-                            <td className="border-r border-grid-light px-3 py-1 pl-10 text-[10px]">
+                            <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
                               <span className="font-normal text-text-primary">
                                 {cr.consultantName}
                                 {cr.roleName ? (

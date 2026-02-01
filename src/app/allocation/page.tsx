@@ -1,8 +1,9 @@
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getAllocationPageData } from "@/lib/allocationPage";
 import { AllocationPageClient } from "@/components/AllocationPageClient";
+import { AllocationViewportAdapter } from "@/components/AllocationViewportAdapter";
 
-const DEFAULT_WEEKS_VISIBLE = 20;
+const FALLBACK_WEEKS = 12;
 
 type Props = {
   searchParams: Promise<{ year?: string; from?: string; to?: string }>;
@@ -19,7 +20,7 @@ export default async function AllocationPage({ searchParams }: Props) {
   const weekFrom =
     fromParam ?? Math.max(1, currentWeek - 2);
   const weekTo =
-    toParam ?? Math.min(52, weekFrom + DEFAULT_WEEKS_VISIBLE - 1);
+    toParam ?? Math.min(52, weekFrom + FALLBACK_WEEKS - 1);
 
   let data = null;
   let error: string | null = null;
@@ -31,14 +32,20 @@ export default async function AllocationPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="p-6">
-      <AllocationPageClient
-        data={data}
-        error={error}
-        year={year}
-        weekFrom={weekFrom}
-        weekTo={weekTo}
-      />
-    </div>
+    <AllocationViewportAdapter
+      year={year}
+      weekFrom={weekFrom}
+      weekTo={weekTo}
+    >
+      <div className="p-6">
+        <AllocationPageClient
+          data={data}
+          error={error}
+          year={year}
+          weekFrom={weekFrom}
+          weekTo={weekTo}
+        />
+      </div>
+    </AllocationViewportAdapter>
   );
 }
