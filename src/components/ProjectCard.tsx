@@ -45,7 +45,7 @@ export function ProjectCard({ project }: Props) {
             <h3 className="font-semibold text-text-primary">{project.name}</h3>
             {isInactive && (
               <span className="mt-1 inline-block rounded-full bg-bg-muted px-2 py-0.5 text-xs font-medium text-text-primary opacity-80">
-                Inaktivt
+                Inactive
               </span>
             )}
           </div>

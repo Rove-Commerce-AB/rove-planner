@@ -1,4 +1,5 @@
 import type { Project } from "@/types";
+import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 
 
 type Props = {

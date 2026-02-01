@@ -205,10 +205,10 @@ export function CustomerRatesTab(props: Props) {
                   />
                 ) : (
                   <span className="text-sm text-text-primary opacity-70">
-                    {(r as { rate_per_hour: number }).rate_per_hour} kr/h
+                    {(r as { rate_per_hour: number }).rate_per_hour} SEK/h
                   </span>
                 )}
-                <span className="text-xs text-text-primary opacity-60">kr/h</span>
+                <span className="text-xs text-text-primary opacity-60">SEK/h</span>
                 <button
                   type="button"
                   onClick={() =>
@@ -244,7 +244,7 @@ export function CustomerRatesTab(props: Props) {
               <div className="w-24 shrink-0">
                 <Input
                   id="rate-value"
-                  label="Hourly rate (kr)"
+                  label="Hourly rate (SEK)"
                   type="number"
                   min={0}
                   step={1}

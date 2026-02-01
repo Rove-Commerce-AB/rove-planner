@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
 import { getCurrentYearWeek, getMonthSpansForWeeks } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPage";
+import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Button, Select, Tabs, TabsList, TabsTrigger, PageHeader } from "@/components/ui";
 import { AddAllocationModal } from "./AddAllocationModal";
 import { EditAllocationModal } from "./EditAllocationModal";
@@ -404,13 +405,13 @@ export function AllocationPageClient({
         </div>
       )}
 
-      <div className="overflow-x-auto space-y-8">
+      <div className="overflow-x-hidden space-y-8">
           {activeTab === "consultant" && (
             <>
               <div className="p-2">
                 <div className="mb-2 flex items-center justify-between gap-2 px-1">
                   <h3 className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
-                    Interna
+                    Internal
                   </h3>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] tabular-nums text-text-primary opacity-70">
@@ -438,7 +439,7 @@ export function AllocationPageClient({
                 </div>
                 <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col className="w-[180px]" />
+                    <col className="w-[300px]" />
                     {data.weeks.map((w) => (
                       <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
@@ -479,22 +480,22 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr className="border-b border-grid-light-subtle last:border-border">
-                      <td className="border-r border-grid-light-subtle px-2 py-1.5">
+                      <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <button
                           type="button"
                           onClick={() =>
                             hasProjects && toggleConsultant(row.consultant.id)
                           }
-                          className="flex items-center gap-1 text-left"
+                          className="flex items-center gap-1 whitespace-nowrap text-left"
                         >
                           {hasProjects ? (
                             expanded ? (
-                              <ChevronDown className="h-4 w-4" />
+                              <ChevronDown className="h-4 w-4 shrink-0" />
                             ) : (
-                              <ChevronRight className="h-4 w-4" />
+                              <ChevronRight className="h-4 w-4 shrink-0" />
                             )
                           ) : (
-                            <span className="w-4" />
+                            <span className="w-4 shrink-0" />
                           )}
                           <span className="font-medium text-text-primary">
                             {row.consultant.name}
@@ -504,7 +505,7 @@ export function AllocationPageClient({
                               </span>
                             )}
                             {row.consultant.isExternal && (
-                              <span className="ml-1.5 rounded bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                              <span className="ml-1.5 shrink-0 rounded bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
                                 External
                               </span>
                             )}
@@ -560,12 +561,14 @@ export function AllocationPageClient({
                           }}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
-                            {pr.projectName} ({pr.customerName})
-                            {(pr.roleName || row.consultant.defaultRoleName) && (
-                              <span className="ml-2 text-text-primary opacity-70">
-                                · {pr.roleName || row.consultant.defaultRoleName}
-                              </span>
-                            )}
+                            <span className="whitespace-nowrap">
+                              {pr.projectName} ({pr.customerName})
+                              {(pr.roleName || row.consultant.defaultRoleName) && (
+                                <span className="ml-2 text-text-primary opacity-70">
+                                  · {pr.roleName || row.consultant.defaultRoleName}
+                                </span>
+                              )}
+                            </span>
                           </td>
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
@@ -615,11 +618,11 @@ export function AllocationPageClient({
               </div>
               <div className="p-2">
                 <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
-                  Externa
+                  External
                 </h3>
                 <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col className="w-[180px]" />
+                    <col className="w-[300px]" />
                     {data.weeks.map((w) => (
                       <col key={`ext-${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
@@ -660,22 +663,22 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr className="border-b border-grid-light-subtle last:border-border">
-                      <td className="border-r border-grid-light-subtle px-2 py-1.5">
+                      <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <button
                           type="button"
                           onClick={() =>
                             hasProjects && toggleConsultant(row.consultant.id)
                           }
-                          className="flex items-center gap-1 text-left"
+                          className="flex items-center gap-1 whitespace-nowrap text-left"
                         >
                           {hasProjects ? (
                             expanded ? (
-                              <ChevronDown className="h-4 w-4" />
+                              <ChevronDown className="h-4 w-4 shrink-0" />
                             ) : (
-                              <ChevronRight className="h-4 w-4" />
+                              <ChevronRight className="h-4 w-4 shrink-0" />
                             )
                           ) : (
-                            <span className="w-4" />
+                            <span className="w-4 shrink-0" />
                           )}
                           <span className="font-medium text-text-primary">
                             {row.consultant.name}
@@ -684,20 +687,20 @@ export function AllocationPageClient({
                                 ({row.consultant.teamName})
                               </span>
                             )}
-                            <span className="ml-1.5 rounded bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                            <span className="ml-1.5 shrink-0 rounded bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
                               External
                             </span>
                           </span>
                           {expanded && hasProjects && (
                             <span
-                              className={
+                              className={`shrink-0 ${
                                 Math.max(
                                   ...row.percentByWeek.filter((p) => p > 0),
                                   0
                                 ) > 115
                                   ? "font-medium text-danger"
                                   : "text-text-primary opacity-60"
-                              }
+                              }`}
                             >
                               (
                               {Math.max(
@@ -758,12 +761,14 @@ export function AllocationPageClient({
                           }}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
-                            {pr.projectName} ({pr.customerName})
-                            {(pr.roleName || row.consultant.defaultRoleName) && (
-                              <span className="ml-2 text-text-primary opacity-70">
-                                · {pr.roleName || row.consultant.defaultRoleName}
-                              </span>
-                            )}
+                            <span className="whitespace-nowrap">
+                              {pr.projectName} ({pr.customerName})
+                              {(pr.roleName || row.consultant.defaultRoleName) && (
+                                <span className="ml-2 text-text-primary opacity-70">
+                                  · {pr.roleName || row.consultant.defaultRoleName}
+                                </span>
+                              )}
+                            </span>
                           </td>
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
@@ -840,7 +845,7 @@ export function AllocationPageClient({
               </div>
               <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
               <colgroup>
-                <col className="w-[180px]" />
+                <col className="w-[300px]" />
                 {data.weeks.map((w) => (
                   <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                 ))}
@@ -881,14 +886,14 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.customer.id}>
                     <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
-                      <td className="border-r border-grid-light px-2 py-1">
+                      <td className="border-r border-grid-light px-2 py-1 align-top">
                         <button
                           type="button"
                           onClick={() =>
                             hasConsultants &&
                             toggleCustomer(row.customer.id)
                           }
-                          className="flex items-center gap-1 text-left"
+                          className="flex items-center gap-1 whitespace-nowrap text-left"
                         >
                           {hasConsultants ? (
                             expanded ? (
@@ -922,7 +927,7 @@ export function AllocationPageClient({
                             className="border-b border-grid-light last:border-border bg-bg-default"
                           >
                             <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
-                              <span className="font-normal text-text-primary">
+                              <span className="whitespace-nowrap font-normal text-text-primary">
                                 {cr.consultantName}
                                 {cr.roleName ? (
                                   <span className="opacity-80"> · {cr.roleName}</span>

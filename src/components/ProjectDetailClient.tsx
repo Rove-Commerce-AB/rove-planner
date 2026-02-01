@@ -196,7 +196,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
               id="project-active"
               checked={isActive}
               onCheckedChange={setIsActive}
-              label="Aktivt projekt"
+              label="Active project"
             />
           </div>
           <div className="mt-4">

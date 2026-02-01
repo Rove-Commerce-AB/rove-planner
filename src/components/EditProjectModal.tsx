@@ -246,7 +246,7 @@ export function EditProjectModal({
             id="edit-project-active"
             checked={isActive}
             onCheckedChange={setIsActive}
-            label="Aktivt projekt"
+            label="Active project"
           />
         </form>
 

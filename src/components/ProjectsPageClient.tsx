@@ -3,12 +3,25 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { revalidateProjects } from "@/app/projects/actions";
-import { Search } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { ProjectsPageHeader } from "./ProjectsPageHeader";
-import { ProjectCard } from "./ProjectCard";
 import { EmptyState } from "@/components/ui";
 import { AddProjectModal } from "./AddProjectModal";
 import type { ProjectWithDetails } from "@/types";
+import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+
+type SortKey = "name" | "customer" | "status" | "dates" | "consultants" | "hours";
+type SortDir = "asc" | "desc";
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 type Props = {
   projects: ProjectWithDetails[];
@@ -19,16 +32,67 @@ export function ProjectsPageClient({ projects, error }: Props) {
   const router = useRouter();
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortKey !== column) return <ChevronsUpDown className="ml-1 inline h-3.5 w-3.5 opacity-50" />;
+    return sortDir === "asc" ? (
+      <ChevronUp className="ml-1 inline h-3.5 w-3.5" />
+    ) : (
+      <ChevronDown className="ml-1 inline h-3.5 w-3.5" />
+    );
+  };
 
   const filteredProjects = useMemo(() => {
-    if (!search.trim()) return projects;
-    const q = search.trim().toLowerCase();
-    return projects.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.customerName.toLowerCase().includes(q)
-    );
-  }, [projects, search]);
+    let result = projects;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.customerName.toLowerCase().includes(q)
+      );
+    }
+    const sorted = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "name":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "customer":
+          cmp = a.customerName.localeCompare(b.customerName);
+          break;
+        case "status":
+          cmp = (a.isActive ? 1 : 0) - (b.isActive ? 1 : 0);
+          break;
+        case "dates":
+          cmp =
+            new Date(a.startDate ?? 0).getTime() -
+            new Date(b.startDate ?? 0).getTime();
+          break;
+        case "consultants":
+          cmp = a.consultantCount - b.consultantCount;
+          break;
+        case "hours":
+          cmp = a.totalHoursAllocated - b.totalHoursAllocated;
+          break;
+        default:
+          cmp = a.name.localeCompare(b.name);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [projects, search, sortKey, sortDir]);
 
   const handleSuccess = async () => {
     await revalidateProjects();
@@ -77,15 +141,141 @@ export function ProjectsPageClient({ projects, error }: Props) {
       )}
 
       {!error && projects.length > 0 && (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 overflow-hidden rounded-lg border border-border bg-bg-default">
           {filteredProjects.length === 0 ? (
-            <p className="col-span-full py-8 text-center text-sm text-text-primary opacity-70">
+            <p className="py-12 text-center text-sm text-text-primary opacity-70">
               No projects match &quot;{search}&quot;
             </p>
           ) : (
-            filteredProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-            ))
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-bg-muted/80">
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("name")}
+                        className="flex items-center font-medium text-text-primary hover:opacity-80"
+                      >
+                        Project
+                        <SortIcon column="name" />
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("customer")}
+                        className="flex items-center font-medium text-text-primary hover:opacity-80"
+                      >
+                        Customer
+                        <SortIcon column="customer" />
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("status")}
+                        className="flex items-center font-medium text-text-primary hover:opacity-80"
+                      >
+                        Status
+                        <SortIcon column="status" />
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("dates")}
+                        className="flex items-center font-medium text-text-primary hover:opacity-80"
+                      >
+                        Dates
+                        <SortIcon column="dates" />
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("consultants")}
+                        className="flex items-center font-medium text-text-primary hover:opacity-80"
+                      >
+                        Consultants
+                        <SortIcon column="consultants" />
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("hours")}
+                        className="flex items-center font-medium text-text-primary hover:opacity-80"
+                      >
+                        Allocated
+                        <SortIcon column="hours" />
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProjects.map((project) => {
+                    const color = project.color || DEFAULT_CUSTOMER_COLOR;
+                    const isInactive = !project.isActive;
+                    const dateRange =
+                      project.startDate || project.endDate
+                        ? `${formatDate(project.startDate)} – ${formatDate(project.endDate)}`
+                        : "—";
+                    return (
+                      <tr
+                        key={project.id}
+                        className={`cursor-pointer transition-colors hover:bg-bg-muted/50 ${isInactive ? "opacity-70" : ""}`}
+                        onClick={() => router.push(`/projects/${project.id}`)}
+                      >
+                        <td className="border-b border-border px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="h-9 w-1 flex-shrink-0 rounded"
+                              style={{ backgroundColor: color }}
+                              aria-hidden
+                            />
+                            <div>
+                              <span className="font-medium text-text-primary">
+                                {project.name}
+                              </span>
+                              {isInactive && (
+                                <span className="ml-2 rounded-full bg-bg-muted px-2 py-0.5 text-xs font-medium text-text-primary opacity-80">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="border-b border-border px-4 py-3 text-text-primary opacity-90">
+                          {project.customerName}
+                        </td>
+                        <td className="border-b border-border px-4 py-3 text-text-primary opacity-90">
+                          {project.isActive ? (
+                            <span className="rounded-full bg-brand-blue/60 px-2 py-0.5 text-xs font-medium text-text-primary">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="text-text-primary opacity-70">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="border-b border-border px-4 py-3 text-text-primary opacity-90">
+                          {dateRange}
+                        </td>
+                        <td className="border-b border-border px-4 py-3 text-text-primary opacity-90">
+                          {project.consultantCount} consultant
+                          {project.consultantCount !== 1 ? "s" : ""}
+                        </td>
+                        <td className="border-b border-border px-4 py-3 font-medium tabular-nums text-text-primary opacity-90">
+                          {project.totalHoursAllocated}h
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

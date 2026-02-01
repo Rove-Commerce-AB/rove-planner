@@ -2,17 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { Select, Switch } from "@/components/ui";
 import { createConsultant } from "@/lib/consultants";
 import { getRoles } from "@/lib/roles";
-import { getTeams } from "@/lib/teams";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { getCalendars } from "@/lib/calendars";
-
-const WORK_PERCENTAGE_OPTIONS = Array.from(
-  { length: 20 },
-  (_, i) => (i + 1) * 5
-); // 5, 10, ..., 100
 
 type Props = {
   isOpen: boolean;
@@ -22,34 +15,21 @@ type Props = {
 
 export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
   const [name, setName] = useState("");
-  const [roleId, setRoleId] = useState("");
-  const [email, setEmail] = useState("");
-  const [calendarId, setCalendarId] = useState("");
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [workPercentage, setWorkPercentage] = useState(100);
-  const [isExternal, setIsExternal] = useState(false);
-  const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
-  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
-  const [calendars, setCalendars] = useState<
-    { id: string; name: string; hours_per_week: number }[]
-  >([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [defaultRoleId, setDefaultRoleId] = useState<string | null>(null);
+  const [defaultCalendarId, setDefaultCalendarId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      Promise.all([getRoles(), getCalendars(), getTeams()])
-        .then(([r, c, t]) => {
-          setRoles(r);
-          setCalendars(c);
-          setTeams(t);
-          setRoleId((prev) => (prev || r[0]?.id) ?? "");
-          setCalendarId((prev) => (prev || c[0]?.id) ?? "");
+      Promise.all([getRoles(), getCalendars()])
+        .then(([r, c]) => {
+          setDefaultRoleId(r[0]?.id ?? null);
+          setDefaultCalendarId(c[0]?.id ?? null);
         })
         .catch(() => {
-          setRoles([]);
-          setCalendars([]);
-          setTeams([]);
+          setDefaultRoleId(null);
+          setDefaultCalendarId(null);
         });
     }
   }, [isOpen]);
@@ -60,28 +40,21 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
       setError("Name is required");
       return;
     }
-    if (!roleId) {
-      setError("Default role is required");
-      return;
-    }
-    if (!calendarId) {
-      setError("Calendar is required");
+    if (!defaultRoleId || !defaultCalendarId) {
+      setError("Roles and calendars must be configured. Add at least one role and one calendar in Settings.");
       return;
     }
     setSubmitting(true);
     try {
-      await createConsultant({
+      const result = await createConsultant({
         name: name.trim(),
-        email: email.trim() || null,
-        role_id: roleId,
-        calendar_id: calendarId,
-        team_id: teamId || null,
-        work_percentage: workPercentage,
-        is_external: isExternal,
+        role_id: defaultRoleId,
+        calendar_id: defaultCalendarId,
       });
       resetForm();
-      onSuccess();
       onClose();
+      onSuccess();
+      window.location.href = `/consultants/${result.id}`;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add consultant");
     } finally {
@@ -91,11 +64,6 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
 
   const resetForm = () => {
     setName("");
-    setRoleId("");
-    setEmail("");
-    setCalendarId("");
-    setTeamId(null);
-    setIsExternal(false);
     setError(null);
   };
 
@@ -171,27 +139,6 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
             />
           </div>
 
-          <Select
-            id="consultant-role"
-            label="Default role"
-            value={roleId}
-            onValueChange={setRoleId}
-            placeholder="Select role"
-            options={roles.map((r) => ({ value: r.id, label: r.name }))}
-          />
-
-          <Select
-            id="consultant-calendar"
-            label="Calendar"
-            value={calendarId}
-            onValueChange={setCalendarId}
-            placeholder="Select calendar"
-            options={calendars.map((c) => ({
-              value: c.id,
-              label: `${c.name} (${c.hours_per_week}h/week)`,
-            }))}
-          />
-
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -205,7 +152,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
               disabled={submitting}
               className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
             >
-              {submitting ? "Adding…" : "Add"}
+              {submitting ? "Saving…" : "Save"}
             </button>
           </div>
         </form>

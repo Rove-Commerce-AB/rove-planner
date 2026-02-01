@@ -3,12 +3,12 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-const LEFT_COL_WIDTH = 180;
+const LEFT_COL_WIDTH = 300;
 const MIN_WEEK_WIDTH = 28;
-const EXTRA_PADDING = 32;
+const EXTRA_PADDING = 56;
 const MIN_WEEKS = 8;
 const MAX_WEEKS = 52;
-const DEBOUNCE_MS = 150;
+const DEBOUNCE_MS = 100;
 
 type Props = {
   year: number;
