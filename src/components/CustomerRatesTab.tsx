@@ -18,6 +18,7 @@ type Props =
       mode: "edit";
       customerId: string;
       onError: (msg: string) => void;
+      showDescription?: boolean;
     }
   | {
       mode: "create";
@@ -25,6 +26,7 @@ type Props =
       onAddRate: (roleId: string, roleName: string, ratePerHour: number) => void;
       onRemoveRate: (roleId: string) => void;
       onError: (msg: string) => void;
+      showDescription?: boolean;
     };
 
 export function CustomerRatesTab(props: Props) {
@@ -152,13 +154,16 @@ export function CustomerRatesTab(props: Props) {
           rate_per_hour: r.ratePerHour,
         }));
 
-  return (
-    <div className="mt-6 space-y-4">
-      <p className="text-sm text-text-primary opacity-70">
-        Set hourly rate per role for this customer. If no rate is specified, the
-        standard rate will be used.
-      </p>
+  const showDescription = "showDescription" in props ? props.showDescription : true;
 
+  return (
+    <div className="space-y-4">
+      {showDescription && (
+        <p className="text-sm text-text-primary opacity-70">
+          Set hourly rate per role for this customer. If no rate is specified,
+          the standard rate will be used.
+        </p>
+      )}
       {loading ? (
         <p className="text-sm text-text-primary opacity-60">Loading rates…</p>
       ) : (
@@ -216,7 +221,7 @@ export function CustomerRatesTab(props: Props) {
                       ? handleRemoveEdit(r as CustomerRate)
                       : props.onRemoveRate(r.role_id)
                   }
-                  className="rounded p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                  className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                   aria-label="Remove rate"
                 >
                   <Trash2 className="h-4 w-4" />

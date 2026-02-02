@@ -21,6 +21,9 @@ type Props = {
   initialConsultantName?: string;
   initialWeek?: number;
   initialYear?: number;
+  /** Pre-fill week range when opening from header drag */
+  initialWeekFrom?: number;
+  initialWeekTo?: number;
 };
 
 type Consultant = { id: string; name: string };
@@ -38,6 +41,8 @@ export function AddAllocationModal({
   initialConsultantName,
   initialWeek,
   initialYear,
+  initialWeekFrom,
+  initialWeekTo,
 }: Props) {
   const [consultants, setConsultants] = useState<Consultant[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -55,12 +60,17 @@ export function AddAllocationModal({
 
   useEffect(() => {
     if (isOpen) {
-      const week = initialWeek ?? weekFrom;
       const allocY = initialYear ?? year;
-      setFromWeek(week);
-      setToWeek(week);
       setAllocYear(allocY);
       setConsultantId(initialConsultantId ?? "");
+      if (initialWeekFrom != null && initialWeekTo != null) {
+        setFromWeek(initialWeekFrom);
+        setToWeek(initialWeekTo);
+      } else {
+        const week = initialWeek ?? weekFrom;
+        setFromWeek(week);
+        setToWeek(week);
+      }
       Promise.all([
         getConsultants(),
         getProjectsWithCustomer(),
@@ -71,7 +81,7 @@ export function AddAllocationModal({
           setProjects(projs);
           setRoles(rolesData);
           setConsultantId((prev) =>
-            prev || (consultantsData.length > 0 ? consultantsData[0].id : "")
+            initialConsultantId || prev || (consultantsData.length > 0 ? consultantsData[0].id : "")
           );
           if (projs.length > 0) setProjectId(projs[0].id);
         })
@@ -81,7 +91,7 @@ export function AddAllocationModal({
           setRoles([]);
         });
     }
-  }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear]);
+  }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear, initialWeekFrom, initialWeekTo]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -185,7 +195,7 @@ export function AddAllocationModal({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
+            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

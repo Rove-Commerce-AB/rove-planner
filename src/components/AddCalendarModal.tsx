@@ -89,7 +89,7 @@ export function AddCalendarModal({ isOpen, onClose, onSuccess }: Props) {
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-md p-1 text-text-primary opacity-70 hover:bg-bg-muted"
+            className="rounded-sm p-1 text-text-primary opacity-70 hover:bg-bg-muted"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

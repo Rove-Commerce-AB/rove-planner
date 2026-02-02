@@ -2,13 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import {
-  updateProject,
-  deleteProject,
-} from "@/lib/projects";
+import { updateProject, deleteProject } from "@/lib/projects";
 import { getCustomers } from "@/lib/customers";
 import type { ProjectWithDetails } from "@/types";
-import { ConfirmModal, Select, Switch, Button, PageHeader } from "@/components/ui";
+import {
+  ConfirmModal,
+  Select,
+  Switch,
+  Button,
+  DetailPageHeader,
+  Panel,
+  PanelSection,
+} from "@/components/ui";
+import { FolderKanban } from "lucide-react";
 
 type Props = {
   project: ProjectWithDetails;
@@ -88,6 +94,13 @@ export function ProjectDetailClient({ project: initial }: Props) {
     }
   };
 
+  const projectInitials = initial.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
   const customerOptions = (() => {
     const base = customers.map((c) => ({ value: c.id, label: c.name }));
     if (
@@ -102,109 +115,126 @@ export function ProjectDetailClient({ project: initial }: Props) {
 
   return (
     <>
-      <PageHeader
+      <DetailPageHeader
+        backHref="/projects"
+        backLabel="Back to projects"
+        avatar={
+          <div
+            className="flex h-full w-full items-center justify-center rounded-full"
+            style={{ backgroundColor: initial.color }}
+            aria-hidden
+          >
+            <span className="text-xs font-semibold text-text-inverse">
+              {projectInitials}
+            </span>
+          </div>
+        }
         title={initial.name}
-        description="Project details"
-        className="mb-6"
-      >
-        <Button
-          variant="danger"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={submitting || deleting}
-        >
-          Delete
-        </Button>
-      </PageHeader>
+        subtitle={initial.customerName}
+        action={
+          <Button
+            variant="danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={submitting || deleting}
+          >
+            Delete
+          </Button>
+        }
+      />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-2xl">
         {error && (
-          <p className="text-sm text-danger" role="alert">
+          <p className="mb-4 text-sm text-danger" role="alert">
             {error}
           </p>
         )}
         {saved && (
-          <p className="text-sm text-success" role="status">
+          <p className="mb-4 text-sm text-success" role="status">
             Saved
           </p>
         )}
 
-        <section className="rounded-lg border border-border bg-bg-default p-6">
-          <h2 className="mb-4 text-lg font-semibold text-text-primary">
-            Information
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="project-name"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Project name
-              </label>
-              <input
-                id="project-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Website redesign"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+        <Panel>
+          <PanelSection
+            title="Information"
+            icon={
+              <FolderKanban className="h-5 w-5 text-text-primary opacity-70" />
+            }
+            footer={
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving…" : "Save changes"}
+              </Button>
+            }
+          >
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="project-name"
+                  className="block text-sm font-medium text-text-primary"
+                >
+                  Project name
+                </label>
+                <input
+                  id="project-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Website redesign"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                />
+              </div>
+
+              <Select
+                id="project-customer"
+                label="Customer"
+                value={customerId}
+                onValueChange={setCustomerId}
+                placeholder="Select customer"
+                options={customerOptions}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="project-start-date"
+                    className="block text-sm font-medium text-text-primary"
+                  >
+                    Start date
+                  </label>
+                  <input
+                    id="project-start-date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="project-end-date"
+                    className="block text-sm font-medium text-text-primary"
+                  >
+                    End date
+                  </label>
+                  <input
+                    id="project-end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                  />
+                </div>
+              </div>
+
+              <Switch
+                id="project-active"
+                checked={isActive}
+                onCheckedChange={setIsActive}
+                label="Active project"
               />
             </div>
-
-            <Select
-              id="project-customer"
-              label="Customer"
-              value={customerId}
-              onValueChange={setCustomerId}
-              placeholder="Select customer"
-              options={customerOptions}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="project-start-date"
-                  className="block text-sm font-medium text-text-primary"
-                >
-                  Start date
-                </label>
-                <input
-                  id="project-start-date"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="project-end-date"
-                  className="block text-sm font-medium text-text-primary"
-                >
-                  End date
-                </label>
-                <input
-                  id="project-end-date"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                />
-              </div>
-            </div>
-
-            <Switch
-              id="project-active"
-              checked={isActive}
-              onCheckedChange={setIsActive}
-              label="Active project"
-            />
-          </div>
-          <div className="mt-4">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </section>
+          </PanelSection>
+        </Panel>
       </form>
 
       <ConfirmModal

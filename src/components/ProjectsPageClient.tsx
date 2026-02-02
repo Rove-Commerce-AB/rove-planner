@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { revalidateProjects } from "@/app/projects/actions";
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { ProjectsPageHeader } from "./ProjectsPageHeader";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, Panel } from "@/components/ui";
 import { AddProjectModal } from "./AddProjectModal";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
@@ -116,20 +116,6 @@ export function ProjectsPageClient({ projects, error }: Props) {
         <p className="mt-6 text-sm text-danger">Error: {error}</p>
       )}
 
-      {!error && projects.length > 0 && (
-        <div className="mt-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-primary opacity-50" />
-            <input
-              type="search"
-              placeholder="Search projects…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal sm:max-w-xs"
-            />
-          </div>
-        </div>
-      )}
 
       {!error && projects.length === 0 && (
         <EmptyState
@@ -141,11 +127,23 @@ export function ProjectsPageClient({ projects, error }: Props) {
       )}
 
       {!error && projects.length > 0 && (
-        <div className="mt-6 overflow-hidden rounded-lg border border-border bg-bg-default">
+        <Panel className="mt-6">
+          <div className="border-b border-border p-4">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-primary opacity-50" />
+              <input
+                type="search"
+                placeholder="Search projects…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              />
+            </div>
+          </div>
           {filteredProjects.length === 0 ? (
-            <p className="py-12 text-center text-sm text-text-primary opacity-70">
+            <div className="p-12 text-center text-sm text-text-primary opacity-70">
               No projects match &quot;{search}&quot;
-            </p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
@@ -277,7 +275,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
               </table>
             </div>
           )}
-        </div>
+        </Panel>
       )}
     </>
   );

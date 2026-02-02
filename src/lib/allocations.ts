@@ -79,16 +79,41 @@ export async function getAllocationsForWeekRange(
   weekFrom: number,
   weekTo: number
 ): Promise<AllocationRecord[]> {
-  const { data, error } = await supabase
-    .from("allocations")
-    .select("id,consultant_id,project_id,role_id,year,week,hours")
-    .eq("year", year)
-    .gte("week", weekFrom)
-    .lte("week", weekTo);
+  if (weekFrom <= weekTo) {
+    const { data, error } = await supabase
+      .from("allocations")
+      .select("id,consultant_id,project_id,role_id,year,week,hours")
+      .eq("year", year)
+      .gte("week", weekFrom)
+      .lte("week", weekTo);
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return (data ?? []).map(mapAllocation);
+    return (data ?? []).map(mapAllocation);
+  }
+
+  const [data1, data2] = await Promise.all([
+    supabase
+      .from("allocations")
+      .select("id,consultant_id,project_id,role_id,year,week,hours")
+      .eq("year", year)
+      .gte("week", weekFrom)
+      .lte("week", 52),
+    supabase
+      .from("allocations")
+      .select("id,consultant_id,project_id,role_id,year,week,hours")
+      .eq("year", year + 1)
+      .gte("week", 1)
+      .lte("week", weekTo),
+  ]);
+
+  if (data1.error) throw data1.error;
+  if (data2.error) throw data2.error;
+
+  return [
+    ...(data1.data ?? []).map(mapAllocation),
+    ...(data2.data ?? []).map(mapAllocation),
+  ];
 }
 
 export type CreateAllocationInput = {

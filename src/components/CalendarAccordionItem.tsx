@@ -203,7 +203,7 @@ export function CalendarAccordionItem({
           </div>
 
           <h4 className="mb-2 text-sm font-medium text-text-primary">Holidays</h4>
-          <div className="mb-4 max-h-48 overflow-y-auto rounded border border-border">
+          <div className="mb-4 max-h-48 overflow-y-auto rounded-md border border-border">
             {holidays.length === 0 ? (
               <p className="p-4 text-sm text-text-primary opacity-60">No holidays</p>
             ) : (
@@ -224,7 +224,7 @@ export function CalendarAccordionItem({
                     <button
                       type="button"
                       onClick={() => handleRemoveHoliday(h.id)}
-                      className="rounded p-1 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                      className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                       aria-label={`Remove ${h.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -248,7 +248,7 @@ export function CalendarAccordionItem({
                 type="date"
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
-                className="mt-1 rounded border border-border px-3 py-2 text-sm"
+                className="mt-1 rounded-md border border-border px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -264,7 +264,7 @@ export function CalendarAccordionItem({
                 value={newHolidayName}
                 onChange={(e) => setNewHolidayName(e.target.value)}
                 placeholder="e.g. Midsummer"
-                className="mt-1 rounded border border-border px-3 py-2 text-sm"
+                className="mt-1 rounded-md border border-border px-3 py-2 text-sm"
               />
             </div>
             <button

@@ -9,6 +9,7 @@ const kpiConfig = [
     icon: Users,
     valueKey: "consultantCount",
     href: "/consultants",
+    suffix: "",
   },
   {
     key: "customerCount" as const,
@@ -16,6 +17,7 @@ const kpiConfig = [
     icon: Building2,
     valueKey: "customerCount",
     href: "/customers",
+    suffix: "",
   },
   {
     key: "activeProjectCount" as const,
@@ -23,6 +25,7 @@ const kpiConfig = [
     icon: FolderKanban,
     valueKey: "activeProjectCount",
     href: "/projects",
+    suffix: "",
   },
   {
     key: "allocationThisWeekPercent" as const,

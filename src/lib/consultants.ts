@@ -4,6 +4,7 @@ import { getCalendars } from "./calendars";
 import { getTeams } from "./teams";
 import { getAllocationsForWeek } from "./allocations";
 import { getProjectsByIds } from "./projects";
+import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import type { ConsultantWithDetails } from "@/types";
 
 export type CreateConsultantInput = {

@@ -174,7 +174,7 @@ export function EditConsultantModal({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
+            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

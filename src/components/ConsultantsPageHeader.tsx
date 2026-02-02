@@ -12,7 +12,7 @@ export function ConsultantsPageHeader({ count, onAdd }: Props) {
   return (
     <PageHeader
       title="Consultants"
-      description={`${count} consultant${count !== 1 ? "s" : ""} in the team`}
+      description={`${count} consultant${count !== 1 ? "s" : ""} in team`}
     >
       <Button onClick={onAdd}>
         <Plus className="h-4 w-4" />

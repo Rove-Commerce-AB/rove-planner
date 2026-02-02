@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState, Fragment, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
-import { getCurrentYearWeek, getMonthSpansForWeeks } from "@/lib/dateUtils";
+import {
+  getCurrentYearWeek,
+  getMonthSpansForWeeks,
+  addWeeksToYearWeek,
+} from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPage";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Button, Select, Tabs, TabsList, TabsTrigger, PageHeader } from "@/components/ui";
@@ -247,11 +251,19 @@ export function AllocationPageClient({
   );
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addInitialParams, setAddInitialParams] = useState<{
-    consultantId: string;
+    consultantId?: string;
     consultantName?: string;
-    week: number;
+    week?: number;
+    weekFrom?: number;
+    weekTo?: number;
     year: number;
   } | null>(null);
+  const [cellDragConsultant, setCellDragConsultant] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [cellDragWeekStart, setCellDragWeekStart] = useState<number | null>(null);
+  const [cellDragWeekEnd, setCellDragWeekEnd] = useState<number | null>(null);
   const [editingAllocation, setEditingAllocation] = useState<{
     id: string;
     consultantName: string;
@@ -271,13 +283,25 @@ export function AllocationPageClient({
   );
   const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
 
-  const filteredData: AllocationPageData = {
-    ...data,
-    consultants: data.consultants.filter((c) => {
-      if (teamFilterId !== null && c.teamId !== teamFilterId) return false;
-      return true;
-    }),
-  };
+  const filteredData: AllocationPageData | null =
+    data === null
+      ? null
+      : {
+          consultants: data.consultants.filter((c) => {
+            if (teamFilterId !== null && c.teamId !== teamFilterId)
+              return false;
+            return true;
+          }),
+          projects: data.projects ?? [],
+          customers: data.customers ?? [],
+          roles: data.roles ?? [],
+          teams: data.teams ?? [],
+          allocations: data.allocations ?? [],
+          year: data.year,
+          weekFrom: data.weekFrom,
+          weekTo: data.weekTo,
+          weeks: data.weeks ?? [],
+        };
 
   const handleSuccess = () => {
     router.refresh();
@@ -285,30 +309,34 @@ export function AllocationPageClient({
 
   const SHIFT_WEEKS = 4;
 
-  const getPreviousUrl = () => {
-    const span = weekTo - weekFrom + 1;
-    if (weekFrom > SHIFT_WEEKS) {
-      const newFrom = weekFrom - SHIFT_WEEKS;
-      const newTo = weekTo - SHIFT_WEEKS;
-      return `/allocation?year=${year}&from=${newFrom}&to=${newTo}`;
+  const getFirstLastWeek = (): {
+    first: { year: number; week: number };
+    last: { year: number; week: number };
+  } => {
+    if (weekFrom <= weekTo) {
+      return { first: { year, week: weekFrom }, last: { year, week: weekTo } };
     }
-    const newYear = year - 1;
-    const newTo = 52 - (SHIFT_WEEKS - weekFrom);
-    const newFrom = Math.max(1, newTo - span + 1);
-    return `/allocation?year=${newYear}&from=${newFrom}&to=${newTo}`;
+    return {
+      first: { year, week: weekFrom },
+      last: { year: year + 1, week: weekTo },
+    };
+  };
+
+  const toUrl = (first: { year: number; week: number }, last: { year: number; week: number }) =>
+    `/allocation?year=${first.year}&from=${first.week}&to=${last.week}`;
+
+  const getPreviousUrl = () => {
+    const { first, last } = getFirstLastWeek();
+    const newFirst = addWeeksToYearWeek(first.year, first.week, -SHIFT_WEEKS);
+    const newLast = addWeeksToYearWeek(last.year, last.week, -SHIFT_WEEKS);
+    return toUrl(newFirst, newLast);
   };
 
   const getNextUrl = () => {
-    const span = weekTo - weekFrom + 1;
-    if (weekTo <= 52 - SHIFT_WEEKS) {
-      const newFrom = weekFrom + SHIFT_WEEKS;
-      const newTo = weekTo + SHIFT_WEEKS;
-      return `/allocation?year=${year}&from=${newFrom}&to=${newTo}`;
-    }
-    const newYear = year + 1;
-    const newFrom = weekTo - (52 - SHIFT_WEEKS);
-    const newTo = Math.min(52, newFrom + span - 1);
-    return `/allocation?year=${newYear}&from=${newFrom}&to=${newTo}`;
+    const { first, last } = getFirstLastWeek();
+    const newFirst = addWeeksToYearWeek(first.year, first.week, SHIFT_WEEKS);
+    const newLast = addWeeksToYearWeek(last.year, last.week, SHIFT_WEEKS);
+    return toUrl(newFirst, newLast);
   };
 
   const goToPreviousWeeks = () => router.push(getPreviousUrl());
@@ -332,6 +360,62 @@ export function AllocationPageClient({
     });
   };
 
+  const handleCellDragEnd = useCallback(() => {
+    if (
+      cellDragConsultant === null ||
+      cellDragWeekStart === null ||
+      cellDragWeekEnd === null ||
+      !data
+    )
+      return;
+    const fromIdx = Math.min(cellDragWeekStart, cellDragWeekEnd);
+    const toIdx = Math.max(cellDragWeekStart, cellDragWeekEnd);
+    const wFrom = data.weeks[fromIdx];
+    const wTo = data.weeks[toIdx];
+    if (wFrom && wTo) {
+      setAddInitialParams({
+        consultantId: cellDragConsultant.id,
+        consultantName: cellDragConsultant.name,
+        year: data.year,
+        weekFrom: wFrom.week,
+        weekTo: wTo.week,
+      });
+      setAddModalOpen(true);
+    }
+    setCellDragConsultant(null);
+    setCellDragWeekStart(null);
+    setCellDragWeekEnd(null);
+  }, [cellDragConsultant, cellDragWeekStart, cellDragWeekEnd, data]);
+
+  useEffect(() => {
+    if (cellDragConsultant === null) return;
+    const onMouseUp = () => handleCellDragEnd();
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "crosshair";
+    return () => {
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [cellDragConsultant, handleCellDragEnd]);
+
+  const { week: currentWeekNum, year: currentYearNum } = getCurrentYearWeek();
+  const isCurrentWeekHeader = (w: { year: number; week: number }) =>
+    w.year === currentYearNum && w.week === currentWeekNum;
+
+  const renderWeekHeaderCells = (tableKey: string, borderClass = "border-grid-subtle") =>
+    (data?.weeks ?? []).map((w) => (
+      <th
+        key={`${tableKey}-${w.year}-${w.week}`}
+        className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
+          isCurrentWeekHeader(w) ? "bg-brand-lilac/30 border-l-2 border-r-2 border-brand-signal/40" : ""
+        }`}
+      >
+        v{w.week}
+      </th>
+    ));
+
   if (error) {
     return (
       <div>
@@ -351,8 +435,8 @@ export function AllocationPageClient({
     );
   }
 
-  const perConsultant = buildPerConsultantView(filteredData);
-  const perCustomer = buildPerCustomerView(filteredData);
+  const perConsultant = buildPerConsultantView(filteredData!);
+  const perCustomer = buildPerCustomerView(filteredData!);
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const { week: currentWeek, year: currentYear } = getCurrentYearWeek();
@@ -415,13 +499,15 @@ export function AllocationPageClient({
                   </h3>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] tabular-nums text-text-primary opacity-70">
-                      {year} · v{weekFrom}–v{weekTo}
+                      {weekFrom <= weekTo
+                        ? `${year} · v${weekFrom}–v${weekTo}`
+                        : `${year} v${weekFrom} – ${year + 1} v${weekTo}`}
                     </span>
                     <button
                       type="button"
                       onClick={goToPreviousWeeks}
                       onMouseEnter={() => router.prefetch(getPreviousUrl())}
-                      className="rounded p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
                       aria-label="Previous weeks"
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
@@ -430,7 +516,7 @@ export function AllocationPageClient({
                       type="button"
                       onClick={goToNextWeeks}
                       onMouseEnter={() => router.prefetch(getNextUrl())}
-                      className="rounded p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
                       aria-label="Next weeks"
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -463,14 +549,7 @@ export function AllocationPageClient({
                       ))}
                     </tr>
                     <tr className="border-b border-grid-subtle bg-bg-muted">
-                      {data.weeks.map((w) => (
-                        <th
-                          key={`${w.year}-${w.week}`}
-                          className={`border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${isCurrentWeek(w) ? "bg-brand-lilac/30 border-l-2 border-r-2 border-brand-signal/40" : ""}`}
-                        >
-                          v{w.week}
-                        </th>
-                      ))}
+                      {renderWeekHeaderCells("internal")}
                     </tr>
                   </thead>
                   <tbody>
@@ -505,7 +584,7 @@ export function AllocationPageClient({
                               </span>
                             )}
                             {row.consultant.isExternal && (
-                              <span className="ml-1.5 shrink-0 rounded bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                              <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
                                 External
                               </span>
                             )}
@@ -521,19 +600,29 @@ export function AllocationPageClient({
                             : undefined;
                         const hasBooking = pct > 0;
                         const w = data.weeks[i];
+                        const isDragRange =
+                          cellDragConsultant?.id === row.consultant.id &&
+                          cellDragWeekStart !== null &&
+                          cellDragWeekEnd !== null &&
+                          i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
+                          i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
                         return (
                           <td
                             key={i}
-                            className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} cursor-pointer hover:bg-bg-muted/50`}
+                            className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:bg-bg-muted/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
                             title={title}
-                            onClick={() => {
-                              setAddInitialParams({
-                                consultantId: row.consultant.id,
-                                consultantName: row.consultant.name,
-                                week: w.week,
-                                year: w.year,
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setCellDragConsultant({
+                                id: row.consultant.id,
+                                name: row.consultant.name,
                               });
-                              setAddModalOpen(true);
+                              setCellDragWeekStart(i);
+                              setCellDragWeekEnd(i);
+                            }}
+                            onMouseEnter={() => {
+                              if (cellDragConsultant?.id === row.consultant.id)
+                                setCellDragWeekEnd(i);
                             }}
                           >
                             {hasBooking ? (
@@ -572,11 +661,31 @@ export function AllocationPageClient({
                           </td>
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
-                            const isCurrent = isCurrentWeek(data.weeks[i]);
+                            const isDragRange =
+                              !hasBooking &&
+                              cellDragConsultant?.id === row.consultant.id &&
+                              cellDragWeekStart !== null &&
+                              cellDragWeekEnd !== null &&
+                              i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
+                              i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
                             return (
                             <td
                               key={i}
-                              className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} cursor-pointer hover:opacity-80`}
+                              className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:opacity-80 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                              onMouseDown={(e) => {
+                                if (hasBooking) return;
+                                e.preventDefault();
+                                setCellDragConsultant({
+                                  id: row.consultant.id,
+                                  name: row.consultant.name,
+                                });
+                                setCellDragWeekStart(i);
+                                setCellDragWeekEnd(i);
+                              }}
+                              onMouseEnter={() => {
+                                if (!hasBooking && cellDragConsultant?.id === row.consultant.id)
+                                  setCellDragWeekEnd(i);
+                              }}
                               onClick={
                                 hasBooking
                                   ? () =>
@@ -591,15 +700,7 @@ export function AllocationPageClient({
                                         roleId: w.cell!.roleId,
                                         roleName: w.cell!.roleName,
                                       })
-                                  : () => {
-                                      setAddInitialParams({
-                                        consultantId: row.consultant.id,
-                                        consultantName: row.consultant.name,
-                                        week: w.week,
-                                        year: data.weeks[i].year,
-                                      });
-                                      setAddModalOpen(true);
-                                    }
+                                  : undefined
                               }
                             >
                               {hasBooking ? (
@@ -646,14 +747,7 @@ export function AllocationPageClient({
                       ))}
                     </tr>
                     <tr className="border-b border-grid-subtle bg-bg-muted">
-                      {data.weeks.map((w) => (
-                        <th
-                          key={`${w.year}-${w.week}`}
-                          className={`border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${isCurrentWeek(w) ? "bg-brand-lilac/30 border-l-2 border-r-2 border-brand-signal/40" : ""}`}
-                        >
-                          v{w.week}
-                        </th>
-                      ))}
+                      {renderWeekHeaderCells("external")}
                     </tr>
                   </thead>
                   <tbody>
@@ -687,7 +781,7 @@ export function AllocationPageClient({
                                 ({row.consultant.teamName})
                               </span>
                             )}
-                            <span className="ml-1.5 shrink-0 rounded bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                            <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
                               External
                             </span>
                           </span>
@@ -721,19 +815,29 @@ export function AllocationPageClient({
                             : undefined;
                         const hasBooking = pct > 0;
                         const w = data.weeks[i];
+                        const isDragRange =
+                          cellDragConsultant?.id === row.consultant.id &&
+                          cellDragWeekStart !== null &&
+                          cellDragWeekEnd !== null &&
+                          i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
+                          i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
                         return (
                           <td
                             key={i}
-                            className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} cursor-pointer hover:bg-bg-muted/50`}
+                            className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:bg-bg-muted/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
                             title={title}
-                            onClick={() => {
-                              setAddInitialParams({
-                                consultantId: row.consultant.id,
-                                consultantName: row.consultant.name,
-                                week: w.week,
-                                year: w.year,
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setCellDragConsultant({
+                                id: row.consultant.id,
+                                name: row.consultant.name,
                               });
-                              setAddModalOpen(true);
+                              setCellDragWeekStart(i);
+                              setCellDragWeekEnd(i);
+                            }}
+                            onMouseEnter={() => {
+                              if (cellDragConsultant?.id === row.consultant.id)
+                                setCellDragWeekEnd(i);
                             }}
                           >
                             {hasBooking ? (
@@ -772,11 +876,31 @@ export function AllocationPageClient({
                           </td>
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
-                            const isCurrent = isCurrentWeek(data.weeks[i]);
+                            const isDragRange =
+                              !hasBooking &&
+                              cellDragConsultant?.id === row.consultant.id &&
+                              cellDragWeekStart !== null &&
+                              cellDragWeekEnd !== null &&
+                              i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
+                              i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
                             return (
                             <td
                               key={i}
-                              className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} cursor-pointer hover:opacity-80`}
+                              className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:opacity-80 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                              onMouseDown={(e) => {
+                                if (hasBooking) return;
+                                e.preventDefault();
+                                setCellDragConsultant({
+                                  id: row.consultant.id,
+                                  name: row.consultant.name,
+                                });
+                                setCellDragWeekStart(i);
+                                setCellDragWeekEnd(i);
+                              }}
+                              onMouseEnter={() => {
+                                if (!hasBooking && cellDragConsultant?.id === row.consultant.id)
+                                  setCellDragWeekEnd(i);
+                              }}
                               onClick={
                                 hasBooking
                                   ? () =>
@@ -791,15 +915,7 @@ export function AllocationPageClient({
                                         roleId: w.cell!.roleId,
                                         roleName: w.cell!.roleName,
                                       })
-                                  : () => {
-                                      setAddInitialParams({
-                                        consultantId: row.consultant.id,
-                                        consultantName: row.consultant.name,
-                                        week: w.week,
-                                        year: data.weeks[i].year,
-                                      });
-                                      setAddModalOpen(true);
-                                    }
+                                  : undefined
                               }
                             >
                               {hasBooking ? (
@@ -822,13 +938,15 @@ export function AllocationPageClient({
             <div className="p-2">
               <div className="mb-2 flex items-center justify-end gap-2 px-1">
                 <span className="text-[10px] tabular-nums text-text-primary opacity-70">
-                  {year} · v{weekFrom}–v{weekTo}
+                  {weekFrom <= weekTo
+                        ? `${year} · v${weekFrom}–v${weekTo}`
+                        : `${year} v${weekFrom} – ${year + 1} v${weekTo}`}
                 </span>
                 <button
                   type="button"
                   onClick={goToPreviousWeeks}
                   onMouseEnter={() => router.prefetch(getPreviousUrl())}
-                  className="rounded p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
                   aria-label="Previous weeks"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
@@ -837,7 +955,7 @@ export function AllocationPageClient({
                   type="button"
                   onClick={goToNextWeeks}
                   onMouseEnter={() => router.prefetch(getNextUrl())}
-                  className="rounded p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
                   aria-label="Next weeks"
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -869,14 +987,7 @@ export function AllocationPageClient({
                   ))}
                 </tr>
                 <tr className="border-b border-grid">
-                  {data.weeks.map((w) => (
-                    <th
-                      key={`${w.year}-${w.week}`}
-                      className={`border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""}`}
-                    >
-                      v{w.week}
-                    </th>
-                  ))}
+                  {renderWeekHeaderCells("customer", "border-grid")}
                 </tr>
               </thead>
               <tbody>
@@ -942,23 +1053,30 @@ export function AllocationPageClient({
                               );
                               const hasBooking = totalHours > 0;
                               const weekInfo = data.weeks[i];
+                              const isDragRange =
+                                cellDragConsultant?.id === cr.consultantId &&
+                                cellDragWeekStart !== null &&
+                                cellDragWeekEnd !== null &&
+                                i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
+                                i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
                               return (
                                 <td
                                   key={i}
-                                  className={`${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center ${isCurrentWeek(weekInfo) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} cursor-pointer hover:bg-bg-muted/50`}
-                                  onClick={
-                                    !hasBooking
-                                      ? () => {
-                                          setAddInitialParams({
-                                            consultantId: cr.consultantId,
-                                            consultantName: cr.consultantName,
-                                            week: w.week,
-                                            year: weekInfo.year,
-                                          });
-                                          setAddModalOpen(true);
-                                        }
-                                      : undefined
-                                  }
+                                  className={`${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center select-none cursor-crosshair ${isCurrentWeek(weekInfo) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:bg-bg-muted/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                                  onMouseDown={(e) => {
+                                    if (e.target instanceof HTMLButtonElement) return;
+                                    e.preventDefault();
+                                    setCellDragConsultant({
+                                      id: cr.consultantId,
+                                      name: cr.consultantName,
+                                    });
+                                    setCellDragWeekStart(i);
+                                    setCellDragWeekEnd(i);
+                                  }}
+                                  onMouseEnter={() => {
+                                    if (cellDragConsultant?.id === cr.consultantId)
+                                      setCellDragWeekEnd(i);
+                                  }}
                                 >
                                   {hasBooking ? (
                                     <>
@@ -1015,6 +1133,8 @@ export function AllocationPageClient({
         initialConsultantName={addInitialParams?.consultantName}
         initialWeek={addInitialParams?.week}
         initialYear={addInitialParams?.year}
+        initialWeekFrom={addInitialParams?.weekFrom}
+        initialWeekTo={addInitialParams?.weekTo}
       />
 
       <EditAllocationModal

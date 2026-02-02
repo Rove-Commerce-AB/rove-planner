@@ -1,4 +1,5 @@
 import type { ConsultantAllocation } from "@/types";
+import { DEFAULT_HOURS_PER_WEEK } from "@/lib/constants";
 
 
 type Props = {

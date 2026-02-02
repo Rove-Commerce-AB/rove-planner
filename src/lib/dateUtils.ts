@@ -65,6 +65,25 @@ export function getMonthLabel(month: number, year: number): string {
   return `${MONTH_NAMES[month - 1]} ${year}`;
 }
 
+/** Add delta weeks to (year, week). Delta can be negative. */
+export function addWeeksToYearWeek(
+  year: number,
+  week: number,
+  delta: number
+): { year: number; week: number } {
+  let w = week + delta;
+  let y = year;
+  while (w > 52) {
+    w -= 52;
+    y += 1;
+  }
+  while (w < 1) {
+    w += 52;
+    y -= 1;
+  }
+  return { year: y, week: w };
+}
+
 /** Builds month spans for a list of weeks: [{ label, colSpan }, ...]. */
 export function getMonthSpansForWeeks(
   weeks: { year: number; week: number }[]

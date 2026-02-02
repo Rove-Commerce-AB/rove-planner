@@ -4,7 +4,16 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { updateConsultant, deleteConsultant } from "@/lib/consultants";
 import type { ConsultantForEdit } from "@/lib/consultants";
-import { ConfirmModal, Select, Switch, Button, PageHeader } from "@/components/ui";
+import {
+  ConfirmModal,
+  Select,
+  Switch,
+  Button,
+  DetailPageHeader,
+  Panel,
+  PanelSection,
+} from "@/components/ui";
+import { User } from "lucide-react";
 import { getRoles } from "@/lib/roles";
 import { getCalendars } from "@/lib/calendars";
 import { getTeams } from "@/lib/teams";
@@ -113,6 +122,13 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     }
   };
 
+  const initials = initial.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
   const roleOptions = (() => {
     const base = roles.map((r) => ({ value: r.id, label: r.name }));
     if (roleId && initial.roleName && !base.some((o) => o.value === roleId)) {
@@ -138,133 +154,138 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
 
   return (
     <>
-      <PageHeader
+      <DetailPageHeader
+        backHref="/consultants"
+        backLabel="Back to consultants"
+        avatar={<span>{initials}</span>}
         title={initial.name}
-        description="Consultant details"
-        className="mb-6"
-      >
-        <Button
-          variant="danger"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={submitting || deleting}
-        >
-          Delete
-        </Button>
-      </PageHeader>
+        subtitle="Consultant"
+        action={
+          <Button
+            variant="danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={submitting || deleting}
+          >
+            Delete
+          </Button>
+        }
+      />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-2xl">
         {error && (
-          <p className="text-sm text-danger" role="alert">
+          <p className="mb-4 text-sm text-danger" role="alert">
             {error}
           </p>
         )}
         {saved && (
-          <p className="text-sm text-success" role="status">
+          <p className="mb-4 text-sm text-success" role="status">
             Saved
           </p>
         )}
 
-        <section className="rounded-lg border border-border bg-bg-default p-6">
-          <h2 className="mb-4 text-lg font-semibold text-text-primary">
-            Information
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="consultant-name"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Name
-              </label>
-              <input
-                id="consultant-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Anna Andersson"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+        <Panel>
+          <PanelSection
+            title="Information"
+            icon={<User className="h-5 w-5 text-text-primary opacity-70" />}
+            footer={
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving…" : "Save"}
+              </Button>
+            }
+          >
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="consultant-name"
+                  className="block text-sm font-medium text-text-primary"
+                >
+                  Name
+                </label>
+                <input
+                  id="consultant-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Anna Andersson"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                />
+              </div>
+
+              <Select
+                key={`role-${optionsReady}-${roleId}`}
+                id="consultant-role"
+                label="Default role"
+                value={roleId}
+                onValueChange={setRoleId}
+                placeholder="Select role"
+                options={roleOptions}
+              />
+
+              <div>
+                <label
+                  htmlFor="consultant-email"
+                  className="block text-sm font-medium text-text-primary"
+                >
+                  Email
+                </label>
+                <input
+                  id="consultant-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="anna@company.com"
+                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                />
+              </div>
+
+              <Select
+                key={`calendar-${optionsReady}-${calendarId}`}
+                id="consultant-calendar"
+                label="Calendar"
+                value={calendarId}
+                onValueChange={setCalendarId}
+                placeholder="Select calendar"
+                options={calendarOptions}
+              />
+
+              <Select
+                id="consultant-work-percentage"
+                label="Work percentage"
+                value={String(workPercentage)}
+                onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
+                placeholder="Select"
+                options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
+                  value: String(p),
+                  label: `${p}%`,
+                }))}
+              />
+
+              <Select
+                id="consultant-team"
+                label="Team (optional)"
+                value={teamId ?? ""}
+                onValueChange={(v) => setTeamId(v ? v : null)}
+                placeholder="No team"
+                options={[
+                  { value: "", label: "No team" },
+                  ...(teamId &&
+                  initial.teamName &&
+                  !teams.some((t) => t.id === teamId)
+                    ? [{ value: teamId, label: initial.teamName }]
+                    : []),
+                  ...teams.map((t) => ({ value: t.id, label: t.name })),
+                ]}
+              />
+
+              <Switch
+                id="consultant-external"
+                checked={isExternal}
+                onCheckedChange={setIsExternal}
+                label="External consultant"
               />
             </div>
-
-            <Select
-              key={`role-${optionsReady}-${roleId}`}
-              id="consultant-role"
-              label="Default role"
-              value={roleId}
-              onValueChange={setRoleId}
-              placeholder="Select role"
-              options={roleOptions}
-            />
-
-            <div>
-              <label
-                htmlFor="consultant-email"
-                className="block text-sm font-medium text-text-primary"
-              >
-                Email
-              </label>
-              <input
-                id="consultant-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="anna@company.com"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-              />
-            </div>
-
-            <Select
-              key={`calendar-${optionsReady}-${calendarId}`}
-              id="consultant-calendar"
-              label="Calendar"
-              value={calendarId}
-              onValueChange={setCalendarId}
-              placeholder="Select calendar"
-              options={calendarOptions}
-            />
-
-            <Select
-              id="consultant-work-percentage"
-              label="Work percentage"
-              value={String(workPercentage)}
-              onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
-              placeholder="Select"
-              options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
-                value: String(p),
-                label: `${p}%`,
-              }))}
-            />
-
-            <Select
-              id="consultant-team"
-              label="Team (optional)"
-              value={teamId ?? ""}
-              onValueChange={(v) => setTeamId(v ? v : null)}
-              placeholder="No team"
-              options={[
-                { value: "", label: "No team" },
-                ...(teamId &&
-                initial.teamName &&
-                !teams.some((t) => t.id === teamId)
-                  ? [{ value: teamId, label: initial.teamName }]
-                  : []),
-                ...teams.map((t) => ({ value: t.id, label: t.name })),
-              ]}
-            />
-
-            <Switch
-              id="consultant-external"
-              checked={isExternal}
-              onCheckedChange={setIsExternal}
-              label="External consultant"
-            />
-          </div>
-          <div className="mt-4">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </section>
+          </PanelSection>
+        </Panel>
       </form>
 
       <ConfirmModal

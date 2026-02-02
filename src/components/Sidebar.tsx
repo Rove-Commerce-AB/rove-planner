@@ -73,7 +73,7 @@ export function Sidebar() {
           ))}
         </div>
 
-        <div className="my-2 border-t border-text-primary/10" />
+        <div className="my-2 border-t border-border" />
 
         <div className="space-y-0.5">
           {navGroup2.map((item) => (
@@ -81,7 +81,7 @@ export function Sidebar() {
           ))}
         </div>
 
-        <div className="my-2 border-t border-text-primary/10" />
+        <div className="my-2 border-t border-border" />
 
         <div className="space-y-0.5">
           {navGroup3.map((item) => (

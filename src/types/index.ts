@@ -72,6 +72,12 @@ export type ConsultantWithDetails = {
   projectAllocations: { projectName: string; hours: number }[];
 };
 
+export type CustomerProjectSummary = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
 export type CustomerWithDetails = {
   id: string;
   name: string;
@@ -82,6 +88,8 @@ export type CustomerWithDetails = {
   initials: string;
   activeProjectCount: number;
   primaryProject: { name: string; isActive: boolean } | null;
+  /** All projects for this customer (detail page) */
+  projects: CustomerProjectSummary[];
 };
 
 export type DashboardData = {

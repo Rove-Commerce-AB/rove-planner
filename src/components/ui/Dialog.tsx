@@ -36,7 +36,7 @@ export function Dialog({
               {title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              className="rounded p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-signal"
+              className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-signal"
               aria-label="Close"
             >
               <X className="h-5 w-5" />

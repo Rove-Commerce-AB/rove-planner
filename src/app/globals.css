@@ -11,6 +11,7 @@
   --color-brand-lilac: var(--color-brand-lilac);
   --color-brand-blue: var(--color-brand-blue);
   --color-bg-default: var(--color-bg-default);
+  --color-bg-page: var(--color-bg-page);
   --color-bg-muted: var(--color-bg-muted);
   --color-text-primary: var(--color-text-primary);
   --color-text-inverse: var(--color-text-inverse);
@@ -29,6 +30,11 @@
   --color-grid-border-subtle: var(--color-grid-border-subtle);
   --color-grid-border-light-subtle: var(--color-grid-border-light-subtle);
   --color-grid-row: var(--color-grid-row);
+  --radius-panel: var(--radius-panel);
+  --panel-bg: var(--panel-bg);
+  --panel-border: var(--panel-border);
+  --section-divider: var(--section-divider);
+  --color-panel: var(--panel-bg);
 }
 
 body {

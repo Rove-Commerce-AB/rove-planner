@@ -29,14 +29,19 @@ export function AllocationViewportAdapter({
   const applyWeeks = useCallback(
     (visibleWeeks: number) => {
       const clamped = Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, visibleWeeks));
-      const currentSpan = weekTo - weekFrom + 1;
+      const currentSpan =
+        weekFrom <= weekTo
+          ? weekTo - weekFrom + 1
+          : 52 - weekFrom + 1 + weekTo;
       if (clamped === currentSpan) return;
 
-      const newTo = Math.min(52, weekFrom + clamped - 1);
-      const newFrom = Math.max(1, newTo - clamped + 1);
-      const actualTo = Math.min(52, newFrom + clamped - 1);
+      const newFrom = weekFrom;
+      const newTo =
+        weekFrom + clamped - 1 <= 52
+          ? weekFrom + clamped - 1
+          : weekFrom + clamped - 1 - 52;
 
-      router.replace(`/allocation?year=${year}&from=${newFrom}&to=${actualTo}`);
+      router.replace(`/allocation?year=${year}&from=${newFrom}&to=${newTo}`);
     },
     [year, weekFrom, weekTo, router]
   );

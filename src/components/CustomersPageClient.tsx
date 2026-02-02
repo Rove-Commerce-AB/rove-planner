@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { CustomersPageHeader } from "./CustomersPageHeader";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, Panel } from "@/components/ui";
 import { AddCustomerModal } from "./AddCustomerModal";
 import type { CustomerWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
@@ -97,20 +97,6 @@ export function CustomersPageClient({ customers, error }: Props) {
         <p className="mt-6 text-sm text-danger">Error: {error}</p>
       )}
 
-      {!error && customers.length > 0 && (
-        <div className="mt-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-primary opacity-50" />
-            <input
-              type="search"
-              placeholder="Search customers…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal sm:max-w-xs"
-            />
-          </div>
-        </div>
-      )}
 
       {!error && customers.length === 0 && (
         <EmptyState
@@ -122,11 +108,23 @@ export function CustomersPageClient({ customers, error }: Props) {
       )}
 
       {!error && customers.length > 0 && (
-        <div className="mt-6 overflow-hidden rounded-lg border border-border bg-bg-default">
+        <Panel className="mt-6">
+          <div className="border-b border-border p-4">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-primary opacity-50" />
+              <input
+                type="search"
+                placeholder="Search customers…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              />
+            </div>
+          </div>
           {filteredCustomers.length === 0 ? (
-            <p className="py-12 text-center text-sm text-text-primary opacity-70">
+            <div className="p-12 text-center text-sm text-text-primary opacity-70">
               No customers match &quot;{search}&quot;
-            </p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
@@ -231,7 +229,7 @@ export function CustomersPageClient({ customers, error }: Props) {
               </table>
             </div>
           )}
-        </div>
+        </Panel>
       )}
     </>
   );

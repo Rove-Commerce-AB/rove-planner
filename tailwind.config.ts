@@ -22,7 +22,9 @@ const config: Config = {
         },
         bg: {
           DEFAULT: "var(--color-bg-default)",
+          page: "var(--color-bg-page)",
           muted: "var(--color-bg-muted)",
+          panel: "var(--panel-bg)",
         },
         text: {
           primary: "var(--color-text-primary)",
@@ -54,10 +56,11 @@ const config: Config = {
         secondary: ["var(--font-secondary)"],
       },
       borderRadius: {
-        DEFAULT: "0",
+        DEFAULT: "var(--radius)",
         sm: "var(--radius-sm)",
         md: "var(--radius-md)",
         lg: "var(--radius-lg)",
+        panel: "var(--radius-panel)",
       },
     },
   },

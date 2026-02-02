@@ -47,12 +47,15 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
 
   if (error || !data) return null;
 
-  let projectsByCustomer = new Map<string, { name: string; is_active: boolean }[]>();
+  let projectsByCustomer = new Map<
+    string,
+    { id: string; name: string; is_active: boolean }[]
+  >();
   try {
     const projects = await getProjectsByCustomerIds([data.id]);
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
-      list.push({ name: p.name, is_active: p.is_active });
+      list.push({ id: p.id, name: p.name, is_active: p.is_active });
       projectsByCustomer.set(p.customer_id, list);
     }
   } catch {
@@ -75,6 +78,11 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
     primaryProject: primaryProject
       ? { name: primaryProject.name, isActive: primaryProject.is_active }
       : null,
+    projects: customerProjects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isActive: p.is_active,
+    })),
   };
 }
 
@@ -151,13 +159,13 @@ export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> 
 
   let projectsByCustomer = new Map<
     string,
-    { name: string; is_active: boolean }[]
+    { id: string; name: string; is_active: boolean }[]
   >();
   try {
     const projects = await getProjectsByCustomerIds(customers.map((c) => c.id));
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
-      list.push({ name: p.name, is_active: p.is_active });
+      list.push({ id: p.id, name: p.name, is_active: p.is_active });
       projectsByCustomer.set(p.customer_id, list);
     }
   } catch {
@@ -181,6 +189,11 @@ export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> 
       primaryProject: primaryProject
         ? { name: primaryProject.name, isActive: primaryProject.is_active }
         : null,
+      projects: customerProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        isActive: p.is_active,
+      })),
     };
   });
 }

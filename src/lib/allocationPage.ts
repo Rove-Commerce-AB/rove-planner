@@ -128,15 +128,29 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+function buildWeeksArray(
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): { year: number; week: number }[] {
+  if (weekFrom <= weekTo) {
+    return Array.from({ length: weekTo - weekFrom + 1 }, (_, i) => ({
+      year,
+      week: weekFrom + i,
+    }));
+  }
+  const weeks: { year: number; week: number }[] = [];
+  for (let w = weekFrom; w <= 52; w++) weeks.push({ year, week: w });
+  for (let w = 1; w <= weekTo; w++) weeks.push({ year: year + 1, week: w });
+  return weeks;
+}
+
 export async function getAllocationPageData(
   year: number,
   weekFrom: number,
   weekTo: number
 ): Promise<AllocationPageData> {
-  const weeks = Array.from(
-    { length: weekTo - weekFrom + 1 },
-    (_, i) => ({ year, week: weekFrom + i })
-  );
+  const weeks = buildWeeksArray(year, weekFrom, weekTo);
 
   let consultants: AllocationConsultant[] = [];
   let projects: AllocationProject[] = [];
@@ -185,7 +199,7 @@ export async function getAllocationPageData(
       const hoursPerWeek = calendarHours * workPct;
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
       const availableHoursByWeek = weeks.map((w) => {
-        const { start, end } = getISOWeekDateRange(year, w.week);
+        const { start, end } = getISOWeekDateRange(w.year, w.week);
         const holidayCount = countHolidaysInRange(holidays, start, end);
         const baseHours = Math.max(
           0,

@@ -21,8 +21,9 @@
   
     /* === Semantic === */
     --color-bg-default: var(--color-white);
+    --color-bg-page: var(--color-gray-100);   /* Page/main area – lighter than panels */
     --color-bg-muted: var(--color-gray-100);
-    --color-border-default: var(--color-gray-050);
+    --color-border-default: #e0dcd8;          /* Soft gray border – low contrast, not black */
     --color-grid-border: #dfd6d1;      /* Allocation table – unified grid */
     --color-grid-border-light: #e8e2de; /* Allocation table – cell dividers */
     --color-grid-border-subtle: #ebe6e3;   /* Per consultant – softer grid */
@@ -40,10 +41,17 @@
     --focus-ring-offset: 2px;
 
     /* === Radius === */
-    --radius-sm: 0;
-    --radius-md: 0;
-    --radius-lg: 0;
-  
+    --radius: 4px;         /* Default for inline “rounded” */
+    --radius-sm: 4px;      /* Badges, chips, small controls, color picker */
+    --radius-md: 6px;     /* Inputs, nav items, dropdown items */
+    --radius-lg: 8px;     /* Buttons, cards, modals, panels */
+    --radius-panel: 8px;  /* Panel container (same as lg for homogeneity) */
+
+    /* === Panel (control panel / dashboard) === */
+    --panel-bg: var(--color-gray-100);       /* Slightly gray so panels stand out from white content area */
+    --panel-border: var(--color-border-default);
+    --section-divider: var(--color-border-default);
+
     /* === Spacing === */
     --space-xs: 4px;
     --space-sm: 8px;
