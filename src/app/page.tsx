@@ -1,11 +1,18 @@
 import { getDashboardData } from "@/lib/dashboard";
+import { getRevenueForecast } from "@/lib/revenueForecast";
+import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { DashboardKpis } from "@/components/DashboardKpis";
 import { AllocationPerWeek } from "@/components/AllocationPerWeek";
 import { ActiveProjects } from "@/components/ActiveProjects";
+import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { PageHeader } from "@/components/ui";
 
 export default async function DashboardPage() {
-  const data = await getDashboardData();
+  const { year: currentYear } = getCurrentYearWeek();
+  const [data, forecast] = await Promise.all([
+    getDashboardData(),
+    getRevenueForecast(currentYear, 1, currentYear + 1, 52),
+  ]);
 
   return (
     <div className="p-6">
@@ -27,6 +34,10 @@ export default async function DashboardPage() {
         />
         <ActiveProjects projects={data.activeProjects} />
       </div>
+
+      <section className="mt-6">
+        <RevenueForecastPanel forecast={forecast} />
+      </section>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { updateCalendar, deleteCalendar } from "@/lib/calendars";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ConfirmModal } from "@/components/ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, ConfirmModal } from "@/components/ui";
 import {
   getCalendarHolidays,
   createCalendarHoliday,
@@ -155,10 +155,10 @@ export function CalendarAccordionItem({
       value={expanded ? calendar.id : ""}
       onValueChange={(v) => setExpanded(v === calendar.id)}
     >
-      <AccordionItem value={calendar.id}>
+      <AccordionItem value={calendar.id} className="border-panel">
         <AccordionTrigger>
           <div className="flex items-center gap-3">
-            <span className="font-medium text-text-primary">
+            <span className="flex-1 text-left text-sm font-medium text-text-primary">
               {calendar.name} ({calendar.country_code})
             </span>
             <span className="text-sm text-text-primary opacity-60">
@@ -178,7 +178,7 @@ export function CalendarAccordionItem({
           <div className="mb-4">
             <label
               htmlFor={`hours-${calendar.id}`}
-              className="block text-sm font-medium text-text-primary"
+              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
             >
               Hours per week
             </label>
@@ -189,29 +189,31 @@ export function CalendarAccordionItem({
                 value={hoursPerWeek}
                 onChange={(e) => setHoursPerWeek(e.target.value)}
                 onBlur={handleSaveHours}
-                className="w-24 rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className="w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
               />
               <button
                 type="button"
                 onClick={handleSaveHours}
                 disabled={saving}
-                className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted disabled:opacity-50"
+                className="rounded-lg border border-panel px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted disabled:opacity-50"
               >
                 Save
               </button>
             </div>
           </div>
 
-          <h4 className="mb-2 text-sm font-medium text-text-primary">Holidays</h4>
-          <div className="mb-4 max-h-48 overflow-y-auto rounded-md border border-border">
+          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+            Holidays
+          </h4>
+          <div className="mb-4 max-h-48 overflow-y-auto rounded-md border border-panel">
             {holidays.length === 0 ? (
               <p className="p-4 text-sm text-text-primary opacity-60">No holidays</p>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul>
                 {holidays.map((h) => (
                   <li
                     key={h.id}
-                    className="flex items-center justify-between gap-4 px-4 py-2"
+                    className="flex items-center justify-between gap-4 border-t border-panel px-4 py-2 first:border-t-0"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-4 text-left">
                       <span className="w-24 shrink-0 text-sm text-text-primary">
@@ -239,7 +241,7 @@ export function CalendarAccordionItem({
             <div>
               <label
                 htmlFor={`holiday-date-${calendar.id}`}
-                className="block text-xs font-medium text-text-primary opacity-70"
+                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
               >
                 Date
               </label>
@@ -248,13 +250,13 @@ export function CalendarAccordionItem({
                 type="date"
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
-                className="mt-1 rounded-md border border-border px-3 py-2 text-sm"
+                className="mt-1 rounded-md border border-panel px-3 py-2 text-sm"
               />
             </div>
             <div>
               <label
                 htmlFor={`holiday-name-${calendar.id}`}
-                className="block text-xs font-medium text-text-primary opacity-70"
+                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
               >
                 Name
               </label>
@@ -264,7 +266,7 @@ export function CalendarAccordionItem({
                 value={newHolidayName}
                 onChange={(e) => setNewHolidayName(e.target.value)}
                 placeholder="e.g. Midsummer"
-                className="mt-1 rounded-md border border-border px-3 py-2 text-sm"
+                className="mt-1 rounded-md border border-panel px-3 py-2 text-sm"
               />
             </div>
             <button
@@ -278,14 +280,15 @@ export function CalendarAccordionItem({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete calendar
-          </button>
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              className="border-danger text-danger hover:bg-danger/10"
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Delete calendar
+            </Button>
+          </div>
         </AccordionContent>
       </AccordionItem>
     </Accordion>

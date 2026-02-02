@@ -41,7 +41,7 @@ const AccordionContent = forwardRef<
 >(({ className = "", children, ...props }, ref) => (
   <AccordionPrimitive.Content
     ref={ref}
-    className="overflow-hidden border-t border-border"
+    className="overflow-hidden border-t border-panel"
     {...props}
   >
     <div className={className}>{children}</div>

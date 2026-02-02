@@ -12,6 +12,8 @@ import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 type SortKey = "name" | "contact" | "projects" | "email";
 type SortDir = "asc" | "desc";
 
+const tableBorder = "border-panel";
+
 type Props = {
   customers: CustomerWithDetails[];
   error: string | null;
@@ -108,8 +110,11 @@ export function CustomersPageClient({ customers, error }: Props) {
       )}
 
       {!error && customers.length > 0 && (
-        <Panel className="mt-6">
-          <div className="border-b border-border p-4">
+        <>
+          <div
+            className="mt-6 rounded-panel border border-border p-4"
+            style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
+          >
             <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-primary opacity-50" />
               <input
@@ -121,115 +126,126 @@ export function CustomersPageClient({ customers, error }: Props) {
               />
             </div>
           </div>
+
           {filteredCustomers.length === 0 ? (
-            <div className="p-12 text-center text-sm text-text-primary opacity-70">
+            <div
+              className="mt-6 rounded-panel border p-12 text-center text-sm text-text-primary opacity-70"
+              style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
+            >
               No customers match &quot;{search}&quot;
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-bg-muted/80">
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort("name")}
-                        className="flex items-center font-medium text-text-primary hover:opacity-80"
-                      >
-                        Name
-                        <SortIcon column="name" />
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort("contact")}
-                        className="flex items-center font-medium text-text-primary hover:opacity-80"
-                      >
-                        Contact
-                        <SortIcon column="contact" />
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort("projects")}
-                        className="flex items-center font-medium text-text-primary hover:opacity-80"
-                      >
-                        Active projects
-                        <SortIcon column="projects" />
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort("email")}
-                        className="flex items-center font-medium text-text-primary hover:opacity-80"
-                      >
-                        Contact email
-                        <SortIcon column="email" />
-                      </button>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCustomers.map((customer) => {
-                    const color = customer.color || DEFAULT_CUSTOMER_COLOR;
-                    return (
-                      <tr
-                        key={customer.id}
-                        className="cursor-pointer transition-colors hover:bg-bg-muted/50"
-                        onClick={() => router.push(`/customers/${customer.id}`)}
-                      >
-                        <td className="border-b border-border px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {customer.logoUrl ? (
-                              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-bg-muted">
-                                <img
-                                  src={customer.logoUrl}
-                                  alt=""
-                                  className="h-full w-full object-contain p-0.5"
-                                />
-                              </div>
-                            ) : (
-                              <div
-                                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-xs font-medium text-text-inverse"
-                                style={{ backgroundColor: color }}
+            <Panel className="mt-6">
+              <h2
+                className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-base font-semibold text-text-primary`}
+              >
+                Customers
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className={`border-b ${tableBorder} bg-bg-muted/80`}>
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("name")}
+                          className="flex items-center font-medium text-text-primary hover:opacity-80"
+                        >
+                          Name
+                          <SortIcon column="name" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("contact")}
+                          className="flex items-center font-medium text-text-primary hover:opacity-80"
+                        >
+                          Contact
+                          <SortIcon column="contact" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("projects")}
+                          className="flex items-center font-medium text-text-primary hover:opacity-80"
+                        >
+                          Active projects
+                          <SortIcon column="projects" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("email")}
+                          className="flex items-center font-medium text-text-primary hover:opacity-80"
+                        >
+                          Contact email
+                          <SortIcon column="email" />
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCustomers.map((customer) => {
+                      const color = customer.color || DEFAULT_CUSTOMER_COLOR;
+                      return (
+                        <tr
+                          key={customer.id}
+                          className="cursor-pointer transition-colors hover:bg-bg-muted/50"
+                          onClick={() => router.push(`/customers/${customer.id}`)}
+                        >
+                          <td className={`border-b ${tableBorder} px-4 py-3`}>
+                            <div className="flex items-center gap-3">
+                              {customer.logoUrl ? (
+                                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-bg-muted">
+                                  <img
+                                    src={customer.logoUrl}
+                                    alt=""
+                                    className="h-full w-full object-contain p-0.5"
+                                  />
+                                </div>
+                              ) : (
+                                <div
+                                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-xs font-medium text-text-inverse"
+                                  style={{ backgroundColor: color }}
+                                >
+                                  {customer.initials}
+                                </div>
+                              )}
+                              <span className="font-medium text-text-primary">{customer.name}</span>
+                            </div>
+                          </td>
+                          <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>
+                            {customer.contactName ?? "—"}
+                          </td>
+                          <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>
+                            {customer.activeProjectCount} project
+                            {customer.activeProjectCount !== 1 ? "s" : ""}
+                          </td>
+                          <td className={`border-b ${tableBorder} px-4 py-3`}>
+                            {customer.contactEmail ? (
+                              <a
+                                href={`mailto:${customer.contactEmail}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-brand-signal hover:underline"
                               >
-                                {customer.initials}
-                              </div>
+                                {customer.contactEmail}
+                              </a>
+                            ) : (
+                              <span className="text-text-primary opacity-50">—</span>
                             )}
-                            <span className="font-medium text-text-primary">{customer.name}</span>
-                          </div>
-                        </td>
-                        <td className="border-b border-border px-4 py-3 text-text-primary opacity-90">
-                          {customer.contactName ?? "—"}
-                        </td>
-                        <td className="border-b border-border px-4 py-3 text-text-primary opacity-90">
-                          {customer.activeProjectCount} project
-                          {customer.activeProjectCount !== 1 ? "s" : ""}
-                        </td>
-                        <td className="border-b border-border px-4 py-3">
-                          {customer.contactEmail ? (
-                            <a
-                              href={`mailto:${customer.contactEmail}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-brand-signal hover:underline"
-                            >
-                              {customer.contactEmail}
-                            </a>
-                          ) : (
-                            <span className="text-text-primary opacity-50">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
           )}
-        </Panel>
+        </>
       )}
     </>
   );

@@ -33,6 +33,7 @@ const config: Config = {
         },
         border: {
           DEFAULT: "var(--color-border-default)",
+          subtle: "var(--color-border-subtle)",
         },
         grid: {
           DEFAULT: "var(--color-grid-border)",
@@ -49,6 +50,10 @@ const config: Config = {
         },
         warning: {
           DEFAULT: "var(--color-warning)",
+        },
+        nav: {
+          active: "var(--color-nav-active)",
+          hover: "var(--color-nav-hover)",
         },
       },
       fontFamily: {

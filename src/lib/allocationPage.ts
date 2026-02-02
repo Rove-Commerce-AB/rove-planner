@@ -9,7 +9,7 @@ import {
 } from "./allocations";
 import {
   getCalendarHolidays,
-  countHolidaysInRange,
+  countWeekdayHolidaysInRange,
 } from "./calendarHolidays";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import { getISOWeekDateRange } from "./dateUtils";
@@ -26,10 +26,8 @@ const getCachedTeams = () =>
     revalidate: CACHE_REVALIDATE,
   })();
 
-const getCachedProjects = () =>
-  unstable_cache(getProjectsWithCustomer, ["allocation-projects"], {
-    revalidate: CACHE_REVALIDATE,
-  })();
+// Projects (with customer color) fetched without cache so allocation rows
+// always reflect the latest customer color.
 
 async function getCachedConsultantsRaw() {
   return unstable_cache(
@@ -200,7 +198,7 @@ export async function getAllocationPageData(
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
       const availableHoursByWeek = weeks.map((w) => {
         const { start, end } = getISOWeekDateRange(w.year, w.week);
-        const holidayCount = countHolidaysInRange(holidays, start, end);
+        const holidayCount = countWeekdayHolidaysInRange(holidays, start, end);
         const baseHours = Math.max(
           0,
           calendarHours - holidayCount * HOURS_PER_HOLIDAY
@@ -221,7 +219,7 @@ export async function getAllocationPageData(
     });
 
     if (consultantsRaw.length > 0) {
-      projects = await getCachedProjects();
+      projects = await getProjectsWithCustomer();
     }
   } catch (e) {
     // Tables may not exist

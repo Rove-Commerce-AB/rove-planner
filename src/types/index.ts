@@ -16,10 +16,13 @@ export type Project = {
   color: string;
 };
 
+export type ProjectType = "customer" | "internal" | "absence";
+
 export type ProjectWithDetails = {
   id: string;
   name: string;
   isActive: boolean;
+  type: ProjectType;
   customer_id: string;
   customerName: string;
   startDate: string | null;

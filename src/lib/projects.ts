@@ -2,8 +2,7 @@ import { supabase } from "./supabaseClient";
 import { getCustomers } from "./customers";
 import { getAllocationsByProjectIds } from "./allocations";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
-import type { ProjectWithDetails } from "@/types";
-
+import type { ProjectWithDetails, ProjectType } from "@/types";
 
 function getInitials(name: string): string {
   return name
@@ -19,6 +18,7 @@ export type ProjectRecord = {
   customer_id: string;
   name: string;
   is_active: boolean;
+  type: ProjectType;
   start_date: string | null;
   end_date: string | null;
 };
@@ -27,6 +27,7 @@ export type CreateProjectInput = {
   name: string;
   customer_id: string;
   is_active?: boolean;
+  type?: ProjectType;
   start_date?: string | null;
   end_date?: string | null;
 };
@@ -35,6 +36,7 @@ export type UpdateProjectInput = {
   name?: string;
   customer_id?: string;
   is_active?: boolean;
+  type?: ProjectType;
   start_date?: string | null;
   end_date?: string | null;
 };
@@ -48,10 +50,11 @@ export async function createProject(
       name: input.name.trim(),
       customer_id: input.customer_id,
       is_active: input.is_active ?? true,
+      type: input.type ?? "customer",
       start_date: input.start_date?.trim() || null,
       end_date: input.end_date?.trim() || null,
     })
-    .select("id,customer_id,name,is_active,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date")
     .single();
 
   if (error) throw error;
@@ -66,6 +69,7 @@ export async function updateProject(
   if (input.name !== undefined) updates.name = input.name.trim();
   if (input.customer_id !== undefined) updates.customer_id = input.customer_id;
   if (input.is_active !== undefined) updates.is_active = input.is_active;
+  if (input.type !== undefined) updates.type = input.type;
   if (input.start_date !== undefined)
     updates.start_date = input.start_date?.trim() || null;
   if (input.end_date !== undefined)
@@ -75,7 +79,7 @@ export async function updateProject(
     .from("projects")
     .update(updates)
     .eq("id", id)
-    .select("id,customer_id,name,is_active,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date")
     .single();
 
   if (error) throw error;
@@ -94,7 +98,7 @@ export async function getProjectWithDetailsById(
   const [project, customers] = await Promise.all([
     supabase
       .from("projects")
-      .select("id,customer_id,name,is_active,start_date,end_date")
+      .select("id,customer_id,name,is_active,type,start_date,end_date")
       .eq("id", id)
       .single(),
     getCustomers(),
@@ -102,6 +106,7 @@ export async function getProjectWithDetailsById(
 
   if (project.error || !project.data) return null;
   const p = project.data;
+  const projectType = (p.type as ProjectType) ?? "customer";
 
   const customerMap = new Map(
     customers.map((c) => [
@@ -115,6 +120,7 @@ export async function getProjectWithDetailsById(
     id: p.id,
     name: p.name,
     isActive: p.is_active,
+    type: projectType,
     customer_id: p.customer_id ?? "",
     customerName: cust?.name ?? "Unknown",
     startDate: p.start_date ?? null,
@@ -129,7 +135,7 @@ export async function getProjectWithDetailsById(
 export async function getProjects(): Promise<ProjectRecord[]> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id,customer_id,name,is_active,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date")
     .order("is_active", { ascending: false })
     .order("name");
 
@@ -198,10 +204,12 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       .filter(Boolean);
 
     const cust = customerMap.get(p.customer_id);
+    const projectType = (p.type as ProjectType) ?? "customer";
     return {
       id: p.id,
       name: p.name,
       isActive: p.is_active,
+      type: projectType,
       customer_id: p.customer_id,
       customerName: cust?.name ?? "Unknown",
       startDate: p.start_date ?? null,
@@ -221,7 +229,7 @@ export async function getProjectsByCustomerIds(
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id,customer_id,name,is_active,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date")
     .in("customer_id", customerIds);
 
   if (error) throw error;

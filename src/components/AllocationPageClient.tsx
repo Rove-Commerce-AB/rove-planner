@@ -2,7 +2,7 @@
 
 import { useState, Fragment, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
 import {
   getCurrentYearWeek,
   getMonthSpansForWeeks,
@@ -10,7 +10,12 @@ import {
 } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPage";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
-import { Button, Select, Tabs, TabsList, TabsTrigger, PageHeader } from "@/components/ui";
+import { Select, Tabs, TabsList, TabsTrigger, PageHeader } from "@/components/ui";
+import {
+  createAllocation,
+  updateAllocation,
+  deleteAllocation,
+} from "@/lib/allocations";
 import { AddAllocationModal } from "./AddAllocationModal";
 import { EditAllocationModal } from "./EditAllocationModal";
 
@@ -130,7 +135,7 @@ function buildPerCustomerView(data: AllocationPageData) {
 
   const byCustomer = new Map<
     string,
-    Map<string, Map<number, { id: string; hours: number; roleName: string; roleId: string | null; projectName: string }[]>>
+    Map<string, Map<number, { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[]>>
   >();
 
   for (const a of data.allocations) {
@@ -155,6 +160,7 @@ function buildPerCustomerView(data: AllocationPageData) {
     }
     byWeek.get(a.week)!.push({
       id: a.id,
+      projectId: a.project_id,
       hours: a.hours,
       roleName,
       roleId,
@@ -172,7 +178,7 @@ function buildPerCustomerView(data: AllocationPageData) {
       consultantName: string;
       roleId: string | null;
       roleName: string;
-      weeks: { week: number; cells: { id: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
+      weeks: { week: number; cells: { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
     }[] = [];
 
     if (byConsultantRole) {
@@ -282,6 +288,33 @@ export function AllocationPageClient({
     new Set()
   );
   const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{
+    customerId: string;
+    consultantId: string;
+    roleId: string | null;
+    weekIndex: number;
+    week: number;
+    year: number;
+    allocationId: string | null;
+    otherAllocationIds: string[];
+    projectId: string;
+    currentHours: number;
+  } | null>(null);
+  const [editingCellValue, setEditingCellValue] = useState("");
+  const [savingCell, setSavingCell] = useState(false);
+  const [editingCellConsultant, setEditingCellConsultant] = useState<{
+    consultantId: string;
+    projectId: string;
+    roleId: string | null;
+    weekIndex: number;
+    week: number;
+    year: number;
+    allocationId: string | null;
+    currentHours: number;
+  } | null>(null);
+  const [editingCellConsultantValue, setEditingCellConsultantValue] =
+    useState("");
+  const [savingCellConsultant, setSavingCellConsultant] = useState(false);
 
   const filteredData: AllocationPageData | null =
     data === null
@@ -306,6 +339,129 @@ export function AllocationPageClient({
   const handleSuccess = () => {
     router.refresh();
   };
+
+  const saveCellHours = useCallback(
+    async (cell: NonNullable<typeof editingCell>, value: string) => {
+      const hours = parseFloat(value.replace(",", "."));
+      if (isNaN(hours) || hours < 0) return;
+      setSavingCell(true);
+      try {
+        if (cell.allocationId) {
+          await updateAllocation(cell.allocationId, { hours });
+          for (const id of cell.otherAllocationIds) {
+            await deleteAllocation(id);
+          }
+        } else {
+          if (hours > 0) {
+            await createAllocation({
+              consultant_id: cell.consultantId,
+              project_id: cell.projectId,
+              role_id: cell.roleId ?? undefined,
+              year: cell.year,
+              week: cell.week,
+              hours,
+            });
+          }
+        }
+        router.refresh();
+        setEditingCell(null);
+      } catch {
+        // Keep editing on error; could show toast
+      } finally {
+        setSavingCell(false);
+      }
+    },
+    [router]
+  );
+
+  const handleCellInputBlur = useCallback(() => {
+    if (!editingCell) return;
+    if (editingCellValue.trim() === "") {
+      setEditingCell(null);
+      return;
+    }
+    saveCellHours(editingCell, editingCellValue);
+  }, [editingCell, editingCellValue, saveCellHours]);
+
+  const handleCellInputKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (editingCell) {
+          saveCellHours(editingCell, editingCellValue);
+        }
+      }
+      if (e.key === "Escape") {
+        setEditingCell(null);
+      }
+    },
+    [editingCell, editingCellValue, saveCellHours]
+  );
+
+  const saveCellHoursConsultant = useCallback(
+    async (
+      cell: NonNullable<typeof editingCellConsultant>,
+      value: string
+    ) => {
+      const hours = parseFloat(value.replace(",", "."));
+      if (isNaN(hours) || hours < 0) return;
+      setSavingCellConsultant(true);
+      try {
+        if (cell.allocationId) {
+          await updateAllocation(cell.allocationId, { hours });
+        } else {
+          if (hours > 0) {
+            await createAllocation({
+              consultant_id: cell.consultantId,
+              project_id: cell.projectId,
+              role_id: cell.roleId ?? undefined,
+              year: cell.year,
+              week: cell.week,
+              hours,
+            });
+          }
+        }
+        router.refresh();
+        setEditingCellConsultant(null);
+      } catch {
+        // Keep editing on error
+      } finally {
+        setSavingCellConsultant(false);
+      }
+    },
+    [router]
+  );
+
+  const handleCellConsultantInputBlur = useCallback(() => {
+    if (!editingCellConsultant) return;
+    if (editingCellConsultantValue.trim() === "") {
+      setEditingCellConsultant(null);
+      return;
+    }
+    saveCellHoursConsultant(editingCellConsultant, editingCellConsultantValue);
+  }, [editingCellConsultant, editingCellConsultantValue, saveCellHoursConsultant]);
+
+  const handleCellConsultantInputKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (editingCellConsultant) {
+          saveCellHoursConsultant(
+            editingCellConsultant,
+            editingCellConsultantValue
+          );
+        }
+      }
+      if (e.key === "Escape") {
+        setEditingCellConsultant(null);
+      }
+    },
+    [
+      editingCellConsultant,
+      editingCellConsultantValue,
+      saveCellHoursConsultant,
+    ]
+  );
 
   const SHIFT_WEEKS = 4;
 
@@ -409,7 +565,7 @@ export function AllocationPageClient({
       <th
         key={`${tableKey}-${w.year}-${w.week}`}
         className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
-          isCurrentWeekHeader(w) ? "bg-brand-lilac/30 border-l-2 border-r-2 border-brand-signal/40" : ""
+          isCurrentWeekHeader(w) ? "current-week-header bg-brand-signal/20 border-l border-r" : ""
         }`}
       >
         v{w.week}
@@ -450,18 +606,7 @@ export function AllocationPageClient({
         title="Allocation"
         description="Manage allocations per week"
         className="mb-6"
-      >
-        <Button
-          onClick={() => {
-            setAddInitialParams(null);
-            setAddModalOpen(true);
-          }}
-          className="self-start"
-        >
-          <Plus className="h-4 w-4" />
-          Add allocation
-        </Button>
-      </PageHeader>
+      />
 
       <Tabs
         value={activeTab}
@@ -489,7 +634,7 @@ export function AllocationPageClient({
         </div>
       )}
 
-      <div className="overflow-x-hidden space-y-8">
+      <div className="allocation-tables overflow-x-hidden space-y-8">
           {activeTab === "consultant" && (
             <>
               <div className="p-2">
@@ -558,7 +703,9 @@ export function AllocationPageClient({
                 const hasProjects = row.projectRows.length > 0;
                 return (
                   <Fragment key={row.consultant.id}>
-                    <tr className="border-b border-grid-light-subtle last:border-border">
+                    <tr
+                      className={`border-b border-grid-light-subtle last:border-border ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                    >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <button
                           type="button"
@@ -599,6 +746,8 @@ export function AllocationPageClient({
                             ? `${details.total}h of ${details.available}h (${pct}%)`
                             : undefined;
                         const hasBooking = pct > 0;
+                        const prevHasBooking = i > 0 && (row.percentByWeek[i - 1] ?? 0) > 0;
+                        const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                         const w = data.weeks[i];
                         const isDragRange =
                           cellDragConsultant?.id === row.consultant.id &&
@@ -609,7 +758,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={i}
-                            className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:bg-bg-muted/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -661,49 +810,64 @@ export function AllocationPageClient({
                           </td>
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
-                            const isDragRange =
-                              !hasBooking &&
-                              cellDragConsultant?.id === row.consultant.id &&
-                              cellDragWeekStart !== null &&
-                              cellDragWeekEnd !== null &&
-                              i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
-                              i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
+                            const prevHasBooking = i > 0 && !!(pr.weeks[i - 1].cell && pr.weeks[i - 1].cell!.hours > 0);
+                            const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
+                            const roleId =
+                              w.cell?.roleId ??
+                              pr.weeks.find((wk) => wk.cell?.roleId)?.cell
+                                ?.roleId ??
+                              null;
+                            const isEditingConsultant =
+                              editingCellConsultant?.consultantId ===
+                                row.consultant.id &&
+                              editingCellConsultant?.projectId === pr.projectId &&
+                              editingCellConsultant?.weekIndex === i;
                             return (
                             <td
                               key={i}
-                              className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:opacity-80 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
-                              onMouseDown={(e) => {
-                                if (hasBooking) return;
-                                e.preventDefault();
-                                setCellDragConsultant({
-                                  id: row.consultant.id,
-                                  name: row.consultant.name,
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
+                              onClick={(e) => {
+                                if (
+                                  (e.target as HTMLElement).closest("input")
+                                )
+                                  return;
+                                setEditingCellConsultant({
+                                  consultantId: row.consultant.id,
+                                  projectId: pr.projectId,
+                                  roleId,
+                                  weekIndex: i,
+                                  week: w.week,
+                                  year: data.year,
+                                  allocationId: w.cell?.id ?? null,
+                                  currentHours: w.cell?.hours ?? 0,
                                 });
-                                setCellDragWeekStart(i);
-                                setCellDragWeekEnd(i);
+                                setEditingCellConsultantValue(
+                                  String(w.cell?.hours ?? "")
+                                );
                               }}
-                              onMouseEnter={() => {
-                                if (!hasBooking && cellDragConsultant?.id === row.consultant.id)
-                                  setCellDragWeekEnd(i);
-                              }}
-                              onClick={
-                                hasBooking
-                                  ? () =>
-                                      setEditingAllocation({
-                                        id: w.cell!.id,
-                                        consultantName: row.consultant.name,
-                                        projectName: pr.projectName,
-                                        customerName: pr.customerName,
-                                        week: w.week,
-                                        year: data.year,
-                                        hours: w.cell!.hours,
-                                        roleId: w.cell!.roleId,
-                                        roleName: w.cell!.roleName,
-                                      })
-                                  : undefined
-                              }
                             >
-                              {hasBooking ? (
+                              {isEditingConsultant ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={editingCellConsultantValue}
+                                  onChange={(e) =>
+                                    setEditingCellConsultantValue(
+                                      e.target.value
+                                    )
+                                  }
+                                  onFocus={(e) => e.target.select()}
+                                  onBlur={handleCellConsultantInputBlur}
+                                  onKeyDown={
+                                    handleCellConsultantInputKeyDown
+                                  }
+                                  disabled={savingCellConsultant}
+                                  className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                  autoFocus
+                                />
+                              ) : hasBooking ? (
                                 <span>{w.cell!.hours}h</span>
                               ) : null}
                             </td>
@@ -756,7 +920,9 @@ export function AllocationPageClient({
                 const hasProjects = row.projectRows.length > 0;
                 return (
                   <Fragment key={row.consultant.id}>
-                    <tr className="border-b border-grid-light-subtle last:border-border">
+                    <tr
+                      className={`border-b border-grid-light-subtle last:border-border ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                    >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <button
                           type="button"
@@ -814,6 +980,8 @@ export function AllocationPageClient({
                             ? `${details.total}h of ${details.available}h (${pct}%)`
                             : undefined;
                         const hasBooking = pct > 0;
+                        const prevHasBooking = i > 0 && (row.percentByWeek[i - 1] ?? 0) > 0;
+                        const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                         const w = data.weeks[i];
                         const isDragRange =
                           cellDragConsultant?.id === row.consultant.id &&
@@ -824,7 +992,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={i}
-                            className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:bg-bg-muted/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -876,49 +1044,64 @@ export function AllocationPageClient({
                           </td>
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
-                            const isDragRange =
-                              !hasBooking &&
-                              cellDragConsultant?.id === row.consultant.id &&
-                              cellDragWeekStart !== null &&
-                              cellDragWeekEnd !== null &&
-                              i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
-                              i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
+                            const prevHasBooking = i > 0 && !!(pr.weeks[i - 1].cell && pr.weeks[i - 1].cell!.hours > 0);
+                            const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
+                            const roleId =
+                              w.cell?.roleId ??
+                              pr.weeks.find((wk) => wk.cell?.roleId)?.cell
+                                ?.roleId ??
+                              null;
+                            const isEditingConsultant =
+                              editingCellConsultant?.consultantId ===
+                                row.consultant.id &&
+                              editingCellConsultant?.projectId === pr.projectId &&
+                              editingCellConsultant?.weekIndex === i;
                             return (
                             <td
                               key={i}
-                              className={`${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:opacity-80 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
-                              onMouseDown={(e) => {
-                                if (hasBooking) return;
-                                e.preventDefault();
-                                setCellDragConsultant({
-                                  id: row.consultant.id,
-                                  name: row.consultant.name,
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
+                              onClick={(e) => {
+                                if (
+                                  (e.target as HTMLElement).closest("input")
+                                )
+                                  return;
+                                setEditingCellConsultant({
+                                  consultantId: row.consultant.id,
+                                  projectId: pr.projectId,
+                                  roleId,
+                                  weekIndex: i,
+                                  week: w.week,
+                                  year: data.year,
+                                  allocationId: w.cell?.id ?? null,
+                                  currentHours: w.cell?.hours ?? 0,
                                 });
-                                setCellDragWeekStart(i);
-                                setCellDragWeekEnd(i);
+                                setEditingCellConsultantValue(
+                                  String(w.cell?.hours ?? "")
+                                );
                               }}
-                              onMouseEnter={() => {
-                                if (!hasBooking && cellDragConsultant?.id === row.consultant.id)
-                                  setCellDragWeekEnd(i);
-                              }}
-                              onClick={
-                                hasBooking
-                                  ? () =>
-                                      setEditingAllocation({
-                                        id: w.cell!.id,
-                                        consultantName: row.consultant.name,
-                                        projectName: pr.projectName,
-                                        customerName: pr.customerName,
-                                        week: w.week,
-                                        year: data.year,
-                                        hours: w.cell!.hours,
-                                        roleId: w.cell!.roleId,
-                                        roleName: w.cell!.roleName,
-                                      })
-                                  : undefined
-                              }
                             >
-                              {hasBooking ? (
+                              {isEditingConsultant ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={editingCellConsultantValue}
+                                  onChange={(e) =>
+                                    setEditingCellConsultantValue(
+                                      e.target.value
+                                    )
+                                  }
+                                  onFocus={(e) => e.target.select()}
+                                  onBlur={handleCellConsultantInputBlur}
+                                  onKeyDown={
+                                    handleCellConsultantInputKeyDown
+                                  }
+                                  disabled={savingCellConsultant}
+                                  className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                  autoFocus
+                                />
+                              ) : hasBooking ? (
                                 <span>{w.cell!.hours}h</span>
                               ) : null}
                             </td>
@@ -1021,10 +1204,12 @@ export function AllocationPageClient({
                       {data.weeks.map((w, i) => {
                         const total = row.totalByWeek.get(w.week) ?? 0;
                         const hasBooking = total > 0;
+                        const prevTotal = i > 0 ? row.totalByWeek.get(data.weeks[i - 1].week) ?? 0 : 0;
+                        const showLeftBorder = hasBooking && (i === 0 || prevTotal === 0);
                         return (
                           <td
                             key={w.week}
-                            className={`${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${isCurrentWeek(data.weeks[i]) ? "border-l-2 border-r-2 border-brand-signal/40" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
                           >
                             {hasBooking ? `${total}h` : null}
                           </td>
@@ -1052,58 +1237,69 @@ export function AllocationPageClient({
                                 0
                               );
                               const hasBooking = totalHours > 0;
+                              const prevHours = i > 0 ? cr.weeks[i - 1].cells.reduce((s, x) => s + x.hours, 0) : 0;
+                              const showLeftBorder = hasBooking && (i === 0 || prevHours === 0);
                               const weekInfo = data.weeks[i];
-                              const isDragRange =
-                                cellDragConsultant?.id === cr.consultantId &&
-                                cellDragWeekStart !== null &&
-                                cellDragWeekEnd !== null &&
-                                i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
-                                i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
+                              const firstProjectForCustomer = data.projects.find(
+                                (p) => p.customer_id === row.customer.id
+                              );
+                              const isEditing =
+                                editingCell?.customerId === row.customer.id &&
+                                editingCell?.consultantId === cr.consultantId &&
+                                editingCell?.roleId === cr.roleId &&
+                                editingCell?.weekIndex === i;
                               return (
                                 <td
                                   key={i}
-                                  className={`${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center select-none cursor-crosshair ${isCurrentWeek(weekInfo) ? "border-l-2 border-r-2 border-brand-signal/40" : ""} hover:bg-bg-muted/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
-                                  onMouseDown={(e) => {
-                                    if (e.target instanceof HTMLButtonElement) return;
-                                    e.preventDefault();
-                                    setCellDragConsultant({
-                                      id: cr.consultantId,
-                                      name: cr.consultantName,
+                                  className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${isCurrentWeek(weekInfo) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
+                                  onClick={(e) => {
+                                    if (
+                                      (e.target as HTMLElement).closest("input")
+                                    )
+                                      return;
+                                    setEditingCell({
+                                      customerId: row.customer.id,
+                                      consultantId: cr.consultantId,
+                                      roleId: cr.roleId,
+                                      weekIndex: i,
+                                      week: w.week,
+                                      year: data.year,
+                                      allocationId: cells[0]?.id ?? null,
+                                      otherAllocationIds: cells
+                                        .slice(1)
+                                        .map((c) => c.id),
+                                      projectId:
+                                        cells[0]?.projectId ??
+                                        firstProjectForCustomer?.id ??
+                                        "",
+                                      currentHours: totalHours,
                                     });
-                                    setCellDragWeekStart(i);
-                                    setCellDragWeekEnd(i);
-                                  }}
-                                  onMouseEnter={() => {
-                                    if (cellDragConsultant?.id === cr.consultantId)
-                                      setCellDragWeekEnd(i);
+                                    setEditingCellValue(
+                                      String(totalHours || "")
+                                    );
                                   }}
                                 >
-                                  {hasBooking ? (
-                                    <>
-                                      {cells.map((cell) => (
-                                        <button
-                                          key={cell.id}
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingAllocation({
-                                              id: cell.id,
-                                              consultantName: cr.consultantName,
-                                              projectName: cell.projectName,
-                                              customerName: row.customer.name,
-                                              week: w.week,
-                                              year: data.year,
-                                              hours: cell.hours,
-                                              roleId: cell.roleId,
-                                              roleName: cell.roleName,
-                                            });
-                                          }}
-                                          className="mr-1 rounded-md px-1.5 py-0.5 text-text-primary hover:opacity-90"
-                                        >
-                                          {cell.hours}h
-                                        </button>
-                                      ))}
-                                    </>
+                                  {isEditing ? (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={editingCellValue}
+                                      onChange={(e) =>
+                                        setEditingCellValue(e.target.value)
+                                      }
+                                      onFocus={(e) => e.target.select()}
+                                      onBlur={handleCellInputBlur}
+                                      onKeyDown={handleCellInputKeyDown}
+                                      disabled={savingCell}
+                                      className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      onClick={(e) => e.stopPropagation()}
+                                      autoFocus
+                                    />
+                                  ) : hasBooking ? (
+                                    <span className="text-[10px] text-text-primary">
+                                      {totalHours}h
+                                    </span>
                                   ) : null}
                                 </td>
                               );

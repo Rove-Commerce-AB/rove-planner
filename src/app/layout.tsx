@@ -22,7 +22,7 @@ export default function RootLayout({
     <html lang="en" className={instrumentSans.variable}>
       <body className="flex min-h-screen antialiased font-primary">
         <Sidebar />
-        <main className="flex-1 overflow-auto bg-bg-default">{children}</main>
+        <main className="flex-1 overflow-auto p-8" style={{ backgroundColor: 'var(--color-bg-content)' }}>{children}</main>
       </body>
     </html>
   );

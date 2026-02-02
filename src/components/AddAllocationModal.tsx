@@ -80,10 +80,6 @@ export function AddAllocationModal({
           setConsultants(consultantsData);
           setProjects(projs);
           setRoles(rolesData);
-          setConsultantId((prev) =>
-            initialConsultantId || prev || (consultantsData.length > 0 ? consultantsData[0].id : "")
-          );
-          if (projs.length > 0) setProjectId(projs[0].id);
         })
         .catch(() => {
           setConsultants([]);
@@ -92,6 +88,17 @@ export function AddAllocationModal({
         });
     }
   }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear, initialWeekFrom, initialWeekTo]);
+
+  // Set default consultant only after options are loaded so Select gets value + options together
+  useEffect(() => {
+    if (isOpen && consultants.length > 0 && !consultantId) {
+      setConsultantId(
+        initialConsultantId && consultants.some((c) => c.id === initialConsultantId)
+          ? initialConsultantId
+          : consultants[0].id
+      );
+    }
+  }, [isOpen, consultants, consultantId, initialConsultantId]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -106,8 +113,8 @@ export function AddAllocationModal({
     const from = Math.min(fromWeek, toWeek);
     const to = Math.max(fromWeek, toWeek);
     const hours = parseFloat(hoursPerWeek);
-    if (isNaN(hours) || hours <= 0) {
-      setError("Hours must be a positive number");
+    if (isNaN(hours) || hours < 1) {
+      setError("Hours must be at least 1");
       return;
     }
     setSubmitting(true);
@@ -151,22 +158,7 @@ export function AddAllocationModal({
     }
   }, [isOpen]);
 
-  const from = Math.min(fromWeek, toWeek);
-  const to = Math.max(fromWeek, toWeek);
-  const weekCount = to - from + 1;
-
   useEscToClose(isOpen, handleClose);
-  const consultantName =
-    consultants.find((c) => c.id === consultantId)?.name ?? "";
-  const project = projects.find((p) => p.id === projectId);
-  const projectLabel = project
-    ? `${project.name} (${project.customerName})`
-    : "";
-  const roleName = roleId
-    ? roles.find((r) => r.id === roleId)?.name ?? ""
-    : "";
-  const hours = parseFloat(hoursPerWeek);
-  const isValid = consultantId && projectId && !isNaN(hours) && hours > 0;
 
   if (!isOpen) return null;
 
@@ -179,16 +171,16 @@ export function AddAllocationModal({
       role="presentation"
     >
       <div
-        className="w-full max-w-md rounded-lg bg-bg-default p-6 shadow-xl"
+        className="w-full max-w-md overflow-hidden rounded-panel border border-panel bg-bg-default shadow-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-allocation-title"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-panel bg-bg-muted/40 px-4 py-3">
           <h2
             id="add-allocation-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
           >
             Add allocation
           </h2>
@@ -207,7 +199,7 @@ export function AddAllocationModal({
             e.preventDefault();
             handleSubmit();
           }}
-          className="mt-6 space-y-4"
+          className="space-y-6 p-5"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -215,46 +207,70 @@ export function AddAllocationModal({
             </p>
           )}
 
-          <Select
-            id="alloc-consultant"
-            label="Consultant"
-            value={consultantId}
-            onValueChange={setConsultantId}
-            placeholder="Select consultant"
-            options={[
-              ...(consultantId && initialConsultantName && !consultants.some((c) => c.id === consultantId)
-                ? [{ value: consultantId, label: initialConsultantName }]
-                : []),
-              ...consultants.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-          />
+          <div>
+            <label
+              htmlFor="alloc-consultant"
+              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+            >
+              Consultant
+            </label>
+            <Select
+              id="alloc-consultant"
+              value={consultantId}
+              onValueChange={setConsultantId}
+              placeholder="Select consultant"
+              triggerClassName="mt-1.5 border-panel"
+              options={[
+                ...(consultantId && initialConsultantName && !consultants.some((c) => c.id === consultantId)
+                  ? [{ value: consultantId, label: initialConsultantName }]
+                  : []),
+                ...consultants.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
+          </div>
 
-          <Select
-            id="alloc-project"
-            label="Project"
-            value={projectId}
-            onValueChange={setProjectId}
-            placeholder="Select project"
-            options={projects.map((p) => ({
-              value: p.id,
-              label: `${p.name} (${p.customerName})`,
-            }))}
-          />
+          <div>
+            <label
+              htmlFor="alloc-project"
+              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+            >
+              Project
+            </label>
+            <Select
+              id="alloc-project"
+              value={projectId}
+              onValueChange={setProjectId}
+              placeholder="Select project"
+              triggerClassName="mt-1.5 border-panel"
+              options={projects.map((p) => ({
+                value: p.id,
+                label: `${p.name} (${p.customerName})`,
+              }))}
+            />
+          </div>
 
-          <Select
-            id="alloc-role"
-            label="Role (optional)"
-            value={roleId ?? ""}
-            onValueChange={(v) => setRoleId(v ? v : null)}
-            placeholder="Select role"
-            options={roles.map((r) => ({ value: r.id, label: r.name }))}
-          />
+          <div>
+            <label
+              htmlFor="alloc-role"
+              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+            >
+              Role (optional)
+            </label>
+            <Select
+              id="alloc-role"
+              value={roleId ?? ""}
+              onValueChange={(v) => setRoleId(v ? v : null)}
+              placeholder="Select role"
+              triggerClassName="mt-1.5 border-panel"
+              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
                 htmlFor="alloc-from-week"
-                className="block text-sm font-medium text-text-primary"
+                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
               >
                 From week
               </label>
@@ -265,13 +281,13 @@ export function AddAllocationModal({
                 max={52}
                 value={fromWeek}
                 onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary"
+                className="mt-1.5 w-full rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
               />
             </div>
             <div>
               <label
                 htmlFor="alloc-to-week"
-                className="block text-sm font-medium text-text-primary"
+                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
               >
                 To week
               </label>
@@ -282,62 +298,28 @@ export function AddAllocationModal({
                 max={52}
                 value={toWeek}
                 onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary"
+                className="mt-1.5 w-full rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
               />
             </div>
-          </div>
-
-          <p className="text-xs text-text-primary opacity-60">
-            Set the same week for a single week, or different for an interval
-            (e.g. v8–v20)
-          </p>
-
-          <div>
-            <label
-              htmlFor="alloc-year"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Year
-            </label>
-            <input
-              id="alloc-year"
-              type="number"
-              value={allocYear}
-              onChange={(e) =>
-                setAllocYear(parseInt(e.target.value, 10) || new Date().getFullYear())
-              }
-              className="mt-1 w-24 rounded-lg border border-border px-3 py-2 text-text-primary"
-            />
           </div>
 
           <div>
             <label
               htmlFor="alloc-hours"
-              className="block text-sm font-medium text-text-primary"
+              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
             >
               Hours per week
             </label>
             <input
               id="alloc-hours"
               type="number"
-              min={0}
-              step={0.5}
+              min={1}
+              step={1}
               value={hoursPerWeek}
               onChange={(e) => setHoursPerWeek(e.target.value)}
-              className="mt-1 w-24 rounded-lg border border-border px-3 py-2 text-text-primary"
+              className="mt-1.5 w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
             />
           </div>
-
-          {isValid && (
-            <div className="rounded-lg border border-border bg-bg-muted/50 p-3 text-sm text-text-primary">
-              <p className="font-medium">Summary</p>
-              <p className="mt-1 opacity-90">
-                Adding {hours}h/week for {consultantName} on {projectLabel}
-                {roleName ? ` as ${roleName}` : ""} for v{from}–v{to} (
-                {allocYear}) — {weekCount} week{weekCount !== 1 ? "s" : ""}
-              </p>
-            </div>
-          )}
 
           <div className="flex justify-end gap-2">
             <button

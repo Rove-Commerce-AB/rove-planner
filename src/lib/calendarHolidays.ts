@@ -48,6 +48,25 @@ export function countHolidaysInRange(
   ).length;
 }
 
+/** Day of week from YYYY-MM-DD: 0=Sunday, 1=Monday, ..., 6=Saturday. */
+function getDayOfWeek(dateStr: string): number {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+/** Returns the number of holidays in the range that fall on a weekday (Mon–Fri). Weekend holidays are not subtracted from available hours. */
+export function countWeekdayHolidaysInRange(
+  holidays: CalendarHoliday[],
+  dateFrom: string,
+  dateTo: string
+): number {
+  return holidays.filter((h) => {
+    if (h.holiday_date < dateFrom || h.holiday_date > dateTo) return false;
+    const day = getDayOfWeek(h.holiday_date);
+    return day >= 1 && day <= 5; // Monday=1 .. Friday=5
+  }).length;
+}
+
 export async function createCalendarHoliday(
   calendarId: string,
   holidayDate: string,

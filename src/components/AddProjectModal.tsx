@@ -12,9 +12,19 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** When set, customer is pre-filled and hidden (e.g. when adding from customer page). */
+  initialCustomerId?: string;
+  /** When false, stay on current page after create and refresh (default: true = redirect to project). */
+  redirectToProject?: boolean;
 };
 
-export function AddProjectModal({ isOpen, onClose, onSuccess }: Props) {
+export function AddProjectModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialCustomerId,
+  redirectToProject = true,
+}: Props) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -24,14 +34,19 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: Props) {
 
   useEffect(() => {
     if (isOpen) {
+      if (initialCustomerId) {
+        setCustomerId(initialCustomerId);
+      }
       getCustomers()
         .then((c) => {
           setCustomers(c);
-          setCustomerId((prev) => (prev || c[0]?.id) ?? "");
+          if (!initialCustomerId) {
+            setCustomerId((prev) => (prev || c[0]?.id) ?? "");
+          }
         })
         .catch(() => setCustomers([]));
     }
-  }, [isOpen]);
+  }, [isOpen, initialCustomerId]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -52,8 +67,10 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: Props) {
       resetForm();
       onSuccess();
       onClose();
-      router.push(`/projects/${project.id}`);
       router.refresh();
+      if (redirectToProject) {
+        router.push(`/projects/${project.id}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create project");
     } finally {
@@ -63,7 +80,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: Props) {
 
   const resetForm = () => {
     setName("");
-    setCustomerId("");
+    setCustomerId(initialCustomerId ?? "");
     setError(null);
   };
 
@@ -139,14 +156,16 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: Props) {
             />
           </div>
 
-          <Select
-            id="project-customer"
-            label="Customer"
-            value={customerId}
-            onValueChange={setCustomerId}
-            placeholder="Select customer"
-            options={customers.map((c) => ({ value: c.id, label: c.name }))}
-          />
+          {!initialCustomerId && (
+            <Select
+              id="project-customer"
+              label="Customer"
+              value={customerId}
+              onValueChange={setCustomerId}
+              placeholder="Select customer"
+              options={customers.map((c) => ({ value: c.id, label: c.name }))}
+            />
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

@@ -11,7 +11,7 @@ export function Panel({ children, className = "" }: Props) {
   return (
     <div
       className={`overflow-hidden rounded-panel border border-border ${className}`.trim()}
-      style={{ backgroundColor: 'var(--panel-bg)' }}
+      style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--panel-border)' }}
     >
       {children}
     </div>

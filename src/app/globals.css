@@ -17,6 +17,7 @@
   --color-text-inverse: var(--color-text-inverse);
   --color-text-muted: var(--color-text-muted);
   --color-border-default: var(--color-border-default);
+  --color-border-subtle: var(--color-border-subtle);
   --color-danger: var(--color-danger);
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
@@ -35,10 +36,32 @@
   --panel-border: var(--panel-border);
   --section-divider: var(--section-divider);
   --color-panel: var(--panel-bg);
+  --color-nav-active: var(--color-nav-active);
+  --color-nav-hover: var(--color-nav-hover);
 }
 
 body {
   background: var(--color-bg-default);
   color: var(--color-text-primary);
   font-family: var(--font-primary);
+}
+
+/* Table borders use same color as panel border (light gray) */
+.border-panel {
+  border-color: var(--panel-border);
+}
+
+/* Allocation tables: grid lines solid mid grey (between grey and black) */
+.allocation-tables table,
+.allocation-tables table th,
+.allocation-tables table td,
+.allocation-tables table tr {
+  border-color: #9a9a9a;
+}
+
+/* Current week column: orange border (same as Add allocation button) */
+.allocation-tables td.current-week-cell,
+.allocation-tables th.current-week-header {
+  border-left-color: var(--color-brand-signal) !important;
+  border-right-color: var(--color-brand-signal) !important;
 }

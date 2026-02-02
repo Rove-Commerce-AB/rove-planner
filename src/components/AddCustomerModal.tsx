@@ -30,9 +30,8 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
       const customer = await createCustomer({
         name: name.trim(),
       });
-      onSuccess();
       onClose();
-      router.push(`/customers/${customer.id}`);
+      await router.push(`/customers/${customer.id}`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add customer");

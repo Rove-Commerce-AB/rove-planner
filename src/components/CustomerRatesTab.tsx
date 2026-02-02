@@ -158,21 +158,15 @@ export function CustomerRatesTab(props: Props) {
 
   return (
     <div className="space-y-4">
-      {showDescription && (
-        <p className="text-sm text-text-primary opacity-70">
-          Set hourly rate per role for this customer. If no rate is specified,
-          the standard rate will be used.
-        </p>
-      )}
       {loading ? (
         <p className="text-sm text-text-primary opacity-60">Loading rates…</p>
       ) : (
         <>
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {displayRates.map((r) => (
               <li
                 key={props.mode === "edit" ? (r as CustomerRate).id : r.role_id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-bg-default px-3 py-2"
+                className="flex items-center gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
               >
                 <span className="flex-1 text-sm font-medium text-text-primary">
                   {props.mode === "edit"
@@ -206,7 +200,7 @@ export function CustomerRatesTab(props: Props) {
                       }
                     }}
                     disabled={updatingId === (r as CustomerRate).id}
-                    className="w-24 rounded-lg border border-border bg-bg-default px-3 py-2 text-right text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 disabled:opacity-50"
+                    className="w-24 rounded-lg border border-panel bg-bg-default px-3 py-2 text-right text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 disabled:opacity-50"
                   />
                 ) : (
                   <span className="text-sm text-text-primary opacity-70">
@@ -231,32 +225,43 @@ export function CustomerRatesTab(props: Props) {
           </ul>
 
           {availableRoles.length > 0 && (
-            <div className="flex flex-nowrap items-end gap-3 border-t border-border pt-4">
-              <Select
-                id="rate-role"
-                label="Role"
-                value={selectedRoleId}
-                onValueChange={setSelectedRoleId}
-                placeholder="Select role"
-                options={availableRoles.map((r) => ({
-                  value: r.id,
-                  label: r.name,
-                }))}
-                size="md"
-                className="w-40 shrink-0"
-                triggerClassName="h-10"
-              />
-              <div className="w-24 shrink-0">
+            <div className="flex flex-nowrap items-end gap-3 border-t border-panel pt-5">
+              <div className="min-w-[12rem] w-56 shrink-0">
+                <label
+                  htmlFor="rate-role"
+                  className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+                >
+                  Role
+                </label>
+                <Select
+                  id="rate-role"
+                  value={selectedRoleId}
+                  onValueChange={setSelectedRoleId}
+                  placeholder="Select role"
+                  options={availableRoles.map((r) => ({
+                    value: r.id,
+                    label: r.name,
+                  }))}
+                  size="md"
+                  className="w-full"
+                  triggerClassName="h-10 border-panel"
+                />
+              </div>
+              <div className="w-32 shrink-0">
+                <label
+                  htmlFor="rate-value"
+                  className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+                >
+                  Hourly rate (SEK)
+                </label>
                 <Input
                   id="rate-value"
-                  label="Hourly rate (SEK)"
                   type="number"
                   min={0}
                   step={1}
                   value={newRate}
                   onChange={(e) => setNewRate(e.target.value)}
-                  placeholder="0"
-                  className="h-10"
+                  className="h-10 border-panel"
                 />
               </div>
               <Button

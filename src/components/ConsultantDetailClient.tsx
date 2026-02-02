@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { updateConsultant, deleteConsultant } from "@/lib/consultants";
 import type { ConsultantForEdit } from "@/lib/consultants";
 import {
   ConfirmModal,
   Select,
-  Switch,
   Button,
   DetailPageHeader,
   Panel,
-  PanelSection,
 } from "@/components/ui";
-import { User } from "lucide-react";
 import { getRoles } from "@/lib/roles";
 import { getCalendars } from "@/lib/calendars";
 import { getTeams } from "@/lib/teams";
@@ -22,6 +19,17 @@ const WORK_PERCENTAGE_OPTIONS = Array.from(
   { length: 20 },
   (_, i) => (i + 1) * 5
 );
+
+const tableBorder = "border-panel";
+
+type EditField =
+  | "name"
+  | "email"
+  | "role"
+  | "calendar"
+  | "workPercentage"
+  | "team"
+  | null;
 
 type Props = {
   consultant: ConsultantForEdit;
@@ -45,10 +53,11 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editingField, setEditingField] = useState<EditField>(null);
+  const [editValue, setEditValue] = useState<string>("");
 
-  useEffect(() => {
+  const syncFromInitial = useCallback(() => {
     setName(initial.name);
     setRoleId(initial.role_id);
     setEmail(initial.email ?? "");
@@ -57,6 +66,10 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     setWorkPercentage(initial.workPercentage);
     setIsExternal(initial.isExternal);
   }, [initial]);
+
+  useEffect(() => {
+    syncFromInitial();
+  }, [syncFromInitial]);
 
   useEffect(() => {
     setOptionsReady(false);
@@ -70,41 +83,52 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
       .catch(() => setOptionsReady(true));
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveField = async (field: EditField, value: string) => {
+    if (field == null) return;
     setError(null);
-    setSaved(false);
-    if (!name.trim()) {
-      setError("Name is required");
-      return;
-    }
-    if (!roleId) {
-      setError("Default role is required");
-      return;
-    }
-    if (!calendarId) {
-      setError("Calendar is required");
-      return;
-    }
     setSubmitting(true);
     try {
-      await updateConsultant(initial.id, {
-        name: name.trim(),
-        email: email.trim() || null,
-        role_id: roleId,
-        calendar_id: calendarId,
-        team_id: teamId ?? null,
-        work_percentage: workPercentage,
-        is_external: isExternal,
-      });
-      setSaved(true);
+      const payload: Parameters<typeof updateConsultant>[1] = { id: initial.id } as never;
+      switch (field) {
+        case "name":
+          await updateConsultant(initial.id, { name: value.trim() });
+          setName(value.trim());
+          break;
+        case "email":
+          await updateConsultant(initial.id, { email: value.trim() || null });
+          setEmail(value.trim());
+          break;
+        case "role":
+          await updateConsultant(initial.id, { role_id: value });
+          setRoleId(value);
+          break;
+        case "calendar":
+          await updateConsultant(initial.id, { calendar_id: value });
+          setCalendarId(value);
+          break;
+        case "workPercentage":
+          await updateConsultant(initial.id, { work_percentage: parseInt(value, 10) });
+          setWorkPercentage(parseInt(value, 10));
+          break;
+        case "team":
+          await updateConsultant(initial.id, { team_id: value || null });
+          setTeamId(value || null);
+          break;
+        default:
+          break;
+      }
       router.refresh();
-      setTimeout(() => setSaved(false), 3000);
+      setEditingField(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setError(null);
   };
 
   const handleDelete = async () => {
@@ -119,6 +143,20 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
       setError(e instanceof Error ? e.message : "Failed to delete");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const toggleExternal = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateConsultant(initial.id, { is_external: !isExternal });
+      setIsExternal(!isExternal);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -152,146 +190,315 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     return base;
   })();
 
+  const teamOptions = [
+    { value: "", label: "No team" },
+    ...(teamId && initial.teamName && !teams.some((t) => t.id === teamId)
+      ? [{ value: teamId, label: initial.teamName }]
+      : []),
+    ...teams.map((t) => ({ value: t.id, label: t.name })),
+  ];
+
+  const labelClass = "text-xs font-medium uppercase tracking-wider text-text-primary opacity-70";
+  const valueClass = "font-semibold text-text-primary";
+
   return (
     <>
       <DetailPageHeader
         backHref="/consultants"
-        backLabel="Back to consultants"
+        backLabel="Back to Consultants"
         avatar={<span>{initials}</span>}
-        title={initial.name}
-        subtitle="Consultant"
+        title={name}
+        subtitle={isExternal ? "External Consultant" : "Internal Consultant"}
         action={
           <Button
-            variant="danger"
+            variant="secondary"
+            className="border-danger text-danger hover:bg-danger/10"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={submitting || deleting}
           >
-            Delete
+            Delete Consultant
           </Button>
         }
       />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl">
-        {error && (
-          <p className="mb-4 text-sm text-danger" role="alert">
-            {error}
-          </p>
-        )}
-        {saved && (
-          <p className="mb-4 text-sm text-success" role="status">
-            Saved
-          </p>
-        )}
+      {error && (
+        <p className="mb-4 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      )}
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* INFORMATION */}
         <Panel>
-          <PanelSection
-            title="Information"
-            icon={<User className="h-5 w-5 text-text-primary opacity-70" />}
-            footer={
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Saving…" : "Save"}
-              </Button>
-            }
-          >
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="consultant-name"
-                  className="block text-sm font-medium text-text-primary"
+          <h2 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}>
+            INFORMATION
+          </h2>
+          <div className="space-y-6 p-5">
+            <div>
+              <div className={labelClass}>Name</div>
+              {editingField === "name" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="flex-1 min-w-[120px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => saveField("name", editValue)}
+                    disabled={submitting || !editValue.trim()}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(name);
+                    setEditingField("name");
+                  }}
                 >
-                  Name
-                </label>
-                <input
-                  id="consultant-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Anna Andersson"
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                />
-              </div>
-
-              <Select
-                key={`role-${optionsReady}-${roleId}`}
-                id="consultant-role"
-                label="Default role"
-                value={roleId}
-                onValueChange={setRoleId}
-                placeholder="Select role"
-                options={roleOptions}
-              />
-
-              <div>
-                <label
-                  htmlFor="consultant-email"
-                  className="block text-sm font-medium text-text-primary"
-                >
-                  Email
-                </label>
-                <input
-                  id="consultant-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="anna@company.com"
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                />
-              </div>
-
-              <Select
-                key={`calendar-${optionsReady}-${calendarId}`}
-                id="consultant-calendar"
-                label="Calendar"
-                value={calendarId}
-                onValueChange={setCalendarId}
-                placeholder="Select calendar"
-                options={calendarOptions}
-              />
-
-              <Select
-                id="consultant-work-percentage"
-                label="Work percentage"
-                value={String(workPercentage)}
-                onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
-                placeholder="Select"
-                options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
-                  value: String(p),
-                  label: `${p}%`,
-                }))}
-              />
-
-              <Select
-                id="consultant-team"
-                label="Team (optional)"
-                value={teamId ?? ""}
-                onValueChange={(v) => setTeamId(v ? v : null)}
-                placeholder="No team"
-                options={[
-                  { value: "", label: "No team" },
-                  ...(teamId &&
-                  initial.teamName &&
-                  !teams.some((t) => t.id === teamId)
-                    ? [{ value: teamId, label: initial.teamName }]
-                    : []),
-                  ...teams.map((t) => ({ value: t.id, label: t.name })),
-                ]}
-              />
-
-              <Switch
-                id="consultant-external"
-                checked={isExternal}
-                onCheckedChange={setIsExternal}
-                label="External consultant"
-              />
+                  {name}
+                </button>
+              )}
             </div>
-          </PanelSection>
+
+            <div>
+              <div className={labelClass}>Email</div>
+              {editingField === "email" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="email"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="flex-1 min-w-[120px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("email", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline ${email ? "text-brand-signal" : "text-text-primary opacity-70"}`}
+                  onClick={() => {
+                    setEditValue(email);
+                    setEditingField("email");
+                  }}
+                >
+                  {email || "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Default role</div>
+              {editingField === "role" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={roleOptions}
+                    placeholder="Select role"
+                    className="min-w-[160px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("role", editValue)}
+                    disabled={submitting || !editValue}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(roleId);
+                    setEditingField("role");
+                  }}
+                >
+                  {initial.roleName}
+                </button>
+              )}
+            </div>
+          </div>
         </Panel>
-      </form>
+
+        {/* TEAM & AVAILABILITY */}
+        <Panel>
+          <h2 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}>
+            TEAM &amp; AVAILABILITY
+          </h2>
+          <div className="space-y-6 p-5">
+            <div>
+              <div className={labelClass}>Team</div>
+              {editingField === "team" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={teamOptions}
+                    placeholder="No team"
+                    className="min-w-[160px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("team", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(teamId ?? "");
+                    setEditingField("team");
+                  }}
+                >
+                  {initial.teamName ?? "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Capacity</div>
+              {editingField === "workPercentage" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
+                      value: String(p),
+                      label: `${p}%`,
+                    }))}
+                    placeholder="Select"
+                    className="min-w-[100px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("workPercentage", editValue)}
+                    disabled={submitting || !editValue}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(String(workPercentage));
+                    setEditingField("workPercentage");
+                  }}
+                >
+                  {workPercentage}%
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Calendar</div>
+              {editingField === "calendar" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={calendarOptions}
+                    placeholder="Select calendar"
+                    className="min-w-[180px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("calendar", editValue)}
+                    disabled={submitting || !editValue}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(calendarId);
+                    setEditingField("calendar");
+                  }}
+                >
+                  {initial.calendarName}
+                </button>
+              )}
+            </div>
+          </div>
+        </Panel>
+
+        {/* ADDITIONAL INFORMATION + TYPE */}
+        <Panel className="lg:col-span-2">
+          <h2 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}>
+            ADDITIONAL INFORMATION
+          </h2>
+          <div className="grid grid-cols-1 gap-6 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className={labelClass}>Internal ID</div>
+              <p className={`mt-1.5 ${valueClass}`}>{initial.id.slice(0, 8)}…</p>
+            </div>
+            <div>
+              <div className={labelClass}>Type</div>
+              <div className="mt-1.5">
+                <button
+                  type="button"
+                  onClick={toggleExternal}
+                  disabled={submitting}
+                  className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                >
+                  {isExternal ? "External" : "Internal"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Panel>
+      </div>
 
       <ConfirmModal
         isOpen={showDeleteConfirm}
         title="Delete consultant"
-        message={`Delete ${initial.name}? This cannot be undone.`}
+        message={`Delete ${name}? This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
         onClose={() => setShowDeleteConfirm(false)}

@@ -84,6 +84,46 @@ export function addWeeksToYearWeek(
   return { year: y, week: w };
 }
 
+/**
+ * Returns working days in the given ISO week, grouped by (year, month).
+ * Excludes weekends (Sat/Sun) and dates in holidaySet (YYYY-MM-DD).
+ * Used to prorate allocation hours across month boundaries.
+ */
+export function getWorkingDaysByMonthInWeek(
+  year: number,
+  week: number,
+  holidaySet: Set<string>
+): { year: number; month: number; workingDays: number }[] {
+  const { start, end } = getISOWeekDateRange(year, week);
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const startDate = new Date(sy, sm - 1, sd);
+  const endDate = new Date(ey, em - 1, ed);
+  const buckets = new Map<string, number>(); // "YYYY-MM" -> count
+  const toYMD = (d: Date) =>
+    d.getFullYear() +
+    "-" +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(d.getDate()).padStart(2, "0");
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) {
+      const ymd = toYMD(current);
+      if (!holidaySet.has(ymd)) {
+        const key = ymd.slice(0, 7);
+        buckets.set(key, (buckets.get(key) ?? 0) + 1);
+      }
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  return Array.from(buckets.entries()).map(([key, workingDays]) => {
+    const [y, m] = key.split("-").map(Number);
+    return { year: y, month: m, workingDays };
+  });
+}
+
 /** Builds month spans for a list of weeks: [{ label, colSpan }, ...]. */
 export function getMonthSpansForWeeks(
   weeks: { year: number; week: number }[]

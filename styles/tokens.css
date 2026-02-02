@@ -21,13 +21,15 @@
   
     /* === Semantic === */
     --color-bg-default: var(--color-white);
-    --color-bg-page: var(--color-gray-100);   /* Page/main area – lighter than panels */
+    --color-bg-page: var(--color-bg-content);
     --color-bg-muted: var(--color-gray-100);
-    --color-border-default: #e0dcd8;          /* Soft gray border – low contrast, not black */
-    --color-grid-border: #dfd6d1;      /* Allocation table – unified grid */
-    --color-grid-border-light: #e8e2de; /* Allocation table – cell dividers */
-    --color-grid-border-subtle: #ebe6e3;   /* Per consultant – softer grid */
-    --color-grid-border-light-subtle: #f0ece9; /* Per consultant – softer dividers */
+    --color-border-default: #ddd9d5;          /* Light gray – slightly darker than panel bg */
+    --color-border-subtle: #e8e4e0;          /* Very light gray – sidebar and dividers, not black */
+    /* Allocation table – soft mid-gray, less prominent lines */
+    --color-grid-border: #e5e1dc;
+    --color-grid-border-light: #ebe8e4;
+    --color-grid-border-subtle: #efebe8;
+    --color-grid-border-light-subtle: #f2efec;
     --color-grid-row: #f2eeeb;         /* Allocation table – subtle row dividers */
     --color-text-primary: var(--color-gray-900);
     --color-text-inverse: var(--color-white);
@@ -47,9 +49,15 @@
     --radius-lg: 8px;     /* Buttons, cards, modals, panels */
     --radius-panel: 8px;  /* Panel container (same as lg for homogeneity) */
 
+    /* === Layout (prototype) === */
+    --color-bg-content: #fafafa;             /* Right content area – light gray */
+    --color-nav-active: #fff8f0;             /* Active nav item bg – light warm orange */
+    /* Active nav text: use primary (design system – neutral default), not accent */
+    --color-nav-hover: #f5f5f5;              /* Nav item hover bg – light grey */
+
     /* === Panel (control panel / dashboard) === */
-    --panel-bg: var(--color-gray-100);       /* Slightly gray so panels stand out from white content area */
-    --panel-border: var(--color-border-default);
+    --panel-bg: var(--color-white);          /* Panels – white on light gray content area */
+    --panel-border: #ddd9d5;                 /* Light gray – slightly darker than content */
     --section-divider: var(--color-border-default);
 
     /* === Spacing === */

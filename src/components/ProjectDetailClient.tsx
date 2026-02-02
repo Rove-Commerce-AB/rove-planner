@@ -1,20 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { updateProject, deleteProject } from "@/lib/projects";
 import { getCustomers } from "@/lib/customers";
-import type { ProjectWithDetails } from "@/types";
+import type { ProjectWithDetails, ProjectType } from "@/types";
 import {
   ConfirmModal,
   Select,
-  Switch,
   Button,
   DetailPageHeader,
   Panel,
-  PanelSection,
 } from "@/components/ui";
-import { FolderKanban } from "lucide-react";
+
+const tableBorder = "border-panel";
+
+type EditField = "name" | "customerId" | "startDate" | "endDate" | null;
 
 type Props = {
   project: ProjectWithDetails;
@@ -25,22 +26,29 @@ export function ProjectDetailClient({ project: initial }: Props) {
   const [name, setName] = useState(initial.name);
   const [customerId, setCustomerId] = useState(initial.customer_id);
   const [isActive, setIsActive] = useState(initial.isActive);
+  const [type, setType] = useState<ProjectType>(initial.type);
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editingField, setEditingField] = useState<EditField>(null);
+  const [editValue, setEditValue] = useState<string>("");
 
-  useEffect(() => {
+  const syncFromInitial = useCallback(() => {
     setName(initial.name);
     setCustomerId(initial.customer_id);
     setIsActive(initial.isActive);
+    setType(initial.type);
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
   }, [initial]);
+
+  useEffect(() => {
+    syncFromInitial();
+  }, [syncFromInitial]);
 
   useEffect(() => {
     getCustomers()
@@ -48,35 +56,58 @@ export function ProjectDetailClient({ project: initial }: Props) {
       .catch(() => setCustomers([]));
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveField = async (field: EditField, value: string) => {
+    if (field == null) return;
     setError(null);
-    setSaved(false);
-    if (!name.trim()) {
-      setError("Project name is required");
-      return;
-    }
-    if (!customerId) {
-      setError("Customer is required");
-      return;
-    }
     setSubmitting(true);
     try {
-      await updateProject(initial.id, {
-        name: name.trim(),
-        customer_id: customerId,
-        is_active: isActive,
-        start_date: startDate.trim() || null,
-        end_date: endDate.trim() || null,
-      });
-      setSaved(true);
+      const trimmed = value.trim();
+      switch (field) {
+        case "name":
+          if (!trimmed) {
+            setError("Project name is required");
+            setSubmitting(false);
+            return;
+          }
+          await updateProject(initial.id, { name: trimmed });
+          setName(trimmed);
+          break;
+        case "customerId":
+          if (!trimmed) {
+            setError("Customer is required");
+            setSubmitting(false);
+            return;
+          }
+          await updateProject(initial.id, { customer_id: trimmed });
+          setCustomerId(trimmed);
+          break;
+        case "startDate":
+          await updateProject(initial.id, {
+            start_date: trimmed || null,
+          });
+          setStartDate(trimmed || "");
+          break;
+        case "endDate":
+          await updateProject(initial.id, {
+            end_date: trimmed || null,
+          });
+          setEndDate(trimmed || "");
+          break;
+        default:
+          break;
+      }
       router.refresh();
-      setTimeout(() => setSaved(false), 3000);
+      setEditingField(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setError(null);
   };
 
   const handleDelete = async () => {
@@ -91,6 +122,43 @@ export function ProjectDetailClient({ project: initial }: Props) {
       setError(e instanceof Error ? e.message : "Failed to delete");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const toggleActive = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateProject(initial.id, { is_active: !isActive });
+      setIsActive(!isActive);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const PROJECT_TYPES: ProjectType[] = ["customer", "internal", "absence"];
+  const TYPE_LABELS: Record<ProjectType, string> = {
+    customer: "Customer project",
+    internal: "Internal project",
+    absence: "Absence",
+  };
+
+  const cycleType = async () => {
+    const idx = PROJECT_TYPES.indexOf(type);
+    const next = PROJECT_TYPES[(idx + 1) % PROJECT_TYPES.length];
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateProject(initial.id, { type: next });
+      setType(next);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -113,11 +181,15 @@ export function ProjectDetailClient({ project: initial }: Props) {
     return base;
   })();
 
+  const labelClass =
+    "text-xs font-medium uppercase tracking-wider text-text-primary opacity-70";
+  const valueClass = "font-semibold text-text-primary";
+
   return (
     <>
       <DetailPageHeader
-        backHref="/projects"
-        backLabel="Back to projects"
+        backHref={`/customers/${initial.customer_id}`}
+        backLabel={`Back to ${initial.customerName ?? "Customer"}`}
         avatar={
           <div
             className="flex h-full w-full items-center justify-center rounded-full"
@@ -129,118 +201,230 @@ export function ProjectDetailClient({ project: initial }: Props) {
             </span>
           </div>
         }
-        title={initial.name}
+        title={name}
         subtitle={initial.customerName}
         action={
           <Button
-            variant="danger"
+            variant="secondary"
+            className="border-danger text-danger hover:bg-danger/10"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={submitting || deleting}
           >
-            Delete
+            Delete Project
           </Button>
         }
       />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl">
-        {error && (
-          <p className="mb-4 text-sm text-danger" role="alert">
-            {error}
-          </p>
-        )}
-        {saved && (
-          <p className="mb-4 text-sm text-success" role="status">
-            Saved
-          </p>
-        )}
+      {error && (
+        <p className="mb-4 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      )}
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* INFORMATION */}
         <Panel>
-          <PanelSection
-            title="Information"
-            icon={
-              <FolderKanban className="h-5 w-5 text-text-primary opacity-70" />
-            }
-            footer={
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Saving…" : "Save changes"}
-              </Button>
-            }
+          <h2
+            className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
           >
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="project-name"
-                  className="block text-sm font-medium text-text-primary"
+            INFORMATION
+          </h2>
+          <div className="space-y-6 p-5">
+            <div>
+              <div className={labelClass}>Project name</div>
+              {editingField === "name" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="min-w-[120px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    placeholder="Website redesign"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => saveField("name", editValue)}
+                    disabled={submitting || !editValue.trim()}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(name);
+                    setEditingField("name");
+                  }}
                 >
-                  Project name
-                </label>
-                <input
-                  id="project-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Website redesign"
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                />
-              </div>
-
-              <Select
-                id="project-customer"
-                label="Customer"
-                value={customerId}
-                onValueChange={setCustomerId}
-                placeholder="Select customer"
-                options={customerOptions}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="project-start-date"
-                    className="block text-sm font-medium text-text-primary"
-                  >
-                    Start date
-                  </label>
-                  <input
-                    id="project-start-date"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="project-end-date"
-                    className="block text-sm font-medium text-text-primary"
-                  >
-                    End date
-                  </label>
-                  <input
-                    id="project-end-date"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-                  />
-                </div>
-              </div>
-
-              <Switch
-                id="project-active"
-                checked={isActive}
-                onCheckedChange={setIsActive}
-                label="Active project"
-              />
+                  {name}
+                </button>
+              )}
             </div>
-          </PanelSection>
+
+            <div>
+              <div className={labelClass}>Customer</div>
+              {editingField === "customerId" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={customerOptions}
+                    placeholder="Select customer"
+                    className="min-w-[180px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => saveField("customerId", editValue)}
+                    disabled={submitting || !editValue}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(customerId);
+                    setEditingField("customerId");
+                  }}
+                >
+                  {initial.customerName ?? "—"}
+                </button>
+              )}
+            </div>
+          </div>
         </Panel>
-      </form>
+
+        {/* DATES & STATUS */}
+        <Panel>
+          <h2
+            className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
+          >
+            DATES &amp; STATUS
+          </h2>
+          <div className="space-y-6 p-5">
+            <div>
+              <div className={labelClass}>Start date</div>
+              {editingField === "startDate" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="min-w-[140px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => saveField("startDate", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(startDate);
+                    setEditingField("startDate");
+                  }}
+                >
+                  {startDate || "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>End date</div>
+              {editingField === "endDate" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="min-w-[140px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => saveField("endDate", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(endDate);
+                    setEditingField("endDate");
+                  }}
+                >
+                  {endDate || "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Type</div>
+              <div className="mt-1.5">
+                <button
+                  type="button"
+                  onClick={cycleType}
+                  disabled={submitting}
+                  className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                >
+                  {TYPE_LABELS[type]}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className={labelClass}>Status</div>
+              <div className="mt-1.5">
+                <button
+                  type="button"
+                  onClick={toggleActive}
+                  disabled={submitting}
+                  className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                >
+                  {isActive ? "Active" : "Inactive"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Panel>
+      </div>
 
       <ConfirmModal
         isOpen={showDeleteConfirm}
         title="Delete project"
-        message={`Delete ${initial.name}? This cannot be undone.`}
+        message={`Delete ${name}? This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
         onClose={() => setShowDeleteConfirm(false)}

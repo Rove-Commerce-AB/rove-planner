@@ -24,7 +24,7 @@ const kpiConfig = [
     label: "Active projects",
     icon: FolderKanban,
     valueKey: "activeProjectCount",
-    href: "/projects",
+    href: "/allocation",
     suffix: "",
   },
   {
