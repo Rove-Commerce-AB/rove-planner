@@ -210,7 +210,6 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     />
                     <Button
                       type="button"
-                      size="sm"
                       onClick={() => saveField("name", editValue)}
                       disabled={submitting || !editValue.trim()}
                     >
@@ -248,7 +247,6 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     />
                     <Button
                       type="button"
-                      size="sm"
                       onClick={() => saveField("contactName", editValue)}
                       disabled={submitting}
                     >
@@ -286,7 +284,6 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     />
                     <Button
                       type="button"
-                      size="sm"
                       onClick={() => saveField("contactEmail", editValue)}
                       disabled={submitting}
                     >
@@ -330,7 +327,6 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     />
                     <Button
                       type="button"
-                      size="sm"
                       onClick={() => saveField("color", editValue)}
                       disabled={submitting}
                     >
@@ -374,7 +370,6 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     />
                     <Button
                       type="button"
-                      size="sm"
                       onClick={() => saveField("logoUrl", editValue)}
                       disabled={submitting}
                     >
@@ -449,7 +444,6 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
             </h2>
             <Button
               type="button"
-              size="sm"
               onClick={() => setAddProjectModalOpen(true)}
             >
               Add Project

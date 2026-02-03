@@ -244,7 +244,6 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   />
                   <Button
                     type="button"
-                    size="sm"
                     onClick={() => saveField("name", editValue)}
                     disabled={submitting || !editValue.trim()}
                   >
@@ -282,7 +281,6 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   />
                   <Button
                     type="button"
-                    size="sm"
                     onClick={() => saveField("customerId", editValue)}
                     disabled={submitting || !editValue}
                   >
@@ -329,7 +327,6 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   />
                   <Button
                     type="button"
-                    size="sm"
                     onClick={() => saveField("startDate", editValue)}
                     disabled={submitting}
                   >
@@ -366,7 +363,6 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   />
                   <Button
                     type="button"
-                    size="sm"
                     onClick={() => saveField("endDate", editValue)}
                     disabled={submitting}
                   >

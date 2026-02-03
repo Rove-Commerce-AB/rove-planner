@@ -22,12 +22,16 @@ export async function getRevenueForecast(
   yearTo: number,
   weekTo: number
 ): Promise<RevenueForecastMonth[]> {
-  const allocations = await getAllocationsForWeekRange(
-    yearFrom,
-    weekFrom,
-    yearTo,
-    weekTo
-  );
+  let allocations: Awaited<ReturnType<typeof getAllocationsForWeekRange>>;
+  if (yearFrom === yearTo) {
+    allocations = await getAllocationsForWeekRange(yearFrom, weekFrom, weekTo);
+  } else {
+    const [first, second] = await Promise.all([
+      getAllocationsForWeekRange(yearFrom, weekFrom, 52),
+      getAllocationsForWeekRange(yearTo, 1, weekTo),
+    ]);
+    allocations = [...first, ...second];
+  }
   if (allocations.length === 0) {
     return [];
   }

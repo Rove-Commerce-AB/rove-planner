@@ -628,7 +628,6 @@ export function AllocationPageClient({
               { value: "", label: "All teams" },
               ...data.teams.map((t) => ({ value: t.id, label: t.name })),
             ]}
-            size="sm"
             className="w-auto min-w-[120px]"
           />
         </div>

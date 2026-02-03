@@ -247,7 +247,6 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                   />
                   <Button
                     type="button"
-                    size="sm"
                     onClick={() => saveField("name", editValue)}
                     disabled={submitting || !editValue.trim()}
                   >
