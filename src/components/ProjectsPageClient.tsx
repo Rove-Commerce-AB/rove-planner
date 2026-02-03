@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { revalidateProjects } from "@/app/projects/actions";
+import { revalidateProjects } from "@/app/(app)/projects/actions";
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { ProjectsPageHeader } from "./ProjectsPageHeader";
 import { EmptyState, Panel } from "@/components/ui";
