@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Globe, Trash2, Plus, UsersRound } from "lucide-react";
+import { Users, Globe, Trash2, Plus, UsersRound, ShieldCheck } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/roles";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
-import { Button, ConfirmModal, PageHeader, Panel } from "@/components/ui";
+import { addAppUser, removeAppUser, type AppUser } from "@/lib/appUsers";
+import { Button, ConfirmModal, PageHeader, Panel, Input } from "@/components/ui";
 
 const panelHeaderBorder = "border-panel";
 import { AddRoleModal } from "./AddRoleModal";
@@ -14,10 +15,14 @@ import { AddTeamModal } from "./AddTeamModal";
 import { AddCalendarModal } from "./AddCalendarModal";
 import { CalendarAccordionItem } from "./CalendarAccordionItem";
 
+type CurrentAppUser = { email: string; role: string; name: string | null } | null;
+
 type Props = {
   roles: Awaited<ReturnType<typeof getRoles>>;
   teams: Awaited<ReturnType<typeof getTeams>>;
   calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>>;
+  appUsers: AppUser[];
+  currentAppUser: CurrentAppUser;
   error: string | null;
 };
 
@@ -25,10 +30,19 @@ export function SettingsPageClient({
   roles: initialRoles,
   teams: initialTeams,
   calendars: initialCalendars,
+  appUsers: initialAppUsers,
+  currentAppUser,
   error,
 }: Props) {
   const router = useRouter();
+  const isAdmin = currentAppUser?.role === "admin";
   const [addRoleOpen, setAddRoleOpen] = useState(false);
+  const [appUserToDelete, setAppUserToDelete] = useState<AppUser | null>(null);
+  const [addingAppUser, setAddingAppUser] = useState(false);
+  const [addAppUserError, setAddAppUserError] = useState<string | null>(null);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"member" | "admin">("member");
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [editingRoleValue, setEditingRoleValue] = useState("");
   const [savingRole, setSavingRole] = useState(false);
@@ -72,6 +86,42 @@ export function SettingsPageClient({
     router.refresh();
   };
 
+  const handleAppUserDelete = async () => {
+    if (!appUserToDelete) return;
+    try {
+      await removeAppUser(appUserToDelete.id);
+      setAppUserToDelete(null);
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Kunde inte ta bort användare");
+    }
+  };
+
+  const handleAddAppUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddAppUserError(null);
+    if (!newUserEmail.trim()) {
+      setAddAppUserError("E-post krävs");
+      return;
+    }
+    setAddingAppUser(true);
+    try {
+      const formData = new FormData();
+      formData.set("email", newUserEmail.trim());
+      formData.set("name", newUserName.trim());
+      formData.set("role", newUserRole);
+      await addAppUser(formData);
+      setNewUserEmail("");
+      setNewUserName("");
+      setNewUserRole("member");
+      router.refresh();
+    } catch (e) {
+      setAddAppUserError(e instanceof Error ? e.message : "Kunde inte lägga till");
+    } finally {
+      setAddingAppUser(false);
+    }
+  };
+
   const saveRoleInline = async () => {
     if (!editingRoleId || !editingRoleValue.trim()) return;
     setSavingRole(true);
@@ -111,6 +161,92 @@ export function SettingsPageClient({
 
       {error && (
         <p className="mt-6 text-sm text-danger">Error: {error}</p>
+      )}
+
+      {isAdmin && (
+        <div className="mt-8">
+          <Panel>
+            <div
+              className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+            >
+              <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+                <ShieldCheck className="h-4 w-4" />
+                Åtkomst / Användare
+              </h2>
+            </div>
+            <div className="space-y-4 p-5">
+              <p className="text-sm text-text-primary opacity-70">
+                Användare med åtkomst till appen. Endast e-postadresser i listan
+                kan logga in. Lägg till eller ta bort användare.
+              </p>
+              <form onSubmit={handleAddAppUser} className="flex flex-wrap items-end gap-3">
+                <Input
+                  type="email"
+                  label="E-post"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="namn@example.com"
+                  className="min-w-[200px]"
+                />
+                <Input
+                  type="text"
+                  label="Namn (valfritt)"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  placeholder="Namn"
+                  className="min-w-[140px]"
+                />
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-text-primary">
+                    Roll
+                  </label>
+                  <select
+                    value={newUserRole}
+                    onChange={(e) => setNewUserRole(e.target.value as "member" | "admin")}
+                    className="h-10 rounded-lg border border-border bg-bg-default px-3 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                  >
+                    <option value="member">Medlem</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <Button type="submit" disabled={addingAppUser}>
+                  Lägg till
+                </Button>
+              </form>
+              {addAppUserError && (
+                <p className="text-sm text-danger">{addAppUserError}</p>
+              )}
+              <ul className="space-y-3">
+                {initialAppUsers.map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex items-center gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium text-text-primary">{u.email}</span>
+                      {u.name && (
+                        <span className="ml-2 text-sm text-text-primary opacity-70">
+                          ({u.name})
+                        </span>
+                      )}
+                      <span className="ml-2 text-xs text-text-primary opacity-60">
+                        {u.role === "admin" ? "Admin" : "Medlem"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAppUserToDelete(u)}
+                      className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                      aria-label={`Ta bort ${u.email}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Panel>
+        </div>
       )}
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -357,6 +493,20 @@ export function SettingsPageClient({
         isOpen={addCalendarOpen}
         onClose={() => setAddCalendarOpen(false)}
         onSuccess={handleSuccess}
+      />
+
+      <ConfirmModal
+        isOpen={appUserToDelete !== null}
+        title="Ta bort användare"
+        message={
+          appUserToDelete
+            ? `Ta bort ${appUserToDelete.email} från åtkomstlistan? De kan inte logga in längre.`
+            : ""
+        }
+        confirmLabel="Ta bort"
+        variant="danger"
+        onClose={() => setAppUserToDelete(null)}
+        onConfirm={handleAppUserDelete}
       />
     </>
   );

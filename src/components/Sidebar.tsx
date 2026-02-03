@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -9,7 +9,9 @@ import {
   CalendarCheck,
   Settings,
   Calendar,
+  LogOut,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 const navGroup1 = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -54,13 +56,21 @@ function NavLink({
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="flex w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default">
       <div className="flex h-14 items-center gap-2 px-4 pt-4">
         <Calendar className="h-6 w-6 text-text-primary opacity-70" />
         <span className="flex-1 font-bold text-text-primary">
-          Project
+          Rove Planner
         </span>
       </div>
 
@@ -88,7 +98,7 @@ export function Sidebar() {
         </div>
       </nav>
 
-      <div className="p-2">
+      <div className="space-y-0.5 p-2">
         <Link
           href="/settings"
           className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
@@ -100,6 +110,14 @@ export function Sidebar() {
           <Settings className="h-5 w-5" />
           Settings
         </Link>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-nav-hover"
+        >
+          <LogOut className="h-5 w-5" />
+          Logga ut
+        </button>
       </div>
 
       <footer className="px-4 py-3 text-xs text-text-primary opacity-60">

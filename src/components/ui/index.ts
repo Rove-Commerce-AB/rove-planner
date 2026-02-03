@@ -8,6 +8,7 @@ export { ConfirmModal } from "./ConfirmModal";
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./Accordion";
 export { EmptyState } from "./EmptyState";
 export { PageHeader } from "./PageHeader";
+export { PageLoading } from "./PageLoading";
 export { Panel } from "./Panel";
 export { PanelHeader } from "./PanelHeader";
 export { PanelToolbar } from "./PanelToolbar";

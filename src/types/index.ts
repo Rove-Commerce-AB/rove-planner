@@ -98,7 +98,5 @@ export type CustomerWithDetails = {
 export type DashboardData = {
   currentYear: number;
   currentWeek: number;
-  kpis: DashboardKpis;
-  allocationsPerWeek: ConsultantAllocation[];
   activeProjects: Project[];
 };

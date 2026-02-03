@@ -1,8 +1,6 @@
 import { getDashboardData } from "@/lib/dashboard";
 import { getRevenueForecast } from "@/lib/revenueForecast";
 import { getCurrentYearWeek } from "@/lib/dateUtils";
-import { DashboardKpis } from "@/components/DashboardKpis";
-import { AllocationPerWeek } from "@/components/AllocationPerWeek";
 import { ActiveProjects } from "@/components/ActiveProjects";
 import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { PageHeader } from "@/components/ui";
@@ -22,22 +20,10 @@ export default async function DashboardPage() {
         className="mb-6"
       />
 
-      <section className="mb-8">
-        <DashboardKpis kpis={data.kpis} />
-      </section>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <AllocationPerWeek
-          allocations={data.allocationsPerWeek}
-          currentWeek={data.currentWeek}
-          currentYear={data.currentYear}
-        />
         <ActiveProjects projects={data.activeProjects} />
-      </div>
-
-      <section className="mt-6">
         <RevenueForecastPanel forecast={forecast} />
-      </section>
+      </div>
     </div>
   );
 }
