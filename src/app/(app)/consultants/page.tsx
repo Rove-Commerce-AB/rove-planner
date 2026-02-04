@@ -2,6 +2,8 @@ import { getConsultantsWithDetails } from "@/lib/consultants";
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { ConsultantsPageClient } from "@/components/ConsultantsPageClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function ConsultantsPage() {
   const { year, week } = getCurrentYearWeek();
   let consultants: Awaited<ReturnType<typeof getConsultantsWithDetails>> = [];
