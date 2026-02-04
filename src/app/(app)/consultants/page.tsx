@@ -1,3 +1,4 @@
+import { unstable_noStore } from "next/cache";
 import { getConsultantsWithDetails } from "@/lib/consultants";
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { ConsultantsPageClient } from "@/components/ConsultantsPageClient";
@@ -5,6 +6,7 @@ import { ConsultantsPageClient } from "@/components/ConsultantsPageClient";
 export const dynamic = "force-dynamic";
 
 export default async function ConsultantsPage() {
+  unstable_noStore();
   const { year, week } = getCurrentYearWeek();
   let consultants: Awaited<ReturnType<typeof getConsultantsWithDetails>> = [];
   let error: string | null = null;
