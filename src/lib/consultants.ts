@@ -152,6 +152,23 @@ export async function getConsultants(): Promise<{ id: string; name: string }[]> 
   return data ?? [];
 }
 
+/** Consultants with default role_id for pre-filling allocation role. */
+export async function getConsultantsWithDefaultRole(): Promise<
+  { id: string; name: string; role_id: string | null }[]
+> {
+  const { data, error } = await supabase
+    .from("consultants")
+    .select("id,name,role_id")
+    .order("name");
+
+  if (error) throw error;
+  return (data ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    role_id: c.role_id ?? null,
+  }));
+}
+
 /**
  * Available hours for project allocation in a given week: capacity (calendar × work %,
  * minus weekday holidays) × (1 − overhead %). E.g. 32h capacity, 25% overhead → 24h.

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Select } from "@/components/ui";
-import { getConsultants } from "@/lib/consultants";
+import { getConsultantsWithDefaultRole } from "@/lib/consultants";
 import { getProjectsWithCustomer } from "@/lib/projects";
 import { getRoles } from "@/lib/roles";
 import { createAllocationsForWeekRange } from "@/lib/allocations";
@@ -27,7 +27,7 @@ type Props = {
   initialWeekTo?: number;
 };
 
-type Consultant = { id: string; name: string };
+type Consultant = { id: string; name: string; role_id: string | null };
 type Project = { id: string; name: string; customerName: string };
 type Role = { id: string; name: string };
 
@@ -75,7 +75,7 @@ export function AddAllocationModal({
         setToWeek(week);
       }
       Promise.all([
-        getConsultants(),
+        getConsultantsWithDefaultRole(),
         getProjectsWithCustomer(),
         getRoles(),
       ])
@@ -102,6 +102,13 @@ export function AddAllocationModal({
       );
     }
   }, [isOpen, consultants, consultantId, initialConsultantId]);
+
+  // Pre-fill role with consultant's default role when consultant changes (user can clear via "No role")
+  useEffect(() => {
+    if (!consultantId || consultants.length === 0) return;
+    const consultant = consultants.find((c) => c.id === consultantId);
+    setRoleId(consultant?.role_id ?? null);
+  }, [consultantId, consultants]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -288,7 +295,10 @@ export function AddAllocationModal({
               onValueChange={(v) => setRoleId(v ? v : null)}
               placeholder="Select role"
               triggerClassName="mt-1.5 border-panel"
-              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              options={[
+                { value: "", label: "No role" },
+                ...roles.map((r) => ({ value: r.id, label: r.name })),
+              ]}
             />
           </div>
 
