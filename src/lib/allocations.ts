@@ -212,6 +212,58 @@ export async function createAllocationsForWeekRange(
   return results;
 }
 
+/**
+ * Create or update allocations for a week range using a getter for hours per week
+ * (e.g. for %-based allocation: hours = percent/100 * availableHoursForWeek).
+ */
+export async function createAllocationsForWeekRangeWithGetter(
+  consultant_id: string,
+  project_id: string,
+  role_id: string | null,
+  year: number,
+  weekFrom: number,
+  weekTo: number,
+  getHoursForWeek: (y: number, w: number) => Promise<number>
+): Promise<AllocationRecord[]> {
+  const results: AllocationRecord[] = [];
+  const weeks: { y: number; w: number }[] = [];
+
+  if (weekFrom <= weekTo) {
+    for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
+  } else {
+    for (let w = weekFrom; w <= 52; w++) weeks.push({ y: year, w });
+    for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
+  }
+
+  for (const { y, w } of weeks) {
+    const hours = await getHoursForWeek(y, w);
+    const existing = await findExistingAllocation(
+      consultant_id,
+      project_id,
+      role_id,
+      y,
+      w
+    );
+    if (existing) {
+      const newHours = existing.hours + hours;
+      const updated = await updateAllocation(existing.id, { hours: newHours });
+      results.push(updated);
+    } else {
+      const created = await createAllocation({
+        consultant_id,
+        project_id,
+        role_id,
+        year: y,
+        week: w,
+        hours,
+      });
+      results.push(created);
+    }
+  }
+
+  return results;
+}
+
 export type UpdateAllocationInput = {
   role_id?: string | null;
   hours?: number;

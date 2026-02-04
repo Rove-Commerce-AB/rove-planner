@@ -7,6 +7,7 @@ import { getConsultants } from "@/lib/consultants";
 import { getProjectsWithCustomer } from "@/lib/projects";
 import { getRoles } from "@/lib/roles";
 import { createAllocationsForWeekRange } from "@/lib/allocations";
+import { createAllocationsByPercent } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 
 type Props = {
@@ -53,7 +54,9 @@ export function AddAllocationModal({
   const [fromWeek, setFromWeek] = useState(weekFrom);
   const [toWeek, setToWeek] = useState(weekTo);
   const [allocYear, setAllocYear] = useState(year);
+  const [inputMode, setInputMode] = useState<"hours" | "percent">("hours");
   const [hoursPerWeek, setHoursPerWeek] = useState("8");
+  const [percent, setPercent] = useState("100");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -112,22 +115,41 @@ export function AddAllocationModal({
     }
     const from = Math.min(fromWeek, toWeek);
     const to = Math.max(fromWeek, toWeek);
-    const hours = parseFloat(hoursPerWeek);
-    if (isNaN(hours) || hours < 1) {
-      setError("Hours must be at least 1");
-      return;
-    }
     setSubmitting(true);
     try {
-      await createAllocationsForWeekRange(
-        consultantId,
-        projectId,
-        roleId,
-        allocYear,
-        from,
-        to,
-        hours
-      );
+      if (inputMode === "percent") {
+        const pct = parseFloat(percent);
+        if (isNaN(pct) || pct < 0 || pct > 100) {
+          setError("Percent must be between 0 and 100");
+          setSubmitting(false);
+          return;
+        }
+        await createAllocationsByPercent(
+          consultantId,
+          projectId,
+          roleId,
+          allocYear,
+          from,
+          to,
+          pct
+        );
+      } else {
+        const hours = parseFloat(hoursPerWeek);
+        if (isNaN(hours) || hours < 0.01) {
+          setError("Hours must be at least 0.01");
+          setSubmitting(false);
+          return;
+        }
+        await createAllocationsForWeekRange(
+          consultantId,
+          projectId,
+          roleId,
+          allocYear,
+          from,
+          to,
+          hours
+        );
+      }
       onSuccess();
       handleClose();
     } catch (e) {
@@ -145,7 +167,9 @@ export function AddAllocationModal({
     setFromWeek(weekFrom);
     setToWeek(weekTo);
     setAllocYear(year);
+    setInputMode("hours");
     setHoursPerWeek("8");
+    setPercent("100");
     onClose();
   };
 
@@ -154,7 +178,9 @@ export function AddAllocationModal({
       setConsultantId("");
       setProjectId("");
       setRoleId(null);
+      setInputMode("hours");
       setHoursPerWeek("8");
+      setPercent("100");
     }
   }, [isOpen]);
 
@@ -304,21 +330,50 @@ export function AddAllocationModal({
           </div>
 
           <div>
-            <label
-              htmlFor="alloc-hours"
-              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-            >
-              Hours per week
-            </label>
-            <input
-              id="alloc-hours"
-              type="number"
-              min={1}
-              step={1}
-              value={hoursPerWeek}
-              onChange={(e) => setHoursPerWeek(e.target.value)}
-              className="mt-1.5 w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
-            />
+            <div className="mb-2 flex gap-4">
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="radio"
+                  name="alloc-mode"
+                  checked={inputMode === "hours"}
+                  onChange={() => setInputMode("hours")}
+                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                />
+                Hours per week
+              </label>
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="radio"
+                  name="alloc-mode"
+                  checked={inputMode === "percent"}
+                  onChange={() => setInputMode("percent")}
+                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                />
+                % of available week
+              </label>
+            </div>
+            {inputMode === "hours" ? (
+              <input
+                id="alloc-hours"
+                type="number"
+                min={0.01}
+                step={0.5}
+                value={hoursPerWeek}
+                onChange={(e) => setHoursPerWeek(e.target.value)}
+                className="mt-1.5 w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+              />
+            ) : (
+              <input
+                id="alloc-percent"
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                value={percent}
+                onChange={(e) => setPercent(e.target.value)}
+                className="mt-1.5 w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+              />
+            )}
           </div>
 
           <div className="flex justify-end gap-2">

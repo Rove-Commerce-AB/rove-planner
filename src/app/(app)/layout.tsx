@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/Sidebar";
+import { FeatureRequestFab } from "@/components/FeatureRequestFab";
 
 export default function AppLayout({
   children,
@@ -12,6 +13,7 @@ export default function AppLayout({
       >
         {children}
       </main>
+      <FeatureRequestFab />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { createConsultant } from "@/lib/consultants";
+import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
 import { getRoles } from "@/lib/roles";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { getCalendars } from "@/lib/calendars";
@@ -46,7 +46,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
     }
     setSubmitting(true);
     try {
-      const result = await createConsultant({
+      const result = await createConsultantAndRevalidate({
         name: name.trim(),
         role_id: defaultRoleId,
         calendar_id: defaultCalendarId,

@@ -2,11 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Globe, Trash2, Plus, UsersRound, ShieldCheck } from "lucide-react";
+import { Users, Globe, Trash2, Plus, UsersRound, ShieldCheck, MessageCirclePlus, Pencil } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/roles";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
 import { addAppUser, removeAppUser, type AppUser } from "@/lib/appUsers";
+import {
+  updateFeatureRequest,
+  deleteFeatureRequest,
+  type FeatureRequest,
+} from "@/lib/featureRequests";
 import { Button, ConfirmModal, PageHeader, Panel, Input } from "@/components/ui";
 
 const panelHeaderBorder = "border-panel";
@@ -23,6 +28,7 @@ type Props = {
   calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>>;
   appUsers: AppUser[];
   currentAppUser: CurrentAppUser;
+  featureRequests: FeatureRequest[];
   error: string | null;
 };
 
@@ -32,6 +38,7 @@ export function SettingsPageClient({
   calendars: initialCalendars,
   appUsers: initialAppUsers,
   currentAppUser,
+  featureRequests: initialFeatureRequests,
   error,
 }: Props) {
   const router = useRouter();
@@ -59,6 +66,10 @@ export function SettingsPageClient({
     id: string;
     name: string;
   } | null>(null);
+  const [editingFeatureRequestId, setEditingFeatureRequestId] = useState<string | null>(null);
+  const [editingFeatureRequestValue, setEditingFeatureRequestValue] = useState("");
+  const [savingFeatureRequest, setSavingFeatureRequest] = useState(false);
+  const [featureRequestToDelete, setFeatureRequestToDelete] = useState<FeatureRequest | null>(null);
 
   const handleRoleDelete = async () => {
     if (!roleToDelete) return;
@@ -94,6 +105,32 @@ export function SettingsPageClient({
       router.refresh();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Kunde inte ta bort användare");
+    }
+  };
+
+  const saveFeatureRequestInline = async () => {
+    if (!editingFeatureRequestId || !editingFeatureRequestValue.trim()) return;
+    setSavingFeatureRequest(true);
+    try {
+      await updateFeatureRequest(editingFeatureRequestId, editingFeatureRequestValue.trim());
+      setEditingFeatureRequestId(null);
+      setEditingFeatureRequestValue("");
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSavingFeatureRequest(false);
+    }
+  };
+
+  const handleFeatureRequestDelete = async () => {
+    if (!featureRequestToDelete) return;
+    try {
+      await deleteFeatureRequest(featureRequestToDelete.id);
+      setFeatureRequestToDelete(null);
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to delete");
     }
   };
 
@@ -457,6 +494,100 @@ export function SettingsPageClient({
         </Panel>
       </div>
 
+      <div className="mt-6">
+        <Panel>
+          <div
+            className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+          >
+            <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+              <MessageCirclePlus className="h-4 w-4" />
+              Feature requests
+            </h2>
+          </div>
+          <div className="space-y-4 p-5">
+            <p className="text-sm text-text-primary opacity-70">
+              User-submitted feature requests. Edit or remove as needed.
+            </p>
+            <ul className="space-y-3">
+              {initialFeatureRequests.length === 0 ? (
+                <li className="rounded-lg border border-panel bg-bg-default px-3 py-4 text-sm text-text-primary opacity-70">
+                  No feature requests yet.
+                </li>
+              ) : (
+                initialFeatureRequests.map((fr) => (
+                  <li
+                    key={fr.id}
+                    className="flex items-start gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
+                  >
+                    {editingFeatureRequestId === fr.id ? (
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                        <textarea
+                          value={editingFeatureRequestValue}
+                          onChange={(e) => setEditingFeatureRequestValue(e.target.value)}
+                          rows={2}
+                          className="min-w-[200px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              setEditingFeatureRequestId(null);
+                              setEditingFeatureRequestValue("");
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          onClick={saveFeatureRequestInline}
+                          disabled={savingFeatureRequest || !editingFeatureRequestValue.trim()}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          type="button"
+                          onClick={() => {
+                            setEditingFeatureRequestId(null);
+                            setEditingFeatureRequestValue("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="min-w-0 flex-1 text-sm text-text-primary">
+                          {fr.content}
+                        </p>
+                        <div className="flex flex-shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFeatureRequestId(fr.id);
+                              setEditingFeatureRequestValue(fr.content);
+                            }}
+                            className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFeatureRequestToDelete(fr)}
+                            className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                            aria-label="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        </Panel>
+      </div>
+
       <AddRoleModal
         isOpen={addRoleOpen}
         onClose={() => setAddRoleOpen(false)}
@@ -507,6 +638,16 @@ export function SettingsPageClient({
         variant="danger"
         onClose={() => setAppUserToDelete(null)}
         onConfirm={handleAppUserDelete}
+      />
+
+      <ConfirmModal
+        isOpen={featureRequestToDelete !== null}
+        title="Delete feature request"
+        message="Delete this feature request? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onClose={() => setFeatureRequestToDelete(null)}
+        onConfirm={handleFeatureRequestDelete}
       />
     </>
   );

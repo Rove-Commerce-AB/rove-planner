@@ -148,3 +148,14 @@ Notes:
 - All rollups (per customer, per consultant, dashboards) are derived from allocations + joins.
 
 ---
+
+## feature_requests
+User-submitted feature requests. Shown and managed on the Settings page.
+
+Columns:
+- id (uuid, pk)
+- content (text)
+- created_at (timestamptz)
+- updated_at (timestamptz)
+
+---

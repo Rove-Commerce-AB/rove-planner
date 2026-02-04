@@ -6,6 +6,11 @@ import { getAllocationsForWeek } from "./allocations";
 import { getProjectsByIds } from "./projects";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import type { ConsultantWithDetails } from "@/types";
+import { getISOWeekDateRange } from "./dateUtils";
+import {
+  getCalendarHolidays,
+  countWeekdayHolidaysInRange,
+} from "./calendarHolidays";
 
 export type CreateConsultantInput = {
   name: string;
@@ -136,6 +141,42 @@ export async function getConsultants(): Promise<{ id: string; name: string }[]> 
 
   if (error) throw error;
   return data ?? [];
+}
+
+/**
+ * Available hours for a consultant in a given week (calendar hours × work %,
+ * minus weekday holidays). E.g. 40h calendar, 1 weekday holiday → 32h.
+ */
+export async function getAvailableHoursForConsultantWeek(
+  consultantId: string,
+  year: number,
+  week: number
+): Promise<number> {
+  const { data: c, error: cErr } = await supabase
+    .from("consultants")
+    .select("calendar_id,work_percentage")
+    .eq("id", consultantId)
+    .single();
+
+  if (cErr || !c) return 0;
+
+  const { data: cal, error: calErr } = await supabase
+    .from("calendars")
+    .select("hours_per_week")
+    .eq("id", c.calendar_id)
+    .single();
+
+  const hoursPerWeek =
+    calErr || !cal
+      ? DEFAULT_HOURS_PER_WEEK
+      : Number(cal.hours_per_week) || DEFAULT_HOURS_PER_WEEK;
+  const workPct =
+    Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
+  const { start, end } = getISOWeekDateRange(year, week);
+  const holidays = await getCalendarHolidays(c.calendar_id);
+  const weekdayHolidays = countWeekdayHolidaysInRange(holidays, start, end);
+  const workingDays = Math.max(0, 5 - weekdayHolidays);
+  return (hoursPerWeek * (workingDays / 5)) * workPct;
 }
 
 function getInitials(name: string): string {
