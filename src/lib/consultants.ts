@@ -20,6 +20,7 @@ export type CreateConsultantInput = {
   team_id?: string | null;
   is_external?: boolean;
   work_percentage?: number;
+  overhead_percentage?: number;
 };
 
 export type UpdateConsultantInput = {
@@ -30,6 +31,7 @@ export type UpdateConsultantInput = {
   team_id?: string | null;
   is_external?: boolean;
   work_percentage?: number;
+  overhead_percentage?: number;
 };
 
 export async function createConsultant(
@@ -44,6 +46,8 @@ export async function createConsultant(
       calendar_id: input.calendar_id,
       team_id: input.team_id ?? null,
       is_external: input.is_external ?? false,
+      work_percentage: input.work_percentage ?? 100,
+      overhead_percentage: input.overhead_percentage ?? 0,
     })
     .select("id,name")
     .single();
@@ -66,6 +70,8 @@ export async function updateConsultant(
   if (input.is_external !== undefined) updates.is_external = input.is_external;
   if (input.work_percentage !== undefined)
     updates.work_percentage = input.work_percentage;
+  if (input.overhead_percentage !== undefined)
+    updates.overhead_percentage = input.overhead_percentage;
 
   const { error } = await supabase
     .from("consultants")
@@ -93,6 +99,7 @@ export type ConsultantForEdit = {
   teamName: string | null;
   isExternal: boolean;
   workPercentage: number;
+  overheadPercentage: number;
 };
 
 export async function getConsultantById(
@@ -100,7 +107,7 @@ export async function getConsultantById(
 ): Promise<ConsultantForEdit | null> {
   const { data: c, error } = await supabase
     .from("consultants")
-    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage")
+    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
     .eq("id", id)
     .single();
 
@@ -117,6 +124,7 @@ export async function getConsultantById(
   const calendar = calendars.find((cal) => cal.id === c.calendar_id);
   const workPct =
     Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
+  const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
 
   return {
     id: c.id,
@@ -130,6 +138,7 @@ export async function getConsultantById(
     teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
     isExternal: c.is_external ?? false,
     workPercentage: Math.round(workPct * 100),
+    overheadPercentage: Math.round(overheadPct * 100),
   };
 }
 
@@ -144,8 +153,8 @@ export async function getConsultants(): Promise<{ id: string; name: string }[]> 
 }
 
 /**
- * Available hours for a consultant in a given week (calendar hours × work %,
- * minus weekday holidays). E.g. 40h calendar, 1 weekday holiday → 32h.
+ * Available hours for project allocation in a given week: capacity (calendar × work %,
+ * minus weekday holidays) × (1 − overhead %). E.g. 32h capacity, 25% overhead → 24h.
  */
 export async function getAvailableHoursForConsultantWeek(
   consultantId: string,
@@ -154,7 +163,7 @@ export async function getAvailableHoursForConsultantWeek(
 ): Promise<number> {
   const { data: c, error: cErr } = await supabase
     .from("consultants")
-    .select("calendar_id,work_percentage")
+    .select("calendar_id,work_percentage,overhead_percentage")
     .eq("id", consultantId)
     .single();
 
@@ -172,11 +181,13 @@ export async function getAvailableHoursForConsultantWeek(
       : Number(cal.hours_per_week) || DEFAULT_HOURS_PER_WEEK;
   const workPct =
     Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
+  const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
   const { start, end } = getISOWeekDateRange(year, week);
   const holidays = await getCalendarHolidays(c.calendar_id);
   const weekdayHolidays = countWeekdayHolidaysInRange(holidays, start, end);
   const workingDays = Math.max(0, 5 - weekdayHolidays);
-  return (hoursPerWeek * (workingDays / 5)) * workPct;
+  const capacityHours = (hoursPerWeek * (workingDays / 5)) * workPct;
+  return capacityHours * (1 - overheadPct);
 }
 
 function getInitials(name: string): string {
@@ -194,7 +205,7 @@ export async function getConsultantsWithDetails(
 ): Promise<ConsultantWithDetails[]> {
   const { data: consultantsData, error: consultantsError } = await supabase
     .from("consultants")
-    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage")
+    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
     .order("name");
 
   if (consultantsError) throw consultantsError;
@@ -250,11 +261,13 @@ export async function getConsultantsWithDetails(
     allocationsByConsultant.set(a.consultant_id, list);
   }
 
-  return consultants.map((c, i) => {
+  return consultants.map((c) => {
     const calendar = calendarMap.get(c.calendar_id);
     const calendarHours = calendar?.hoursPerWeek ?? DEFAULT_HOURS_PER_WEEK;
     const workPct = Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
-    const hoursPerWeek = calendarHours * workPct;
+    const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
+    const capacityHoursPerWeek = calendarHours * workPct;
+    const hoursPerWeek = capacityHoursPerWeek * (1 - overheadPct);
     const weekAllocations = allocationsByConsultant.get(c.id) ?? [];
     const totalHours = weekAllocations.reduce((sum, a) => sum + a.hours, 0);
     const percent =
@@ -272,6 +285,8 @@ export async function getConsultantsWithDetails(
       teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
       isExternal: c.is_external ?? false,
       workPercentage: Math.round(workPct * 100),
+      overheadPercentage: Math.round(overheadPct * 100),
+      capacityHoursPerWeek,
       hoursPerWeek,
       initials: getInitials(c.name),
       weekYear: year,

@@ -83,7 +83,8 @@ Columns:
 - calendar_id (uuid, fk → calendars.id)
 - team_id (uuid, nullable, fk → teams.id)
 - is_external (boolean, default false)  # true = external consultant
-- work_percentage (smallint, default 100)  # 100 = full-time; 80 = 80% (available hours = calendar × work_percentage/100)
+- work_percentage (smallint, default 100)  # 100 = full-time; 80 = 80% (capacity = calendar × work_percentage/100)
+- overhead_percentage (smallint, default 0)  # 0–100; share of capacity used for overhead (e.g. sales). Available for projects = capacity × (1 − overhead_percentage/100)
 - created_at (timestamptz)
 - updated_at (timestamptz)
 

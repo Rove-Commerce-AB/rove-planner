@@ -6,6 +6,12 @@ import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
 import { getRoles } from "@/lib/roles";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { getCalendars } from "@/lib/calendars";
+import { Select } from "@/components/ui";
+
+const PERCENTAGE_OPTIONS = Array.from(
+  { length: 21 },
+  (_, i) => i * 5
+); // 0, 5, 10, ..., 100
 
 type Props = {
   isOpen: boolean;
@@ -19,6 +25,8 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [defaultRoleId, setDefaultRoleId] = useState<string | null>(null);
   const [defaultCalendarId, setDefaultCalendarId] = useState<string | null>(null);
+  const [workPercentage, setWorkPercentage] = useState(100);
+  const [overheadPercentage, setOverheadPercentage] = useState(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -50,6 +58,8 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
         name: name.trim(),
         role_id: defaultRoleId,
         calendar_id: defaultCalendarId,
+        work_percentage: workPercentage,
+        overhead_percentage: overheadPercentage,
       });
       resetForm();
       onClose();
@@ -64,6 +74,8 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
 
   const resetForm = () => {
     setName("");
+    setWorkPercentage(100);
+    setOverheadPercentage(0);
     setError(null);
   };
 
@@ -138,6 +150,30 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
               autoFocus
             />
           </div>
+
+          <Select
+            id="add-consultant-capacity"
+            label="Capacity (%)"
+            value={String(workPercentage)}
+            onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
+            placeholder="Select"
+            options={PERCENTAGE_OPTIONS.filter((p) => p >= 5).map((p) => ({
+              value: String(p),
+              label: `${p}%`,
+            }))}
+          />
+
+          <Select
+            id="add-consultant-overhead"
+            label="Overhead (%)"
+            value={String(overheadPercentage)}
+            onValueChange={(v) => setOverheadPercentage(parseInt(v, 10))}
+            placeholder="Select"
+            options={PERCENTAGE_OPTIONS.map((p) => ({
+              value: String(p),
+              label: `${p}%`,
+            }))}
+          />
 
           <div className="flex justify-end gap-2 pt-2">
             <button

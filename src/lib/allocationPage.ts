@@ -34,7 +34,7 @@ async function getCachedConsultantsRaw() {
     async () => {
       const { data } = await supabase
         .from("consultants")
-        .select("id,name,role_id,calendar_id,team_id,is_external,work_percentage")
+        .select("id,name,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
         .order("name");
       return data ?? [];
     },
@@ -76,7 +76,7 @@ export type AllocationConsultant = {
   teamId: string | null;
   teamName: string | null;
   isExternal: boolean;
-  /** Available hours per week; 8h subtracted per holiday, then work_percentage applied */
+  /** Available for project allocation per week: capacity (minus holidays × work%) × (1 − overhead%). */
   availableHoursByWeek: number[];
 };
 
@@ -194,6 +194,7 @@ export async function getAllocationPageData(
       const calendarHours =
         calendarMap.get(c.calendar_id) ?? DEFAULT_HOURS_PER_WEEK;
       const workPct = Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
+      const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
       const hoursPerWeek = calendarHours * workPct;
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
       const availableHoursByWeek = weeks.map((w) => {
@@ -203,7 +204,8 @@ export async function getAllocationPageData(
           0,
           calendarHours - holidayCount * HOURS_PER_HOLIDAY
         );
-        return baseHours * workPct;
+        const capacityHours = baseHours * workPct;
+        return capacityHours * (1 - overheadPct);
       });
       return {
         id: c.id,

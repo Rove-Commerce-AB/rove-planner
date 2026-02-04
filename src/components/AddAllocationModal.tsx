@@ -356,7 +356,7 @@ export function AddAllocationModal({
               <input
                 id="alloc-hours"
                 type="number"
-                min={0.01}
+                min={0}
                 step={0.5}
                 value={hoursPerWeek}
                 onChange={(e) => setHoursPerWeek(e.target.value)}

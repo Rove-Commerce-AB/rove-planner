@@ -66,6 +66,11 @@ export type ConsultantWithDetails = {
   teamName: string | null;
   isExternal: boolean;
   workPercentage: number;
+  /** Share of capacity used for overhead (0–100). Available for projects = capacity × (1 − overhead/100). */
+  overheadPercentage: number;
+  /** Capacity hours per week (calendar × work%). */
+  capacityHoursPerWeek: number;
+  /** Available for project allocation (capacity × (1 − overhead/100)). */
   hoursPerWeek: number;
   initials: string;
   weekYear: number;

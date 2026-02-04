@@ -20,6 +20,11 @@ const WORK_PERCENTAGE_OPTIONS = Array.from(
   (_, i) => (i + 1) * 5
 );
 
+const OVERHEAD_PERCENTAGE_OPTIONS = Array.from(
+  { length: 21 },
+  (_, i) => i * 5
+); // 0, 5, ..., 100
+
 const tableBorder = "border-panel";
 
 type EditField =
@@ -28,6 +33,7 @@ type EditField =
   | "role"
   | "calendar"
   | "workPercentage"
+  | "overheadPercentage"
   | "team"
   | null;
 
@@ -43,6 +49,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
   const [calendarId, setCalendarId] = useState(initial.calendar_id);
   const [teamId, setTeamId] = useState<string | null>(initial.team_id);
   const [workPercentage, setWorkPercentage] = useState(initial.workPercentage);
+  const [overheadPercentage, setOverheadPercentage] = useState(initial.overheadPercentage);
   const [isExternal, setIsExternal] = useState(initial.isExternal);
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
@@ -64,6 +71,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     setCalendarId(initial.calendar_id);
     setTeamId(initial.team_id);
     setWorkPercentage(initial.workPercentage);
+    setOverheadPercentage(initial.overheadPercentage);
     setIsExternal(initial.isExternal);
   }, [initial]);
 
@@ -109,6 +117,10 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
         case "workPercentage":
           await updateConsultant(initial.id, { work_percentage: parseInt(value, 10) });
           setWorkPercentage(parseInt(value, 10));
+          break;
+        case "overheadPercentage":
+          await updateConsultant(initial.id, { overhead_percentage: parseInt(value, 10) });
+          setOverheadPercentage(parseInt(value, 10));
           break;
         case "team":
           await updateConsultant(initial.id, { team_id: value || null });
@@ -424,6 +436,46 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                   }}
                 >
                   {workPercentage}%
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Overhead (%)</div>
+              {editingField === "overheadPercentage" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
+                      value: String(p),
+                      label: `${p}%`,
+                    }))}
+                    placeholder="Select"
+                    className="min-w-[100px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("overheadPercentage", editValue)}
+                    disabled={submitting || editValue === ""}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(String(overheadPercentage ?? 0));
+                    setEditingField("overheadPercentage");
+                  }}
+                >
+                  {overheadPercentage ?? 0}%
                 </button>
               )}
             </div>

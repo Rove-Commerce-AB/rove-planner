@@ -15,6 +15,11 @@ const WORK_PERCENTAGE_OPTIONS = Array.from(
   (_, i) => (i + 1) * 5
 ); // 5, 10, ..., 100
 
+const OVERHEAD_PERCENTAGE_OPTIONS = Array.from(
+  { length: 21 },
+  (_, i) => i * 5
+); // 0, 5, 10, ..., 100
+
 type Props = {
   consultant: ConsultantWithDetails | null;
   isOpen: boolean;
@@ -34,6 +39,7 @@ export function EditConsultantModal({
   const [calendarId, setCalendarId] = useState("");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [workPercentage, setWorkPercentage] = useState(100);
+  const [overheadPercentage, setOverheadPercentage] = useState(0);
   const [isExternal, setIsExternal] = useState(false);
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
@@ -51,6 +57,7 @@ export function EditConsultantModal({
       setName(consultant.name);
       setEmail(consultant.email ?? "");
       setWorkPercentage(consultant.workPercentage ?? 100);
+      setOverheadPercentage(consultant.overheadPercentage ?? 0);
       setIsExternal(consultant.isExternal ?? false);
       setOptionsReady(false);
       Promise.all([getRoles(), getCalendars(), getTeams()])
@@ -99,6 +106,7 @@ export function EditConsultantModal({
         calendar_id: calendarId,
         team_id: teamId ?? null,
         work_percentage: workPercentage,
+        overhead_percentage: overheadPercentage,
         is_external: isExternal,
       });
       resetForm();
@@ -135,6 +143,7 @@ export function EditConsultantModal({
     setCalendarId("");
     setTeamId(null);
     setWorkPercentage(100);
+    setOverheadPercentage(0);
     setIsExternal(false);
     setOptionsReady(false);
     setError(null);
@@ -266,11 +275,23 @@ export function EditConsultantModal({
 
           <Select
             id="edit-consultant-work-percentage"
-            label="Work percentage"
+            label="Capacity (%)"
             value={String(workPercentage)}
             onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
             placeholder="Select"
             options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
+              value: String(p),
+              label: `${p}%`,
+            }))}
+          />
+
+          <Select
+            id="edit-consultant-overhead"
+            label="Overhead (%)"
+            value={String(overheadPercentage)}
+            onValueChange={(v) => setOverheadPercentage(parseInt(v, 10))}
+            placeholder="Select"
+            options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
               value: String(p),
               label: `${p}%`,
             }))}

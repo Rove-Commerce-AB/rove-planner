@@ -57,10 +57,17 @@ export function ConsultantCard({ consultant }: Props) {
         <div className="flex items-center gap-2 text-sm text-text-primary opacity-80">
           <Calendar className="h-4 w-4 flex-shrink-0 opacity-60" />
           <span>
-            {consultant.calendarName} ({consultant.hoursPerWeek}h/week
-            {consultant.workPercentage !== 100
-              ? `, ${consultant.workPercentage}%`
-              : ""}
+            {consultant.calendarName} (
+            {consultant.overheadPercentage > 0 ? (
+              <>
+                {consultant.capacityHoursPerWeek}h capacity, {consultant.overheadPercentage}% overhead → {consultant.hoursPerWeek}h available
+              </>
+            ) : (
+              <>
+                {consultant.hoursPerWeek}h/week
+                {consultant.workPercentage !== 100 ? `, ${consultant.workPercentage}%` : ""}
+              </>
+            )}
             )
           </span>
         </div>
