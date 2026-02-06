@@ -10,11 +10,13 @@ import {
   Settings,
   Calendar,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const navGroup1 = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/rove", label: "Rove", icon: Sparkles },
 ] as const;
 
 const navGroup2 = [
