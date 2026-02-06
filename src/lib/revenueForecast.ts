@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { getWorkingDaysByMonthInWeek } from "./dateUtils";
 import { getAllocationsForWeekRange } from "./allocations";
 import { getCalendarHolidays } from "./calendarHolidays";
@@ -11,6 +12,8 @@ export type RevenueForecastMonth = {
   currency: string;
 };
 
+const REVENUE_FORECAST_CACHE_REVALIDATE = 120;
+
 /**
  * Planerad intäkt per månad baserat på allokeringar.
  * Timmar fördelas mellan månader utifrån arbetsdagar (vardagar) i varje vecka;
@@ -22,21 +25,23 @@ export async function getRevenueForecast(
   yearTo: number,
   weekTo: number
 ): Promise<RevenueForecastMonth[]> {
-  let allocations: Awaited<ReturnType<typeof getAllocationsForWeekRange>>;
-  if (yearFrom === yearTo) {
-    allocations = await getAllocationsForWeekRange(yearFrom, weekFrom, weekTo);
-  } else {
-    const [first, second] = await Promise.all([
-      getAllocationsForWeekRange(yearFrom, weekFrom, 52),
-      getAllocationsForWeekRange(yearTo, 1, weekTo),
-    ]);
-    allocations = [...first, ...second];
-  }
-  if (allocations.length === 0) {
-    return [];
-  }
+  return unstable_cache(
+    async () => {
+      let allocations: Awaited<ReturnType<typeof getAllocationsForWeekRange>>;
+      if (yearFrom === yearTo) {
+        allocations = await getAllocationsForWeekRange(yearFrom, weekFrom, weekTo);
+      } else {
+        const [first, second] = await Promise.all([
+          getAllocationsForWeekRange(yearFrom, weekFrom, 52),
+          getAllocationsForWeekRange(yearTo, 1, weekTo),
+        ]);
+        allocations = [...first, ...second];
+      }
+      if (allocations.length === 0) {
+        return [];
+      }
 
-  const consultantIds = [...new Set(allocations.map((a) => a.consultant_id))];
+      const consultantIds = [...new Set(allocations.map((a) => a.consultant_id))];
   const projectIds = [...new Set(allocations.map((a) => a.project_id))];
 
   const [consultantsData, projectsData] = await Promise.all([
@@ -151,10 +156,14 @@ export async function getRevenueForecast(
   }
   }
 
-  return Array.from(revenueByMonth.entries())
-    .map(([key, { revenue, currency }]) => {
-      const [y, m] = key.split("-").map(Number);
-      return { year: y, month: m, revenue, currency };
-    })
-    .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
+      return Array.from(revenueByMonth.entries())
+        .map(([key, { revenue, currency }]) => {
+          const [y, m] = key.split("-").map(Number);
+          return { year: y, month: m, revenue, currency };
+        })
+        .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
+    },
+    ["revenue-forecast", String(yearFrom), String(weekFrom), String(yearTo), String(weekTo)],
+    { revalidate: REVENUE_FORECAST_CACHE_REVALIDATE, tags: ["revenue-forecast"] }
+  )();
 }

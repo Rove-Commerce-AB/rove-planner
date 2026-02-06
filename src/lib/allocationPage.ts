@@ -29,17 +29,18 @@ const getCachedTeams = () =>
 // Projects (with customer color) fetched without cache so allocation rows
 // always reflect the latest customer color.
 
-async function getCachedConsultantsRaw() {
+/** Shared with consultants page so both use the same consultant list. */
+export async function getCachedConsultantsRaw() {
   return unstable_cache(
     async () => {
       const { data } = await supabase
         .from("consultants")
-        .select("id,name,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
+        .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
         .order("name");
       return data ?? [];
     },
     ["allocation-consultants"],
-    { revalidate: CACHE_REVALIDATE }
+    { revalidate: CACHE_REVALIDATE, tags: ["allocation-consultants"] }
   )();
 }
 

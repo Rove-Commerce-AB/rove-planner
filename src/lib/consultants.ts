@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { getCachedConsultantsRaw } from "./allocationPage";
 import { getRoles } from "./roles";
 import { getCalendars } from "./calendars";
 import { getTeams } from "./teams";
@@ -142,16 +143,6 @@ export async function getConsultantById(
   };
 }
 
-export async function getConsultants(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name")
-    .order("name");
-
-  if (error) throw error;
-  return data ?? [];
-}
-
 /** Consultants with default role_id for pre-filling allocation role. */
 export async function getConsultantsWithDefaultRole(): Promise<
   { id: string; name: string; role_id: string | null }[]
@@ -220,13 +211,7 @@ export async function getConsultantsWithDetails(
   year: number,
   week: number
 ): Promise<ConsultantWithDetails[]> {
-  const { data: consultantsData, error: consultantsError } = await supabase
-    .from("consultants")
-    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
-    .order("name");
-
-  if (consultantsError) throw consultantsError;
-  const consultants = consultantsData ?? [];
+  const consultants = await getCachedConsultantsRaw();
 
   if (consultants.length === 0) return [];
 

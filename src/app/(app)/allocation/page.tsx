@@ -44,6 +44,8 @@ export default async function AllocationPage({ searchParams }: Props) {
           year={year}
           weekFrom={weekFrom}
           weekTo={weekTo}
+          currentYear={currentYear}
+          currentWeek={currentWeek}
         />
       </div>
     </AllocationViewportAdapter>

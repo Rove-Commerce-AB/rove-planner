@@ -14,9 +14,3 @@ export { PanelHeader } from "./PanelHeader";
 export { PanelToolbar } from "./PanelToolbar";
 export { PanelSection } from "./PanelSection";
 export { DetailPageHeader } from "./DetailPageHeader";
-export {
-  DataTable,
-  type DataTableColumn,
-  type DataTableEmptyState,
-  type DataTableProps,
-} from "./DataTable";

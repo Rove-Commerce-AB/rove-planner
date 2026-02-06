@@ -1,7 +1,7 @@
 import { supabase } from "./supabaseClient";
 import { getProjectsByCustomerIds } from "./projects";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
-import type { CustomerWithDetails } from "@/types";
+import type { CustomerWithDetails, ProjectType } from "@/types";
 
 export type Customer = {
   id: string;
@@ -49,13 +49,18 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
 
   let projectsByCustomer = new Map<
     string,
-    { id: string; name: string; is_active: boolean }[]
+    { id: string; name: string; is_active: boolean; type: string }[]
   >();
   try {
     const projects = await getProjectsByCustomerIds([data.id]);
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
-      list.push({ id: p.id, name: p.name, is_active: p.is_active });
+      list.push({
+        id: p.id,
+        name: p.name,
+        is_active: p.is_active,
+        type: p.type ?? "customer",
+      });
       projectsByCustomer.set(p.customer_id, list);
     }
   } catch {
@@ -82,6 +87,7 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
       id: p.id,
       name: p.name,
       isActive: p.is_active,
+      type: p.type as ProjectType,
     })),
   };
 }
@@ -159,13 +165,18 @@ export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> 
 
   let projectsByCustomer = new Map<
     string,
-    { id: string; name: string; is_active: boolean }[]
+    { id: string; name: string; is_active: boolean; type: string }[]
   >();
   try {
     const projects = await getProjectsByCustomerIds(customers.map((c) => c.id));
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
-      list.push({ id: p.id, name: p.name, is_active: p.is_active });
+      list.push({
+        id: p.id,
+        name: p.name,
+        is_active: p.is_active,
+        type: p.type ?? "customer",
+      });
       projectsByCustomer.set(p.customer_id, list);
     }
   } catch {
@@ -193,6 +204,7 @@ export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> 
         id: p.id,
         name: p.name,
         isActive: p.is_active,
+        type: p.type as ProjectType,
       })),
     };
   });

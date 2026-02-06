@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, Fragment, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
 import {
-  getCurrentYearWeek,
   getMonthSpansForWeeks,
   addWeeksToYearWeek,
 } from "@/lib/dateUtils";
@@ -16,8 +16,16 @@ import {
   updateAllocation,
   deleteAllocation,
 } from "@/lib/allocations";
-import { AddAllocationModal } from "./AddAllocationModal";
-import { EditAllocationModal } from "./EditAllocationModal";
+
+const AddAllocationModal = dynamic(
+  () => import("./AddAllocationModal").then((m) => ({ default: m.AddAllocationModal })),
+  { ssr: false }
+);
+
+const EditAllocationModal = dynamic(
+  () => import("./EditAllocationModal").then((m) => ({ default: m.EditAllocationModal })),
+  { ssr: false }
+);
 
 type Props = {
   data: AllocationPageData | null;
@@ -25,6 +33,9 @@ type Props = {
   year: number;
   weekFrom: number;
   weekTo: number;
+  /** Passed from server so first paint matches hydration (avoids jump from current-week highlight). */
+  currentYear: number;
+  currentWeek: number;
 };
 
 function buildPerConsultantView(data: AllocationPageData) {
@@ -250,6 +261,8 @@ export function AllocationPageClient({
   year,
   weekFrom,
   weekTo,
+  currentYear: currentYearProp,
+  currentWeek: currentWeekProp,
 }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"consultant" | "customer">(
@@ -556,7 +569,8 @@ export function AllocationPageClient({
     };
   }, [cellDragConsultant, handleCellDragEnd]);
 
-  const { week: currentWeekNum, year: currentYearNum } = getCurrentYearWeek();
+  const currentYearNum = currentYearProp;
+  const currentWeekNum = currentWeekProp;
   const isCurrentWeekHeader = (w: { year: number; week: number }) =>
     w.year === currentYearNum && w.week === currentWeekNum;
 
@@ -595,7 +609,8 @@ export function AllocationPageClient({
   const perCustomer = buildPerCustomerView(filteredData!);
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
-  const { week: currentWeek, year: currentYear } = getCurrentYearWeek();
+  const currentWeek = currentWeekProp;
+  const currentYear = currentYearProp;
   const monthSpans = getMonthSpansForWeeks(data.weeks);
   const isCurrentWeek = (w: { year: number; week: number }) =>
     w.year === currentYear && w.week === currentWeek;
@@ -669,7 +684,7 @@ export function AllocationPageClient({
                 </div>
                 <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col className="w-[300px]" />
+                    <col style={{ width: 300 }} />
                     {data.weeks.map((w) => (
                       <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
@@ -678,6 +693,7 @@ export function AllocationPageClient({
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
                       <th
                         rowSpan={2}
+                        style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
                         className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
                         Consultant / Project
@@ -754,10 +770,14 @@ export function AllocationPageClient({
                           cellDragWeekEnd !== null &&
                           i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
                           i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
+                        const dragMin = Math.min(cellDragWeekStart ?? 0, cellDragWeekEnd ?? 0);
+                        const dragMax = Math.max(cellDragWeekStart ?? 0, cellDragWeekEnd ?? 0);
+                        const isDragLeft = isDragRange && i === dragMin;
+                        const isDragRight = isDragRange && i === dragMax;
                         return (
                           <td
                             key={i}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -886,7 +906,7 @@ export function AllocationPageClient({
                 </h3>
                 <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col className="w-[300px]" />
+                    <col style={{ width: 300 }} />
                     {data.weeks.map((w) => (
                       <col key={`ext-${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
@@ -895,6 +915,7 @@ export function AllocationPageClient({
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
                       <th
                         rowSpan={2}
+                        style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
                         className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
                         Consultant / Project
@@ -988,10 +1009,14 @@ export function AllocationPageClient({
                           cellDragWeekEnd !== null &&
                           i >= Math.min(cellDragWeekStart, cellDragWeekEnd) &&
                           i <= Math.max(cellDragWeekStart, cellDragWeekEnd);
+                        const dragMin = Math.min(cellDragWeekStart ?? 0, cellDragWeekEnd ?? 0);
+                        const dragMax = Math.max(cellDragWeekStart ?? 0, cellDragWeekEnd ?? 0);
+                        const isDragLeft = isDragRange && i === dragMin;
+                        const isDragRight = isDragRange && i === dragMax;
                         return (
                           <td
                             key={i}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40 ring-1 ring-inset ring-brand-signal/50" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -1145,7 +1170,7 @@ export function AllocationPageClient({
               </div>
               <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
               <colgroup>
-                <col className="w-[300px]" />
+                <col style={{ width: 300 }} />
                 {data.weeks.map((w) => (
                   <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                 ))}
@@ -1154,6 +1179,7 @@ export function AllocationPageClient({
                 <tr className="border-b border-grid">
                   <th
                     rowSpan={2}
+                    style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
                     className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                   >
                     Customer / Consultant

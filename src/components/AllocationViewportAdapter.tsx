@@ -65,7 +65,7 @@ export function AllocationViewportAdapter({
 
     const ro = new ResizeObserver(updateWeeks);
     ro.observe(el);
-    updateWeeks();
+    // Don't run updateWeeks() on mount – only on resize – to avoid URL change and visual jump on first load
 
     return () => {
       ro.disconnect();

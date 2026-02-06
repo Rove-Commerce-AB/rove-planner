@@ -1,10 +1,3 @@
-export type Consultant = {
-  id: string;
-  name: string;
-  title: string;
-  initials: string;
-};
-
 export type Project = {
   id: string;
   name: string;
@@ -31,27 +24,6 @@ export type ProjectWithDetails = {
   totalHoursAllocated: number;
   consultantInitials: string[];
   color: string;
-};
-
-export type WeekAllocation = {
-  year: number;
-  week: number;
-  hours: number;
-  projectColor: string;
-  /** Available hours for this week (from calendar, minus holidays, × work%). Used for bar width. */
-  availableHours?: number;
-};
-
-export type ConsultantAllocation = {
-  consultant: Consultant;
-  weeks: WeekAllocation[];
-};
-
-export type DashboardKpis = {
-  consultantCount: number;
-  customerCount: number;
-  activeProjectCount: number;
-  allocationThisWeekPercent: number;
 };
 
 export type ConsultantWithDetails = {
@@ -84,6 +56,7 @@ export type CustomerProjectSummary = {
   id: string;
   name: string;
   isActive: boolean;
+  type: ProjectType;
 };
 
 export type CustomerWithDetails = {

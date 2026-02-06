@@ -413,12 +413,12 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
             </div>
           </Panel>
 
-          {/* HOURLY RATES PER ROLE */}
+          {/* RATES/TASKS */}
           <Panel>
             <h2
               className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
             >
-              HOURLY RATES PER ROLE
+              RATES/TASKS
             </h2>
             <div className="p-5">
               {ratesError && (
@@ -457,7 +457,7 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     Name
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-text-primary">
-                    Status
+                    Type
                   </th>
                 </tr>
               </thead>
@@ -481,16 +481,12 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                       <td className={`border-b ${tableBorder} px-4 py-3 font-medium text-text-primary`}>
                         {p.name}
                       </td>
-                      <td className={`border-b ${tableBorder} px-4 py-3`}>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            p.isActive
-                              ? "bg-success/20 text-success"
-                              : "text-text-primary opacity-70"
-                          }`}
-                        >
-                          {p.isActive ? "Active" : "Inactive"}
-                        </span>
+                      <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary`}>
+                        {p.type === "customer"
+                          ? "Customer"
+                          : p.type === "internal"
+                            ? "Internal"
+                            : "Absence"}
                       </td>
                     </tr>
                   ))
