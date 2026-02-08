@@ -26,7 +26,7 @@ export default async function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <ActiveProjects projects={data.activeProjects} />
-          <RevenueForecastPanel forecast={forecast} />
+          <RevenueForecastPanel forecast={forecast} currentYear={data.currentYear} />
         </div>
       </div>
     </div>

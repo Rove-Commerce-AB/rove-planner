@@ -1,18 +1,47 @@
 import { unstable_cache } from "next/cache";
-import { getWorkingDaysByMonthInWeek } from "./dateUtils";
-import { getAllocationsForWeekRange } from "./allocations";
+import { getWorkingDaysByMonthInWeek, isoWeeksInYear } from "./dateUtils";
+import { getAllocationsForWeeks } from "./allocations";
 import { getCalendarHolidays } from "./calendarHolidays";
 import { getCustomerRates } from "./customerRates";
 import { supabase } from "./supabaseClient";
+
+export type RevenueForecastByCustomer = {
+  customerId: string;
+  customerName: string;
+  revenue: number;
+};
 
 export type RevenueForecastMonth = {
   year: number;
   month: number;
   revenue: number;
   currency: string;
+  byCustomer: RevenueForecastByCustomer[];
 };
 
 const REVENUE_FORECAST_CACHE_REVALIDATE = 120;
+
+function getWeeksInRange(
+  yearFrom: number,
+  weekFrom: number,
+  yearTo: number,
+  weekTo: number
+): { year: number; week: number }[] {
+  const weeks: { year: number; week: number }[] = [];
+  let y = yearFrom;
+  let w = weekFrom;
+  while (y < yearTo || (y === yearTo && w <= weekTo)) {
+    weeks.push({ year: y, week: w });
+    const maxW = isoWeeksInYear(y);
+    if (w < maxW) {
+      w++;
+    } else {
+      y++;
+      w = 1;
+    }
+  }
+  return weeks;
+}
 
 /**
  * Planned revenue per month based on allocations.
@@ -27,16 +56,8 @@ export async function getRevenueForecast(
 ): Promise<RevenueForecastMonth[]> {
   return unstable_cache(
     async () => {
-      let allocations: Awaited<ReturnType<typeof getAllocationsForWeekRange>>;
-      if (yearFrom === yearTo) {
-        allocations = await getAllocationsForWeekRange(yearFrom, weekFrom, weekTo);
-      } else {
-        const [first, second] = await Promise.all([
-          getAllocationsForWeekRange(yearFrom, weekFrom, 52),
-          getAllocationsForWeekRange(yearTo, 1, weekTo),
-        ]);
-        allocations = [...first, ...second];
-      }
+      const weeks = getWeeksInRange(yearFrom, weekFrom, yearTo, weekTo);
+      const allocations = await getAllocationsForWeeks(weeks);
       if (allocations.length === 0) {
         return [];
       }
@@ -81,6 +102,13 @@ export async function getRevenueForecast(
         .filter(Boolean) as string[]
     ),
   ];
+  const { data: customersData } = await supabase
+    .from("customers")
+    .select("id,name")
+    .in("id", customerIds);
+  const customerNames = new Map(
+    (customersData ?? []).map((c) => [c.id, c.name ?? c.id])
+  );
   const ratesByCustomer = new Map<string, { role_id: string; rate_per_hour: number; currency: string }[]>();
   await Promise.all(
     customerIds.map(async (cid) => {
@@ -112,7 +140,10 @@ export async function getRevenueForecast(
     })
   );
 
-  const revenueByMonth = new Map<string, { revenue: number; currency: string }>();
+  const revenueByMonth = new Map<
+    string,
+    { revenue: number; currency: string; byCustomer: Map<string, number> }
+  >();
 
   for (const a of allocations) {
     const consultant = consultants.get(a.consultant_id);
@@ -147,19 +178,30 @@ export async function getRevenueForecast(
     const key = `${year}-${String(month).padStart(2, "0")}`;
     const hoursInMonth = (a.hours * workingDays) / totalWorkingDays;
     const revenue = hoursInMonth * rate;
-    const existing = revenueByMonth.get(key);
-    if (existing) {
-      existing.revenue += revenue;
-    } else {
-      revenueByMonth.set(key, { revenue, currency });
+    let existing = revenueByMonth.get(key);
+    if (!existing) {
+      existing = { revenue: 0, currency, byCustomer: new Map() };
+      revenueByMonth.set(key, existing);
     }
+    existing.revenue += revenue;
+    const custRev = existing.byCustomer.get(customerId) ?? 0;
+    existing.byCustomer.set(customerId, custRev + revenue);
   }
   }
 
       return Array.from(revenueByMonth.entries())
-        .map(([key, { revenue, currency }]) => {
+        .map(([key, { revenue, currency, byCustomer }]) => {
           const [y, m] = key.split("-").map(Number);
-          return { year: y, month: m, revenue, currency };
+          const byCustomerList: RevenueForecastByCustomer[] = Array.from(
+            byCustomer.entries()
+          )
+            .map(([customerId, rev]) => ({
+              customerId,
+              customerName: customerNames.get(customerId) ?? customerId,
+              revenue: rev,
+            }))
+            .sort((a, b) => a.customerName.localeCompare(b.customerName));
+          return { year: y, month: m, revenue, currency, byCustomer: byCustomerList };
         })
         .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
     },

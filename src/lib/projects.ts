@@ -258,6 +258,8 @@ export type ProjectWithCustomer = {
   customerName: string;
   customerColor: string;
   type: ProjectType;
+  isActive: boolean;
+  customerIsActive: boolean;
 };
 
 export async function getProjectsWithCustomer(
@@ -265,7 +267,7 @@ export async function getProjectsWithCustomer(
 ): Promise<ProjectWithCustomer[]> {
   const { data: projects, error: projErr } = await supabase
     .from("projects")
-    .select("id,name,customer_id,type")
+    .select("id,name,customer_id,type,is_active")
     .order("name");
 
   if (projErr) throw projErr;
@@ -277,7 +279,7 @@ export async function getProjectsWithCustomer(
   const customerIds = [...new Set(filtered.map((p) => p.customer_id))];
   const { data: customers } = await supabase
     .from("customers")
-    .select("id,name,color")
+    .select("id,name,color,is_active")
     .in("id", customerIds);
   const customerMap = new Map(
     (customers ?? []).map((c) => [
@@ -285,6 +287,7 @@ export async function getProjectsWithCustomer(
       {
         name: c.name,
         color: c.color || DEFAULT_CUSTOMER_COLOR,
+        is_active: c.is_active ?? true,
       },
     ])
   );
@@ -298,6 +301,8 @@ export async function getProjectsWithCustomer(
       customerName: cust?.name ?? "Unknown",
       customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
       type: (p.type ?? "customer") as ProjectType,
+      isActive: p.is_active ?? true,
+      customerIsActive: cust?.is_active ?? true,
     };
   });
 }

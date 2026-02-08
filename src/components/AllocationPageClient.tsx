@@ -251,15 +251,146 @@ function buildPerCustomerView(data: AllocationPageData) {
   });
 }
 
+function buildPerProjectView(data: AllocationPageData) {
+  const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
+  const projectMap = new Map(
+    data.projects.map((p) => [
+      p.id,
+      { customer_id: p.customer_id, customerName: p.customerName, name: p.name },
+    ])
+  );
+  const ROW_KEY_SEP = "|";
+  const keyFor = (consultantId: string, roleId: string | null) =>
+    `${consultantId}${ROW_KEY_SEP}${roleId ?? "__none__"}`;
+  const weekKey = (y: number, w: number) => `${y}-${w}`;
+
+  const byProject = new Map<
+    string,
+    Map<string, Map<string, { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[]>>
+  >();
+
+  for (const a of data.allocations) {
+    const proj = projectMap.get(a.project_id);
+    if (!proj) continue;
+    const projectName = proj.name;
+    const roleId = a.role_id ?? null;
+    const roleName = roleId ? roleMap.get(roleId) ?? "Unknown" : "";
+    const rowKey = keyFor(a.consultant_id, roleId);
+
+    if (!byProject.has(a.project_id)) {
+      byProject.set(a.project_id, new Map());
+    }
+    const byConsultantRole = byProject.get(a.project_id)!;
+    if (!byConsultantRole.has(rowKey)) {
+      byConsultantRole.set(rowKey, new Map());
+    }
+    const byWeek = byConsultantRole.get(rowKey)!;
+    const yw = weekKey(a.year, a.week);
+    if (!byWeek.has(yw)) {
+      byWeek.set(yw, []);
+    }
+    byWeek.get(yw)!.push({
+      id: a.id,
+      projectId: a.project_id,
+      hours: a.hours,
+      roleName,
+      roleId,
+      projectName,
+    });
+  }
+
+  const sortedProjects = [...data.projects]
+    .filter(
+      (p) => p.isActive !== false && p.customerIsActive !== false
+    )
+    .sort((a, b) => {
+      const custCmp = a.customerName.localeCompare(b.customerName);
+      if (custCmp !== 0) return custCmp;
+      return a.name.localeCompare(b.name);
+    });
+
+  return sortedProjects.map((proj) => {
+    const byConsultantRole = byProject.get(proj.id);
+    const consultantRows: {
+      consultantId: string;
+      consultantName: string;
+      roleId: string | null;
+      roleName: string;
+      weeks: { week: number; cells: { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
+    }[] = [];
+
+    if (byConsultantRole) {
+      const consultantMap = new Map(data.consultants.map((c) => [c.id, c]));
+      const rows: { key: string; consultantId: string; roleId: string | null }[] = [];
+      for (const rowKey of byConsultantRole.keys()) {
+        const [consultantId, rolePart] = rowKey.split(ROW_KEY_SEP);
+        const roleId = rolePart === "__none__" ? null : rolePart;
+        rows.push({ key: rowKey, consultantId, roleId });
+      }
+      rows.sort((a, b) => {
+        const nameA = consultantMap.get(a.consultantId)?.name ?? "";
+        const nameB = consultantMap.get(b.consultantId)?.name ?? "";
+        const nameCmp = nameA.localeCompare(nameB);
+        if (nameCmp !== 0) return nameCmp;
+        const roleA = a.roleId ? roleMap.get(a.roleId) ?? "" : "";
+        const roleB = b.roleId ? roleMap.get(b.roleId) ?? "" : "";
+        return roleA.localeCompare(roleB);
+      });
+      for (const { key: rowKey, consultantId, roleId } of rows) {
+        const c = consultantMap.get(consultantId);
+        const byWeek = byConsultantRole.get(rowKey);
+        const weeks = data.weeks.map((w) => ({
+          week: w.week,
+          cells: byWeek?.get(weekKey(w.year, w.week)) ?? [],
+        }));
+        consultantRows.push({
+          consultantId,
+          consultantName: c?.name ?? "Unknown",
+          roleId,
+          roleName: roleId ? roleMap.get(roleId) ?? "Unknown" : "",
+          weeks,
+        });
+      }
+    }
+
+    const totalByWeek = new Map<string, number>();
+    for (const cr of consultantRows) {
+      cr.weeks.forEach(({ cells }, j) => {
+        const w = data.weeks[j];
+        const sum = cells.reduce((s, x) => s + x.hours, 0);
+        if (sum > 0 && w) {
+          const key = weekKey(w.year, w.week);
+          totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + sum);
+        }
+      });
+    }
+
+    return {
+      project: {
+        id: proj.id,
+        customer_id: proj.customer_id,
+        customerName: proj.customerName,
+        name: proj.name,
+        label: `${proj.customerName} - ${proj.name}`,
+      },
+      consultantRows,
+      totalByWeek,
+    };
+  });
+}
+
 function formatWeekLabel(week: number, year: number) {
   return `v${week} ${year}`;
 }
 
 function getAllocationCellBgClass(pct: number): string {
   if (pct === 0) return "bg-bg-muted/20";
-  if (pct < 85) return "bg-warning/15";
-  if (pct <= 115) return "bg-success/15";
-  return "bg-danger/15";
+  if (pct < 50) return "bg-danger/18";
+  if (pct < 75) return "bg-danger/10";
+  if (pct < 95) return "bg-success/10";
+  if (pct <= 105) return "bg-success/20";
+  if (pct <= 120) return "bg-brand-blue/14";
+  return "bg-brand-blue/25";
 }
 
 export function AllocationPageClient({
@@ -272,7 +403,7 @@ export function AllocationPageClient({
   currentWeek: currentWeekProp,
 }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"consultant" | "customer">(
+  const [activeTab, setActiveTab] = useState<"consultant" | "customer" | "project">(
     "consultant"
   );
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -305,6 +436,9 @@ export function AllocationPageClient({
     new Set()
   );
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(
+    new Set()
+  );
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set()
   );
   const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
@@ -535,6 +669,14 @@ export function AllocationPageClient({
       return next;
     });
   };
+  const toggleProject = (id: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleCellDragEnd = useCallback(() => {
     if (
@@ -614,6 +756,7 @@ export function AllocationPageClient({
 
   const perConsultant = buildPerConsultantView(filteredData!);
   const perCustomer = buildPerCustomerView(filteredData!);
+  const perProject = buildPerProjectView(data);
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const currentWeek = currentWeekProp;
@@ -632,12 +775,13 @@ export function AllocationPageClient({
 
       <Tabs
         value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "consultant" | "customer")}
+        onValueChange={(v) => setActiveTab(v as "consultant" | "customer" | "project")}
         className="mb-4"
       >
         <TabsList>
           <TabsTrigger value="consultant">Per consultant</TabsTrigger>
           <TabsTrigger value="customer">Per customer</TabsTrigger>
+          <TabsTrigger value="project">Per project</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -826,7 +970,7 @@ export function AllocationPageClient({
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             <span className="whitespace-nowrap">
-                              {pr.projectName} ({pr.customerName})
+                              {pr.customerName} - {pr.projectName}
                               {(pr.roleName || row.consultant.defaultRoleName) && (
                                 <span className="ml-2 text-text-primary opacity-70">
                                   · {pr.roleName || row.consultant.defaultRoleName}
@@ -1066,7 +1210,7 @@ export function AllocationPageClient({
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             <span className="whitespace-nowrap">
-                              {pr.projectName} ({pr.customerName})
+                              {pr.customerName} - {pr.projectName}
                               {(pr.roleName || row.consultant.defaultRoleName) && (
                                 <span className="ml-2 text-text-primary opacity-70">
                                   · {pr.roleName || row.consultant.defaultRoleName}
@@ -1346,6 +1490,219 @@ export function AllocationPageClient({
               })}
               </tbody>
             </table>
+            </div>
+          )}
+          {activeTab === "project" && (
+            <div className="p-2">
+              <div className="mb-2 flex items-center justify-end gap-2 px-1">
+                <span className="text-[10px] tabular-nums text-text-primary opacity-70">
+                  {weekFrom <= weekTo
+                    ? `${year} · v${weekFrom}–v${weekTo}`
+                    : `${year} v${weekFrom} – ${year + 1} v${weekTo}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={goToPreviousWeeks}
+                  onMouseEnter={() => router.prefetch(getPreviousUrl())}
+                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                  aria-label="Previous weeks"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextWeeks}
+                  onMouseEnter={() => router.prefetch(getNextUrl())}
+                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                  aria-label="Next weeks"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
+                <colgroup>
+                  <col style={{ width: 300 }} />
+                  {data.weeks.map((w) => (
+                    <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-grid">
+                    <th
+                      rowSpan={2}
+                      style={{ width: 300, maxWidth: 300, boxSizing: "border-box" }}
+                      className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+                    >
+                      Project / Consultant
+                    </th>
+                    {monthSpans.map((span, i) => (
+                      <th
+                        key={i}
+                        colSpan={span.colSpan}
+                        className="border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                      >
+                        {span.label}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr className="border-b border-grid">
+                    {renderWeekHeaderCells("project", "border-grid")}
+                  </tr>
+                </thead>
+                <tbody>
+                  {perProject.map((row) => {
+                    const expanded = expandedProjects.has(row.project.id);
+                    const hasConsultants = row.consultantRows.length > 0;
+                    return (
+                      <Fragment key={row.project.id}>
+                        <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
+                          <td className="border-r border-grid-light px-2 py-1 align-top">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                hasConsultants && toggleProject(row.project.id)
+                              }
+                              className="flex items-center gap-1 whitespace-nowrap text-left"
+                            >
+                              {hasConsultants ? (
+                                expanded ? (
+                                  <ChevronDown className="h-4 w-4 shrink-0" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0" />
+                                )
+                              ) : (
+                                <span className="w-4 shrink-0" />
+                              )}
+                              <span className="font-semibold text-text-primary">
+                                {row.project.label}
+                              </span>
+                            </button>
+                          </td>
+                          {data.weeks.map((w, i) => {
+                            const total =
+                              row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
+                            const hasBooking = total > 0;
+                            const prev = data.weeks[i - 1];
+                            const prevTotal =
+                              i > 0 && prev
+                                ? row.totalByWeek.get(
+                                    `${prev.year}-${prev.week}`
+                                  ) ?? 0
+                                : 0;
+                            const showLeftBorder =
+                              hasBooking && (i === 0 || prevTotal === 0);
+                            return (
+                              <td
+                                key={`${w.year}-${w.week}`}
+                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
+                              >
+                                {hasBooking ? `${total}h` : null}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {expanded &&
+                          row.consultantRows.map((cr) => (
+                            <tr
+                              key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
+                              className="border-b border-grid-light last:border-border bg-bg-default"
+                            >
+                              <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
+                                <span className="whitespace-nowrap font-normal text-text-primary">
+                                  {cr.consultantName}
+                                  {cr.roleName ? (
+                                    <span className="opacity-80">
+                                      {" "}
+                                      · {cr.roleName}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </td>
+                              {cr.weeks.map((w, i) => {
+                                const cells = w.cells;
+                                const totalHours = cells.reduce(
+                                  (s, x) => s + x.hours,
+                                  0
+                                );
+                                const hasBooking = totalHours > 0;
+                                const prevHours =
+                                  i > 0
+                                    ? cr.weeks[i - 1].cells.reduce(
+                                        (s, x) => s + x.hours,
+                                        0
+                                      )
+                                    : 0;
+                                const showLeftBorder =
+                                  hasBooking &&
+                                  (i === 0 || prevHours === 0);
+                                const weekInfo = data.weeks[i];
+                                const isEditing =
+                                  editingCell?.projectId === row.project.id &&
+                                  editingCell?.consultantId === cr.consultantId &&
+                                  editingCell?.roleId === cr.roleId &&
+                                  editingCell?.weekIndex === i;
+                                return (
+                                  <td
+                                    key={`${weekInfo.year}-${weekInfo.week}`}
+                                    className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${isCurrentWeek(weekInfo) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
+                                    onClick={(e) => {
+                                      if (
+                                        (e.target as HTMLElement).closest(
+                                          "input"
+                                        )
+                                      )
+                                        return;
+                                      setEditingCell({
+                                        customerId: row.project.customer_id,
+                                        consultantId: cr.consultantId,
+                                        roleId: cr.roleId,
+                                        weekIndex: i,
+                                        week: w.week,
+                                        year: weekInfo.year,
+                                        allocationId: cells[0]?.id ?? null,
+                                        otherAllocationIds: cells
+                                          .slice(1)
+                                          .map((c) => c.id),
+                                        projectId: row.project.id,
+                                        currentHours: totalHours,
+                                      });
+                                      setEditingCellValue(
+                                        String(totalHours || "")
+                                      );
+                                    }}
+                                  >
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={editingCellValue}
+                                        onChange={(e) =>
+                                          setEditingCellValue(e.target.value)
+                                        }
+                                        onFocus={(e) => e.target.select()}
+                                        onBlur={handleCellInputBlur}
+                                        onKeyDown={handleCellInputKeyDown}
+                                        disabled={savingCell}
+                                        className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        onClick={(e) => e.stopPropagation()}
+                                        autoFocus
+                                      />
+                                    ) : hasBooking ? (
+                                      <span className="text-[10px] text-text-primary">
+                                        {totalHours}h
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
       </div>

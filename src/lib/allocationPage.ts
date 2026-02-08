@@ -88,6 +88,8 @@ export type AllocationProject = {
   customer_id: string;
   customerName: string;
   customerColor: string;
+  isActive?: boolean;
+  customerIsActive?: boolean;
 };
 
 // Customer for per-customer view
