@@ -5,6 +5,9 @@ import { ActiveProjects } from "@/components/ActiveProjects";
 import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { PageHeader } from "@/components/ui";
 
+// Avoid prerender at build time: dashboard fetches from Supabase, which can be unavailable or return 5xx during Vercel build.
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const { year: currentYear } = getCurrentYearWeek();
   const [data, forecast] = await Promise.all([

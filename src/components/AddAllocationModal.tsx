@@ -352,10 +352,12 @@ export function AddAllocationModal({
               }
               triggerClassName="mt-1.5 border-panel"
               viewportClassName="max-h-60 overflow-y-auto"
-              options={projects.map((p) => ({
-                value: p.id,
-                label: `${p.name} (${p.customerName})`,
-              }))}
+              options={[...projects]
+                .sort((a, b) => a.customerName.localeCompare(b.customerName))
+                .map((p) => ({
+                  value: p.id,
+                  label: `${p.customerName} - ${p.name}`,
+                }))}
             />
           </div>
 
