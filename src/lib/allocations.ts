@@ -182,13 +182,21 @@ export async function createAllocationsForWeekRange(
   hoursPerWeek: number
 ): Promise<AllocationRecord[]> {
   const results: AllocationRecord[] = [];
+  const weeks: { y: number; w: number }[] = [];
 
-  for (let w = weekFrom; w <= weekTo; w++) {
+  if (weekFrom <= weekTo) {
+    for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
+  } else {
+    for (let w = weekFrom; w <= 52; w++) weeks.push({ y: year, w });
+    for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
+  }
+
+  for (const { y, w } of weeks) {
     const existing = await findExistingAllocation(
       consultant_id,
       project_id,
       role_id,
-      year,
+      y,
       w
     );
 
@@ -201,7 +209,7 @@ export async function createAllocationsForWeekRange(
         consultant_id,
         project_id,
         role_id,
-        year,
+        year: y,
         week: w,
         hours: hoursPerWeek,
       });

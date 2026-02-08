@@ -188,8 +188,6 @@ export function AddAllocationModal({
       return;
     }
     const effectiveRoleId = project?.type === "customer" ? roleId : null;
-    const from = Math.min(fromWeek, toWeek);
-    const to = Math.max(fromWeek, toWeek);
     setSubmitting(true);
     try {
       if (inputMode === "percent") {
@@ -204,8 +202,8 @@ export function AddAllocationModal({
           projectId,
           effectiveRoleId,
           allocYear,
-          from,
-          to,
+          fromWeek,
+          toWeek,
           pct
         );
       } else {
@@ -220,8 +218,8 @@ export function AddAllocationModal({
           projectId,
           effectiveRoleId,
           allocYear,
-          from,
-          to,
+          fromWeek,
+          toWeek,
           hours
         );
       }

@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui";
 
 // Date format: "YYYY-MM-DD HH:mm". AI adds new rows automatically on code changes (see PROJECT_RULES.md).
 const releaseNotes: { date: string; description: string }[] = [
+  { date: "2026-02-08 12:34", description: "Add Allocation: year taken from dragged week so booking in 2026 cells uses 2026. createAllocationsForWeekRange handles year boundary (weekFrom > weekTo)." },
   { date: "2026-02-08 11:46", description: "Dashboard page: force dynamic rendering so Vercel build does not prerender it (avoids Supabase 500 during build)." },
   { date: "2026-02-08 11:20", description: "Add Allocation: project dropdown shows \"Customer - Project\" and is sorted by customer." },
   { date: "2026-02-08 11:02", description: "Settings page: all Swedish text translated to English (Access/Users, form labels, buttons, confirm modal, error messages)." },

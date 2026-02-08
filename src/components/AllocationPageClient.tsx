@@ -545,7 +545,7 @@ export function AllocationPageClient({
       setAddInitialParams({
         consultantId: cellDragConsultant.id,
         consultantName: cellDragConsultant.name,
-        year: data.year,
+        year: wFrom.year,
         weekFrom: wFrom.week,
         weekTo: wTo.week,
       });
