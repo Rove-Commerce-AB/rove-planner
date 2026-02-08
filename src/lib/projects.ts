@@ -322,7 +322,7 @@ export async function getProjectsAvailableForConsultant(
 
   const { data: projects, error: projErr } = await supabase
     .from("projects")
-    .select("id,name,customer_id,type")
+    .select("id,name,customer_id,type,is_active")
     .in("customer_id", customerIds)
     .order("name");
 
@@ -330,7 +330,7 @@ export async function getProjectsAvailableForConsultant(
 
   const { data: customers } = await supabase
     .from("customers")
-    .select("id,name,color")
+    .select("id,name,color,is_active")
     .in("id", [...new Set(projects.map((p) => p.customer_id))]);
 
   const customerMap = new Map(
@@ -339,6 +339,7 @@ export async function getProjectsAvailableForConsultant(
       {
         name: c.name,
         color: c.color || DEFAULT_CUSTOMER_COLOR,
+        is_active: c.is_active ?? true,
       },
     ])
   );
@@ -352,6 +353,8 @@ export async function getProjectsAvailableForConsultant(
       customerName: cust?.name ?? "Unknown",
       customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
       type: (p.type ?? "customer") as ProjectType,
+      isActive: p.is_active ?? true,
+      customerIsActive: cust?.is_active ?? true,
     };
   });
 }

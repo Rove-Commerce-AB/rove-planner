@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/ui";
 
 // Date format: "YYYY-MM-DD HH:mm". AI adds new rows automatically on code changes (see PROJECT_RULES.md).
 const releaseNotes: { date: string; description: string }[] = [
+  { date: "2026-02-06 14:02", description: "Planned revenue (forecast): panel shows expandable years (current year open by default), then months, then per-customer breakdown; year total row at bottom of each year." },
+  { date: "2026-02-06 14:01", description: "Revenue forecast: allocations fetched with pagination (getAllocationsForWeeks) so all rows are included; fixes undercounted forecast when >1000 allocation rows per year." },
   { date: "2026-02-08 12:49", description: "Customer and Project Rates: ROLE dropdown scrollable (max-h-60 overflow-y-auto) so all roles can be selected." },
   { date: "2026-02-08 12:34", description: "Add Allocation: year taken from dragged week so booking in 2026 cells uses 2026. createAllocationsForWeekRange handles year boundary (weekFrom > weekTo)." },
   { date: "2026-02-08 11:46", description: "Dashboard page: force dynamic rendering so Vercel build does not prerender it (avoids Supabase 500 during build)." },
