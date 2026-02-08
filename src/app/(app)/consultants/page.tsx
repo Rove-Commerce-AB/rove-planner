@@ -19,7 +19,9 @@ export default async function ConsultantsPage() {
 
   return (
     <div className="p-6">
-      <ConsultantsPageClient consultants={consultants} error={error} />
+      <div className="max-w-6xl">
+        <ConsultantsPageClient consultants={consultants} error={error} />
+      </div>
     </div>
   );
 }

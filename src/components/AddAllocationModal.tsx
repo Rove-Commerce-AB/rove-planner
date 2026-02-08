@@ -4,8 +4,11 @@ import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Select } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultants";
-import { getProjectsWithCustomer } from "@/lib/projects";
-import { getRoles } from "@/lib/roles";
+import {
+  getProjectsWithCustomer,
+  getProjectsAvailableForConsultant,
+} from "@/lib/projects";
+import { getRolesWithRateForAllocation } from "@/lib/projectRates";
 import { createAllocationsForWeekRange } from "@/lib/allocations";
 import { createAllocationsByPercent } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
@@ -28,7 +31,13 @@ type Props = {
 };
 
 type Consultant = { id: string; name: string; role_id: string | null };
-type Project = { id: string; name: string; customerName: string };
+type Project = {
+  id: string;
+  name: string;
+  customerName: string;
+  customer_id: string;
+  type: "customer" | "internal" | "absence";
+};
 type Role = { id: string; name: string };
 
 export function AddAllocationModal({
@@ -66,6 +75,7 @@ export function AddAllocationModal({
       const allocY = initialYear ?? year;
       setAllocYear(allocY);
       setConsultantId(initialConsultantId ?? "");
+      setProjectId("");
       if (initialWeekFrom != null && initialWeekTo != null) {
         setFromWeek(initialWeekFrom);
         setToWeek(initialWeekTo);
@@ -74,41 +84,93 @@ export function AddAllocationModal({
         setFromWeek(week);
         setToWeek(week);
       }
-      Promise.all([
-        getConsultantsWithDefaultRole(),
-        getProjectsWithCustomer(),
-        getRoles(),
-      ])
-        .then(([consultantsData, projs, rolesData]) => {
-          setConsultants(consultantsData);
-          setProjects(projs);
-          setRoles(rolesData);
-        })
-        .catch(() => {
-          setConsultants([]);
-          setProjects([]);
-          setRoles([]);
-        });
+      getConsultantsWithDefaultRole()
+        .then(setConsultants)
+        .catch(() => setConsultants([]));
     }
   }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear, initialWeekFrom, initialWeekTo]);
 
-  // Set default consultant only after options are loaded so Select gets value + options together
+  // When consultant changes, load projects available for that consultant (or all if empty).
+  // Always use cancellation so a slow "all projects" fetch can't overwrite a later filtered result.
   useEffect(() => {
-    if (isOpen && consultants.length > 0 && !consultantId) {
-      setConsultantId(
-        initialConsultantId && consultants.some((c) => c.id === initialConsultantId)
-          ? initialConsultantId
-          : consultants[0].id
-      );
+    if (!isOpen) return;
+    let cancelled = false;
+    if (!consultantId) {
+      getProjectsWithCustomer()
+        .then((list) => {
+          if (!cancelled) setProjects(list);
+        })
+        .catch(() => {
+          if (!cancelled) setProjects([]);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [isOpen, consultants, consultantId, initialConsultantId]);
+    setProjects([]);
+    getProjectsAvailableForConsultant(consultantId)
+      .then((list) => {
+        if (!cancelled) setProjects(list);
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, consultantId]);
 
-  // Pre-fill role with consultant's default role when consultant changes (user can clear via "No role")
+  // Set initial consultant only when opening with a pre-selected consultant (e.g. from cell click)
   useEffect(() => {
-    if (!consultantId || consultants.length === 0) return;
+    if (isOpen && consultants.length > 0 && initialConsultantId) {
+      if (consultants.some((c) => c.id === initialConsultantId)) {
+        setConsultantId(initialConsultantId);
+      }
+    }
+  }, [isOpen, consultants, initialConsultantId]);
+
+  // When project changes: for customer type load roles with rate and clear role; for internal/absence hide role
+  useEffect(() => {
+    if (!isOpen || !projectId || projects.length === 0) {
+      setRoles([]);
+      return;
+    }
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) {
+      setRoles([]);
+      return;
+    }
+    if (project.type !== "customer") {
+      setRoleId(null);
+      setRoles([]);
+      return;
+    }
+    setRoleId("");
+    let cancelled = false;
+    getRolesWithRateForAllocation(projectId, project.customer_id)
+      .then((list) => {
+        if (!cancelled) setRoles(list);
+      })
+      .catch(() => {
+        if (!cancelled) setRoles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, projectId, projects]);
+
+  // Pre-fill role with consultant's default when project is customer and roles loaded (if that role has a rate)
+  useEffect(() => {
+    if (!consultantId || !projectId || roles.length === 0) return;
+    const project = projects.find((p) => p.id === projectId);
+    if (!project || project.type !== "customer") return;
+    if (roleId !== "" && roleId !== null) return;
     const consultant = consultants.find((c) => c.id === consultantId);
-    setRoleId(consultant?.role_id ?? null);
-  }, [consultantId, consultants]);
+    const defaultRoleId = consultant?.role_id ?? null;
+    if (defaultRoleId && roles.some((r) => r.id === defaultRoleId)) {
+      setRoleId(defaultRoleId);
+    }
+  }, [consultantId, projectId, projects, roles, roleId]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -120,6 +182,12 @@ export function AddAllocationModal({
       setError("Select a project");
       return;
     }
+    const project = projects.find((p) => p.id === projectId);
+    if (project?.type === "customer" && (!roleId || roleId === "")) {
+      setError("Select a role for this customer project");
+      return;
+    }
+    const effectiveRoleId = project?.type === "customer" ? roleId : null;
     const from = Math.min(fromWeek, toWeek);
     const to = Math.max(fromWeek, toWeek);
     setSubmitting(true);
@@ -134,7 +202,7 @@ export function AddAllocationModal({
         await createAllocationsByPercent(
           consultantId,
           projectId,
-          roleId,
+          effectiveRoleId,
           allocYear,
           from,
           to,
@@ -150,7 +218,7 @@ export function AddAllocationModal({
         await createAllocationsForWeekRange(
           consultantId,
           projectId,
-          roleId,
+          effectiveRoleId,
           allocYear,
           from,
           to,
@@ -250,10 +318,14 @@ export function AddAllocationModal({
             <Select
               id="alloc-consultant"
               value={consultantId}
-              onValueChange={setConsultantId}
+              onValueChange={(v) => {
+                setConsultantId(v);
+                setProjectId("");
+              }}
               placeholder="Select consultant"
               triggerClassName="mt-1.5 border-panel"
               options={[
+                { value: "", label: "Select consultant" },
                 ...(consultantId && initialConsultantName && !consultants.some((c) => c.id === consultantId)
                   ? [{ value: consultantId, label: initialConsultantName }]
                   : []),
@@ -273,8 +345,13 @@ export function AddAllocationModal({
               id="alloc-project"
               value={projectId}
               onValueChange={setProjectId}
-              placeholder="Select project"
+              placeholder={
+                consultantId && projects.length === 0
+                  ? "No projects – assign the consultant to a customer under Customer > CONSULTANTS"
+                  : "Select project"
+              }
               triggerClassName="mt-1.5 border-panel"
+              viewportClassName="max-h-60 overflow-y-auto"
               options={projects.map((p) => ({
                 value: p.id,
                 label: `${p.name} (${p.customerName})`,
@@ -282,25 +359,28 @@ export function AddAllocationModal({
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="alloc-role"
-              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-            >
-              Role (optional)
-            </label>
-            <Select
-              id="alloc-role"
-              value={roleId ?? ""}
-              onValueChange={(v) => setRoleId(v ? v : null)}
-              placeholder="Select role"
-              triggerClassName="mt-1.5 border-panel"
-              options={[
-                { value: "", label: "No role" },
-                ...roles.map((r) => ({ value: r.id, label: r.name })),
-              ]}
-            />
-          </div>
+          {projects.find((p) => p.id === projectId)?.type === "customer" && (
+            <div>
+              <label
+                htmlFor="alloc-role"
+                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+              >
+                Role
+              </label>
+              <Select
+                id="alloc-role"
+                value={roleId ?? ""}
+                onValueChange={(v) => setRoleId(v || null)}
+                placeholder={
+                  roles.length === 0
+                    ? "No roles with rate – add customer or project rates"
+                    : "Select role"
+                }
+                triggerClassName="mt-1.5 border-panel"
+                options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

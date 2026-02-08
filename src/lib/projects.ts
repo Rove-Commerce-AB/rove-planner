@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getCustomers } from "./customers";
+import { getCustomerIdsForConsultant } from "./customerConsultants";
 import { getAllocationsByProjectIds } from "./allocations";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import type { ProjectWithDetails, ProjectType } from "@/types";
@@ -256,6 +257,7 @@ export type ProjectWithCustomer = {
   customer_id: string;
   customerName: string;
   customerColor: string;
+  type: ProjectType;
 };
 
 export async function getProjectsWithCustomer(
@@ -263,7 +265,7 @@ export async function getProjectsWithCustomer(
 ): Promise<ProjectWithCustomer[]> {
   const { data: projects, error: projErr } = await supabase
     .from("projects")
-    .select("id,name,customer_id")
+    .select("id,name,customer_id,type")
     .order("name");
 
   if (projErr) throw projErr;
@@ -295,6 +297,56 @@ export async function getProjectsWithCustomer(
       customer_id: p.customer_id,
       customerName: cust?.name ?? "Unknown",
       customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
+      type: (p.type ?? "customer") as ProjectType,
+    };
+  });
+}
+
+/**
+ * Projects to show in Add Allocation modal.
+ * - If consultantId is null/empty: all projects (with vertical scroll in UI).
+ * - If consultantId is set: only projects belonging to customers that have this consultant assigned.
+ */
+export async function getProjectsAvailableForConsultant(
+  consultantId: string | null
+): Promise<ProjectWithCustomer[]> {
+  if (!consultantId) return getProjectsWithCustomer();
+
+  const customerIds = await getCustomerIdsForConsultant(consultantId);
+  if (customerIds.length === 0) return [];
+
+  const { data: projects, error: projErr } = await supabase
+    .from("projects")
+    .select("id,name,customer_id,type")
+    .in("customer_id", customerIds)
+    .order("name");
+
+  if (projErr || !projects?.length) return [];
+
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id,name,color")
+    .in("id", [...new Set(projects.map((p) => p.customer_id))]);
+
+  const customerMap = new Map(
+    (customers ?? []).map((c) => [
+      c.id,
+      {
+        name: c.name,
+        color: c.color || DEFAULT_CUSTOMER_COLOR,
+      },
+    ])
+  );
+
+  return projects.map((p) => {
+    const cust = customerMap.get(p.customer_id);
+    return {
+      id: p.id,
+      name: p.name,
+      customer_id: p.customer_id,
+      customerName: cust?.name ?? "Unknown",
+      customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
+      type: (p.type ?? "customer") as ProjectType,
     };
   });
 }

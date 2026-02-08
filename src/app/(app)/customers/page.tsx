@@ -13,7 +13,9 @@ export default async function CustomersPage() {
 
   return (
     <div className="p-6">
-      <CustomersPageClient customers={customers} error={error} />
+      <div className="max-w-6xl">
+        <CustomersPageClient customers={customers} error={error} />
+      </div>
     </div>
   );
 }

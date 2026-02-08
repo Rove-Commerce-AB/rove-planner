@@ -64,9 +64,12 @@ export type CustomerWithDetails = {
   name: string;
   contactName: string | null;
   contactEmail: string | null;
+  accountManagerId: string | null;
+  accountManagerName: string | null;
   color: string;
   logoUrl: string | null;
   initials: string;
+  isActive: boolean;
   activeProjectCount: number;
   primaryProject: { name: string; isActive: boolean } | null;
   /** All projects for this customer (detail page) */

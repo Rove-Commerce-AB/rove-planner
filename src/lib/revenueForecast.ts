@@ -15,9 +15,9 @@ export type RevenueForecastMonth = {
 const REVENUE_FORECAST_CACHE_REVALIDATE = 120;
 
 /**
- * Planerad intäkt per månad baserat på allokeringar.
- * Timmar fördelas mellan månader utifrån arbetsdagar (vardagar) i varje vecka;
- * helger och kalenderhelgdagar (per konsult) exkluderas.
+ * Planned revenue per month based on allocations.
+ * Hours are distributed across months by working days (weekdays) in each week;
+ * weekends and calendar holidays (per consultant) are excluded.
  */
 export async function getRevenueForecast(
   yearFrom: number,

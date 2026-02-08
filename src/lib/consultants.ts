@@ -160,6 +160,24 @@ export async function getConsultantsWithDefaultRole(): Promise<
   }));
 }
 
+/** Id → name for given consultant ids (e.g. for account manager display). */
+export async function getConsultantNamesByIds(
+  ids: string[]
+): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("consultants")
+    .select("id,name")
+    .in("id", unique);
+  if (error) throw error;
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    map.set(row.id, row.name ?? "");
+  }
+  return map;
+}
+
 /**
  * Available hours for project allocation in a given week: capacity (calendar × work %,
  * minus weekday holidays) × (1 − overhead %). E.g. 32h capacity, 25% overhead → 24h.

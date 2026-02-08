@@ -2,6 +2,9 @@ IMPORTANT:
 This document defines mandatory rules for this project.
 All AI-generated code must follow these rules.
 
+Release notes (MANDATORY on code changes):
+When you as AI make code changes in the project, you must also update the release notes. Add a new row at the top of the releaseNotes array in src/app/(app)/settings/release-notes/page.tsx. Date and time must be when you write the row (current time at that moment), format "YYYY-MM-DD HH:mm". The description should briefly state what was changed. Newest entry must be first in the array.
+
 Rove Planner – Architecture & Development Guidelines
 
 Detta dokument beskriver arkitekturprinciper, struktur och regler för utvecklingen av Rove Planner.

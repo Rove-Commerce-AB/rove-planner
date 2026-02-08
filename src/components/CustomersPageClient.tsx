@@ -9,7 +9,7 @@ import { AddCustomerModal } from "./AddCustomerModal";
 import type { CustomerWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 
-type SortKey = "name" | "contact" | "projects" | "email";
+type SortKey = "name" | "accountManager" | "projects";
 type SortDir = "asc" | "desc";
 
 const tableBorder = "border-panel";
@@ -23,8 +23,14 @@ export function CustomersPageClient({ customers, error }: Props) {
   const router = useRouter();
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const visibleCustomers = useMemo(
+    () => (showInactive ? customers : customers.filter((c) => c.isActive)),
+    [customers, showInactive]
+  );
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -45,14 +51,13 @@ export function CustomersPageClient({ customers, error }: Props) {
   };
 
   const filteredCustomers = useMemo(() => {
-    let result = customers;
+    let result = visibleCustomers;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter(
         (c) =>
           c.name.toLowerCase().includes(q) ||
-          (c.contactName?.toLowerCase().includes(q)) ||
-          (c.contactEmail?.toLowerCase().includes(q))
+          (c.accountManagerName?.toLowerCase().includes(q))
       );
     }
     const sorted = [...result].sort((a, b) => {
@@ -61,14 +66,11 @@ export function CustomersPageClient({ customers, error }: Props) {
         case "name":
           cmp = a.name.localeCompare(b.name);
           break;
-        case "contact":
-          cmp = (a.contactName ?? "").localeCompare(b.contactName ?? "");
+        case "accountManager":
+          cmp = (a.accountManagerName ?? "").localeCompare(b.accountManagerName ?? "");
           break;
         case "projects":
           cmp = a.activeProjectCount - b.activeProjectCount;
-          break;
-        case "email":
-          cmp = (a.contactEmail ?? "").localeCompare(b.contactEmail ?? "");
           break;
         default:
           cmp = a.name.localeCompare(b.name);
@@ -76,7 +78,7 @@ export function CustomersPageClient({ customers, error }: Props) {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [customers, search, sortKey, sortDir]);
+  }, [visibleCustomers, search, sortKey, sortDir]);
 
   const handleSuccess = () => {
     router.refresh();
@@ -85,7 +87,7 @@ export function CustomersPageClient({ customers, error }: Props) {
   return (
     <>
       <CustomersPageHeader
-        count={customers.length}
+        count={visibleCustomers.length}
         onAdd={() => setAddModalOpen(true)}
       />
 
@@ -109,10 +111,19 @@ export function CustomersPageClient({ customers, error }: Props) {
         />
       )}
 
+      {!error && visibleCustomers.length === 0 && customers.length > 0 && (
+        <div
+          className="mt-6 rounded-panel border border-border p-6 text-center text-sm text-text-primary"
+          style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
+        >
+          No active customers. Enable &quot;Show inactive customers&quot; below to see inactive.
+        </div>
+      )}
+
       {!error && customers.length > 0 && (
         <>
           <div
-            className="mt-6 rounded-panel border border-border p-4"
+            className="mt-6 flex flex-col gap-3 rounded-panel border border-border p-4 sm:flex-row sm:items-center sm:gap-4"
             style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
           >
             <div className="relative w-full sm:max-w-xs">
@@ -125,16 +136,25 @@ export function CustomersPageClient({ customers, error }: Props) {
                 className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
               />
             </div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-brand-signal focus:ring-brand-signal"
+              />
+              Show inactive customers
+            </label>
           </div>
 
-          {filteredCustomers.length === 0 ? (
+          {visibleCustomers.length > 0 && filteredCustomers.length === 0 ? (
             <div
               className="mt-6 rounded-panel border p-12 text-center text-sm text-text-primary opacity-70"
               style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
             >
               No customers match &quot;{search}&quot;
             </div>
-          ) : (
+          ) : visibleCustomers.length > 0 ? (
             <Panel className="mt-6">
               <h2
                 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-base font-semibold text-text-primary`}
@@ -158,11 +178,11 @@ export function CustomersPageClient({ customers, error }: Props) {
                       <th className="px-4 py-3 text-left">
                         <button
                           type="button"
-                          onClick={() => toggleSort("contact")}
+                          onClick={() => toggleSort("accountManager")}
                           className="flex items-center font-medium text-text-primary hover:opacity-80"
                         >
-                          Contact
-                          <SortIcon column="contact" />
+                          Account Manager
+                          <SortIcon column="accountManager" />
                         </button>
                       </th>
                       <th className="px-4 py-3 text-left">
@@ -173,16 +193,6 @@ export function CustomersPageClient({ customers, error }: Props) {
                         >
                           Active projects
                           <SortIcon column="projects" />
-                        </button>
-                      </th>
-                      <th className="px-4 py-3 text-left">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("email")}
-                          className="flex items-center font-medium text-text-primary hover:opacity-80"
-                        >
-                          Contact email
-                          <SortIcon column="email" />
                         </button>
                       </th>
                     </tr>
@@ -218,24 +228,11 @@ export function CustomersPageClient({ customers, error }: Props) {
                             </div>
                           </td>
                           <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>
-                            {customer.contactName ?? "—"}
+                            {customer.accountManagerName ?? "—"}
                           </td>
                           <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>
                             {customer.activeProjectCount} project
                             {customer.activeProjectCount !== 1 ? "s" : ""}
-                          </td>
-                          <td className={`border-b ${tableBorder} px-4 py-3`}>
-                            {customer.contactEmail ? (
-                              <a
-                                href={`mailto:${customer.contactEmail}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-brand-signal hover:underline"
-                              >
-                                {customer.contactEmail}
-                              </a>
-                            ) : (
-                              <span className="text-text-primary opacity-50">—</span>
-                            )}
                           </td>
                         </tr>
                       );
@@ -244,7 +241,7 @@ export function CustomersPageClient({ customers, error }: Props) {
                 </table>
               </div>
             </Panel>
-          )}
+          ) : null}
         </>
       )}
     </>

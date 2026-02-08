@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getProjectsByCustomerIds } from "./projects";
+import { getConsultantNamesByIds } from "./consultants";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import type { CustomerWithDetails, ProjectType } from "@/types";
 
@@ -8,24 +9,30 @@ export type Customer = {
   name: string;
   contact_name: string | null;
   contact_email: string | null;
+  account_manager_id: string | null;
   color: string | null;
   logo_url: string | null;
+  is_active: boolean;
 };
 
 export type CreateCustomerInput = {
   name: string;
   contact_name?: string | null;
   contact_email?: string | null;
+  account_manager_id?: string | null;
   color?: string | null;
   logo_url?: string | null;
+  is_active?: boolean;
 };
 
 export type UpdateCustomerInput = {
   name?: string;
   contact_name?: string | null;
   contact_email?: string | null;
+  account_manager_id?: string | null;
   color?: string | null;
   logo_url?: string | null;
+  is_active?: boolean;
 };
 
 
@@ -41,11 +48,15 @@ function getInitials(name: string): string {
 export async function getCustomerById(id: string): Promise<CustomerWithDetails | null> {
   const { data, error } = await supabase
     .from("customers")
-    .select("id,name,contact_name,contact_email,color,logo_url")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
     .eq("id", id)
     .single();
 
   if (error || !data) return null;
+
+  const accountManagerNames = data.account_manager_id
+    ? await getConsultantNamesByIds([data.account_manager_id])
+    : new Map<string, string>();
 
   let projectsByCustomer = new Map<
     string,
@@ -76,9 +87,14 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
     name: data.name,
     contactName: data.contact_name,
     contactEmail: data.contact_email,
+    accountManagerId: data.account_manager_id ?? null,
+    accountManagerName: data.account_manager_id
+      ? accountManagerNames.get(data.account_manager_id) ?? null
+      : null,
     color: data.color || DEFAULT_CUSTOMER_COLOR,
     logoUrl: data.logo_url ?? null,
     initials: getInitials(data.name),
+    isActive: data.is_active ?? true,
     activeProjectCount: activeProjects.length,
     primaryProject: primaryProject
       ? { name: primaryProject.name, isActive: primaryProject.is_active }
@@ -95,7 +111,7 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
 export async function getCustomers(): Promise<Customer[]> {
   const { data, error } = await supabase
     .from("customers")
-    .select("id,name,contact_name,contact_email,color,logo_url")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
     .order("name");
 
   if (error) throw error;
@@ -111,10 +127,12 @@ export async function createCustomer(
       name: input.name.trim(),
       contact_name: input.contact_name?.trim() || null,
       contact_email: input.contact_email?.trim() || null,
+      account_manager_id: input.account_manager_id ?? null,
       color: input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
       logo_url: input.logo_url?.trim() || null,
+      is_active: input.is_active ?? true,
     })
-    .select("id,name,contact_name,contact_email,color,logo_url")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
     .single();
 
   if (error) throw error;
@@ -135,15 +153,19 @@ export async function updateCustomer(
       ...(input.contact_email !== undefined && {
         contact_email: input.contact_email?.trim() || null,
       }),
+      ...(input.account_manager_id !== undefined && {
+        account_manager_id: input.account_manager_id ?? null,
+      }),
       ...(input.color !== undefined && {
         color: input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
       }),
       ...(input.logo_url !== undefined && {
         logo_url: input.logo_url?.trim() || null,
       }),
+      ...(input.is_active !== undefined && { is_active: input.is_active }),
     })
     .eq("id", id)
-    .select("id,name,contact_name,contact_email,color,logo_url")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
     .single();
 
   if (error) throw error;
@@ -162,6 +184,9 @@ export async function deleteCustomer(id: string): Promise<void> {
  */
 export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> {
   const customers = await getCustomers();
+
+  const accountManagerIds = [...new Set(customers.map((c) => c.account_manager_id).filter(Boolean))] as string[];
+  const accountManagerNames = await getConsultantNamesByIds(accountManagerIds);
 
   let projectsByCustomer = new Map<
     string,
@@ -193,9 +218,14 @@ export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> 
       name: c.name,
       contactName: c.contact_name,
       contactEmail: c.contact_email,
+      accountManagerId: c.account_manager_id ?? null,
+      accountManagerName: c.account_manager_id
+        ? accountManagerNames.get(c.account_manager_id) ?? null
+        : null,
       color: c.color || DEFAULT_CUSTOMER_COLOR,
       logoUrl: c.logo_url ?? null,
       initials: getInitials(c.name),
+      isActive: c.is_active ?? true,
       activeProjectCount: activeProjects.length,
       primaryProject: primaryProject
         ? { name: primaryProject.name, isActive: primaryProject.is_active }

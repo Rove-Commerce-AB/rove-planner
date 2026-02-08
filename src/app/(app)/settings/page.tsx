@@ -30,15 +30,17 @@ export default async function SettingsPage() {
 
   return (
     <div className="p-6">
-      <SettingsPageClient
-        roles={roles}
-        teams={teams}
-        calendars={calendars}
-        appUsers={appUsers}
-        currentAppUser={currentAppUser}
-        featureRequests={featureRequests}
-        error={error}
-      />
+      <div className="max-w-6xl">
+        <SettingsPageClient
+          roles={roles}
+          teams={teams}
+          calendars={calendars}
+          appUsers={appUsers}
+          currentAppUser={currentAppUser}
+          featureRequests={featureRequests}
+          error={error}
+        />
+      </div>
     </div>
   );
 }

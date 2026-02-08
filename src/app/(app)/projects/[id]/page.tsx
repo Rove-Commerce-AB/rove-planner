@@ -14,7 +14,9 @@ export default async function ProjectPage({ params }: Props) {
 
   return (
     <div className="p-6">
-      <ProjectDetailClient project={project} />
+      <div className="max-w-6xl">
+        <ProjectDetailClient project={project} />
+      </div>
     </div>
   );
 }

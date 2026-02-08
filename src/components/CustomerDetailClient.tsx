@@ -12,51 +12,65 @@ import {
 } from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
 import { AddProjectModal } from "./AddProjectModal";
+import { AddCustomerConsultantModal } from "./AddCustomerConsultantModal";
+import { removeConsultantFromCustomer } from "@/lib/customerConsultants";
 import type { CustomerWithDetails } from "@/types";
+import type { CustomerConsultant } from "@/lib/customerConsultants";
 
 const tableBorder = "border-panel";
 
 type EditField =
   | "name"
-  | "contactName"
-  | "contactEmail"
+  | "accountManager"
   | "color"
   | "logoUrl"
   | null;
 
 type Props = {
   customer: CustomerWithDetails;
+  initialConsultants: CustomerConsultant[];
+  allConsultants: { id: string; name: string }[];
 };
 
-export function CustomerDetailClient({ customer: initialCustomer }: Props) {
+export function CustomerDetailClient({
+  customer: initialCustomer,
+  initialConsultants,
+  allConsultants,
+}: Props) {
   const router = useRouter();
   const [name, setName] = useState(initialCustomer.name);
-  const [contactName, setContactName] = useState(
-    initialCustomer.contactName ?? ""
+  const [accountManagerId, setAccountManagerId] = useState<string | null>(
+    initialCustomer.accountManagerId ?? null
   );
-  const [contactEmail, setContactEmail] = useState(
-    initialCustomer.contactEmail ?? ""
+  const [accountManagerName, setAccountManagerName] = useState<string | null>(
+    initialCustomer.accountManagerName ?? null
   );
   const [color, setColor] = useState(
     initialCustomer.color ?? DEFAULT_CUSTOMER_COLOR
   );
   const [logoUrl, setLogoUrl] = useState(initialCustomer.logoUrl ?? "");
+  const [isActive, setIsActive] = useState(initialCustomer.isActive ?? true);
   const [error, setError] = useState<string | null>(null);
   const [ratesError, setRatesError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [addProjectModalOpen, setAddProjectModalOpen] = useState(false);
+  const [addConsultantModalOpen, setAddConsultantModalOpen] = useState(false);
+  const [removingConsultantId, setRemovingConsultantId] = useState<string | null>(null);
+  const [showRemoveConsultantConfirm, setShowRemoveConsultantConfirm] = useState(false);
+  const [consultantToRemove, setConsultantToRemove] = useState<CustomerConsultant | null>(null);
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [logoImageError, setLogoImageError] = useState(false);
 
   const syncFromInitial = useCallback(() => {
     setName(initialCustomer.name);
-    setContactName(initialCustomer.contactName ?? "");
-    setContactEmail(initialCustomer.contactEmail ?? "");
+    setAccountManagerId(initialCustomer.accountManagerId ?? null);
+    setAccountManagerName(initialCustomer.accountManagerName ?? null);
     setColor(initialCustomer.color ?? DEFAULT_CUSTOMER_COLOR);
     setLogoUrl(initialCustomer.logoUrl ?? "");
+    setIsActive(initialCustomer.isActive ?? true);
     setLogoImageError(false);
   }, [initialCustomer]);
 
@@ -80,17 +94,13 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
           await updateCustomer(initialCustomer.id, { name: trimmed });
           setName(trimmed);
           break;
-        case "contactName":
+        case "accountManager":
           await updateCustomer(initialCustomer.id, {
-            contact_name: trimmed || null,
+            account_manager_id: value || null,
           });
-          setContactName(trimmed || "");
-          break;
-        case "contactEmail":
-          await updateCustomer(initialCustomer.id, {
-            contact_email: trimmed || null,
-          });
-          setContactEmail(trimmed || "");
+          const chosen = allConsultants.find((c) => c.id === value);
+          setAccountManagerId(value || null);
+          setAccountManagerName(chosen?.name ?? null);
           break;
         case "color":
           await updateCustomer(initialCustomer.id, {
@@ -121,6 +131,20 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
     setError(null);
   };
 
+  const handleToggleActive = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateCustomer(initialCustomer.id, { is_active: !isActive });
+      setIsActive(!isActive);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleDelete = async () => {
     setError(null);
     setDeleting(true);
@@ -133,6 +157,27 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
       setError(e instanceof Error ? e.message : "Failed to delete");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleRemoveConsultant = (consultant: CustomerConsultant) => {
+    setConsultantToRemove(consultant);
+    setShowRemoveConsultantConfirm(true);
+  };
+
+  const confirmRemoveConsultant = async () => {
+    if (!consultantToRemove) return;
+    setError(null);
+    setRemovingConsultantId(consultantToRemove.id);
+    try {
+      await removeConsultantFromCustomer(initialCustomer.id, consultantToRemove.id);
+      setShowRemoveConsultantConfirm(false);
+      setConsultantToRemove(null);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove consultant");
+    } finally {
+      setRemovingConsultantId(null);
     }
   };
 
@@ -180,7 +225,7 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
         }
       />
 
-      <div className="max-w-6xl">
+      <div>
         {error && (
           <p className="mb-4 text-sm text-danger" role="alert">
             {error}
@@ -234,20 +279,25 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
               </div>
 
               <div>
-                <div className={labelClass}>Contact person</div>
-                {editingField === "contactName" ? (
+                <div className={labelClass}>Account Manager</div>
+                {editingField === "accountManager" ? (
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
+                    <select
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
-                      className="min-w-[120px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                      placeholder="John Doe"
+                      className="min-w-[180px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
                       autoFocus
-                    />
+                    >
+                      <option value="">—</option>
+                      {allConsultants.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                     <Button
                       type="button"
-                      onClick={() => saveField("contactName", editValue)}
+                      onClick={() => saveField("accountManager", editValue)}
                       disabled={submitting}
                     >
                       Save
@@ -261,48 +311,11 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     type="button"
                     className={`mt-1.5 block text-left ${valueClass} hover:underline`}
                     onClick={() => {
-                      setEditValue(contactName);
-                      setEditingField("contactName");
+                      setEditValue(accountManagerId ?? "");
+                      setEditingField("accountManager");
                     }}
                   >
-                    {contactName || "—"}
-                  </button>
-                )}
-              </div>
-
-              <div>
-                <div className={labelClass}>Email</div>
-                {editingField === "contactEmail" ? (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <input
-                      type="email"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      className="min-w-[120px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                      placeholder="contact@company.com"
-                      autoFocus
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => saveField("contactEmail", editValue)}
-                      disabled={submitting}
-                    >
-                      Save
-                    </Button>
-                    <Button variant="secondary" type="button" onClick={cancelEdit}>
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className={`mt-1.5 block text-left ${valueClass} hover:underline ${contactEmail ? "text-brand-signal" : "text-text-primary opacity-70"}`}
-                    onClick={() => {
-                      setEditValue(contactEmail);
-                      setEditingField("contactEmail");
-                    }}
-                  >
-                    {contactEmail || "—"}
+                    {accountManagerName ?? "—"}
                   </button>
                 )}
               </div>
@@ -410,6 +423,20 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                   </button>
                 )}
               </div>
+
+              <div>
+                <div className={labelClass}>Status</div>
+                <div className="mt-1.5">
+                  <button
+                    type="button"
+                    onClick={handleToggleActive}
+                    disabled={submitting}
+                    className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                  >
+                    {isActive ? "Active" : "Inactive"}
+                  </button>
+                </div>
+              </div>
             </div>
           </Panel>
 
@@ -430,6 +457,53 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                 onError={setRatesError}
                 showDescription={false}
               />
+            </div>
+          </Panel>
+
+          {/* CONSULTANTS */}
+          <Panel className="mt-6">
+            <div
+              className={`flex flex-col gap-3 border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between`}
+            >
+              <h2 className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+                CONSULTANTS ({initialConsultants.length})
+              </h2>
+              <Button
+                type="button"
+                onClick={() => setAddConsultantModalOpen(true)}
+              >
+                Add consultant
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              {initialConsultants.length === 0 ? (
+                <p
+                  className={`border-b ${tableBorder} px-4 py-6 text-center text-sm text-text-primary opacity-60`}
+                >
+                  No consultants assigned. Add consultants to limit which projects are available when allocating.
+                </p>
+              ) : (
+                <ul className="divide-y divide-panel">
+                  {initialConsultants.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-center justify-between gap-4 px-4 py-3"
+                    >
+                      <span className="font-medium text-text-primary">
+                        {c.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveConsultant(c)}
+                        disabled={removingConsultantId !== null}
+                        className="text-sm text-danger hover:underline disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </Panel>
         </div>
@@ -472,24 +546,26 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
                     </td>
                   </tr>
                 ) : (
-                  initialCustomer.projects.map((p) => (
-                    <tr
-                      key={p.id}
-                      className="cursor-pointer transition-colors hover:bg-bg-muted/50"
-                      onClick={() => router.push(`/projects/${p.id}`)}
-                    >
-                      <td className={`border-b ${tableBorder} px-4 py-3 font-medium text-text-primary`}>
-                        {p.name}
-                      </td>
-                      <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary`}>
-                        {p.type === "customer"
-                          ? "Customer"
-                          : p.type === "internal"
-                            ? "Internal"
-                            : "Absence"}
-                      </td>
-                    </tr>
-                  ))
+                  [...initialCustomer.projects]
+                    .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
+                    .map((p) => (
+                      <tr
+                        key={p.id}
+                        className={`cursor-pointer transition-colors hover:bg-bg-muted/50 ${!p.isActive ? "opacity-60" : ""}`}
+                        onClick={() => router.push(`/projects/${p.id}`)}
+                      >
+                        <td className={`border-b ${tableBorder} px-4 py-3 font-medium text-text-primary`}>
+                          {p.name}
+                        </td>
+                        <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary`}>
+                          {p.type === "customer"
+                            ? "Customer"
+                            : p.type === "internal"
+                              ? "Internal"
+                              : "Absence"}
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
@@ -505,6 +581,14 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
         redirectToProject={false}
       />
 
+      <AddCustomerConsultantModal
+        isOpen={addConsultantModalOpen}
+        onClose={() => setAddConsultantModalOpen(false)}
+        onSuccess={() => router.refresh()}
+        customerId={initialCustomer.id}
+        existingConsultants={initialConsultants}
+      />
+
       <ConfirmModal
         isOpen={showDeleteConfirm}
         title="Delete customer"
@@ -513,6 +597,23 @@ export function CustomerDetailClient({ customer: initialCustomer }: Props) {
         variant="danger"
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmModal
+        isOpen={showRemoveConsultantConfirm}
+        title="Remove consultant"
+        message={
+          consultantToRemove
+            ? `Remove ${consultantToRemove.name} from this customer? They will no longer see this customer's projects in Add Allocation.`
+            : ""
+        }
+        confirmLabel="Remove"
+        variant="danger"
+        onClose={() => {
+          setShowRemoveConsultantConfirm(false);
+          setConsultantToRemove(null);
+        }}
+        onConfirm={confirmRemoveConsultant}
       />
     </>
   );

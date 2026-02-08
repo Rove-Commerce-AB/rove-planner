@@ -16,6 +16,8 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Consultants for Account Manager dropdown; pass from parent if modal is used. */
+  allConsultants?: { id: string; name: string }[];
 };
 
 export function EditCustomerModal({
@@ -23,11 +25,11 @@ export function EditCustomerModal({
   isOpen,
   onClose,
   onSuccess,
+  allConsultants = [],
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("information");
   const [name, setName] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
+  const [accountManagerId, setAccountManagerId] = useState<string>("");
   const [color, setColor] = useState(DEFAULT_CUSTOMER_COLOR);
   const [logoUrl, setLogoUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -39,8 +41,7 @@ export function EditCustomerModal({
   useEffect(() => {
     if (customer) {
       setName(customer.name);
-      setContactName(customer.contactName ?? "");
-      setContactEmail(customer.contactEmail ?? "");
+      setAccountManagerId(customer.accountManagerId ?? "");
       setColor(customer.color ?? DEFAULT_CUSTOMER_COLOR);
       setLogoUrl(customer.logoUrl ?? "");
     }
@@ -58,8 +59,7 @@ export function EditCustomerModal({
     try {
       await updateCustomer(customer.id, {
         name: name.trim(),
-        contact_name: contactName.trim() || null,
-        contact_email: contactEmail.trim() || null,
+        account_manager_id: accountManagerId || null,
         color: color.trim() || null,
         logo_url: logoUrl.trim() || null,
       });
@@ -92,8 +92,7 @@ export function EditCustomerModal({
 
   const resetForm = () => {
     setName("");
-    setContactName("");
-    setContactEmail("");
+    setAccountManagerId("");
     setColor(DEFAULT_CUSTOMER_COLOR);
     setLogoUrl("");
     setError(null);
@@ -180,36 +179,24 @@ export function EditCustomerModal({
 
             <div>
               <label
-                htmlFor="edit-customer-contact"
+                htmlFor="edit-customer-account-manager"
                 className="block text-sm font-medium text-text-primary"
               >
-                Contact person
+                Account Manager
               </label>
-              <input
-                id="edit-customer-contact"
-                type="text"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                placeholder="John Doe"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="edit-customer-email"
-                className="block text-sm font-medium text-text-primary"
+              <select
+                id="edit-customer-account-manager"
+                value={accountManagerId}
+                onChange={(e) => setAccountManagerId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
               >
-                Email
-              </label>
-              <input
-                id="edit-customer-email"
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-                placeholder="contact@company.com"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
-              />
+                <option value="">—</option>
+                {allConsultants.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>

@@ -22,6 +22,8 @@ type Props = {
   className?: string;
   /** Extra classes for the trigger (e.g. h-10 for consistent height) */
   triggerClassName?: string;
+  /** Extra classes for the dropdown viewport (e.g. max-h-60 overflow-y-auto for scroll) */
+  viewportClassName?: string;
 };
 
 export function Select({
@@ -36,6 +38,7 @@ export function Select({
   size = "md",
   className = "",
   triggerClassName = "",
+  viewportClassName = "",
 }: Props) {
   const EMPTY = "__empty__";
   const hasEmptyOption = options.some((o) => o.value === "");
@@ -80,7 +83,9 @@ export function Select({
             position="popper"
             sideOffset={4}
           >
-            <SelectPrimitive.Viewport className="p-1">
+            <SelectPrimitive.Viewport
+              className={`p-1 ${viewportClassName}`.trim()}
+            >
               {options.map((opt) => (
                 <SelectPrimitive.Item
                   key={opt.value === "" ? EMPTY : opt.value}

@@ -10,13 +10,12 @@ import {
   Settings,
   Calendar,
   LogOut,
-  Sparkles,
+  FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const navGroup1 = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/rove", label: "Rove", icon: Sparkles },
 ] as const;
 
 const navGroup2 = [
@@ -68,15 +67,15 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default">
-      <div className="flex h-14 items-center gap-2 px-4 pt-4">
+    <aside className="flex h-screen w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default">
+      <div className="flex h-14 flex-shrink-0 items-center gap-2 px-4 pt-4">
         <Calendar className="h-6 w-6 text-text-primary opacity-70" />
         <span className="flex-1 font-bold text-text-primary">
           Rove Planner
         </span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 p-2 pt-4">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2 pt-4">
         <div className="space-y-0.5">
           {navGroup1.map((item) => (
             <NavLink key={item.href} pathname={pathname} {...item} />
@@ -100,31 +99,44 @@ export function Sidebar() {
         </div>
       </nav>
 
-      <div className="space-y-0.5 p-2">
-        <Link
-          href="/settings"
-          className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-            pathname === "/settings"
-              ? "bg-nav-active text-brand-signal font-semibold"
-              : "text-text-primary hover:bg-nav-hover"
-          }`}
-        >
-          <Settings className="h-5 w-5" />
-          Settings
-        </Link>
-        <button
+      <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
+        <div className="space-y-0.5 p-2">
+          <Link
+            href="/settings"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              pathname === "/settings"
+                ? "bg-nav-active text-brand-signal font-semibold"
+                : "text-text-primary hover:bg-nav-hover"
+            }`}
+          >
+            <Settings className="h-5 w-5" />
+            Settings
+          </Link>
+          <Link
+            href="/settings/release-notes"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              pathname === "/settings/release-notes"
+                ? "bg-nav-active text-brand-signal font-semibold"
+                : "text-text-primary hover:bg-nav-hover"
+            }`}
+          >
+            <FileText className="h-5 w-5" />
+            Release notes
+          </Link>
+          <div className="my-2 border-t border-border-subtle" aria-hidden />
+          <button
           type="button"
           onClick={handleSignOut}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-nav-hover"
+          className="mt-1 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-nav-hover"
         >
           <LogOut className="h-5 w-5" />
-          Logga ut
+          Log out
         </button>
+        </div>
+        <footer className="px-4 py-3 text-xs text-text-primary opacity-60">
+          © {new Date().getFullYear()} Rove Planner
+        </footer>
       </div>
-
-      <footer className="px-4 py-3 text-xs text-text-primary opacity-60">
-        © {new Date().getFullYear()} Rove Planner
-      </footer>
     </aside>
   );
 }

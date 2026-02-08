@@ -14,15 +14,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-6">
-      <PageHeader
-        title="Dashboard"
-        description={`Week ${data.currentWeek}, ${data.currentYear}`}
-        className="mb-6"
-      />
+      <div className="max-w-6xl">
+        <PageHeader
+          title="Dashboard"
+          description={`Week ${data.currentWeek}, ${data.currentYear}`}
+          className="mb-6"
+        />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ActiveProjects projects={data.activeProjects} />
-        <RevenueForecastPanel forecast={forecast} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ActiveProjects projects={data.activeProjects} />
+          <RevenueForecastPanel forecast={forecast} />
+        </div>
       </div>
     </div>
   );

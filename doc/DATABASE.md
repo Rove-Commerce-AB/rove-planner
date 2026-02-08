@@ -14,8 +14,10 @@ Columns:
 - name (text)
 - contact_name (text, nullable)
 - contact_email (text, nullable)
+- account_manager_id (uuid, nullable, fk → consultants.id)  # Account manager for this customer
 - color (text, default '#3b82f6')  # hex color for allocation and card
 - logo_url (text, nullable)        # URL to customer logo
+- is_active (boolean, default true)  # false = inactive/archived customer
 - created_at (timestamptz)
 - updated_at (timestamptz)
 
@@ -119,6 +121,36 @@ Columns:
 
 Constraint:
 - unique(customer_id, role_id)
+
+---
+
+## project_rates
+Project-specific hourly rates per role. Override customer rates when present. Effective rate for an allocation: project rate if it exists for that project and role, otherwise customer rate (for the project’s customer and role).
+
+Columns:
+- id (uuid, pk)
+- project_id (uuid, fk → projects.id)
+- role_id (uuid, fk → roles.id)
+- rate_per_hour (numeric)
+- currency (text, default 'SEK')
+- created_at (timestamptz)
+- updated_at (timestamptz)
+
+Constraint:
+- unique(project_id, role_id)
+
+---
+
+## customer_consultants
+Consultants assigned to a customer. Used to restrict which projects are offered when adding an allocation for a consultant: only projects belonging to customers that have that consultant assigned are listed. If no consultant is selected, all projects are listed.
+
+Columns:
+- customer_id (uuid, fk → customers.id, part of pk)
+- consultant_id (uuid, fk → consultants.id, part of pk)
+- created_at (timestamptz)
+
+Constraint:
+- primary key (customer_id, consultant_id)
 
 ---
 

@@ -12,6 +12,7 @@ import {
   DetailPageHeader,
   Panel,
 } from "@/components/ui";
+import { ProjectRatesTab } from "./ProjectRatesTab";
 
 const tableBorder = "border-panel";
 
@@ -34,6 +35,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [ratesError, setRatesError] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState<string>("");
 
@@ -416,6 +418,25 @@ export function ProjectDetailClient({ project: initial }: Props) {
           </div>
         </Panel>
       </div>
+
+      {/* RATES */}
+      <Panel className="mt-6">
+        <h2
+          className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
+        >
+          RATES/TASKS
+        </h2>
+        <div className="p-5">
+          {ratesError && (
+            <p className="mb-4 text-sm text-danger">{ratesError}</p>
+          )}
+          <ProjectRatesTab
+            projectId={initial.id}
+            onError={setRatesError}
+            showDescription={false}
+          />
+        </div>
+      </Panel>
 
       <ConfirmModal
         isOpen={showDeleteConfirm}

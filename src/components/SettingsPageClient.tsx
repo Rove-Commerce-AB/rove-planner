@@ -104,7 +104,7 @@ export function SettingsPageClient({
       setAppUserToDelete(null);
       router.refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Kunde inte ta bort användare");
+      alert(e instanceof Error ? e.message : "Could not remove user");
     }
   };
 
@@ -138,7 +138,7 @@ export function SettingsPageClient({
     e.preventDefault();
     setAddAppUserError(null);
     if (!newUserEmail.trim()) {
-      setAddAppUserError("E-post krävs");
+      setAddAppUserError("Email is required");
       return;
     }
     setAddingAppUser(true);
@@ -153,7 +153,7 @@ export function SettingsPageClient({
       setNewUserRole("member");
       router.refresh();
     } catch (e) {
-      setAddAppUserError(e instanceof Error ? e.message : "Kunde inte lägga till");
+      setAddAppUserError(e instanceof Error ? e.message : "Could not add");
     } finally {
       setAddingAppUser(false);
     }
@@ -208,18 +208,18 @@ export function SettingsPageClient({
             >
               <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
                 <ShieldCheck className="h-4 w-4" />
-                Åtkomst / Användare
+                Access / Users
               </h2>
             </div>
             <div className="space-y-4 p-5">
               <p className="text-sm text-text-primary opacity-70">
-                Användare med åtkomst till appen. Endast e-postadresser i listan
-                kan logga in. Lägg till eller ta bort användare.
+                Users with access to the app. Only email addresses in the list
+                can log in. Add or remove users.
               </p>
               <form onSubmit={handleAddAppUser} className="flex flex-wrap items-end gap-3">
                 <Input
                   type="email"
-                  label="E-post"
+                  label="Email"
                   value={newUserEmail}
                   onChange={(e) => setNewUserEmail(e.target.value)}
                   placeholder="namn@example.com"
@@ -227,27 +227,27 @@ export function SettingsPageClient({
                 />
                 <Input
                   type="text"
-                  label="Namn (valfritt)"
+                  label="Name (optional)"
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="Namn"
+                  placeholder="Name"
                   className="min-w-[140px]"
                 />
                 <div>
                   <label className="mb-1 block text-sm font-medium text-text-primary">
-                    Roll
+                    Role
                   </label>
                   <select
                     value={newUserRole}
                     onChange={(e) => setNewUserRole(e.target.value as "member" | "admin")}
                     className="h-10 rounded-lg border border-border bg-bg-default px-3 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
                   >
-                    <option value="member">Medlem</option>
+                    <option value="member">Member</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
                 <Button type="submit" disabled={addingAppUser}>
-                  Lägg till
+                  Add
                 </Button>
               </form>
               {addAppUserError && (
@@ -267,14 +267,14 @@ export function SettingsPageClient({
                         </span>
                       )}
                       <span className="ml-2 text-xs text-text-primary opacity-60">
-                        {u.role === "admin" ? "Admin" : "Medlem"}
+                        {u.role === "admin" ? "Admin" : "Member"}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setAppUserToDelete(u)}
                       className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
-                      aria-label={`Ta bort ${u.email}`}
+                      aria-label={`Remove ${u.email}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -628,13 +628,13 @@ export function SettingsPageClient({
 
       <ConfirmModal
         isOpen={appUserToDelete !== null}
-        title="Ta bort användare"
+        title="Remove user"
         message={
           appUserToDelete
-            ? `Ta bort ${appUserToDelete.email} från åtkomstlistan? De kan inte logga in längre.`
+            ? `Remove ${appUserToDelete.email} from the access list? They will no longer be able to log in.`
             : ""
         }
-        confirmLabel="Ta bort"
+        confirmLabel="Remove"
         variant="danger"
         onClose={() => setAppUserToDelete(null)}
         onConfirm={handleAppUserDelete}

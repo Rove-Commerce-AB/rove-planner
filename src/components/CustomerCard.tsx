@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { User, Mail, FolderKanban } from "lucide-react";
+import { User, FolderKanban } from "lucide-react";
 import type { CustomerWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 
@@ -46,27 +46,12 @@ export function CustomerCard({ customer }: Props) {
         </div>
       </div>
 
-      <div className="mt-4 space-y-2">
-        {customer.contactName && (
-          <div className="flex items-center gap-2 text-sm text-text-primary opacity-80">
-            <User className="h-4 w-4 flex-shrink-0 opacity-60" />
-            <span>{customer.contactName}</span>
-          </div>
-        )}
-        {customer.contactEmail && (
-          <div className="flex items-center gap-2 text-sm text-text-primary opacity-80">
-            <Mail className="h-4 w-4 flex-shrink-0 opacity-60" />
-            <a
-              href={`mailto:${customer.contactEmail}`}
-              onClick={(e) => e.stopPropagation()}
-              className="text-brand-signal hover:underline"
-              tabIndex={-1}
-            >
-              {customer.contactEmail}
-            </a>
-          </div>
-        )}
-      </div>
+      {(customer.accountManagerName != null && customer.accountManagerName !== "") && (
+        <div className="mt-4 flex items-center gap-2 text-sm text-text-primary opacity-80">
+          <User className="h-4 w-4 flex-shrink-0 opacity-60" />
+          <span>Account Manager: {customer.accountManagerName}</span>
+        </div>
+      )}
 
       {customer.primaryProject && (
         <div className="mt-4 border-t border-border pt-3">
