@@ -195,6 +195,7 @@ export function ProjectRatesTab({
                   size="md"
                   className="w-full"
                   triggerClassName="h-10 border-panel"
+                  viewportClassName="max-h-60 overflow-y-auto"
                 />
               </div>
               <div className="w-32 shrink-0">
