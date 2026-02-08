@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui";
 
 // Date format: "YYYY-MM-DD HH:mm". AI adds new rows automatically on code changes (see PROJECT_RULES.md).
 const releaseNotes: { date: string; description: string }[] = [
+  { date: "2026-02-06 15:30", description: "Consultant: Start date and End date (optional). Allocation sheet: cells outside a consultant's start/end period are shown gray (unavailable); bookings can still be added. DB: consultants.start_date, consultants.end_date (see supabase_consultant_start_end_date.sql). DATABASE.md updated." },
   { date: "2026-02-06 14:02", description: "Planned revenue (forecast): panel shows expandable years (current year open by default), then months, then per-customer breakdown; year total row at bottom of each year." },
   { date: "2026-02-06 14:01", description: "Revenue forecast: allocations fetched with pagination (getAllocationsForWeeks) so all rows are included; fixes undercounted forecast when >1000 allocation rows per year." },
   { date: "2026-02-08 12:49", description: "Customer and Project Rates: ROLE dropdown scrollable (max-h-60 overflow-y-auto) so all roles can be selected." },

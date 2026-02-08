@@ -22,6 +22,8 @@ export type CreateConsultantInput = {
   is_external?: boolean;
   work_percentage?: number;
   overhead_percentage?: number;
+  start_date?: string | null;
+  end_date?: string | null;
 };
 
 export type UpdateConsultantInput = {
@@ -33,6 +35,8 @@ export type UpdateConsultantInput = {
   is_external?: boolean;
   work_percentage?: number;
   overhead_percentage?: number;
+  start_date?: string | null;
+  end_date?: string | null;
 };
 
 export async function createConsultant(
@@ -49,6 +53,8 @@ export async function createConsultant(
       is_external: input.is_external ?? false,
       work_percentage: input.work_percentage ?? 100,
       overhead_percentage: input.overhead_percentage ?? 0,
+      start_date: input.start_date ?? null,
+      end_date: input.end_date ?? null,
     })
     .select("id,name")
     .single();
@@ -73,6 +79,8 @@ export async function updateConsultant(
     updates.work_percentage = input.work_percentage;
   if (input.overhead_percentage !== undefined)
     updates.overhead_percentage = input.overhead_percentage;
+  if (input.start_date !== undefined) updates.start_date = input.start_date ?? null;
+  if (input.end_date !== undefined) updates.end_date = input.end_date ?? null;
 
   const { error } = await supabase
     .from("consultants")
@@ -101,6 +109,8 @@ export type ConsultantForEdit = {
   isExternal: boolean;
   workPercentage: number;
   overheadPercentage: number;
+  startDate: string | null;
+  endDate: string | null;
 };
 
 export async function getConsultantById(
@@ -108,7 +118,7 @@ export async function getConsultantById(
 ): Promise<ConsultantForEdit | null> {
   const { data: c, error } = await supabase
     .from("consultants")
-    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
+    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date")
     .eq("id", id)
     .single();
 
@@ -140,6 +150,8 @@ export async function getConsultantById(
     isExternal: c.is_external ?? false,
     workPercentage: Math.round(workPct * 100),
     overheadPercentage: Math.round(overheadPct * 100),
+    startDate: c.start_date ?? null,
+    endDate: c.end_date ?? null,
   };
 }
 

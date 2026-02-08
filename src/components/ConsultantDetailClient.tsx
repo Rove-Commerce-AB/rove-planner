@@ -35,6 +35,8 @@ type EditField =
   | "workPercentage"
   | "overheadPercentage"
   | "team"
+  | "startDate"
+  | "endDate"
   | null;
 
 type Props = {
@@ -50,6 +52,8 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
   const [teamId, setTeamId] = useState<string | null>(initial.team_id);
   const [workPercentage, setWorkPercentage] = useState(initial.workPercentage);
   const [overheadPercentage, setOverheadPercentage] = useState(initial.overheadPercentage);
+  const [startDate, setStartDate] = useState(initial.startDate ?? "");
+  const [endDate, setEndDate] = useState(initial.endDate ?? "");
   const [isExternal, setIsExternal] = useState(initial.isExternal);
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
@@ -72,6 +76,8 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     setTeamId(initial.team_id);
     setWorkPercentage(initial.workPercentage);
     setOverheadPercentage(initial.overheadPercentage);
+    setStartDate(initial.startDate ?? "");
+    setEndDate(initial.endDate ?? "");
     setIsExternal(initial.isExternal);
   }, [initial]);
 
@@ -125,6 +131,14 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
         case "team":
           await updateConsultant(initial.id, { team_id: value || null });
           setTeamId(value || null);
+          break;
+        case "startDate":
+          await updateConsultant(initial.id, { start_date: value.trim() || null });
+          setStartDate(value.trim());
+          break;
+        case "endDate":
+          await updateConsultant(initial.id, { end_date: value.trim() || null });
+          setEndDate(value.trim());
           break;
         default:
           break;
@@ -476,6 +490,78 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                   }}
                 >
                   {overheadPercentage ?? 0}%
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Start date</div>
+              {editingField === "startDate" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("startDate", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline ${startDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
+                  onClick={() => {
+                    setEditValue(startDate);
+                    setEditingField("startDate");
+                  }}
+                >
+                  {startDate || "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>End date</div>
+              {editingField === "endDate" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("endDate", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline ${endDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
+                  onClick={() => {
+                    setEditValue(endDate);
+                    setEditingField("endDate");
+                  }}
+                >
+                  {endDate || "—"}
                 </button>
               )}
             </div>

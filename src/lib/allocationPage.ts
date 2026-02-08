@@ -35,7 +35,7 @@ export async function getCachedConsultantsRaw() {
     async () => {
       const { data } = await supabase
         .from("consultants")
-        .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage")
+        .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date")
         .order("name");
       return data ?? [];
     },
@@ -79,6 +79,8 @@ export type AllocationConsultant = {
   isExternal: boolean;
   /** Available for project allocation per week: capacity (minus holidays × work%) × (1 − overhead%). */
   availableHoursByWeek: number[];
+  /** True for each week where consultant is outside start_date/end_date (cell shown gray; bookings still allowed). */
+  unavailableByWeek: boolean[];
 };
 
 // Project with customer for allocation page
@@ -201,6 +203,8 @@ export async function getAllocationPageData(
       const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
       const hoursPerWeek = calendarHours * workPct;
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
+      const startDate = (c as { start_date?: string | null }).start_date ?? null;
+      const endDate = (c as { end_date?: string | null }).end_date ?? null;
       const availableHoursByWeek = weeks.map((w) => {
         const { start, end } = getISOWeekDateRange(w.year, w.week);
         const holidayCount = countWeekdayHolidaysInRange(holidays, start, end);
@@ -210,6 +214,14 @@ export async function getAllocationPageData(
         );
         const capacityHours = baseHours * workPct;
         return capacityHours * (1 - overheadPct);
+      });
+      const unavailableByWeek = weeks.map((w) => {
+        const { start: weekStart, end: weekEnd } = getISOWeekDateRange(w.year, w.week);
+        // Gray weeks entirely before start_date (same treatment as after end_date)
+        if (startDate && weekEnd < startDate) return true;
+        // Gray weeks that extend past end_date (e.g. end 31 Mar → week 31 Mar–6 Apr is gray)
+        if (endDate && weekEnd > endDate) return true;
+        return false;
       });
       return {
         id: c.id,
@@ -221,6 +233,7 @@ export async function getAllocationPageData(
         teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
         isExternal: c.is_external ?? false,
         availableHoursByWeek,
+        unavailableByWeek,
       };
     });
 

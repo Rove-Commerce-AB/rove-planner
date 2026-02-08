@@ -87,6 +87,8 @@ Columns:
 - is_external (boolean, default false)  # true = external consultant
 - work_percentage (smallint, default 100)  # 100 = full-time; 80 = 80% (capacity = calendar × work_percentage/100)
 - overhead_percentage (smallint, default 0)  # 0–100; share of capacity used for overhead (e.g. sales). Available for projects = capacity × (1 − overhead_percentage/100)
+- start_date (date, nullable)  # First day consultant is available; null = no start limit
+- end_date (date, nullable)  # Last day consultant is available; null = no end limit. Allocation cells outside this period are shown gray (bookings still allowed).
 - created_at (timestamptz)
 - updated_at (timestamptz)
 

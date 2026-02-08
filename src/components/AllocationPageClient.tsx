@@ -194,6 +194,7 @@ function buildPerCustomerView(data: AllocationPageData) {
       consultantName: string;
       roleId: string | null;
       roleName: string;
+      unavailableByWeek: boolean[];
       weeks: { week: number; cells: { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
     }[] = [];
 
@@ -226,6 +227,7 @@ function buildPerCustomerView(data: AllocationPageData) {
           consultantName: c?.name ?? "Unknown",
           roleId,
           roleName: roleId ? roleMap.get(roleId) ?? "Unknown" : "",
+          unavailableByWeek: c?.unavailableByWeek ?? data.weeks.map(() => false),
           weeks,
         });
       }
@@ -316,6 +318,7 @@ function buildPerProjectView(data: AllocationPageData) {
       consultantName: string;
       roleId: string | null;
       roleName: string;
+      unavailableByWeek: boolean[];
       weeks: { week: number; cells: { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
     }[] = [];
 
@@ -348,6 +351,7 @@ function buildPerProjectView(data: AllocationPageData) {
           consultantName: c?.name ?? "Unknown",
           roleId,
           roleName: roleId ? roleMap.get(roleId) ?? "Unknown" : "",
+          unavailableByWeek: c?.unavailableByWeek ?? data.weeks.map(() => false),
           weeks,
         });
       }
@@ -403,6 +407,7 @@ export function AllocationPageClient({
   currentWeek: currentWeekProp,
 }: Props) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"consultant" | "customer" | "project">(
     "consultant"
   );
@@ -469,6 +474,10 @@ export function AllocationPageClient({
   const [editingCellConsultantValue, setEditingCellConsultantValue] =
     useState("");
   const [savingCellConsultant, setSavingCellConsultant] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const filteredData: AllocationPageData | null =
     data === null
@@ -773,17 +782,25 @@ export function AllocationPageClient({
         className="mb-6"
       />
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "consultant" | "customer" | "project")}
-        className="mb-4"
-      >
-        <TabsList>
-          <TabsTrigger value="consultant">Per consultant</TabsTrigger>
-          <TabsTrigger value="customer">Per customer</TabsTrigger>
-          <TabsTrigger value="project">Per project</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {mounted ? (
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "consultant" | "customer" | "project")}
+          className="mb-4"
+        >
+          <TabsList>
+            <TabsTrigger value="consultant">Per consultant</TabsTrigger>
+            <TabsTrigger value="customer">Per customer</TabsTrigger>
+            <TabsTrigger value="project">Per project</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      ) : (
+        <div className="mb-4 flex gap-2 border-b border-border px-1 py-2" aria-hidden="true">
+          <span className="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70">
+            Per consultant
+          </span>
+        </div>
+      )}
 
       {data.teams.length > 0 && (
         <div className="mb-3 w-fit px-2">
@@ -928,7 +945,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : getAllocationCellBgClass(pct)} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -996,7 +1013,7 @@ export function AllocationPageClient({
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
                               onClick={(e) => {
                                 if (
                                   (e.target as HTMLElement).closest("input")
@@ -1168,7 +1185,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : getAllocationCellBgClass(pct)} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -1236,7 +1253,7 @@ export function AllocationPageClient({
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
                               onClick={(e) => {
                                 if (
                                   (e.target as HTMLElement).closest("input")
@@ -1430,7 +1447,7 @@ export function AllocationPageClient({
                               return (
                                 <td
                                   key={`${weekInfo.year}-${weekInfo.week}`}
-                                  className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${isCurrentWeek(weekInfo) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
+                                  className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
                                   onClick={(e) => {
                                     if (
                                       (e.target as HTMLElement).closest("input")
@@ -1644,7 +1661,7 @@ export function AllocationPageClient({
                                 return (
                                   <td
                                     key={`${weekInfo.year}-${weekInfo.week}`}
-                                    className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${isCurrentWeek(weekInfo) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
+                                    className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
                                     onClick={(e) => {
                                       if (
                                         (e.target as HTMLElement).closest(
