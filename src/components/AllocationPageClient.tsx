@@ -47,9 +47,10 @@ function buildPerConsultantView(data: AllocationPageData) {
     ])
   );
 
+  const weekKey = (y: number, w: number) => `${y}-${w}`;
   const byConsultant = new Map<
     string,
-    Map<string, Map<number, { id: string; hours: number; roleName: string; roleId: string | null }>>
+    Map<string, Map<string, { id: string; hours: number; roleName: string; roleId: string | null }>>
   >();
 
   for (const a of data.allocations) {
@@ -64,7 +65,7 @@ function buildPerConsultantView(data: AllocationPageData) {
       byProject.set(a.project_id, new Map());
     }
     const byWeek = byProject.get(a.project_id)!;
-    byWeek.set(a.week, {
+    byWeek.set(weekKey(a.year, a.week), {
       id: a.id,
       hours: a.hours,
       roleName: a.role_id ? roleMap.get(a.role_id) ?? "Unknown" : "",
@@ -85,7 +86,7 @@ function buildPerConsultantView(data: AllocationPageData) {
         const proj = projectMap.get(projectId);
         const weeks = data.weeks.map((w) => ({
           week: w.week,
-          cell: byWeek.get(w.week) ?? null,
+          cell: byWeek.get(weekKey(w.year, w.week)) ?? null,
         }));
         const firstCellWithRole = weeks.find((w) => w.cell?.roleName);
         const roleName = firstCellWithRole?.cell?.roleName ?? "";
@@ -102,23 +103,25 @@ function buildPerConsultantView(data: AllocationPageData) {
       projectRows.push(...rows);
     }
 
-    const totalByWeek = new Map<number, number>();
+    const totalByWeek = new Map<string, number>();
     for (const pr of projectRows) {
-      for (const { week, cell } of pr.weeks) {
-        if (cell && cell.hours > 0) {
-          totalByWeek.set(week, (totalByWeek.get(week) ?? 0) + cell.hours);
+      pr.weeks.forEach(({ cell }, j) => {
+        const w = data.weeks[j];
+        if (cell && cell.hours > 0 && w) {
+          const key = weekKey(w.year, w.week);
+          totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + cell.hours);
         }
-      }
+      });
     }
 
     const percentByWeek = data.weeks.map((w, i) => {
-      const total = totalByWeek.get(w.week) ?? 0;
+      const total = totalByWeek.get(weekKey(w.year, w.week)) ?? 0;
       const available = c.availableHoursByWeek[i] ?? c.hoursPerWeek;
       return available > 0 ? Math.round((total / available) * 100) : 0;
     });
 
     const percentDetailsByWeek = data.weeks.map((w, i) => {
-      const total = totalByWeek.get(w.week) ?? 0;
+      const total = totalByWeek.get(weekKey(w.year, w.week)) ?? 0;
       const available = c.availableHoursByWeek[i] ?? c.hoursPerWeek;
       const pct = available > 0 ? Math.round((total / available) * 100) : 0;
       return { total, available, pct };
@@ -143,10 +146,11 @@ function buildPerCustomerView(data: AllocationPageData) {
   const ROW_KEY_SEP = "|";
   const keyFor = (consultantId: string, roleId: string | null) =>
     `${consultantId}${ROW_KEY_SEP}${roleId ?? "__none__"}`;
+  const weekKey = (y: number, w: number) => `${y}-${w}`;
 
   const byCustomer = new Map<
     string,
-    Map<string, Map<number, { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[]>>
+    Map<string, Map<string, { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[]>>
   >();
 
   for (const a of data.allocations) {
@@ -166,10 +170,11 @@ function buildPerCustomerView(data: AllocationPageData) {
       byConsultantRole.set(rowKey, new Map());
     }
     const byWeek = byConsultantRole.get(rowKey)!;
-    if (!byWeek.has(a.week)) {
-      byWeek.set(a.week, []);
+    const yw = weekKey(a.year, a.week);
+    if (!byWeek.has(yw)) {
+      byWeek.set(yw, []);
     }
-    byWeek.get(a.week)!.push({
+    byWeek.get(yw)!.push({
       id: a.id,
       projectId: a.project_id,
       hours: a.hours,
@@ -214,7 +219,7 @@ function buildPerCustomerView(data: AllocationPageData) {
         const byWeek = byConsultantRole.get(rowKey);
         const weeks = data.weeks.map((w) => ({
           week: w.week,
-          cells: byWeek?.get(w.week) ?? [],
+          cells: byWeek?.get(weekKey(w.year, w.week)) ?? [],
         }));
         consultantRows.push({
           consultantId,
@@ -226,14 +231,16 @@ function buildPerCustomerView(data: AllocationPageData) {
       }
     }
 
-    const totalByWeek = new Map<number, number>();
+    const totalByWeek = new Map<string, number>();
     for (const cr of consultantRows) {
-      for (const { week, cells } of cr.weeks) {
+      cr.weeks.forEach(({ cells }, j) => {
+        const w = data.weeks[j];
         const sum = cells.reduce((s, x) => s + x.hours, 0);
-        if (sum > 0) {
-          totalByWeek.set(week, (totalByWeek.get(week) ?? 0) + sum);
+        if (sum > 0 && w) {
+          const key = weekKey(w.year, w.week);
+          totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + sum);
         }
-      }
+      });
     }
 
     return {
@@ -605,8 +612,59 @@ export function AllocationPageClient({
     );
   }
 
+  if (process.env.NODE_ENV !== "production") {
+    const anders = data.consultants.find((c) => c.name.includes("Anders Dovberg"));
+    console.log("[Allocation DEV] anders", anders ? { id: anders.id } : null);
+
+    const ventimProjects = data.projects.filter(
+      (p) =>
+        (p.customerName && p.customerName.includes("Ventim")) ||
+        p.name.includes("Ventim")
+    );
+    console.log("[Allocation DEV] ventimProjects", ventimProjects.map((p) => ({ id: p.id, name: p.name, customerName: p.customerName })));
+
+    const allocs2026w38ByProject: Record<string, { hours: number; rows: typeof data.allocations }> = {};
+    if (anders) {
+      for (const p of ventimProjects) {
+        const rows = data.allocations.filter(
+          (a) =>
+            a.consultant_id === anders.id &&
+            a.year === 2026 &&
+            a.week === 38 &&
+            a.project_id === p.id
+        );
+        allocs2026w38ByProject[p.id] = {
+          hours: rows.reduce((s, r) => s + r.hours, 0),
+          rows,
+        };
+      }
+    }
+    console.log("[Allocation DEV] anders 2026v38 per projectId", allocs2026w38ByProject);
+
+    let totalAnders2026w38 = 0;
+    if (anders) {
+      const allAnders2026w38 = data.allocations.filter(
+        (a) =>
+          a.consultant_id === anders.id && a.year === 2026 && a.week === 38
+      );
+      const byPid: Record<string, number> = {};
+      for (const a of allAnders2026w38) {
+        byPid[a.project_id] = (byPid[a.project_id] ?? 0) + a.hours;
+        totalAnders2026w38 += a.hours;
+      }
+      console.log("[Allocation DEV] Anders 2026v38 hours per projectId + total", { byPid, total: totalAnders2026w38 });
+    }
+  }
+
   const perConsultant = buildPerConsultantView(filteredData!);
   const perCustomer = buildPerCustomerView(filteredData!);
+
+  if (process.env.NODE_ENV !== "production") {
+    const andersRow = perConsultant.find((r) => r.consultant.name.includes("Anders Dovberg"));
+    if (andersRow) {
+      console.log("[Allocation DEV] Anders projectRows (consultant view)", andersRow.projectRows.map((pr) => ({ projectId: pr.projectId, projectName: pr.projectName, customerName: pr.customerName })));
+    }
+  }
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const currentWeek = currentWeekProp;
@@ -776,7 +834,7 @@ export function AllocationPageClient({
                         const isDragRight = isDragRange && i === dragMax;
                         return (
                           <td
-                            key={i}
+                            key={`${w.year}-${w.week}`}
                             className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
@@ -841,9 +899,10 @@ export function AllocationPageClient({
                                 row.consultant.id &&
                               editingCellConsultant?.projectId === pr.projectId &&
                               editingCellConsultant?.weekIndex === i;
+                            const weekKey = data.weeks[i];
                             return (
                             <td
-                              key={i}
+                              key={`${weekKey.year}-${weekKey.week}`}
                               className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
                               onClick={(e) => {
                                 if (
@@ -856,7 +915,7 @@ export function AllocationPageClient({
                                   roleId,
                                   weekIndex: i,
                                   week: w.week,
-                                  year: data.year,
+                                  year: weekKey.year,
                                   allocationId: w.cell?.id ?? null,
                                   currentHours: w.cell?.hours ?? 0,
                                 });
@@ -1015,7 +1074,7 @@ export function AllocationPageClient({
                         const isDragRight = isDragRange && i === dragMax;
                         return (
                           <td
-                            key={i}
+                            key={`${w.year}-${w.week}`}
                             className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${getAllocationCellBgClass(pct)} ${isCurrentWeek(w) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-brand-blue/50 ${isDragRange ? "bg-brand-lilac/40" : ""} ${isDragRange ? "border-brand-signal border-t border-b" : ""} ${isDragLeft ? "border-l-2" : ""} ${isDragRight ? "border-r-2" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
@@ -1080,9 +1139,10 @@ export function AllocationPageClient({
                                 row.consultant.id &&
                               editingCellConsultant?.projectId === pr.projectId &&
                               editingCellConsultant?.weekIndex === i;
+                            const weekKey = data.weeks[i];
                             return (
                             <td
-                              key={i}
+                              key={`${weekKey.year}-${weekKey.week}`}
                               className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
                               onClick={(e) => {
                                 if (
@@ -1095,7 +1155,7 @@ export function AllocationPageClient({
                                   roleId,
                                   weekIndex: i,
                                   week: w.week,
-                                  year: data.year,
+                                  year: weekKey.year,
                                   allocationId: w.cell?.id ?? null,
                                   currentHours: w.cell?.hours ?? 0,
                                 });
@@ -1227,13 +1287,14 @@ export function AllocationPageClient({
                         </button>
                       </td>
                       {data.weeks.map((w, i) => {
-                        const total = row.totalByWeek.get(w.week) ?? 0;
+                        const total = row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
                         const hasBooking = total > 0;
-                        const prevTotal = i > 0 ? row.totalByWeek.get(data.weeks[i - 1].week) ?? 0 : 0;
+                        const prev = data.weeks[i - 1];
+                        const prevTotal = i > 0 && prev ? row.totalByWeek.get(`${prev.year}-${prev.week}`) ?? 0 : 0;
                         const showLeftBorder = hasBooking && (i === 0 || prevTotal === 0);
                         return (
                           <td
-                            key={w.week}
+                            key={`${w.year}-${w.week}`}
                             className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
                           >
                             {hasBooking ? `${total}h` : null}
@@ -1275,7 +1336,7 @@ export function AllocationPageClient({
                                 editingCell?.weekIndex === i;
                               return (
                                 <td
-                                  key={i}
+                                  key={`${weekInfo.year}-${weekInfo.week}`}
                                   className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${isCurrentWeek(weekInfo) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
                                   onClick={(e) => {
                                     if (
@@ -1288,7 +1349,7 @@ export function AllocationPageClient({
                                       roleId: cr.roleId,
                                       weekIndex: i,
                                       week: w.week,
-                                      year: data.year,
+                                      year: weekInfo.year,
                                       allocationId: cells[0]?.id ?? null,
                                       otherAllocationIds: cells
                                         .slice(1)

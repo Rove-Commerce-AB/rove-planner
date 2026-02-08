@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getAllocationPageData } from "@/lib/allocationPage";
 import { AllocationPageClient } from "@/components/AllocationPageClient";

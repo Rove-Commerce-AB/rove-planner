@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { isoWeeksInYear } from "./dateUtils";
 
 export type AllocationRecord = {
   id: string;
@@ -74,6 +75,68 @@ export async function getAllocationsByProjectIds(
   }));
 }
 
+const DEV_ALLOC_CHECK = {
+  consultant_id: "e75affb9-0ee2-4640-8a6e-e971b2e7b4ae",
+  project_id: "94de14c7-e470-4480-a06d-1785705c0bd6",
+  year: 2026,
+  week: 38,
+};
+
+const ALLOCATIONS_PAGE_SIZE = 1000;
+
+/** Fetches allocations for exactly the (year, week) pairs in `weeks`. Paginates per year to avoid PostgREST 1000-row default limit. */
+export async function getAllocationsForWeeks(
+  weeks: { year: number; week: number }[]
+): Promise<AllocationRecord[]> {
+  if (weeks.length === 0) return [];
+  const uniqueYears = [...new Set(weeks.map((w) => w.year))];
+  const results: AllocationRecord[] = [];
+  const orderOpts = { ascending: true } as const;
+  for (const y of uniqueYears) {
+    const weeksInYear = weeks.filter((w) => w.year === y);
+    const minWeek = Math.min(...weeksInYear.map((w) => w.week));
+    const maxWeek = Math.max(...weeksInYear.map((w) => w.week));
+    let offset = 0;
+    let page: unknown[];
+    do {
+      const { data, error } = await supabase
+        .from("allocations")
+        .select("id,consultant_id,project_id,role_id,year,week,hours")
+        .eq("year", y)
+        .gte("week", minWeek)
+        .lte("week", maxWeek)
+        .order("year", orderOpts)
+        .order("week", orderOpts)
+        .order("consultant_id", orderOpts)
+        .order("project_id", orderOpts)
+        .order("id", orderOpts)
+        .range(offset, offset + ALLOCATIONS_PAGE_SIZE - 1);
+      if (error) throw error;
+      page = data ?? [];
+      results.push(...(page as Parameters<typeof mapAllocation>[0][]).map(mapAllocation));
+      offset += ALLOCATIONS_PAGE_SIZE;
+    } while (page.length === ALLOCATIONS_PAGE_SIZE);
+  }
+  if (process.env.NODE_ENV !== "production") {
+    const first = weeks[0];
+    const last = weeks[weeks.length - 1];
+    const needle = results.find(
+      (a) =>
+        a.consultant_id === DEV_ALLOC_CHECK.consultant_id &&
+        a.project_id === DEV_ALLOC_CHECK.project_id &&
+        a.year === DEV_ALLOC_CHECK.year &&
+        a.week === DEV_ALLOC_CHECK.week
+    );
+    console.log("[getAllocationsForWeeks DEV]", {
+      weeksFirstLast: first && last ? { first, last } : null,
+      allocationsLength: results.length,
+      devRowFound: !!needle,
+      devRowHours: needle?.hours ?? null,
+    });
+  }
+  return results;
+}
+
 export async function getAllocationsForWeekRange(
   year: number,
   weekFrom: number,
@@ -92,13 +155,14 @@ export async function getAllocationsForWeekRange(
     return (data ?? []).map(mapAllocation);
   }
 
+  const maxWeek = isoWeeksInYear(year);
   const [data1, data2] = await Promise.all([
     supabase
       .from("allocations")
       .select("id,consultant_id,project_id,role_id,year,week,hours")
       .eq("year", year)
       .gte("week", weekFrom)
-      .lte("week", 52),
+      .lte("week", maxWeek),
     supabase
       .from("allocations")
       .select("id,consultant_id,project_id,role_id,year,week,hours")

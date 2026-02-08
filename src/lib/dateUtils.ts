@@ -65,6 +65,27 @@ export function getMonthLabel(month: number, year: number): string {
   return `${MONTH_NAMES[month - 1]} ${year}`;
 }
 
+/** Returns number of ISO weeks in the given year (52 or 53). */
+export function isoWeeksInYear(year: number): number {
+  const dec28 = new Date(year, 11, 28);
+  const isoDay = dec28.getDay() || 7;
+  const thursdayOffset = 4 - isoDay;
+  const thursday = new Date(dec28);
+  thursday.setDate(dec28.getDate() + thursdayOffset);
+  const isoYear = thursday.getFullYear();
+  const jan4 = new Date(isoYear, 0, 4);
+  const jan4Day = jan4.getDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - jan4Day + 1);
+  return (
+    1 +
+    Math.floor(
+      (thursday.getTime() - week1Monday.getTime()) /
+        (7 * 24 * 60 * 60 * 1000)
+    )
+  );
+}
+
 /** Add delta weeks to (year, week). Delta can be negative. */
 export function addWeeksToYearWeek(
   year: number,
@@ -73,13 +94,13 @@ export function addWeeksToYearWeek(
 ): { year: number; week: number } {
   let w = week + delta;
   let y = year;
-  while (w > 52) {
-    w -= 52;
+  while (w > isoWeeksInYear(y)) {
+    w -= isoWeeksInYear(y);
     y += 1;
   }
   while (w < 1) {
-    w += 52;
     y -= 1;
+    w += isoWeeksInYear(y);
   }
   return { year: y, week: w };
 }
