@@ -145,28 +145,12 @@ function buildWeeksArray(
   return weeks;
 }
 
-const DEV_ALLOC_CHECK = {
-  consultant_id: "e75affb9-0ee2-4640-8a6e-e971b2e7b4ae",
-  project_id: "94de14c7-e470-4480-a06d-1785705c0bd6",
-  year: 2026,
-  week: 38,
-};
-
 export async function getAllocationPageData(
   year: number,
   weekFrom: number,
   weekTo: number
 ): Promise<AllocationPageData> {
   const weeks = buildWeeksArray(year, weekFrom, weekTo);
-
-  if (process.env.NODE_ENV !== "production") {
-    const first = weeks[0];
-    const last = weeks[weeks.length - 1];
-    console.log("[getAllocationPageData DEV]", {
-      range: { year, weekFrom, weekTo },
-      weeksFirstLast: first && last ? { first, last } : null,
-    });
-  }
 
   let consultants: AllocationConsultant[] = [];
   let projects: AllocationProject[] = [];
@@ -187,21 +171,6 @@ export async function getAllocationPageData(
     roles = rolesData;
     teams = teamsData;
     allocations = allocationsData;
-
-    if (process.env.NODE_ENV !== "production") {
-      const needle = allocations.find(
-        (a) =>
-          a.consultant_id === DEV_ALLOC_CHECK.consultant_id &&
-          a.project_id === DEV_ALLOC_CHECK.project_id &&
-          a.year === DEV_ALLOC_CHECK.year &&
-          a.week === DEV_ALLOC_CHECK.week
-      );
-      console.log("[getAllocationPageData DEV] after fetch", {
-        allocationsLength: allocations.length,
-        devRowFound: !!needle,
-        devRowHours: needle?.hours ?? null,
-      });
-    }
     const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
     const roleMap = new Map(roles.map((r) => [r.id, r.name]));
 

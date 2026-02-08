@@ -75,13 +75,6 @@ export async function getAllocationsByProjectIds(
   }));
 }
 
-const DEV_ALLOC_CHECK = {
-  consultant_id: "e75affb9-0ee2-4640-8a6e-e971b2e7b4ae",
-  project_id: "94de14c7-e470-4480-a06d-1785705c0bd6",
-  year: 2026,
-  week: 38,
-};
-
 const ALLOCATIONS_PAGE_SIZE = 1000;
 
 /** Fetches allocations for exactly the (year, week) pairs in `weeks`. Paginates per year to avoid PostgREST 1000-row default limit. */
@@ -116,23 +109,6 @@ export async function getAllocationsForWeeks(
       results.push(...(page as Parameters<typeof mapAllocation>[0][]).map(mapAllocation));
       offset += ALLOCATIONS_PAGE_SIZE;
     } while (page.length === ALLOCATIONS_PAGE_SIZE);
-  }
-  if (process.env.NODE_ENV !== "production") {
-    const first = weeks[0];
-    const last = weeks[weeks.length - 1];
-    const needle = results.find(
-      (a) =>
-        a.consultant_id === DEV_ALLOC_CHECK.consultant_id &&
-        a.project_id === DEV_ALLOC_CHECK.project_id &&
-        a.year === DEV_ALLOC_CHECK.year &&
-        a.week === DEV_ALLOC_CHECK.week
-    );
-    console.log("[getAllocationsForWeeks DEV]", {
-      weeksFirstLast: first && last ? { first, last } : null,
-      allocationsLength: results.length,
-      devRowFound: !!needle,
-      devRowHours: needle?.hours ?? null,
-    });
   }
   return results;
 }

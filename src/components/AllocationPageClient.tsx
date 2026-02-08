@@ -612,59 +612,8 @@ export function AllocationPageClient({
     );
   }
 
-  if (process.env.NODE_ENV !== "production") {
-    const anders = data.consultants.find((c) => c.name.includes("Anders Dovberg"));
-    console.log("[Allocation DEV] anders", anders ? { id: anders.id } : null);
-
-    const ventimProjects = data.projects.filter(
-      (p) =>
-        (p.customerName && p.customerName.includes("Ventim")) ||
-        p.name.includes("Ventim")
-    );
-    console.log("[Allocation DEV] ventimProjects", ventimProjects.map((p) => ({ id: p.id, name: p.name, customerName: p.customerName })));
-
-    const allocs2026w38ByProject: Record<string, { hours: number; rows: typeof data.allocations }> = {};
-    if (anders) {
-      for (const p of ventimProjects) {
-        const rows = data.allocations.filter(
-          (a) =>
-            a.consultant_id === anders.id &&
-            a.year === 2026 &&
-            a.week === 38 &&
-            a.project_id === p.id
-        );
-        allocs2026w38ByProject[p.id] = {
-          hours: rows.reduce((s, r) => s + r.hours, 0),
-          rows,
-        };
-      }
-    }
-    console.log("[Allocation DEV] anders 2026v38 per projectId", allocs2026w38ByProject);
-
-    let totalAnders2026w38 = 0;
-    if (anders) {
-      const allAnders2026w38 = data.allocations.filter(
-        (a) =>
-          a.consultant_id === anders.id && a.year === 2026 && a.week === 38
-      );
-      const byPid: Record<string, number> = {};
-      for (const a of allAnders2026w38) {
-        byPid[a.project_id] = (byPid[a.project_id] ?? 0) + a.hours;
-        totalAnders2026w38 += a.hours;
-      }
-      console.log("[Allocation DEV] Anders 2026v38 hours per projectId + total", { byPid, total: totalAnders2026w38 });
-    }
-  }
-
   const perConsultant = buildPerConsultantView(filteredData!);
   const perCustomer = buildPerCustomerView(filteredData!);
-
-  if (process.env.NODE_ENV !== "production") {
-    const andersRow = perConsultant.find((r) => r.consultant.name.includes("Anders Dovberg"));
-    if (andersRow) {
-      console.log("[Allocation DEV] Anders projectRows (consultant view)", andersRow.projectRows.map((pr) => ({ projectId: pr.projectId, projectName: pr.projectName, customerName: pr.customerName })));
-    }
-  }
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const currentWeek = currentWeekProp;
