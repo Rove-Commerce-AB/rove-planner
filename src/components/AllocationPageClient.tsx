@@ -3,18 +3,19 @@
 import { useState, Fragment, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Trash2 } from "lucide-react";
 import {
   getMonthSpansForWeeks,
   addWeeksToYearWeek,
 } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPage";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
-import { Select, Tabs, TabsList, TabsTrigger, PageHeader } from "@/components/ui";
+import { Select, Tabs, TabsList, TabsTrigger, PageHeader, Dialog, Button } from "@/components/ui";
 import {
   createAllocation,
   updateAllocation,
   deleteAllocation,
+  deleteAllocations,
 } from "@/lib/allocations";
 
 const AddAllocationModal = dynamic(
@@ -99,8 +100,11 @@ function buildPerConsultantView(data: AllocationPageData) {
           weeks,
         });
       }
-      rows.sort((a, b) => a.projectName.localeCompare(b.projectName));
-      projectRows.push(...rows);
+      const rowsWithAllocations = rows.filter((pr) =>
+        pr.weeks.some((w) => w.cell != null && w.cell.hours > 0)
+      );
+      rowsWithAllocations.sort((a, b) => a.projectName.localeCompare(b.projectName));
+      projectRows.push(...rowsWithAllocations);
     }
 
     const totalByWeek = new Map<string, number>();
@@ -475,6 +479,17 @@ export function AllocationPageClient({
     useState("");
   const [savingCellConsultant, setSavingCellConsultant] = useState(false);
 
+  type DeleteBookingItem = { allocationId: string; year: number; week: number; weekIndex: number };
+  const [deleteBookingDialog, setDeleteBookingDialog] = useState<{
+    consultantId: string;
+    consultantName: string;
+    projectId: string;
+    projectLabel: string;
+    allocations: DeleteBookingItem[];
+    selectedWeekIndices: Set<number>;
+  } | null>(null);
+  const [deletingBooking, setDeletingBooking] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -768,6 +783,9 @@ export function AllocationPageClient({
   const perProject = buildPerProjectView(data);
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
+  const expandableConsultantIds = new Set(
+    perConsultant.filter((r) => r.projectRows.length > 0).map((r) => r.consultant.id)
+  );
   const currentWeek = currentWeekProp;
   const currentYear = currentYearProp;
   const monthSpans = getMonthSpansForWeeks(data.weeks);
@@ -816,6 +834,26 @@ export function AllocationPageClient({
         </div>
       )}
 
+      {activeTab === "consultant" && expandableConsultantIds.size > 0 && (
+        <div className="mb-2 mt-4 flex items-center gap-2 px-2">
+          <button
+            type="button"
+            onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
+            className="text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+          >
+            Expand all
+          </button>
+          <span className="text-xs text-text-primary opacity-50">|</span>
+          <button
+            type="button"
+            onClick={() => setExpandedConsultants(new Set())}
+            className="text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+          >
+            Collapse all
+          </button>
+        </div>
+      )}
+
       <div className="allocation-tables overflow-x-hidden space-y-8">
           {activeTab === "consultant" && (
             <>
@@ -856,6 +894,7 @@ export function AllocationPageClient({
                     {data.weeks.map((w) => (
                       <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
+                    <col className="w-6" />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
@@ -875,6 +914,11 @@ export function AllocationPageClient({
                           {span.label}
                         </th>
                       ))}
+                      <th
+                        rowSpan={2}
+                        className="w-6 border-r border-grid-subtle px-0 py-0.5 text-center"
+                        aria-label="Remove booking"
+                      />
                     </tr>
                     <tr className="border-b border-grid-subtle bg-bg-muted">
                       {renderWeekHeaderCells("internal")}
@@ -975,9 +1019,23 @@ export function AllocationPageClient({
                           </td>
                         );
                       })}
+                      <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6" />
                     </tr>
                     {expanded &&
-                      row.projectRows.map((pr) => (
+                      row.projectRows.map((pr) => {
+                        const allocationsWithBooking: DeleteBookingItem[] = [];
+                        pr.weeks.forEach((w, i) => {
+                          if (w.cell?.id && w.cell.hours > 0 && data.weeks[i]) {
+                            allocationsWithBooking.push({
+                              allocationId: w.cell.id,
+                              year: data.weeks[i].year,
+                              week: data.weeks[i].week,
+                              weekIndex: i,
+                            });
+                          }
+                        });
+                        const hasAnyBooking = allocationsWithBooking.length > 0;
+                        return (
                         <tr
                           key={pr.projectId}
                           className="border-b border-grid-light-subtle last:border-border"
@@ -1061,8 +1119,31 @@ export function AllocationPageClient({
                             </td>
                           );
                           })}
+                          <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6 align-middle text-center">
+                            {hasAnyBooking ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteBookingDialog({
+                                    consultantId: row.consultant.id,
+                                    consultantName: row.consultant.name,
+                                    projectId: pr.projectId,
+                                    projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                    allocations: allocationsWithBooking,
+                                    selectedWeekIndices: new Set(allocationsWithBooking.map((a) => a.weekIndex)),
+                                  });
+                                }}
+                                className="inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                                aria-label="Remove booking"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
+                          </td>
                         </tr>
-                      ))}
+                      );
+                      })}
                   </Fragment>
                 );
               })}
@@ -1079,6 +1160,7 @@ export function AllocationPageClient({
                     {data.weeks.map((w) => (
                       <col key={`ext-${w.year}-${w.week}`} className="w-[1.75rem]" />
                     ))}
+                    <col className="w-6" />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
@@ -1098,6 +1180,11 @@ export function AllocationPageClient({
                           {span.label}
                         </th>
                       ))}
+                      <th
+                        rowSpan={2}
+                        className="w-6 border-r border-grid-subtle px-0 py-0.5 text-center"
+                        aria-label="Remove booking"
+                      />
                     </tr>
                     <tr className="border-b border-grid-subtle bg-bg-muted">
                       {renderWeekHeaderCells("external")}
@@ -1215,9 +1302,23 @@ export function AllocationPageClient({
                           </td>
                         );
                       })}
+                      <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6" />
                     </tr>
                     {expanded &&
-                      row.projectRows.map((pr) => (
+                      row.projectRows.map((pr) => {
+                        const allocationsWithBooking: DeleteBookingItem[] = [];
+                        pr.weeks.forEach((w, i) => {
+                          if (w.cell?.id && w.cell.hours > 0 && data.weeks[i]) {
+                            allocationsWithBooking.push({
+                              allocationId: w.cell.id,
+                              year: data.weeks[i].year,
+                              week: data.weeks[i].week,
+                              weekIndex: i,
+                            });
+                          }
+                        });
+                        const hasAnyBooking = allocationsWithBooking.length > 0;
+                        return (
                         <tr
                           key={pr.projectId}
                           className="border-b border-grid-light-subtle last:border-border"
@@ -1301,8 +1402,31 @@ export function AllocationPageClient({
                             </td>
                           );
                           })}
+                          <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6 align-middle text-center">
+                            {hasAnyBooking ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteBookingDialog({
+                                    consultantId: row.consultant.id,
+                                    consultantName: row.consultant.name,
+                                    projectId: pr.projectId,
+                                    projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                    allocations: allocationsWithBooking,
+                                    selectedWeekIndices: new Set(allocationsWithBooking.map((a) => a.weekIndex)),
+                                  });
+                                }}
+                                className="inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                                aria-label="Remove booking"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
+                          </td>
                         </tr>
-                      ))}
+                      );
+                      })}
                   </Fragment>
                 );
               })}
@@ -1741,6 +1865,88 @@ export function AllocationPageClient({
         initialWeekFrom={addInitialParams?.weekFrom}
         initialWeekTo={addInitialParams?.weekTo}
       />
+
+      <Dialog
+        open={deleteBookingDialog !== null}
+        onOpenChange={(open) => !open && setDeleteBookingDialog(null)}
+        title="Remove booking"
+      >
+        {deleteBookingDialog && (
+          <div className="mt-4 space-y-4">
+            <p className="text-sm text-text-primary">
+              Remove booking for <strong>{deleteBookingDialog.consultantName}</strong> on{" "}
+              <strong>{deleteBookingDialog.projectLabel}</strong>?
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="danger"
+                disabled={deletingBooking}
+                onClick={async () => {
+                  setDeletingBooking(true);
+                  try {
+                    await deleteAllocations(deleteBookingDialog.allocations.map((a) => a.allocationId));
+                    handleSuccess();
+                    setDeleteBookingDialog(null);
+                  } finally {
+                    setDeletingBooking(false);
+                  }
+                }}
+              >
+                Remove entire booking
+              </Button>
+              <div className="border-t border-panel pt-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+                  Or select weeks to remove
+                </p>
+                <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                  {deleteBookingDialog.allocations.map((a) => (
+                    <label
+                      key={a.allocationId}
+                      className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={deleteBookingDialog.selectedWeekIndices.has(a.weekIndex)}
+                        onChange={() => {
+                          setDeleteBookingDialog((prev) => {
+                            if (!prev) return null;
+                            const next = new Set(prev.selectedWeekIndices);
+                            if (next.has(a.weekIndex)) next.delete(a.weekIndex);
+                            else next.add(a.weekIndex);
+                            return { ...prev, selectedWeekIndices: next };
+                          });
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span>{formatWeekLabel(a.week, a.year)}</span>
+                    </label>
+                  ))}
+                </div>
+                <Button
+                  variant="secondary"
+                  className="mt-2 border-danger text-danger hover:bg-danger/10"
+                  disabled={deletingBooking || deleteBookingDialog.selectedWeekIndices.size === 0}
+                  onClick={async () => {
+                    const idsToDelete = deleteBookingDialog.allocations
+                      .filter((a) => deleteBookingDialog.selectedWeekIndices.has(a.weekIndex))
+                      .map((a) => a.allocationId);
+                    setDeletingBooking(true);
+                    try {
+                      await deleteAllocations(idsToDelete);
+                      handleSuccess();
+                      setDeleteBookingDialog(null);
+                    } finally {
+                      setDeletingBooking(false);
+                    }
+                  }}
+                >
+                  Remove selected ({deleteBookingDialog.selectedWeekIndices.size})
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       <EditAllocationModal
         allocation={editingAllocation}

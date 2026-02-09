@@ -341,3 +341,10 @@ export async function deleteAllocation(id: string): Promise<void> {
 
   if (error) throw error;
 }
+
+/** Delete multiple allocations by id. */
+export async function deleteAllocations(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase.from("allocations").delete().in("id", ids);
+  if (error) throw error;
+}
