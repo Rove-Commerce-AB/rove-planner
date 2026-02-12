@@ -745,7 +745,7 @@ export function AllocationPageClient({
   const currentYearNum = currentYearProp;
   const currentWeekNum = currentWeekProp;
   const isCurrentWeekHeader = (w: { year: number; week: number }) =>
-    w.year === currentYearNum && w.week === currentWeekNum;
+    mounted && w.year === currentYearNum && w.week === currentWeekNum;
 
   const renderWeekHeaderCells = (tableKey: string, borderClass = "border-grid-subtle") =>
     (data?.weeks ?? []).map((w) => (
@@ -790,7 +790,7 @@ export function AllocationPageClient({
   const currentYear = currentYearProp;
   const monthSpans = getMonthSpansForWeeks(data.weeks);
   const isCurrentWeek = (w: { year: number; week: number }) =>
-    w.year === currentYear && w.week === currentWeek;
+    mounted && w.year === currentYear && w.week === currentWeek;
 
   return (
     <>
