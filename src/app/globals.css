@@ -59,9 +59,21 @@ body {
   border-color: #9a9a9a;
 }
 
-/* Current week column: orange border (same as Add allocation button) */
+/* Current week column: orange border (same as Add allocation button). Width 2px so it wins over adjacent 1px borders in border-collapse. */
 .allocation-tables td.current-week-cell,
 .allocation-tables th.current-week-header {
+  border-left-width: 2px !important;
+  border-right-width: 2px !important;
   border-left-color: var(--color-brand-signal) !important;
   border-right-color: var(--color-brand-signal) !important;
+}
+
+/* Drag-range cells: same signal color for border and background so all marked cells look identical. Override hover so last cell (under cursor) stays same color. */
+.allocation-tables td.drag-range-cell,
+.allocation-tables td.drag-range-cell:hover {
+  background-color: color-mix(in srgb, var(--color-brand-signal) 45%, transparent) !important;
+  border-left-color: var(--color-brand-signal) !important;
+  border-right-color: var(--color-brand-signal) !important;
+  border-top-color: var(--color-brand-signal) !important;
+  border-bottom-color: var(--color-brand-signal) !important;
 }
