@@ -22,6 +22,8 @@ export type ProjectRecord = {
   type: ProjectType;
   start_date: string | null;
   end_date: string | null;
+  /** 1–100, default 100. */
+  probability: number | null;
 };
 
 export type CreateProjectInput = {
@@ -31,6 +33,7 @@ export type CreateProjectInput = {
   type?: ProjectType;
   start_date?: string | null;
   end_date?: string | null;
+  probability?: number | null;
 };
 
 export type UpdateProjectInput = {
@@ -40,11 +43,13 @@ export type UpdateProjectInput = {
   type?: ProjectType;
   start_date?: string | null;
   end_date?: string | null;
+  probability?: number | null;
 };
 
 export async function createProject(
   input: CreateProjectInput
 ): Promise<ProjectRecord> {
+  const prob = input.probability ?? 100;
   const { data, error } = await supabase
     .from("projects")
     .insert({
@@ -54,8 +59,9 @@ export async function createProject(
       type: input.type ?? "customer",
       start_date: input.start_date?.trim() || null,
       end_date: input.end_date?.trim() || null,
+      probability: prob,
     })
-    .select("id,customer_id,name,is_active,type,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
     .single();
 
   if (error) throw error;
@@ -75,12 +81,13 @@ export async function updateProject(
     updates.start_date = input.start_date?.trim() || null;
   if (input.end_date !== undefined)
     updates.end_date = input.end_date?.trim() || null;
+  if (input.probability !== undefined) updates.probability = input.probability;
 
   const { data, error } = await supabase
     .from("projects")
     .update(updates)
     .eq("id", id)
-    .select("id,customer_id,name,is_active,type,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
     .single();
 
   if (error) throw error;
@@ -99,7 +106,7 @@ export async function getProjectWithDetailsById(
   const [project, customers] = await Promise.all([
     supabase
       .from("projects")
-      .select("id,customer_id,name,is_active,type,start_date,end_date")
+      .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
       .eq("id", id)
       .single(),
     getCustomers(),
@@ -117,6 +124,7 @@ export async function getProjectWithDetailsById(
   );
   const cust = customerMap.get(p.customer_id);
 
+  const probability = p.probability != null ? p.probability : 100;
   return {
     id: p.id,
     name: p.name,
@@ -126,6 +134,7 @@ export async function getProjectWithDetailsById(
     customerName: cust?.name ?? "Unknown",
     startDate: p.start_date ?? null,
     endDate: p.end_date ?? null,
+    probability,
     consultantCount: 0,
     totalHoursAllocated: 0,
     consultantInitials: [],
@@ -136,7 +145,7 @@ export async function getProjectWithDetailsById(
 export async function getProjects(): Promise<ProjectRecord[]> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id,customer_id,name,is_active,type,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
     .order("is_active", { ascending: false })
     .order("name");
 
@@ -206,6 +215,7 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
 
     const cust = customerMap.get(p.customer_id);
     const projectType = (p.type as ProjectType) ?? "customer";
+    const probability = p.probability != null ? p.probability : 100;
     return {
       id: p.id,
       name: p.name,
@@ -215,6 +225,7 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       customerName: cust?.name ?? "Unknown",
       startDate: p.start_date ?? null,
       endDate: p.end_date ?? null,
+      probability,
       consultantCount: consultantIdsList.length,
       totalHoursAllocated: stats?.totalHours ?? 0,
       consultantInitials: initials,
@@ -230,7 +241,7 @@ export async function getProjectsByCustomerIds(
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id,customer_id,name,is_active,type,start_date,end_date")
+    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
     .in("customer_id", customerIds);
 
   if (error) throw error;
@@ -260,6 +271,8 @@ export type ProjectWithCustomer = {
   type: ProjectType;
   isActive: boolean;
   customerIsActive: boolean;
+  /** 1–100, default 100. null treated as 100. */
+  probability: number | null;
 };
 
 export async function getProjectsWithCustomer(
@@ -267,7 +280,7 @@ export async function getProjectsWithCustomer(
 ): Promise<ProjectWithCustomer[]> {
   const { data: projects, error: projErr } = await supabase
     .from("projects")
-    .select("id,name,customer_id,type,is_active")
+    .select("id,name,customer_id,type,is_active,probability")
     .order("name");
 
   if (projErr) throw projErr;
@@ -294,6 +307,7 @@ export async function getProjectsWithCustomer(
 
   return filtered.map((p) => {
     const cust = customerMap.get(p.customer_id);
+    const probability = p.probability != null ? p.probability : 100;
     return {
       id: p.id,
       name: p.name,
@@ -303,6 +317,7 @@ export async function getProjectsWithCustomer(
       type: (p.type ?? "customer") as ProjectType,
       isActive: p.is_active ?? true,
       customerIsActive: cust?.is_active ?? true,
+      probability,
     };
   });
 }
@@ -322,7 +337,7 @@ export async function getProjectsAvailableForConsultant(
 
   const { data: projects, error: projErr } = await supabase
     .from("projects")
-    .select("id,name,customer_id,type,is_active")
+    .select("id,name,customer_id,type,is_active,probability")
     .in("customer_id", customerIds)
     .order("name");
 
@@ -346,6 +361,7 @@ export async function getProjectsAvailableForConsultant(
 
   return projects.map((p) => {
     const cust = customerMap.get(p.customer_id);
+    const probability = p.probability != null ? p.probability : 100;
     return {
       id: p.id,
       name: p.name,
@@ -355,6 +371,7 @@ export async function getProjectsAvailableForConsultant(
       type: (p.type ?? "customer") as ProjectType,
       isActive: p.is_active ?? true,
       customerIsActive: cust?.is_active ?? true,
+      probability,
     };
   });
 }

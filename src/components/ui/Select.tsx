@@ -84,7 +84,7 @@ export function Select({
             sideOffset={4}
           >
             <SelectPrimitive.Viewport
-              className={`p-1 ${viewportClassName}`.trim()}
+              className={`max-h-60 overflow-y-auto p-1 ${viewportClassName}`.trim()}
             >
               {options.map((opt) => (
                 <SelectPrimitive.Item

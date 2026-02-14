@@ -20,6 +20,8 @@ export type ProjectWithDetails = {
   customerName: string;
   startDate: string | null;
   endDate: string | null;
+  /** 1–100, default 100. null treated as 100. */
+  probability: number | null;
   consultantCount: number;
   totalHoursAllocated: number;
   consultantInitials: string[];

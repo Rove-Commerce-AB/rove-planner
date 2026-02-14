@@ -92,6 +92,8 @@ export type AllocationProject = {
   customerColor: string;
   isActive?: boolean;
   customerIsActive?: boolean;
+  /** 1–100, default 100. null treated as 100. */
+  probability: number | null;
 };
 
 // Customer for per-customer view

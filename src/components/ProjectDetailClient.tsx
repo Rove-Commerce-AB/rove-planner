@@ -16,7 +16,8 @@ import { ProjectRatesTab } from "./ProjectRatesTab";
 
 const tableBorder = "border-panel";
 
-type EditField = "name" | "customerId" | "startDate" | "endDate" | null;
+const PROBABILITY_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+type EditField = "name" | "customerId" | "startDate" | "endDate" | "probability" | null;
 
 type Props = {
   project: ProjectWithDetails;
@@ -30,6 +31,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
   const [type, setType] = useState<ProjectType>(initial.type);
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
+  const [probability, setProbability] = useState(initial.probability ?? 100);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +48,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
     setType(initial.type);
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
+    setProbability(initial.probability ?? 100);
   }, [initial]);
 
   useEffect(() => {
@@ -95,6 +98,17 @@ export function ProjectDetailClient({ project: initial }: Props) {
           });
           setEndDate(trimmed || "");
           break;
+        case "probability": {
+          const num = parseInt(trimmed, 10);
+          if (Number.isNaN(num) || num < 10 || num > 100 || num % 10 !== 0) {
+            setError("Probability must be 10, 20, … 100");
+            setSubmitting(false);
+            return;
+          }
+          await updateProject(initial.id, { probability: num });
+          setProbability(num);
+          break;
+        }
         default:
           break;
       }
@@ -400,6 +414,46 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   {TYPE_LABELS[type]}
                 </button>
               </div>
+            </div>
+
+            <div>
+              <div className={labelClass}>Probability</div>
+              {editingField === "probability" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={PROBABILITY_OPTIONS.map((n) => ({
+                      value: String(n),
+                      label: `${n}%`,
+                    }))}
+                    placeholder="Select"
+                    className="min-w-[100px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("probability", editValue)}
+                    disabled={submitting || !editValue}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(String(probability));
+                    setEditingField("probability");
+                  }}
+                >
+                  {probability}%
+                </button>
+              )}
             </div>
 
             <div>

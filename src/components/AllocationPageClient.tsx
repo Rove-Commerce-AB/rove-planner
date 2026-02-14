@@ -3,7 +3,7 @@
 import { useState, Fragment, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, ChevronLeft, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Trash2, Percent } from "lucide-react";
 import {
   getMonthSpansForWeeks,
   addWeeksToYearWeek,
@@ -39,7 +39,54 @@ type Props = {
   currentWeek: number;
 };
 
-function buildPerConsultantView(data: AllocationPageData) {
+export type ProbabilityFilter = "none" | "weighted" | "hideNon100";
+
+function getProjectProbabilityMap(projects: AllocationPageData["projects"]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const p of projects) {
+    m.set(p.id, p.probability != null ? p.probability : 100);
+  }
+  return m;
+}
+
+function getDisplayHours(
+  hours: number,
+  projectId: string,
+  filter: ProbabilityFilter,
+  probMap: Map<string, number>
+): { displayHours: number; isHidden: boolean } {
+  const prob = probMap.get(projectId) ?? 100;
+  if (filter === "hideNon100" && prob !== 100)
+    return { displayHours: 0, isHidden: true };
+  if (filter === "weighted")
+    return { displayHours: Math.round(hours * (prob / 100)), isHidden: false };
+  return { displayHours: hours, isHidden: false };
+}
+
+function showProbabilitySymbol(
+  projectId: string,
+  filter: ProbabilityFilter,
+  probMap: Map<string, number>
+): boolean {
+  if (filter !== "weighted") return false;
+  const prob = probMap.get(projectId) ?? 100;
+  return prob !== 100;
+}
+
+type ConsultantViewCell = {
+  id: string;
+  hours: number;
+  displayHours: number;
+  isHidden: boolean;
+  roleName: string;
+  roleId: string | null;
+};
+
+function buildPerConsultantView(
+  data: AllocationPageData,
+  probabilityFilter: ProbabilityFilter,
+  projectProbabilityMap: Map<string, number>
+) {
   const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
   const projectMap = new Map(
     data.projects.map((p) => [
@@ -79,16 +126,41 @@ function buildPerConsultantView(data: AllocationPageData) {
   );
   return sortedConsultants.map((c) => {
     const projectsMap = byConsultant.get(c.id);
-    const projectRows: { projectId: string; projectName: string; customerName: string; customerColor: string; roleName: string; weeks: { week: number; cell: { id: string; hours: number; roleName: string; roleId: string | null } | null }[] }[] = [];
+    const projectRows: {
+      projectId: string;
+      projectName: string;
+      customerName: string;
+      customerColor: string;
+      roleName: string;
+      showProbabilitySymbol: boolean;
+      weeks: { week: number; cell: ConsultantViewCell | null }[];
+    }[] = [];
 
     if (projectsMap) {
       const rows: (typeof projectRows)[number][] = [];
       for (const [projectId, byWeek] of projectsMap) {
         const proj = projectMap.get(projectId);
-        const weeks = data.weeks.map((w) => ({
-          week: w.week,
-          cell: byWeek.get(weekKey(w.year, w.week)) ?? null,
-        }));
+        const weeks = data.weeks.map((w) => {
+          const raw = byWeek.get(weekKey(w.year, w.week)) ?? null;
+          if (!raw) return { week: w.week, cell: null };
+          const { displayHours, isHidden } = getDisplayHours(
+            raw.hours,
+            projectId,
+            probabilityFilter,
+            projectProbabilityMap
+          );
+          return {
+            week: w.week,
+            cell: {
+              id: raw.id,
+              hours: raw.hours,
+              displayHours,
+              isHidden,
+              roleName: raw.roleName,
+              roleId: raw.roleId,
+            },
+          };
+        });
         const firstCellWithRole = weeks.find((w) => w.cell?.roleName);
         const roleName = firstCellWithRole?.cell?.roleName ?? "";
         rows.push({
@@ -97,6 +169,7 @@ function buildPerConsultantView(data: AllocationPageData) {
           customerName: proj?.customerName ?? "",
           customerColor: proj?.customerColor ?? DEFAULT_CUSTOMER_COLOR,
           roleName,
+          showProbabilitySymbol: showProbabilitySymbol(projectId, probabilityFilter, projectProbabilityMap),
           weeks,
         });
       }
@@ -111,9 +184,12 @@ function buildPerConsultantView(data: AllocationPageData) {
     for (const pr of projectRows) {
       pr.weeks.forEach(({ cell }, j) => {
         const w = data.weeks[j];
-        if (cell && cell.hours > 0 && w) {
-          const key = weekKey(w.year, w.week);
-          totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + cell.hours);
+        if (cell && w) {
+          const toAdd = cell.isHidden ? 0 : cell.displayHours;
+          if (toAdd > 0) {
+            const key = weekKey(w.year, w.week);
+            totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + toAdd);
+          }
         }
       });
     }
@@ -141,7 +217,22 @@ function buildPerConsultantView(data: AllocationPageData) {
   });
 }
 
-function buildPerCustomerView(data: AllocationPageData) {
+type CustomerViewCellItem = {
+  id: string;
+  projectId: string;
+  hours: number;
+  displayHours: number;
+  isHidden: boolean;
+  roleName: string;
+  roleId: string | null;
+  projectName: string;
+};
+
+function buildPerCustomerView(
+  data: AllocationPageData,
+  probabilityFilter: ProbabilityFilter,
+  projectProbabilityMap: Map<string, number>
+) {
   const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
   const projectMap = new Map(
     data.projects.map((p) => [p.id, { customer_id: p.customer_id, customerName: p.customerName, name: p.name }])
@@ -199,7 +290,7 @@ function buildPerCustomerView(data: AllocationPageData) {
       roleId: string | null;
       roleName: string;
       unavailableByWeek: boolean[];
-      weeks: { week: number; cells: { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
+      weeks: { week: number; cells: CustomerViewCellItem[] }[];
     }[] = [];
 
     if (byConsultantRole) {
@@ -222,10 +313,23 @@ function buildPerCustomerView(data: AllocationPageData) {
       for (const { key: rowKey, consultantId, roleId } of rows) {
         const c = consultantMap.get(consultantId);
         const byWeek = byConsultantRole.get(rowKey);
-        const weeks = data.weeks.map((w) => ({
-          week: w.week,
-          cells: byWeek?.get(weekKey(w.year, w.week)) ?? [],
-        }));
+        const weeks = data.weeks.map((w) => {
+          const rawCells = byWeek?.get(weekKey(w.year, w.week)) ?? [];
+          const cells: CustomerViewCellItem[] = rawCells.map((x) => {
+            const { displayHours, isHidden } = getDisplayHours(
+              x.hours,
+              x.projectId,
+              probabilityFilter,
+              projectProbabilityMap
+            );
+            return {
+              ...x,
+              displayHours,
+              isHidden,
+            };
+          });
+          return { week: w.week, cells };
+        });
         consultantRows.push({
           consultantId,
           consultantName: c?.name ?? "Unknown",
@@ -241,7 +345,7 @@ function buildPerCustomerView(data: AllocationPageData) {
     for (const cr of consultantRows) {
       cr.weeks.forEach(({ cells }, j) => {
         const w = data.weeks[j];
-        const sum = cells.reduce((s, x) => s + x.hours, 0);
+        const sum = cells.reduce((s, x) => s + (x.isHidden ? 0 : x.displayHours), 0);
         if (sum > 0 && w) {
           const key = weekKey(w.year, w.week);
           totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + sum);
@@ -257,7 +361,22 @@ function buildPerCustomerView(data: AllocationPageData) {
   });
 }
 
-function buildPerProjectView(data: AllocationPageData) {
+type ProjectViewCellItem = {
+  id: string;
+  projectId: string;
+  hours: number;
+  displayHours: number;
+  isHidden: boolean;
+  roleName: string;
+  roleId: string | null;
+  projectName: string;
+};
+
+function buildPerProjectView(
+  data: AllocationPageData,
+  probabilityFilter: ProbabilityFilter,
+  projectProbabilityMap: Map<string, number>
+) {
   const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
   const projectMap = new Map(
     data.projects.map((p) => [
@@ -323,7 +442,7 @@ function buildPerProjectView(data: AllocationPageData) {
       roleId: string | null;
       roleName: string;
       unavailableByWeek: boolean[];
-      weeks: { week: number; cells: { id: string; projectId: string; hours: number; roleName: string; roleId: string | null; projectName: string }[] }[];
+      weeks: { week: number; cells: ProjectViewCellItem[] }[];
     }[] = [];
 
     if (byConsultantRole) {
@@ -346,10 +465,23 @@ function buildPerProjectView(data: AllocationPageData) {
       for (const { key: rowKey, consultantId, roleId } of rows) {
         const c = consultantMap.get(consultantId);
         const byWeek = byConsultantRole.get(rowKey);
-        const weeks = data.weeks.map((w) => ({
-          week: w.week,
-          cells: byWeek?.get(weekKey(w.year, w.week)) ?? [],
-        }));
+        const weeks = data.weeks.map((w) => {
+          const rawCells = byWeek?.get(weekKey(w.year, w.week)) ?? [];
+          const cells: ProjectViewCellItem[] = rawCells.map((x) => {
+            const { displayHours, isHidden } = getDisplayHours(
+              x.hours,
+              x.projectId,
+              probabilityFilter,
+              projectProbabilityMap
+            );
+            return {
+              ...x,
+              displayHours,
+              isHidden,
+            };
+          });
+          return { week: w.week, cells };
+        });
         consultantRows.push({
           consultantId,
           consultantName: c?.name ?? "Unknown",
@@ -365,7 +497,7 @@ function buildPerProjectView(data: AllocationPageData) {
     for (const cr of consultantRows) {
       cr.weeks.forEach(({ cells }, j) => {
         const w = data.weeks[j];
-        const sum = cells.reduce((s, x) => s + x.hours, 0);
+        const sum = cells.reduce((s, x) => s + (x.isHidden ? 0 : x.displayHours), 0);
         if (sum > 0 && w) {
           const key = weekKey(w.year, w.week);
           totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + sum);
@@ -380,6 +512,7 @@ function buildPerProjectView(data: AllocationPageData) {
         customerName: proj.customerName,
         name: proj.name,
         label: `${proj.customerName} - ${proj.name}`,
+        showProbabilitySymbol: showProbabilitySymbol(proj.id, probabilityFilter, projectProbabilityMap),
       },
       consultantRows,
       totalByWeek,
@@ -451,6 +584,7 @@ export function AllocationPageClient({
     new Set()
   );
   const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
+  const [probabilityFilter, setProbabilityFilter] = useState<ProbabilityFilter>("weighted");
   const [editingCell, setEditingCell] = useState<{
     customerId: string;
     consultantId: string;
@@ -778,9 +912,22 @@ export function AllocationPageClient({
     );
   }
 
-  const perConsultant = buildPerConsultantView(filteredData!);
-  const perCustomer = buildPerCustomerView(filteredData!);
-  const perProject = buildPerProjectView(data);
+  const projectProbabilityMap =
+    data && filteredData
+      ? getProjectProbabilityMap(filteredData.projects)
+      : new Map<string, number>();
+  const perConsultant =
+    filteredData && data
+      ? buildPerConsultantView(filteredData, probabilityFilter, projectProbabilityMap)
+      : [];
+  const perCustomer =
+    filteredData && data
+      ? buildPerCustomerView(filteredData, probabilityFilter, projectProbabilityMap)
+      : [];
+  const perProject =
+    data && filteredData
+      ? buildPerProjectView(filteredData, probabilityFilter, projectProbabilityMap)
+      : [];
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const expandableConsultantIds = new Set(
@@ -820,17 +967,29 @@ export function AllocationPageClient({
         </div>
       )}
 
-      {data.teams.length > 0 && (
-        <div className="mb-3 w-fit px-2">
+      {data && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 px-2">
           <Select
-            value={teamFilterId ?? ""}
-            onValueChange={(v) => setTeamFilterId(v ? v : null)}
+            value={probabilityFilter}
+            onValueChange={(v) => setProbabilityFilter(v as ProbabilityFilter)}
             options={[
-              { value: "", label: "All teams" },
-              ...data.teams.map((t) => ({ value: t.id, label: t.name })),
+              { value: "weighted", label: "Show with probability" },
+              { value: "none", label: "Show without probability" },
+              { value: "hideNon100", label: "Hide projects that are not 100%" },
             ]}
-            className="w-auto min-w-[120px]"
+            className="w-auto min-w-[200px]"
           />
+          {data.teams.length > 0 && (
+            <Select
+              value={teamFilterId ?? ""}
+              onValueChange={(v) => setTeamFilterId(v ? v : null)}
+              options={[
+                { value: "", label: "All teams" },
+                ...data.teams.map((t) => ({ value: t.id, label: t.name })),
+              ]}
+              className="w-auto min-w-[120px]"
+            />
+          )}
         </div>
       )}
 
@@ -1044,7 +1203,13 @@ export function AllocationPageClient({
                           }}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
-                            <span className="whitespace-nowrap">
+                            <span className="flex items-center gap-1 whitespace-nowrap">
+                              {pr.showProbabilitySymbol && (
+                                <Percent
+                                  className="h-3 w-3 shrink-0 opacity-60"
+                                  aria-label="Sannolikhet under 100%"
+                                />
+                              )}
                               {pr.customerName} - {pr.projectName}
                               {(pr.roleName || row.consultant.defaultRoleName) && (
                                 <span className="ml-2 text-text-primary opacity-70">
@@ -1056,6 +1221,7 @@ export function AllocationPageClient({
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
                             const prevHasBooking = i > 0 && !!(pr.weeks[i - 1].cell && pr.weeks[i - 1].cell!.hours > 0);
+                            const displayText = w.cell?.isHidden ? "—" : (w.cell ? `${w.cell.displayHours}h` : null);
                             const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                             const roleId =
                               w.cell?.roleId ??
@@ -1113,8 +1279,8 @@ export function AllocationPageClient({
                                   onClick={(e) => e.stopPropagation()}
                                   autoFocus
                                 />
-                              ) : hasBooking ? (
-                                <span>{w.cell!.hours}h</span>
+                              ) : displayText != null ? (
+                                <span>{displayText}</span>
                               ) : null}
                             </td>
                           );
@@ -1327,7 +1493,13 @@ export function AllocationPageClient({
                           }}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
-                            <span className="whitespace-nowrap">
+                            <span className="flex items-center gap-1 whitespace-nowrap">
+                              {pr.showProbabilitySymbol && (
+                                <Percent
+                                  className="h-3 w-3 shrink-0 opacity-60"
+                                  aria-label="Sannolikhet under 100%"
+                                />
+                              )}
                               {pr.customerName} - {pr.projectName}
                               {(pr.roleName || row.consultant.defaultRoleName) && (
                                 <span className="ml-2 text-text-primary opacity-70">
@@ -1339,6 +1511,7 @@ export function AllocationPageClient({
                           {pr.weeks.map((w, i) => {
                             const hasBooking = w.cell && w.cell.hours > 0;
                             const prevHasBooking = i > 0 && !!(pr.weeks[i - 1].cell && pr.weeks[i - 1].cell!.hours > 0);
+                            const displayText = w.cell?.isHidden ? "—" : (w.cell ? `${w.cell.displayHours}h` : null);
                             const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                             const roleId =
                               w.cell?.roleId ??
@@ -1396,8 +1569,8 @@ export function AllocationPageClient({
                                   onClick={(e) => e.stopPropagation()}
                                   autoFocus
                                 />
-                              ) : hasBooking ? (
-                                <span>{w.cell!.hours}h</span>
+                              ) : displayText != null ? (
+                                <span>{displayText}</span>
                               ) : null}
                             </td>
                           );
@@ -1556,8 +1729,12 @@ export function AllocationPageClient({
                                 (s, x) => s + x.hours,
                                 0
                               );
+                              const displayTotal = cells.reduce(
+                                (s, x) => s + (x.isHidden ? 0 : x.displayHours),
+                                0
+                              );
                               const hasBooking = totalHours > 0;
-                              const prevHours = i > 0 ? cr.weeks[i - 1].cells.reduce((s, x) => s + x.hours, 0) : 0;
+                              const prevHours = i > 0 ? cr.weeks[i - 1].cells.reduce((s, x) => s + (x.isHidden ? 0 : x.displayHours), 0) : 0;
                               const showLeftBorder = hasBooking && (i === 0 || prevHours === 0);
                               const weekInfo = data.weeks[i];
                               const firstProjectForCustomer = data.projects.find(
@@ -1616,10 +1793,12 @@ export function AllocationPageClient({
                                       onClick={(e) => e.stopPropagation()}
                                       autoFocus
                                     />
-                                  ) : hasBooking ? (
+                                  ) : displayTotal > 0 ? (
                                     <span className="text-[10px] text-text-primary">
-                                      {totalHours}h
+                                      {displayTotal}h
                                     </span>
+                                  ) : totalHours > 0 ? (
+                                    <span className="text-[10px] text-text-primary opacity-70">—</span>
                                   ) : null}
                                 </td>
                               );
@@ -1666,6 +1845,7 @@ export function AllocationPageClient({
                   {data.weeks.map((w) => (
                     <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
                   ))}
+                  <col className="w-[4rem]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-grid">
@@ -1685,6 +1865,12 @@ export function AllocationPageClient({
                         {span.label}
                       </th>
                     ))}
+                    <th
+                      rowSpan={2}
+                      className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                    >
+                      Total
+                    </th>
                   </tr>
                   <tr className="border-b border-grid">
                     {renderWeekHeaderCells("project", "border-grid")}
@@ -1714,7 +1900,13 @@ export function AllocationPageClient({
                               ) : (
                                 <span className="w-4 shrink-0" />
                               )}
-                              <span className="font-semibold text-text-primary">
+                              <span className="flex items-center gap-1 font-semibold text-text-primary">
+                                {row.project.showProbabilitySymbol && (
+                                  <Percent
+                                    className="h-3 w-3 shrink-0 opacity-60"
+                                    aria-label="Sannolikhet under 100%"
+                                  />
+                                )}
                                 {row.project.label}
                               </span>
                             </button>
@@ -1741,6 +1933,16 @@ export function AllocationPageClient({
                               </td>
                             );
                           })}
+                          <td className="border-r border-grid-light px-1 py-1 text-right font-medium text-text-primary tabular-nums">
+                            {(() => {
+                              const projectTotal = data.weeks.reduce(
+                                (sum, w) =>
+                                  sum + (row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
+                                0
+                              );
+                              return projectTotal > 0 ? `${projectTotal}h` : null;
+                            })()}
+                          </td>
                         </tr>
                         {expanded &&
                           row.consultantRows.map((cr) => (
@@ -1765,11 +1967,15 @@ export function AllocationPageClient({
                                   (s, x) => s + x.hours,
                                   0
                                 );
+                                const displayTotal = cells.reduce(
+                                  (s, x) => s + (x.isHidden ? 0 : x.displayHours),
+                                  0
+                                );
                                 const hasBooking = totalHours > 0;
                                 const prevHours =
                                   i > 0
                                     ? cr.weeks[i - 1].cells.reduce(
-                                        (s, x) => s + x.hours,
+                                        (s, x) => s + (x.isHidden ? 0 : x.displayHours),
                                         0
                                       )
                                     : 0;
@@ -1829,14 +2035,17 @@ export function AllocationPageClient({
                                         onClick={(e) => e.stopPropagation()}
                                         autoFocus
                                       />
-                                    ) : hasBooking ? (
+                                    ) : displayTotal > 0 ? (
                                       <span className="text-[10px] text-text-primary">
-                                        {totalHours}h
+                                        {displayTotal}h
                                       </span>
+                                    ) : totalHours > 0 ? (
+                                      <span className="text-[10px] text-text-primary opacity-70">—</span>
                                     ) : null}
                                   </td>
                                 );
                               })}
+                              <td className="border-r border-grid-light px-1 py-1" aria-hidden />
                             </tr>
                           ))}
                       </Fragment>
