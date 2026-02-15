@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { updateCustomer, deleteCustomer } from "@/lib/customers";
+import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import {
   Button,
@@ -91,11 +91,11 @@ export function CustomerDetailClient({
             setSubmitting(false);
             return;
           }
-          await updateCustomer(initialCustomer.id, { name: trimmed });
+          await updateCustomerAction(initialCustomer.id, { name: trimmed });
           setName(trimmed);
           break;
         case "accountManager":
-          await updateCustomer(initialCustomer.id, {
+          await updateCustomerAction(initialCustomer.id, {
             account_manager_id: value || null,
           });
           const chosen = allConsultants.find((c) => c.id === value);
@@ -103,13 +103,13 @@ export function CustomerDetailClient({
           setAccountManagerName(chosen?.name ?? null);
           break;
         case "color":
-          await updateCustomer(initialCustomer.id, {
+          await updateCustomerAction(initialCustomer.id, {
             color: trimmed || null,
           });
           setColor(trimmed || DEFAULT_CUSTOMER_COLOR);
           break;
         case "logoUrl":
-          await updateCustomer(initialCustomer.id, {
+          await updateCustomerAction(initialCustomer.id, {
             logo_url: trimmed || null,
           });
           setLogoUrl(trimmed || "");
@@ -135,7 +135,7 @@ export function CustomerDetailClient({
     setError(null);
     setSubmitting(true);
     try {
-      await updateCustomer(initialCustomer.id, { is_active: !isActive });
+      await updateCustomerAction(initialCustomer.id, { is_active: !isActive });
       setIsActive(!isActive);
       router.refresh();
     } catch (e) {
@@ -149,7 +149,7 @@ export function CustomerDetailClient({
     setError(null);
     setDeleting(true);
     try {
-      await deleteCustomer(initialCustomer.id);
+      await deleteCustomerAction(initialCustomer.id);
       setShowDeleteConfirm(false);
       router.push("/customers");
       router.refresh();

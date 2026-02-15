@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { updateCustomer, deleteCustomer } from "@/lib/customers";
+import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { ConfirmModal, Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
@@ -57,7 +57,7 @@ export function EditCustomerModal({
     }
     setSubmitting(true);
     try {
-      await updateCustomer(customer.id, {
+      await updateCustomerAction(customer.id, {
         name: name.trim(),
         account_manager_id: accountManagerId || null,
         color: color.trim() || null,
@@ -78,7 +78,7 @@ export function EditCustomerModal({
     setError(null);
     setDeleting(true);
     try {
-      await deleteCustomer(customer.id);
+      await deleteCustomerAction(customer.id);
       setShowDeleteConfirm(false);
       resetForm();
       onSuccess();

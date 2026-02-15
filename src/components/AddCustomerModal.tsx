@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { createCustomer } from "@/lib/customers";
+import { createCustomerAction } from "@/app/(app)/customers/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 
 type Props = {
@@ -27,7 +27,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
     }
     setSubmitting(true);
     try {
-      const customer = await createCustomer({
+      const customer = await createCustomerAction({
         name: name.trim(),
       });
       onClose();
