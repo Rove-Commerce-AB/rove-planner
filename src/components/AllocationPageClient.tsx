@@ -50,7 +50,7 @@ type Props = {
   currentWeek: number;
 };
 
-export type ProbabilityFilter = "none" | "weighted" | "hideNon100";
+export type ProbabilityFilter = "none" | "weighted" | "hideNon100" | "hide100";
 
 function getProjectProbabilityMap(projects: AllocationPageData["projects"]): Map<string, number> {
   const m = new Map<string, number>();
@@ -69,6 +69,8 @@ function getDisplayHours(
   const prob = probMap.get(projectId) ?? 100;
   if (filter === "hideNon100" && prob !== 100)
     return { displayHours: 0, isHidden: true };
+  if (filter === "hide100" && prob === 100)
+    return { displayHours: 0, isHidden: true };
   if (filter === "weighted")
     return { displayHours: Math.round(hours * (prob / 100)), isHidden: false };
   return { displayHours: hours, isHidden: false };
@@ -79,7 +81,7 @@ function showProbabilitySymbol(
   filter: ProbabilityFilter,
   probMap: Map<string, number>
 ): boolean {
-  if (filter !== "weighted") return false;
+  if (filter !== "weighted" && filter !== "hide100") return false;
   const prob = probMap.get(projectId) ?? 100;
   return prob !== 100;
 }
@@ -1000,6 +1002,7 @@ export function AllocationPageClient({
               { value: "weighted", label: "Show with probability" },
               { value: "none", label: "Show without probability" },
               { value: "hideNon100", label: "Hide projects that are not 100%" },
+              { value: "hide100", label: "Hide projects that are 100%" },
             ]}
             className="w-auto min-w-[200px]"
           />
