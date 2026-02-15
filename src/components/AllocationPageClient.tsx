@@ -276,7 +276,7 @@ function buildPerCustomerView(
     const projectName = projectMap.get(a.project_id)?.name ?? "Unknown";
     const roleId = a.role_id ?? null;
     const roleName = roleId ? roleMap.get(roleId) ?? "Unknown" : "";
-    const rowKey = keyFor(a.consultant_id, roleId);
+    const rowKey = keyFor(a.consultant_id ?? TO_PLAN_CONSULTANT_ID, roleId);
 
     if (!byCustomer.has(customerId)) {
       byCustomer.set(customerId, new Map());
@@ -421,7 +421,7 @@ function buildPerProjectView(
     const projectName = proj.name;
     const roleId = a.role_id ?? null;
     const roleName = roleId ? roleMap.get(roleId) ?? "Unknown" : "";
-    const rowKey = keyFor(a.consultant_id, roleId);
+    const rowKey = keyFor(a.consultant_id ?? TO_PLAN_CONSULTANT_ID, roleId);
 
     if (!byProject.has(a.project_id)) {
       byProject.set(a.project_id, new Map());
