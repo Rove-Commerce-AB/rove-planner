@@ -2,7 +2,8 @@
 
 import { Fragment } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { ChevronDown, ChevronRight, ChevronLeft, Percent } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronRight, ChevronLeft, Percent, ExternalLink } from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPage";
 
 export type EditingCellCustomerProject = {
@@ -152,22 +153,31 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                 <Fragment key={row.customer.id}>
                   <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
                     <td className="border-r border-grid-light px-2 py-1 align-top">
-                      <button
-                        type="button"
-                        onClick={() => hasConsultants && p.toggleCustomer(row.customer.id)}
-                        className="flex items-center gap-1 whitespace-nowrap text-left"
-                      >
-                        {hasConsultants ? (
-                          expanded ? (
-                            <ChevronDown className="h-4 w-4 shrink-0" />
+                      <div className="flex items-center justify-between gap-1 w-full">
+                        <button
+                          type="button"
+                          onClick={() => hasConsultants && p.toggleCustomer(row.customer.id)}
+                          className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                        >
+                          {hasConsultants ? (
+                            expanded ? (
+                              <ChevronDown className="h-4 w-4 shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 shrink-0" />
+                            )
                           ) : (
-                            <ChevronRight className="h-4 w-4 shrink-0" />
-                          )
-                        ) : (
-                          <span className="w-4 shrink-0" />
-                        )}
-                        <span className="font-semibold text-text-primary">{row.customer.name}</span>
-                      </button>
+                            <span className="w-4 shrink-0" />
+                          )}
+                          <span className="font-semibold text-text-primary">{row.customer.name}</span>
+                        </button>
+                        <Link
+                          href={`/customers/${row.customer.id}`}
+                          className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                          aria-label={`Open ${row.customer.name}`}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
                     </td>
                     {data.weeks.map((w, i) => {
                       const total = row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
@@ -343,30 +353,39 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               <Fragment key={row.project.id}>
                 <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
                   <td className="border-r border-grid-light px-2 py-1 align-top">
-                    <button
-                      type="button"
-                      onClick={() => hasConsultants && p.toggleProject(row.project.id)}
-                      className="flex items-center gap-1 whitespace-nowrap text-left"
-                    >
-                      {hasConsultants ? (
-                        expanded ? (
-                          <ChevronDown className="h-4 w-4 shrink-0" />
+                    <div className="flex items-center justify-between gap-1 w-full">
+                      <button
+                        type="button"
+                        onClick={() => hasConsultants && p.toggleProject(row.project.id)}
+                        className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                      >
+                        {hasConsultants ? (
+                          expanded ? (
+                            <ChevronDown className="h-4 w-4 shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0" />
+                          )
                         ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0" />
-                        )
-                      ) : (
-                        <span className="w-4 shrink-0" />
-                      )}
-                      <span className="flex items-center gap-1 font-semibold text-text-primary">
-                        {row.project.showProbabilitySymbol && (
-                          <Percent
-                            className="h-3 w-3 shrink-0 opacity-60"
-                            aria-label="Probability under 100%"
-                          />
+                          <span className="w-4 shrink-0" />
                         )}
-                        {row.project.label}
-                      </span>
-                    </button>
+                        <span className="flex items-center gap-1 font-semibold text-text-primary">
+                          {row.project.showProbabilitySymbol && (
+                            <Percent
+                              className="h-3 w-3 shrink-0 opacity-60"
+                              aria-label="Probability under 100%"
+                            />
+                          )}
+                          {row.project.label}
+                        </span>
+                      </button>
+                      <Link
+                        href={`/projects/${row.project.id}`}
+                        className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                        aria-label={`Open ${row.project.label}`}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
                   </td>
                   {data.weeks.map((w, i) => {
                     const total = row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;

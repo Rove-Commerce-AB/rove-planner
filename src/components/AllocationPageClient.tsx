@@ -3,7 +3,8 @@
 import { useState, Fragment, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, ChevronLeft, Trash2, Percent } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronRight, ChevronLeft, Trash2, Percent, ExternalLink } from "lucide-react";
 import {
   getMonthSpansForWeeks,
   addWeeksToYearWeek,
@@ -57,7 +58,8 @@ type Props = {
   currentWeek: number;
 };
 
-export type ProbabilityFilter = "none" | "weighted" | "hideNon100" | "hide100";
+export type ProbabilityDisplay = "weighted" | "none";
+export type ProjectVisibility = "all" | "hideNon100" | "hide100";
 
 function getProjectProbabilityMap(projects: AllocationPageData["projects"]): Map<string, number> {
   const m = new Map<string, number>();
@@ -70,25 +72,26 @@ function getProjectProbabilityMap(projects: AllocationPageData["projects"]): Map
 function getDisplayHours(
   hours: number,
   projectId: string,
-  filter: ProbabilityFilter,
+  display: ProbabilityDisplay,
+  visibility: ProjectVisibility,
   probMap: Map<string, number>
 ): { displayHours: number; isHidden: boolean } {
   const prob = probMap.get(projectId) ?? 100;
-  if (filter === "hideNon100" && prob !== 100)
+  if (visibility === "hideNon100" && prob !== 100)
     return { displayHours: 0, isHidden: true };
-  if (filter === "hide100" && prob === 100)
+  if (visibility === "hide100" && prob === 100)
     return { displayHours: 0, isHidden: true };
-  if (filter === "weighted")
+  if (display === "weighted")
     return { displayHours: Math.round(hours * (prob / 100)), isHidden: false };
   return { displayHours: hours, isHidden: false };
 }
 
 function showProbabilitySymbol(
   projectId: string,
-  filter: ProbabilityFilter,
+  _display: ProbabilityDisplay,
+  _visibility: ProjectVisibility,
   probMap: Map<string, number>
 ): boolean {
-  if (filter !== "weighted" && filter !== "hide100") return false;
   const prob = probMap.get(projectId) ?? 100;
   return prob !== 100;
 }
@@ -104,7 +107,8 @@ type ConsultantViewCell = {
 
 function buildPerConsultantView(
   data: AllocationPageData,
-  probabilityFilter: ProbabilityFilter,
+  probabilityDisplay: ProbabilityDisplay,
+  projectVisibility: ProjectVisibility,
   projectProbabilityMap: Map<string, number>,
   getOptimisticDisplayHours?: (
     consultantId: string,
@@ -118,7 +122,7 @@ function buildPerConsultantView(
   const projectMap = new Map(
     data.projects.map((p) => [
       p.id,
-      { name: p.name, customerName: p.customerName, customerColor: p.customerColor },
+      { name: p.name, customerName: p.customerName, customerColor: p.customerColor, customer_id: p.customer_id },
     ])
   );
 
@@ -162,6 +166,7 @@ function buildPerConsultantView(
     const projectRows: {
       projectId: string;
       projectName: string;
+      customerId: string;
       customerName: string;
       customerColor: string;
       roleName: string;
@@ -181,11 +186,12 @@ function buildPerConsultantView(
           const raw = byWeek.get(weekKey(w.year, w.week)) ?? null;
           if (!raw) return { week: w.week, cell: null };
           const { displayHours, isHidden } = getDisplayHours(
-            raw.hours,
-            projectId,
-            probabilityFilter,
-            projectProbabilityMap
-          );
+              raw.hours,
+              projectId,
+              probabilityDisplay,
+              projectVisibility,
+              projectProbabilityMap
+            );
           return {
             week: w.week,
             cell: {
@@ -203,10 +209,11 @@ function buildPerConsultantView(
         rows.push({
           projectId,
           projectName: proj?.name ?? "Unknown",
+          customerId: proj?.customer_id ?? "",
           customerName: proj?.customerName ?? "",
           customerColor: proj?.customerColor ?? DEFAULT_CUSTOMER_COLOR,
           roleName,
-          showProbabilitySymbol: showProbabilitySymbol(projectId, probabilityFilter, projectProbabilityMap),
+          showProbabilitySymbol: showProbabilitySymbol(projectId, probabilityDisplay, projectVisibility, projectProbabilityMap),
           weeks,
         });
       }
@@ -283,7 +290,8 @@ type CustomerViewCellItem = {
 
 function buildPerCustomerView(
   data: AllocationPageData,
-  probabilityFilter: ProbabilityFilter,
+  probabilityDisplay: ProbabilityDisplay,
+  projectVisibility: ProjectVisibility,
   projectProbabilityMap: Map<string, number>
 ) {
   const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
@@ -372,7 +380,8 @@ function buildPerCustomerView(
             const { displayHours, isHidden } = getDisplayHours(
               x.hours,
               x.projectId,
-              probabilityFilter,
+              probabilityDisplay,
+              projectVisibility,
               projectProbabilityMap
             );
             return {
@@ -427,7 +436,8 @@ type ProjectViewCellItem = {
 
 function buildPerProjectView(
   data: AllocationPageData,
-  probabilityFilter: ProbabilityFilter,
+  probabilityDisplay: ProbabilityDisplay,
+  projectVisibility: ProjectVisibility,
   projectProbabilityMap: Map<string, number>
 ) {
   const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
@@ -524,7 +534,8 @@ function buildPerProjectView(
             const { displayHours, isHidden } = getDisplayHours(
               x.hours,
               x.projectId,
-              probabilityFilter,
+              probabilityDisplay,
+              projectVisibility,
               projectProbabilityMap
             );
             return {
@@ -565,7 +576,7 @@ function buildPerProjectView(
         customerName: proj.customerName,
         name: proj.name,
         label: `${proj.customerName} - ${proj.name}`,
-        showProbabilitySymbol: showProbabilitySymbol(proj.id, probabilityFilter, projectProbabilityMap),
+        showProbabilitySymbol: showProbabilitySymbol(proj.id, probabilityDisplay, projectVisibility, projectProbabilityMap),
       },
       consultantRows,
       totalByWeek,
@@ -639,7 +650,9 @@ export function AllocationPageClient({
     new Set()
   );
   const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
-  const [probabilityFilter, setProbabilityFilter] = useState<ProbabilityFilter>("weighted");
+  const [probabilityDisplay, setProbabilityDisplay] = useState<ProbabilityDisplay>("weighted");
+  const [projectVisibility, setProjectVisibility] = useState<ProjectVisibility>("all");
+  const [showProjectsWithoutBooking, setShowProjectsWithoutBooking] = useState(false);
   const [editingCell, setEditingCell] = useState<{
     customerId: string;
     consultantId: string;
@@ -1091,7 +1104,8 @@ export function AllocationPageClient({
     filteredData && data
       ? buildPerConsultantView(
           filteredData,
-          probabilityFilter,
+          probabilityDisplay,
+          projectVisibility,
           projectProbabilityMap,
           (consultantId, projectId, roleId, year, week) => {
             const key = allocationCellKey(
@@ -1106,7 +1120,8 @@ export function AllocationPageClient({
             const { displayHours } = getDisplayHours(
               raw,
               projectId,
-              probabilityFilter,
+              probabilityDisplay,
+              projectVisibility,
               projectProbabilityMap
             );
             return displayHours;
@@ -1115,12 +1130,16 @@ export function AllocationPageClient({
       : [];
   const perCustomer =
     filteredData && data
-      ? buildPerCustomerView(filteredData, probabilityFilter, projectProbabilityMap)
+      ? buildPerCustomerView(filteredData, probabilityDisplay, projectVisibility, projectProbabilityMap)
       : [];
   const perProject =
     data && filteredData
-      ? buildPerProjectView(filteredData, probabilityFilter, projectProbabilityMap)
+      ? buildPerProjectView(filteredData, probabilityDisplay, projectVisibility, projectProbabilityMap)
       : [];
+  const perProjectFiltered =
+    showProjectsWithoutBooking
+      ? perProject
+      : perProject.filter((r) => r.consultantRows.length > 0);
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
   internalRowsRef.current = perConsultantInternal;
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
@@ -1172,11 +1191,19 @@ export function AllocationPageClient({
       {data && (
         <div className="mb-3 flex flex-wrap items-center gap-3 px-2">
           <Select
-            value={probabilityFilter}
-            onValueChange={(v) => setProbabilityFilter(v as ProbabilityFilter)}
+            value={probabilityDisplay}
+            onValueChange={(v) => setProbabilityDisplay(v as ProbabilityDisplay)}
             options={[
               { value: "weighted", label: "Show with probability" },
               { value: "none", label: "Show without probability" },
+            ]}
+            className="w-auto min-w-[200px]"
+          />
+          <Select
+            value={projectVisibility}
+            onValueChange={(v) => setProjectVisibility(v as ProjectVisibility)}
+            options={[
+              { value: "all", label: "Show all" },
               { value: "hideNon100", label: "Hide projects that are not 100%" },
               { value: "hide100", label: "Hide projects that are 100%" },
             ]}
@@ -1192,6 +1219,19 @@ export function AllocationPageClient({
               ]}
               className="w-auto min-w-[120px]"
             />
+          )}
+          {activeTab === "project" && (
+            <label className="flex cursor-pointer select-none items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showProjectsWithoutBooking}
+                onChange={(e) => setShowProjectsWithoutBooking(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span className="text-sm text-text-primary">
+                Show projects without booking
+              </span>
+            </label>
           )}
         </div>
       )}
@@ -1297,36 +1337,47 @@ export function AllocationPageClient({
                       className={`border-b border-grid-light-subtle last:border-border ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            hasProjects && toggleConsultant(row.consultant.id)
-                          }
-                          className="flex items-center gap-1 whitespace-nowrap text-left"
-                        >
-                          {hasProjects ? (
-                            expanded ? (
-                              <ChevronDown className="h-4 w-4 shrink-0" />
+                        <div className="flex items-center justify-between gap-1 w-full">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              hasProjects && toggleConsultant(row.consultant.id)
+                            }
+                            className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                          >
+                            {hasProjects ? (
+                              expanded ? (
+                                <ChevronDown className="h-4 w-4 shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 shrink-0" />
+                              )
                             ) : (
-                              <ChevronRight className="h-4 w-4 shrink-0" />
-                            )
-                          ) : (
-                            <span className="w-4 shrink-0" />
+                              <span className="w-4 shrink-0" />
+                            )}
+                            <span className="font-medium text-text-primary">
+                              {row.consultant.name}
+                              {row.consultant.teamName && (
+                                <span className="ml-2 text-text-primary opacity-60">
+                                  ({row.consultant.teamName})
+                                </span>
+                              )}
+                              {row.consultant.isExternal && (
+                                <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                                  External
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                          {row.consultant.id !== TO_PLAN_CONSULTANT_ID && (
+                            <Link
+                              href={`/consultants/${row.consultant.id}`}
+                              className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                              aria-label={`Open ${row.consultant.name}`}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
                           )}
-                          <span className="font-medium text-text-primary">
-                            {row.consultant.name}
-                            {row.consultant.teamName && (
-                              <span className="ml-2 text-text-primary opacity-60">
-                                ({row.consultant.teamName})
-                              </span>
-                            )}
-                            {row.consultant.isExternal && (
-                              <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
-                                External
-                              </span>
-                            )}
-                          </span>
-                        </button>
+                        </div>
                       </td>
                       {row.percentByWeek.map((pct, i) => {
                         const details = row.percentDetailsByWeek?.[i];
@@ -1417,7 +1468,25 @@ export function AllocationPageClient({
                                   aria-label="Sannolikhet under 100%"
                                 />
                               )}
-                              {pr.customerName} - {pr.projectName}
+                              {pr.customerId ? (
+                                <Link
+                                  href={`/customers/${pr.customerId}`}
+                                  className="cursor-pointer hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {pr.customerName}
+                                </Link>
+                              ) : (
+                                pr.customerName
+                              )}
+                              {" - "}
+                              <Link
+                                href={`/projects/${pr.projectId}`}
+                                className="cursor-pointer hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {pr.projectName}
+                              </Link>
                               {(pr.roleName || row.consultant.defaultRoleName) && (
                                 <span className="ml-2 text-text-primary opacity-70">
                                   · {pr.roleName || row.consultant.defaultRoleName}
@@ -1616,53 +1685,62 @@ export function AllocationPageClient({
                       className={`border-b border-grid-light-subtle last:border-border ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            hasProjects && toggleConsultant(row.consultant.id)
-                          }
-                          className="flex items-center gap-1 whitespace-nowrap text-left"
-                        >
-                          {hasProjects ? (
-                            expanded ? (
-                              <ChevronDown className="h-4 w-4 shrink-0" />
+                        <div className="flex items-center justify-between gap-1 w-full">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              hasProjects && toggleConsultant(row.consultant.id)
+                            }
+                            className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                          >
+                            {hasProjects ? (
+                              expanded ? (
+                                <ChevronDown className="h-4 w-4 shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 shrink-0" />
+                              )
                             ) : (
-                              <ChevronRight className="h-4 w-4 shrink-0" />
-                            )
-                          ) : (
-                            <span className="w-4 shrink-0" />
-                          )}
-                          <span className="font-medium text-text-primary">
-                            {row.consultant.name}
-                            {row.consultant.teamName && (
-                              <span className="ml-2 text-text-primary opacity-60">
-                                ({row.consultant.teamName})
-                              </span>
+                              <span className="w-4 shrink-0" />
                             )}
-                            <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
-                              External
+                            <span className="font-medium text-text-primary">
+                              {row.consultant.name}
+                              {row.consultant.teamName && (
+                                <span className="ml-2 text-text-primary opacity-60">
+                                  ({row.consultant.teamName})
+                                </span>
+                              )}
+                              <span className="ml-1.5 shrink-0 rounded-sm bg-brand-blue/60 px-1 py-0.5 text-[10px] text-text-primary">
+                                External
+                              </span>
                             </span>
-                          </span>
-                          {expanded && hasProjects && (
-                            <span
-                              className={`shrink-0 ${
-                                Math.max(
+                            {expanded && hasProjects && (
+                              <span
+                                className={`shrink-0 ${
+                                  Math.max(
+                                    ...row.percentByWeek.filter((p) => p > 0),
+                                    0
+                                  ) > 115
+                                    ? "font-medium text-danger"
+                                    : "text-text-primary opacity-60"
+                                }`}
+                              >
+                                (
+                                {Math.max(
                                   ...row.percentByWeek.filter((p) => p > 0),
                                   0
-                                ) > 115
-                                  ? "font-medium text-danger"
-                                  : "text-text-primary opacity-60"
-                              }`}
-                            >
-                              (
-                              {Math.max(
-                                ...row.percentByWeek.filter((p) => p > 0),
-                                0
-                              )}
-                              %)
-                            </span>
-                          )}
-                        </button>
+                                )}
+                                %)
+                              </span>
+                            )}
+                          </button>
+                          <Link
+                            href={`/consultants/${row.consultant.id}`}
+                            className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                            aria-label={`Open ${row.consultant.name}`}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
                       </td>
                       {row.percentByWeek.map((pct, i) => {
                         const details = row.percentDetailsByWeek?.[i];
@@ -1750,7 +1828,25 @@ export function AllocationPageClient({
                                   aria-label="Sannolikhet under 100%"
                                 />
                               )}
-                              {pr.customerName} - {pr.projectName}
+                              {pr.customerId ? (
+                                <Link
+                                  href={`/customers/${pr.customerId}`}
+                                  className="cursor-pointer hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {pr.customerName}
+                                </Link>
+                              ) : (
+                                pr.customerName
+                              )}
+                              {" - "}
+                              <Link
+                                href={`/projects/${pr.projectId}`}
+                                className="cursor-pointer hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {pr.projectName}
+                              </Link>
                               {(pr.roleName || row.consultant.defaultRoleName) && (
                                 <span className="ml-2 text-text-primary opacity-70">
                                   · {pr.roleName || row.consultant.defaultRoleName}
@@ -1927,7 +2023,7 @@ export function AllocationPageClient({
               perCustomer={perCustomer}
               expandedProjects={expandedProjects}
               toggleProject={toggleProject}
-              perProject={perProject}
+              perProject={perProjectFiltered}
               editingCell={editingCell}
               setEditingCell={setEditingCell}
               editingCellValue={editingCellValue}
