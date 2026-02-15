@@ -1,8 +1,42 @@
 "use client";
 
 import { Fragment } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { ChevronDown, ChevronRight, ChevronLeft, Percent } from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPage";
+
+export type EditingCellCustomerProject = {
+  customerId: string;
+  consultantId: string;
+  roleId: string | null;
+  weekIndex: number;
+  week: number;
+  year: number;
+  allocationId: string | null;
+  otherAllocationIds: string[];
+  projectId: string;
+  currentHours: number;
+};
+
+export type EditingCellConsultant = {
+  consultantId: string;
+  projectId: string;
+  roleId: string | null;
+  weekIndex: number;
+  week: number;
+  year: number;
+  allocationId: string | null;
+  currentHours: number;
+};
+
+export type AddInitialParams = {
+  consultantId?: string;
+  consultantName?: string;
+  week?: number;
+  weekFrom?: number;
+  weekTo?: number;
+  year: number;
+};
 
 export type AllocationCustomerProjectTabsProps = {
   tab: "customer" | "project";
@@ -24,20 +58,20 @@ export type AllocationCustomerProjectTabsProps = {
   expandedProjects: Set<string>;
   toggleProject: (id: string) => void;
   perProject: unknown[];
-  editingCell: unknown;
-  setEditingCell: (v: unknown) => void;
+  editingCell: EditingCellCustomerProject | null;
+  setEditingCell: Dispatch<SetStateAction<EditingCellCustomerProject | null>>;
   editingCellValue: string;
-  setEditingCellValue: (v: string) => void;
+  setEditingCellValue: Dispatch<SetStateAction<string>>;
   handleCellInputBlur: () => void;
   handleCellInputKeyDown: (e: React.KeyboardEvent) => void;
   savingCell: boolean;
-  setAddModalOpen: (v: boolean) => void;
-  setAddInitialParams: (v: unknown) => void;
-  editingCellConsultant: unknown;
-  setEditingCellConsultant: (v: unknown) => void;
+  setAddModalOpen: Dispatch<SetStateAction<boolean>>;
+  setAddInitialParams: Dispatch<SetStateAction<AddInitialParams | null>>;
+  editingCellConsultant: EditingCellConsultant | null;
+  setEditingCellConsultant: Dispatch<SetStateAction<EditingCellConsultant | null>>;
   editingCellConsultantValue: string;
-  setEditingCellConsultantValue: (v: string) => void;
-  saveCellHoursConsultant: (cell: unknown, value: string) => Promise<void>;
+  setEditingCellConsultantValue: Dispatch<SetStateAction<string>>;
+  saveCellHoursConsultant: (cell: EditingCellConsultant, value: string) => Promise<void>;
   handleCellConsultantInputBlur: () => void;
   handleCellConsultantInputKeyDown: (e: React.KeyboardEvent) => void;
   savingCellConsultant: boolean;
