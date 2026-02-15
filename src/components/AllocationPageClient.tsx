@@ -972,7 +972,8 @@ export function AllocationPageClient({
     });
   };
 
-  const internalRowsRef = useRef<Array<{ consultant: { id: string }; projectRows: Array<{ projectId: string; weeks: Array<{ week: number; cell?: { roleId: string | null; id?: string; hours?: number } }> }> }>>([]);
+  type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
+  const internalRowsRef = useRef<PerConsultantRow[]>([]);
 
   const handleCellDragEnd = useCallback(() => {
     if (
