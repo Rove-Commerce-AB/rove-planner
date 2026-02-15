@@ -23,7 +23,7 @@ const TabsTrigger = forwardRef<
 >(({ className = "", ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
-    className={`border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70 transition-colors hover:opacity-100 data-[state=active]:border-brand-signal data-[state=active]:text-brand-signal data-[state=active]:opacity-100 ${className}`}
+    className={`cursor-pointer border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70 transition-colors hover:opacity-100 data-[state=active]:border-brand-signal data-[state=active]:text-brand-signal data-[state=active]:opacity-100 ${className}`}
     {...props}
   />
 ));

@@ -267,7 +267,7 @@ export function CustomerDetailClient({
                 ) : (
                   <button
                     type="button"
-                    className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                    className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                     onClick={() => {
                       setEditValue(name);
                       setEditingField("name");
@@ -309,7 +309,7 @@ export function CustomerDetailClient({
                 ) : (
                   <button
                     type="button"
-                    className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                    className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                     onClick={() => {
                       setEditValue(accountManagerId ?? "");
                       setEditingField("accountManager");
@@ -352,7 +352,7 @@ export function CustomerDetailClient({
                 ) : (
                   <button
                     type="button"
-                    className="mt-1.5 flex items-center gap-2 text-left"
+                    className="cursor-pointer mt-1.5 flex items-center gap-2 text-left"
                     onClick={() => {
                       setEditValue(color);
                       setEditingField("color");
@@ -395,7 +395,7 @@ export function CustomerDetailClient({
                 ) : (
                   <button
                     type="button"
-                    className="mt-1.5 block text-left"
+                    className="cursor-pointer mt-1.5 block text-left"
                     onClick={() => {
                       setEditValue(logoUrl);
                       setEditingField("logoUrl");
@@ -431,7 +431,7 @@ export function CustomerDetailClient({
                     type="button"
                     onClick={handleToggleActive}
                     disabled={submitting}
-                    className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                    className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isActive ? "Active" : "Inactive"}
                   </button>
@@ -496,7 +496,7 @@ export function CustomerDetailClient({
                         type="button"
                         onClick={() => handleRemoveConsultant(c)}
                         disabled={removingConsultantId !== null}
-                        className="text-sm text-danger hover:underline disabled:opacity-50"
+                        className="cursor-pointer text-sm text-danger hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Remove
                       </button>

@@ -285,7 +285,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(name);
                     setEditingField("name");
@@ -321,7 +321,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline ${email ? "text-brand-signal" : "text-text-primary opacity-70"}`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline ${email ? "text-brand-signal" : "text-text-primary opacity-70"}`}
                   onClick={() => {
                     setEditValue(email);
                     setEditingField("email");
@@ -358,7 +358,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(roleId);
                     setEditingField("role");
@@ -403,7 +403,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(teamId ?? "");
                     setEditingField("team");
@@ -443,7 +443,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(String(workPercentage));
                     setEditingField("workPercentage");
@@ -483,7 +483,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(String(overheadPercentage ?? 0));
                     setEditingField("overheadPercentage");
@@ -519,7 +519,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline ${startDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline ${startDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
                   onClick={() => {
                     setEditValue(startDate);
                     setEditingField("startDate");
@@ -555,7 +555,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline ${endDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline ${endDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
                   onClick={() => {
                     setEditValue(endDate);
                     setEditingField("endDate");
@@ -592,7 +592,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(calendarId);
                     setEditingField("calendar");
@@ -622,7 +622,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                   type="button"
                   onClick={toggleExternal}
                   disabled={submitting}
-                  className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                  className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isExternal ? "External" : "Internal"}
                 </button>

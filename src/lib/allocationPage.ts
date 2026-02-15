@@ -1,6 +1,5 @@
 import { unstable_cache } from "next/cache";
 
-const ALLOCATION_PAGE_CACHE_REVALIDATE = 60;
 import { getProjectsWithCustomer } from "./projects";
 import { getRoles } from "./roles";
 import { getTeams } from "./teams";
@@ -156,24 +155,23 @@ function buildWeeksArray(
   return weeks;
 }
 
+/** Fetches allocation page data without cache so add/edit/delete are visible immediately on refresh. */
 export async function getAllocationPageData(
   year: number,
   weekFrom: number,
   weekTo: number
 ): Promise<AllocationPageData> {
-  return unstable_cache(
-    async () => {
-      const weeks = buildWeeksArray(year, weekFrom, weekTo);
+  const weeks = buildWeeksArray(year, weekFrom, weekTo);
 
-      let consultants: AllocationConsultant[] = [];
-      let projects: AllocationProject[] = [];
-      let roles: { id: string; name: string }[] = [];
-      let teams: { id: string; name: string }[] = [];
-      let allocations: AllocationRecord[] = [];
+  let consultants: AllocationConsultant[] = [];
+  let projects: AllocationProject[] = [];
+  let roles: { id: string; name: string }[] = [];
+  let teams: { id: string; name: string }[] = [];
+  let allocations: AllocationRecord[] = [];
 
-      try {
-        const [consultantsRaw, rolesData, teamsData, allocationsData, calendarsData] =
-          await Promise.all([
+  try {
+    const [consultantsRaw, rolesData, teamsData, allocationsData, calendarsData] =
+      await Promise.all([
             getCachedConsultantsRaw(),
             getCachedRoles(),
             getCachedTeams(),
@@ -181,123 +179,119 @@ export async function getAllocationPageData(
             getCachedCalendars(),
           ]);
 
-        roles = rolesData;
-        teams = teamsData;
-        allocations = allocationsData;
-        const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
-        const roleMap = new Map(roles.map((r) => [r.id, r.name]));
+    roles = rolesData;
+    teams = teamsData;
+    allocations = allocationsData;
+    const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
+    const roleMap = new Map(roles.map((r) => [r.id, r.name]));
 
-        const calendarMap = new Map<string, number>();
-        for (const c of calendarsData) {
-          calendarMap.set(c.id, Number(c.hours_per_week));
+    const calendarMap = new Map<string, number>();
+    for (const c of calendarsData) {
+      calendarMap.set(c.id, Number(c.hours_per_week));
+    }
+
+    const calendarIds = [...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean))];
+    const holidaysByCalendar = new Map<string, Awaited<ReturnType<typeof getCalendarHolidays>>>();
+    await Promise.all(
+      calendarIds.map(async (calId) => {
+        try {
+          const h = await getCachedCalendarHolidays(calId);
+          holidaysByCalendar.set(calId, h);
+        } catch {
+          holidaysByCalendar.set(calId, []);
         }
+      })
+    );
 
-        const calendarIds = [...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean))];
-        const holidaysByCalendar = new Map<string, Awaited<ReturnType<typeof getCalendarHolidays>>>();
-        await Promise.all(
-          calendarIds.map(async (calId) => {
-            try {
-              const h = await getCachedCalendarHolidays(calId);
-              holidaysByCalendar.set(calId, h);
-            } catch {
-              holidaysByCalendar.set(calId, []);
-            }
-          })
+    consultants = consultantsRaw.map((c) => {
+      const calendarHours =
+        calendarMap.get(c.calendar_id) ?? DEFAULT_HOURS_PER_WEEK;
+      const workPct = Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
+      const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
+      const hoursPerWeek = calendarHours * workPct;
+      const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
+      const startDate = (c as { start_date?: string | null }).start_date ?? null;
+      const endDate = (c as { end_date?: string | null }).end_date ?? null;
+      const availableHoursByWeek = weeks.map((w) => {
+        const { start, end } = getISOWeekDateRange(w.year, w.week);
+        const holidayCount = countWeekdayHolidaysInRange(holidays, start, end);
+        const baseHours = Math.max(
+          0,
+          calendarHours - holidayCount * HOURS_PER_HOLIDAY
         );
-
-        consultants = consultantsRaw.map((c) => {
-          const calendarHours =
-            calendarMap.get(c.calendar_id) ?? DEFAULT_HOURS_PER_WEEK;
-          const workPct = Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
-          const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
-          const hoursPerWeek = calendarHours * workPct;
-          const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
-          const startDate = (c as { start_date?: string | null }).start_date ?? null;
-          const endDate = (c as { end_date?: string | null }).end_date ?? null;
-          const availableHoursByWeek = weeks.map((w) => {
-            const { start, end } = getISOWeekDateRange(w.year, w.week);
-            const holidayCount = countWeekdayHolidaysInRange(holidays, start, end);
-            const baseHours = Math.max(
-              0,
-              calendarHours - holidayCount * HOURS_PER_HOLIDAY
-            );
-            const capacityHours = baseHours * workPct;
-            return capacityHours * (1 - overheadPct);
-          });
-          const unavailableByWeek = weeks.map((w) => {
-            const { start: weekStart, end: weekEnd } = getISOWeekDateRange(w.year, w.week);
-            if (startDate && weekEnd < startDate) return true;
-            if (endDate && weekEnd > endDate) return true;
-            return false;
-          });
-          return {
-            id: c.id,
-            name: c.name,
-            initials: getInitials(c.name),
-            hoursPerWeek,
-            defaultRoleName: roleMap.get(c.role_id) ?? "Unknown",
-            teamId: c.team_id ?? null,
-            teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
-            isExternal: c.is_external ?? false,
-            availableHoursByWeek,
-            unavailableByWeek,
-          };
-        });
-
-        if (consultantsRaw.length > 0) {
-          projects = await getProjectsWithCustomer();
-        }
-
-        const toPlanConsultant: AllocationConsultant = {
-          id: TO_PLAN_CONSULTANT_ID,
-          name: "To plan",
-          initials: "TP",
-          hoursPerWeek: 0,
-          defaultRoleName: "",
-          teamId: null,
-          teamName: null,
-          isExternal: false,
-          availableHoursByWeek: weeks.map(() => 0),
-          unavailableByWeek: weeks.map(() => false),
-        };
-        consultants = [toPlanConsultant, ...consultants];
-      } catch (e) {
-        // Tables may not exist
-      }
-
-      const projectIdsWithAllocations = new Set(
-        allocations.map((a) => a.project_id)
-      );
-      const customerMap = new Map<
-        string,
-        { name: string; color: string }
-      >();
-      for (const p of projects) {
-        if (projectIdsWithAllocations.has(p.id)) {
-          customerMap.set(p.customer_id, {
-            name: p.customerName,
-            color: p.customerColor,
-          });
-        }
-      }
-      const customers: AllocationCustomer[] = Array.from(customerMap.entries()).map(
-        ([id, { name, color }]) => ({ id, name, color })
-      );
-
+        const capacityHours = baseHours * workPct;
+        return capacityHours * (1 - overheadPct);
+      });
+      const unavailableByWeek = weeks.map((w) => {
+        const { start: weekStart, end: weekEnd } = getISOWeekDateRange(w.year, w.week);
+        if (startDate && weekEnd < startDate) return true;
+        if (endDate && weekEnd > endDate) return true;
+        return false;
+      });
       return {
-        consultants,
-        projects,
-        customers: customers.sort((a, b) => a.name.localeCompare(b.name)),
-        roles,
-        teams,
-        allocations,
-        year,
-        weekFrom,
-        weekTo,
-        weeks,
+        id: c.id,
+        name: c.name,
+        initials: getInitials(c.name),
+        hoursPerWeek,
+        defaultRoleName: roleMap.get(c.role_id) ?? "Unknown",
+        teamId: c.team_id ?? null,
+        teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
+        isExternal: c.is_external ?? false,
+        availableHoursByWeek,
+        unavailableByWeek,
       };
-    },
-    ["allocation-page", String(year), String(weekFrom), String(weekTo)],
-    { revalidate: ALLOCATION_PAGE_CACHE_REVALIDATE, tags: ["allocation-page"] }
-  )();
+    });
+
+    if (consultantsRaw.length > 0) {
+      projects = await getProjectsWithCustomer();
+    }
+
+    const toPlanConsultant: AllocationConsultant = {
+      id: TO_PLAN_CONSULTANT_ID,
+      name: "To plan",
+      initials: "TP",
+      hoursPerWeek: 0,
+      defaultRoleName: "",
+      teamId: null,
+      teamName: null,
+      isExternal: false,
+      availableHoursByWeek: weeks.map(() => 0),
+      unavailableByWeek: weeks.map(() => false),
+    };
+    consultants = [toPlanConsultant, ...consultants];
+  } catch (e) {
+    // Tables may not exist
+  }
+
+  const projectIdsWithAllocations = new Set(
+    allocations.map((a) => a.project_id)
+  );
+  const customerMap = new Map<
+    string,
+    { name: string; color: string }
+  >();
+  for (const p of projects) {
+    if (projectIdsWithAllocations.has(p.id)) {
+      customerMap.set(p.customer_id, {
+        name: p.customerName,
+        color: p.customerColor,
+      });
+    }
+  }
+  const customers: AllocationCustomer[] = Array.from(customerMap.entries()).map(
+    ([id, { name, color }]) => ({ id, name, color })
+  );
+
+  return {
+    consultants,
+    projects,
+    customers: customers.sort((a, b) => a.name.localeCompare(b.name)),
+    roles,
+    teams,
+    allocations,
+    year,
+    weekFrom,
+    weekTo,
+    weeks,
+  };
 }

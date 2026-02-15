@@ -3,8 +3,12 @@
 import { useState, useEffect } from "react";
 import { X, Trash2 } from "lucide-react";
 import { getRoles } from "@/lib/roles";
-import { updateAllocation, deleteAllocation } from "@/lib/allocations";
-import { revalidateAllocationPage } from "@/app/(app)/allocation/actions";
+import { updateAllocation } from "@/lib/allocations";
+import {
+  revalidateAllocationPage,
+  logAllocationHistoryUpdate,
+  deleteAllocationWithHistory,
+} from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { ConfirmModal, Select } from "@/components/ui";
 
@@ -71,9 +75,10 @@ export function EditAllocationModal({
         hours: h,
       });
       await revalidateAllocationPage();
-      resetForm();
       onSuccess();
+      resetForm();
       onClose();
+      logAllocationHistoryUpdate(allocation.id, h).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update allocation");
     } finally {
@@ -86,11 +91,11 @@ export function EditAllocationModal({
     setError(null);
     setDeleting(true);
     try {
-      await deleteAllocation(allocation.id);
+      await deleteAllocationWithHistory(allocation.id);
       await revalidateAllocationPage();
+      onSuccess();
       setShowDeleteConfirm(false);
       resetForm();
-      onSuccess();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete allocation");

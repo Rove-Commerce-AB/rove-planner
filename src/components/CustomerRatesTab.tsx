@@ -215,7 +215,7 @@ export function CustomerRatesTab(props: Props) {
                       ? handleRemoveEdit(r as CustomerRate)
                       : props.onRemoveRate(r.role_id)
                   }
-                  className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                  className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                   aria-label="Remove rate"
                 >
                   <Trash2 className="h-4 w-4" />

@@ -10,7 +10,11 @@ import {
 } from "@/lib/projects";
 import { getRolesWithRateForAllocation } from "@/lib/projectRates";
 import { createAllocationsForWeekRange } from "@/lib/allocations";
-import { createAllocationsByPercent, revalidateAllocationPage } from "@/app/(app)/allocation/actions";
+import {
+  createAllocationsByPercent,
+  revalidateAllocationPage,
+  logBulkAllocationHistory,
+} from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
 
@@ -205,6 +209,8 @@ export function AddAllocationModal({
           toWeek,
           pct
         );
+        onSuccess();
+        handleClose();
       } else {
         const hours = parseFloat(hoursPerWeek);
         if (isNaN(hours) || hours < 0.01) {
@@ -212,7 +218,7 @@ export function AddAllocationModal({
           setSubmitting(false);
           return;
         }
-        await createAllocationsForWeekRange(
+        const records = await createAllocationsForWeekRange(
           effectiveConsultantId ?? null,
           projectId,
           effectiveRoleId,
@@ -222,9 +228,15 @@ export function AddAllocationModal({
           hours
         );
         await revalidateAllocationPage();
+        onSuccess();
+        handleClose();
+        if (records.length > 0) {
+          logBulkAllocationHistory(
+            records.map((r) => r.id),
+            records.reduce((s, r) => s + r.hours, 0)
+          ).catch(() => {});
+        }
       }
-      onSuccess();
-      handleClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add allocation");
     } finally {
@@ -377,9 +389,7 @@ export function AddAllocationModal({
               placeholder={
                 projects.find((p) => p.id === projectId)?.type !== "customer"
                   ? "Select a customer project first"
-                  : roles.length === 0
-                    ? "No roles with rate – add customer or project rates"
-                    : "Select role"
+                  : "Select role"
               }
               disabled={projects.find((p) => p.id === projectId)?.type !== "customer"}
               triggerClassName="mt-1.5 border-panel"

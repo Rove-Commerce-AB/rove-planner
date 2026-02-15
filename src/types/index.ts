@@ -83,3 +83,37 @@ export type DashboardData = {
   currentWeek: number;
   activeProjects: Project[];
 };
+
+/** Allocation history audit log: payload for one log entry. Snapshot fields so history shows data at CRUD time. */
+export type AllocationHistoryDetails = {
+  allocation_ids?: string[];
+  hours?: number;
+  hours_after?: number;
+  hours_removed?: number;
+  week_range_removed?: string;
+  /** Week range for bulk add e.g. "10–12" */
+  week_range?: string;
+  customer_name?: string;
+  project_name?: string;
+  consultant_name?: string;
+  year?: number;
+  week?: number;
+};
+
+/** Allocation history table row (resolved names, week range, etc.). */
+export type AllocationHistoryEntry = {
+  id: string;
+  allocation_id: string | null;
+  action: "create" | "update" | "delete" | "bulk";
+  changed_by_email: string;
+  changed_at: string;
+  details: AllocationHistoryDetails | null;
+  project_name?: string | null;
+  customer_name?: string | null;
+  consultant_name?: string | null;
+  year?: number | null;
+  week?: number | null;
+  hours?: number | null;
+  week_range?: string | null;
+  total_hours?: number | null;
+};

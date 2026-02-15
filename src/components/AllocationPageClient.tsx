@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Fragment, useEffect, useCallback } from "react";
+import { useState, Fragment, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, ChevronLeft, Trash2, Percent } from "lucide-react";
@@ -15,10 +15,17 @@ import { Select, Tabs, TabsList, TabsTrigger, PageHeader, Dialog, Button } from 
 import {
   createAllocation,
   updateAllocation,
-  deleteAllocation,
-  deleteAllocations,
 } from "@/lib/allocations";
-import { revalidateAllocationPage } from "@/app/(app)/allocation/actions";
+import {
+  revalidateAllocationPage,
+  getAllocationHistory,
+  logAllocationHistoryCreate,
+  logAllocationHistoryUpdate,
+  deleteAllocationWithHistory,
+  deleteAllocationsWithHistory,
+} from "@/app/(app)/allocation/actions";
+import type { AllocationHistoryEntry } from "@/types";
+import { AllocationHistoryTable } from "@/components/AllocationHistoryTable";
 
 const AddAllocationModal = dynamic(
   () => import("./AddAllocationModal").then((m) => ({ default: m.AddAllocationModal })),
@@ -98,7 +105,14 @@ type ConsultantViewCell = {
 function buildPerConsultantView(
   data: AllocationPageData,
   probabilityFilter: ProbabilityFilter,
-  projectProbabilityMap: Map<string, number>
+  projectProbabilityMap: Map<string, number>,
+  getOptimisticDisplayHours?: (
+    consultantId: string,
+    projectId: string,
+    roleId: string | null,
+    year: number,
+    week: number
+  ) => number | undefined
 ) {
   const roleMap = new Map(data.roles.map((r) => [r.id, r.name]));
   const projectMap = new Map(
@@ -205,14 +219,30 @@ function buildPerConsultantView(
 
     const totalByWeek = new Map<string, number>();
     for (const pr of projectRows) {
-      pr.weeks.forEach(({ cell }, j) => {
+      pr.weeks.forEach((weekItem, j) => {
         const w = data.weeks[j];
-        if (cell && w) {
-          const toAdd = cell.isHidden ? 0 : cell.displayHours;
-          if (toAdd > 0) {
-            const key = weekKey(w.year, w.week);
-            totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + toAdd);
-          }
+        if (!w) return;
+        const cell = weekItem.cell;
+        const roleId =
+          cell?.roleId ??
+          pr.weeks.find((x) => x.cell?.roleId)?.cell?.roleId ??
+          null;
+        const optDisplay = getOptimisticDisplayHours?.(
+          c.id,
+          pr.projectId,
+          roleId,
+          w.year,
+          weekItem.week
+        );
+        const toAdd =
+          optDisplay !== undefined
+            ? optDisplay
+            : cell && !cell.isHidden
+              ? cell.displayHours
+              : 0;
+        if (toAdd > 0) {
+          const key = weekKey(w.year, w.week);
+          totalByWeek.set(key, (totalByWeek.get(key) ?? 0) + toAdd);
         }
       });
     }
@@ -568,9 +598,11 @@ export function AllocationPageClient({
 }: Props) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"consultant" | "customer" | "project">(
-    "consultant"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "consultant" | "customer" | "project" | "history"
+  >("consultant");
+  const [historyEntries, setHistoryEntries] = useState<AllocationHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addInitialParams, setAddInitialParams] = useState<{
     consultantId?: string;
@@ -646,10 +678,60 @@ export function AllocationPageClient({
     selectedWeekIndices: Set<number>;
   } | null>(null);
   const [deletingBooking, setDeletingBooking] = useState(false);
+  const [optimisticCellHours, setOptimisticCellHours] = useState<Record<string, number>>({});
+
+  function allocationCellKey(
+    consultantId: string,
+    projectId: string,
+    roleId: string | null,
+    year: number,
+    week: number
+  ): string {
+    return `${consultantId}|${projectId}|${roleId ?? ""}|${year}|${week}`;
+  }
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!data?.allocations) return;
+    setOptimisticCellHours((prev) => {
+      const next = { ...prev };
+      const allocs = data.allocations ?? [];
+      for (const key of Object.keys(next)) {
+        const parts = key.split("|");
+        if (parts.length !== 5) continue;
+        const [consultantId, projectId, roleIdPart, yearStr, weekStr] = parts;
+        const year = parseInt(yearStr, 10);
+        const week = parseInt(weekStr, 10);
+        const roleId = roleIdPart === "" ? null : roleIdPart;
+        const match = allocs.find(
+          (a) =>
+            (consultantId === TO_PLAN_CONSULTANT_ID
+              ? a.consultant_id == null
+              : a.consultant_id === consultantId) &&
+            a.project_id === projectId &&
+            (a.role_id ?? null) === roleId &&
+            a.year === year &&
+            a.week === week
+        );
+        if (match && Number(match.hours) === next[key]) {
+          delete next[key];
+        }
+      }
+      return next;
+    });
+  }, [data]);
+
+  useEffect(() => {
+    if (activeTab !== "history") return;
+    setHistoryLoading(true);
+    getAllocationHistory(100)
+      .then(setHistoryEntries)
+      .catch(() => setHistoryEntries([]))
+      .finally(() => setHistoryLoading(false));
+  }, [activeTab]);
 
   const filteredData: AllocationPageData | null =
     data === null
@@ -683,13 +765,21 @@ export function AllocationPageClient({
       setSavingCell(true);
       try {
         if (cell.allocationId) {
-          await updateAllocation(cell.allocationId, { hours });
-          for (const id of cell.otherAllocationIds) {
-            await deleteAllocation(id);
+          if (hours === 0) {
+            await deleteAllocationWithHistory(cell.allocationId);
+            for (const id of cell.otherAllocationIds) {
+              await deleteAllocationWithHistory(id);
+            }
+          } else {
+            await updateAllocation(cell.allocationId, { hours });
+            logAllocationHistoryUpdate(cell.allocationId, hours).catch(() => {});
+            for (const id of cell.otherAllocationIds) {
+              await deleteAllocationWithHistory(id);
+            }
           }
         } else {
           if (hours > 0) {
-            await createAllocation({
+            const created = await createAllocation({
               consultant_id: cell.consultantId,
               project_id: cell.projectId,
               role_id: cell.roleId ?? undefined,
@@ -697,6 +787,7 @@ export function AllocationPageClient({
               week: cell.week,
               hours,
             });
+            logAllocationHistoryCreate(created.id).catch(() => {});
           }
         }
         await revalidateAllocationPage();
@@ -742,13 +833,27 @@ export function AllocationPageClient({
     ) => {
       const hours = parseFloat(value.replace(",", "."));
       if (isNaN(hours) || hours < 0) return;
+      const cellKey = allocationCellKey(
+        cell.consultantId,
+        cell.projectId,
+        cell.roleId,
+        cell.year,
+        cell.week
+      );
+      setOptimisticCellHours((prev) => ({ ...prev, [cellKey]: hours }));
+      setEditingCellConsultant(null);
       setSavingCellConsultant(true);
       try {
         if (cell.allocationId) {
-          await updateAllocation(cell.allocationId, { hours });
+          if (hours === 0) {
+            await deleteAllocationWithHistory(cell.allocationId);
+          } else {
+            await updateAllocation(cell.allocationId, { hours });
+            logAllocationHistoryUpdate(cell.allocationId, hours).catch(() => {});
+          }
         } else {
           if (hours > 0) {
-            await createAllocation({
+            const created = await createAllocation({
               consultant_id: cell.consultantId === TO_PLAN_CONSULTANT_ID ? null : cell.consultantId,
               project_id: cell.projectId,
               role_id: cell.roleId ?? undefined,
@@ -756,13 +861,18 @@ export function AllocationPageClient({
               week: cell.week,
               hours,
             });
+            logAllocationHistoryCreate(created.id).catch(() => {});
           }
         }
         await revalidateAllocationPage();
         router.refresh();
         setEditingCellConsultant(null);
       } catch {
-        // Keep editing on error
+        setOptimisticCellHours((prev) => {
+          const next = { ...prev };
+          delete next[cellKey];
+          return next;
+        });
       } finally {
         setSavingCellConsultant(false);
       }
@@ -862,6 +972,8 @@ export function AllocationPageClient({
     });
   };
 
+  const internalRowsRef = useRef<Array<{ consultant: { id: string }; projectRows: Array<{ projectId: string; weeks: Array<{ week: number; cell?: { roleId: string | null; id?: string; hours?: number } }> }> }>>([]);
+
   const handleCellDragEnd = useCallback(() => {
     if (
       cellDragConsultant === null ||
@@ -870,8 +982,40 @@ export function AllocationPageClient({
       !data
     )
       return;
+    const internalRows = internalRowsRef.current;
     const fromIdx = Math.min(cellDragWeekStart, cellDragWeekEnd);
     const toIdx = Math.max(cellDragWeekStart, cellDragWeekEnd);
+    const isSingleCellClick = fromIdx === toIdx;
+    if (isSingleCellClick && internalRows.length > 0) {
+      const row = internalRows.find((r) => r.consultant.id === cellDragConsultant.id);
+      if (row && row.projectRows.length > 0) {
+        const pr = row.projectRows[0];
+        const w = pr.weeks[fromIdx];
+        const weekKey = data.weeks[fromIdx];
+        if (weekKey) {
+          const roleId =
+            w?.cell?.roleId ??
+            pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ??
+            null;
+          setExpandedConsultants((prev) => new Set(prev).add(row.consultant.id));
+          setEditingCellConsultant({
+            consultantId: row.consultant.id,
+            projectId: pr.projectId,
+            roleId,
+            weekIndex: fromIdx,
+            week: weekKey.week,
+            year: weekKey.year,
+            allocationId: w?.cell?.id ?? null,
+            currentHours: w?.cell?.hours ?? 0,
+          });
+          setEditingCellConsultantValue(String(w?.cell?.hours ?? 0));
+          setCellDragConsultant(null);
+          setCellDragWeekStart(null);
+          setCellDragWeekEnd(null);
+          return;
+        }
+      }
+    }
     const wFrom = data.weeks[fromIdx];
     const wTo = data.weeks[toIdx];
     if (wFrom && wTo) {
@@ -944,7 +1088,29 @@ export function AllocationPageClient({
       : new Map<string, number>();
   const perConsultant =
     filteredData && data
-      ? buildPerConsultantView(filteredData, probabilityFilter, projectProbabilityMap)
+      ? buildPerConsultantView(
+          filteredData,
+          probabilityFilter,
+          projectProbabilityMap,
+          (consultantId, projectId, roleId, year, week) => {
+            const key = allocationCellKey(
+              consultantId,
+              projectId,
+              roleId,
+              year,
+              week
+            );
+            const raw = optimisticCellHours[key];
+            if (raw == null) return undefined;
+            const { displayHours } = getDisplayHours(
+              raw,
+              projectId,
+              probabilityFilter,
+              projectProbabilityMap
+            );
+            return displayHours;
+          }
+        )
       : [];
   const perCustomer =
     filteredData && data
@@ -955,6 +1121,7 @@ export function AllocationPageClient({
       ? buildPerProjectView(filteredData, probabilityFilter, projectProbabilityMap)
       : [];
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
+  internalRowsRef.current = perConsultantInternal;
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const expandableConsultantIds = new Set(
     perConsultant.filter((r) => r.projectRows.length > 0).map((r) => r.consultant.id)
@@ -976,19 +1143,27 @@ export function AllocationPageClient({
       {mounted ? (
         <Tabs
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as "consultant" | "customer" | "project")}
+          onValueChange={(v) =>
+            setActiveTab(v as "consultant" | "customer" | "project" | "history")
+          }
           className="mb-4"
         >
-          <TabsList>
+          <TabsList className="w-full">
             <TabsTrigger value="consultant">Per consultant</TabsTrigger>
             <TabsTrigger value="customer">Per customer</TabsTrigger>
             <TabsTrigger value="project">Per project</TabsTrigger>
+            <TabsTrigger value="history" className="ml-auto">
+              Allocation history
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       ) : (
-        <div className="mb-4 flex gap-2 border-b border-border px-1 py-2" aria-hidden="true">
+        <div className="mb-4 flex w-full gap-2 border-b border-border px-1 py-2" aria-hidden="true">
           <span className="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70">
             Per consultant
+          </span>
+          <span className="ml-auto px-4 py-2 text-sm text-text-primary opacity-70">
+            Allocation history
           </span>
         </div>
       )}
@@ -1025,7 +1200,7 @@ export function AllocationPageClient({
           <button
             type="button"
             onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
-            className="text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+            className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
           >
             Expand all
           </button>
@@ -1033,7 +1208,7 @@ export function AllocationPageClient({
           <button
             type="button"
             onClick={() => setExpandedConsultants(new Set())}
-            className="text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+            className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
           >
             Collapse all
           </button>
@@ -1250,44 +1425,76 @@ export function AllocationPageClient({
                             </span>
                           </td>
                           {pr.weeks.map((w, i) => {
-                            const hasBooking = w.cell && w.cell.hours > 0;
-                            const prevHasBooking = i > 0 && !!(pr.weeks[i - 1].cell && pr.weeks[i - 1].cell!.hours > 0);
-                            const displayText = w.cell?.isHidden ? "—" : (w.cell ? `${w.cell.displayHours}h` : null);
-                            const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
+                            const weekKey = data.weeks[i];
                             const roleId =
                               w.cell?.roleId ??
                               pr.weeks.find((wk) => wk.cell?.roleId)?.cell
                                 ?.roleId ??
                               null;
+                            const cellKey = allocationCellKey(
+                              row.consultant.id,
+                              pr.projectId,
+                              roleId,
+                              weekKey.year,
+                              w.week
+                            );
+                            const optimisticHours = optimisticCellHours[cellKey];
+                            const effectiveDisplayHours =
+                              optimisticHours != null ? optimisticHours : w.cell?.displayHours;
+                            const hasBooking = (effectiveDisplayHours ?? 0) > 0;
+                            const prevWeek = i > 0 ? pr.weeks[i - 1] : null;
+                            const prevCellKey =
+                              prevWeek && data.weeks[i - 1]
+                                ? allocationCellKey(
+                                    row.consultant.id,
+                                    pr.projectId,
+                                    prevWeek.cell?.roleId ??
+                                      pr.weeks.find((x) => x.cell?.roleId)?.cell
+                                        ?.roleId ??
+                                      null,
+                                    data.weeks[i - 1].year,
+                                    prevWeek.week
+                                  )
+                                : "";
+                            const prevEffective =
+                              prevCellKey && optimisticCellHours[prevCellKey] != null
+                                ? optimisticCellHours[prevCellKey]
+                                : prevWeek?.cell?.displayHours;
+                            const prevHasBooking = (prevEffective ?? 0) > 0;
+                            const displayText =
+                              w.cell?.isHidden && optimisticHours == null
+                                ? "—"
+                                : effectiveDisplayHours != null &&
+                                    effectiveDisplayHours > 0
+                                  ? `${effectiveDisplayHours}h`
+                                  : null;
+                            const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                             const isEditingConsultant =
                               editingCellConsultant?.consultantId ===
                                 row.consultant.id &&
                               editingCellConsultant?.projectId === pr.projectId &&
                               editingCellConsultant?.weekIndex === i;
-                            const weekKey = data.weeks[i];
+                            const effectiveHours =
+                              optimisticHours != null ? optimisticHours : (w.cell?.hours ?? 0);
+                            const openEditor = () => {
+                              setEditingCellConsultant({
+                                consultantId: row.consultant.id,
+                                projectId: pr.projectId,
+                                roleId,
+                                weekIndex: i,
+                                week: w.week,
+                                year: weekKey.year,
+                                allocationId: w.cell?.id ?? null,
+                                currentHours: effectiveHours,
+                              });
+                              setEditingCellConsultantValue(
+                                String(effectiveHours)
+                              );
+                            };
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
-                              onClick={(e) => {
-                                if (
-                                  (e.target as HTMLElement).closest("input")
-                                )
-                                  return;
-                                setEditingCellConsultant({
-                                  consultantId: row.consultant.id,
-                                  projectId: pr.projectId,
-                                  roleId,
-                                  weekIndex: i,
-                                  week: w.week,
-                                  year: weekKey.year,
-                                  allocationId: w.cell?.id ?? null,
-                                  currentHours: w.cell?.hours ?? 0,
-                                });
-                                setEditingCellConsultantValue(
-                                  String(w.cell?.hours ?? "")
-                                );
-                              }}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""}`}
                             >
                               {isEditingConsultant ? (
                                 <input
@@ -1310,9 +1517,20 @@ export function AllocationPageClient({
                                   onClick={(e) => e.stopPropagation()}
                                   autoFocus
                                 />
-                              ) : displayText != null ? (
-                                <span>{displayText}</span>
-                              ) : null}
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openEditor();
+                                  }}
+                                  className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+                                  tabIndex={0}
+                                >
+                                  {displayText ?? "\u00A0"}
+                                </button>
+                              )}
                             </td>
                           );
                           })}
@@ -1331,7 +1549,7 @@ export function AllocationPageClient({
                                     selectedWeekIndices: new Set(allocationsWithBooking.map((a) => a.weekIndex)),
                                   });
                                 }}
-                                className="inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
                                 aria-label="Remove booking"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1540,44 +1758,76 @@ export function AllocationPageClient({
                             </span>
                           </td>
                           {pr.weeks.map((w, i) => {
-                            const hasBooking = w.cell && w.cell.hours > 0;
-                            const prevHasBooking = i > 0 && !!(pr.weeks[i - 1].cell && pr.weeks[i - 1].cell!.hours > 0);
-                            const displayText = w.cell?.isHidden ? "—" : (w.cell ? `${w.cell.displayHours}h` : null);
-                            const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
+                            const weekKey = data.weeks[i];
                             const roleId =
                               w.cell?.roleId ??
                               pr.weeks.find((wk) => wk.cell?.roleId)?.cell
                                 ?.roleId ??
                               null;
+                            const cellKey = allocationCellKey(
+                              row.consultant.id,
+                              pr.projectId,
+                              roleId,
+                              weekKey.year,
+                              w.week
+                            );
+                            const optimisticHours = optimisticCellHours[cellKey];
+                            const effectiveDisplayHours =
+                              optimisticHours != null ? optimisticHours : w.cell?.displayHours;
+                            const hasBooking = (effectiveDisplayHours ?? 0) > 0;
+                            const prevWeek = i > 0 ? pr.weeks[i - 1] : null;
+                            const prevCellKey =
+                              prevWeek && data.weeks[i - 1]
+                                ? allocationCellKey(
+                                    row.consultant.id,
+                                    pr.projectId,
+                                    prevWeek.cell?.roleId ??
+                                      pr.weeks.find((x) => x.cell?.roleId)?.cell
+                                        ?.roleId ??
+                                      null,
+                                    data.weeks[i - 1].year,
+                                    prevWeek.week
+                                  )
+                                : "";
+                            const prevEffective =
+                              prevCellKey && optimisticCellHours[prevCellKey] != null
+                                ? optimisticCellHours[prevCellKey]
+                                : prevWeek?.cell?.displayHours;
+                            const prevHasBooking = (prevEffective ?? 0) > 0;
+                            const displayText =
+                              w.cell?.isHidden && optimisticHours == null
+                                ? "—"
+                                : effectiveDisplayHours != null &&
+                                    effectiveDisplayHours > 0
+                                  ? `${effectiveDisplayHours}h`
+                                  : null;
+                            const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                             const isEditingConsultant =
                               editingCellConsultant?.consultantId ===
                                 row.consultant.id &&
                               editingCellConsultant?.projectId === pr.projectId &&
                               editingCellConsultant?.weekIndex === i;
-                            const weekKey = data.weeks[i];
+                            const effectiveHours =
+                              optimisticHours != null ? optimisticHours : (w.cell?.hours ?? 0);
+                            const openEditorExt = () => {
+                              setEditingCellConsultant({
+                                consultantId: row.consultant.id,
+                                projectId: pr.projectId,
+                                roleId,
+                                weekIndex: i,
+                                week: w.week,
+                                year: weekKey.year,
+                                allocationId: w.cell?.id ?? null,
+                                currentHours: effectiveHours,
+                              });
+                              setEditingCellConsultantValue(
+                                String(effectiveHours)
+                              );
+                            };
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditingConsultant ? "p-0 align-middle" : ""}`}
-                              onClick={(e) => {
-                                if (
-                                  (e.target as HTMLElement).closest("input")
-                                )
-                                  return;
-                                setEditingCellConsultant({
-                                  consultantId: row.consultant.id,
-                                  projectId: pr.projectId,
-                                  roleId,
-                                  weekIndex: i,
-                                  week: w.week,
-                                  year: weekKey.year,
-                                  allocationId: w.cell?.id ?? null,
-                                  currentHours: w.cell?.hours ?? 0,
-                                });
-                                setEditingCellConsultantValue(
-                                  String(w.cell?.hours ?? "")
-                                );
-                              }}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""}`}
                             >
                               {isEditingConsultant ? (
                                 <input
@@ -1600,9 +1850,20 @@ export function AllocationPageClient({
                                   onClick={(e) => e.stopPropagation()}
                                   autoFocus
                                 />
-                              ) : displayText != null ? (
-                                <span>{displayText}</span>
-                              ) : null}
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openEditorExt();
+                                  }}
+                                  className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+                                  tabIndex={0}
+                                >
+                                  {displayText ?? "\u00A0"}
+                                </button>
+                              )}
                             </td>
                           );
                           })}
@@ -1621,7 +1882,7 @@ export function AllocationPageClient({
                                     selectedWeekIndices: new Set(allocationsWithBooking.map((a) => a.weekIndex)),
                                   });
                                 }}
-                                className="inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
                                 aria-label="Remove booking"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1638,6 +1899,12 @@ export function AllocationPageClient({
                 </table>
               </div>
             </>
+          )}
+          {activeTab === "history" && (
+            <AllocationHistoryTable
+              entries={historyEntries}
+              loading={historyLoading}
+            />
           )}
           {(activeTab === "customer" || activeTab === "project") && (
             <AllocationCustomerProjectTabs
@@ -1718,7 +1985,8 @@ export function AllocationPageClient({
                 onClick={async () => {
                   setDeletingBooking(true);
                   try {
-                    await deleteAllocations(deleteBookingDialog.allocations.map((a) => a.allocationId));
+                    const ids = deleteBookingDialog.allocations.map((a) => a.allocationId);
+                    await deleteAllocationsWithHistory(ids);
                     handleSuccess();
                     setDeleteBookingDialog(null);
                   } finally {
@@ -1766,7 +2034,7 @@ export function AllocationPageClient({
                       .map((a) => a.allocationId);
                     setDeletingBooking(true);
                     try {
-                      await deleteAllocations(idsToDelete);
+                      await deleteAllocationsWithHistory(idsToDelete);
                       handleSuccess();
                       setDeleteBookingDialog(null);
                     } finally {

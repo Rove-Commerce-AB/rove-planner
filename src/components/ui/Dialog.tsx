@@ -28,13 +28,16 @@ export function Dialog({
           onEscapeKeyDown={() => onOpenChange?.(false)}
           aria-labelledby={id}
         >
+          <DialogPrimitive.Title
+            id={id}
+            className="sr-only"
+          >
+            {title}
+          </DialogPrimitive.Title>
           <div className="flex items-center justify-between">
-            <DialogPrimitive.Title
-              id={id}
-              className="text-lg font-semibold text-text-primary"
-            >
+            <h2 className="text-lg font-semibold text-text-primary" aria-hidden>
               {title}
-            </DialogPrimitive.Title>
+            </h2>
             <DialogPrimitive.Close
               className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-signal"
               aria-label="Close"

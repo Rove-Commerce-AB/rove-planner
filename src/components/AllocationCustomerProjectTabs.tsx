@@ -224,23 +224,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           return (
                             <td
                               key={`${weekInfo.year}-${weekInfo.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
-                              onClick={(e) => {
-                                if ((e.target as HTMLElement).closest("input")) return;
-                                p.setEditingCell({
-                                  customerId: row.customer.id,
-                                  consultantId: cr.consultantId,
-                                  roleId: cr.roleId,
-                                  weekIndex: i,
-                                  week: w.week,
-                                  year: weekInfo.year,
-                                  allocationId: cells[0]?.id ?? null,
-                                  otherAllocationIds: cells.slice(1).map((c) => c.id),
-                                  projectId: cells[0]?.projectId ?? firstProjectForCustomer?.id ?? "",
-                                  currentHours: totalHours,
-                                });
-                                p.setEditingCellValue(String(totalHours || ""));
-                              }}
+                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
                             >
                               {isEditing ? (
                                 <input
@@ -257,11 +241,32 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                   onClick={(e) => e.stopPropagation()}
                                   autoFocus
                                 />
-                              ) : displayTotal > 0 ? (
-                                <span className="text-[10px] text-text-primary">{displayTotal}h</span>
-                              ) : totalHours > 0 ? (
-                                <span className="text-[10px] text-text-primary opacity-70">—</span>
-                              ) : null}
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    p.setEditingCell({
+                                      customerId: row.customer.id,
+                                      consultantId: cr.consultantId,
+                                      roleId: cr.roleId,
+                                      weekIndex: i,
+                                      week: w.week,
+                                      year: weekInfo.year,
+                                      allocationId: cells[0]?.id ?? null,
+                                      otherAllocationIds: cells.slice(1).map((c) => c.id),
+                                      projectId: cells[0]?.projectId ?? firstProjectForCustomer?.id ?? "",
+                                      currentHours: totalHours,
+                                    });
+                                    p.setEditingCellValue(String(totalHours || ""));
+                                  }}
+                                  className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+                                  tabIndex={0}
+                                >
+                                  {displayTotal > 0 ? `${displayTotal}h` : totalHours > 0 ? "—" : "\u00A0"}
+                                </button>
+                              )}
                             </td>
                           );
                         })}
@@ -422,23 +427,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         return (
                           <td
                             key={`${weekInfo.year}-${weekInfo.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
-                            onClick={(e) => {
-                              if ((e.target as HTMLElement).closest("input")) return;
-                              p.setEditingCell({
-                                customerId: row.project.customer_id,
-                                consultantId: cr.consultantId,
-                                roleId: cr.roleId,
-                                weekIndex: i,
-                                week: w.week,
-                                year: weekInfo.year,
-                                allocationId: cells[0]?.id ?? null,
-                                otherAllocationIds: cells.slice(1).map((c) => c.id),
-                                projectId: row.project.id,
-                                currentHours: totalHours,
-                              });
-                              p.setEditingCellValue(String(totalHours || ""));
-                            }}
+                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
                           >
                             {isEditing ? (
                               <input
@@ -455,11 +444,32 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                 onClick={(e) => e.stopPropagation()}
                                 autoFocus
                               />
-                            ) : displayTotal > 0 ? (
-                              <span className="text-[10px] text-text-primary">{displayTotal}h</span>
-                            ) : totalHours > 0 ? (
-                              <span className="text-[10px] text-text-primary opacity-70">—</span>
-                            ) : null}
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  p.setEditingCell({
+                                    customerId: row.project.customer_id,
+                                    consultantId: cr.consultantId,
+                                    roleId: cr.roleId,
+                                    weekIndex: i,
+                                    week: w.week,
+                                    year: weekInfo.year,
+                                    allocationId: cells[0]?.id ?? null,
+                                    otherAllocationIds: cells.slice(1).map((c) => c.id),
+                                    projectId: row.project.id,
+                                    currentHours: totalHours,
+                                  });
+                                  p.setEditingCellValue(String(totalHours || ""));
+                                }}
+                                className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+                                tabIndex={0}
+                              >
+                                {displayTotal > 0 ? `${displayTotal}h` : totalHours > 0 ? "—" : "\u00A0"}
+                              </button>
+                            )}
                           </td>
                         );
                       })}

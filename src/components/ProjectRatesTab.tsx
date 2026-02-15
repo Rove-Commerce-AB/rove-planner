@@ -165,7 +165,7 @@ export function ProjectRatesTab({
                 <button
                   type="button"
                   onClick={() => handleRemove(r)}
-                  className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                  className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                   aria-label="Remove rate"
                 >
                   <Trash2 className="h-4 w-4" />

@@ -272,7 +272,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(name);
                     setEditingField("name");
@@ -309,7 +309,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(customerId);
                     setEditingField("customerId");
@@ -355,7 +355,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(startDate);
                     setEditingField("startDate");
@@ -391,7 +391,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(endDate);
                     setEditingField("endDate");
@@ -409,7 +409,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   type="button"
                   onClick={cycleType}
                   disabled={submitting}
-                  className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                  className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {TYPE_LABELS[type]}
                 </button>
@@ -445,7 +445,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
               ) : (
                 <button
                   type="button"
-                  className={`mt-1.5 block text-left ${valueClass} hover:underline`}
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
                   onClick={() => {
                     setEditValue(String(probability));
                     setEditingField("probability");
@@ -463,7 +463,7 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   type="button"
                   onClick={toggleActive}
                   disabled={submitting}
-                  className="inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50"
+                  className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isActive ? "Active" : "Inactive"}
                 </button>
