@@ -6,7 +6,7 @@ import { createAllocationsForWeekRangeWithGetter } from "@/lib/allocations";
 
 /** Call after any allocation create/update/delete so allocation page cache shows fresh data. */
 export async function revalidateAllocationPage(): Promise<void> {
-  revalidateTag("allocation-page");
+  revalidateTag("allocation-page", "max");
 }
 
 /** When consultantId is null ("To plan"), percent is applied to a fixed 40h/week. */
@@ -38,5 +38,5 @@ export async function createAllocationsByPercent(
           return Math.round((available * pct) * 100) / 100;
         }
   );
-  revalidateTag("allocation-page");
+  revalidateTag("allocation-page", "max");
 }
