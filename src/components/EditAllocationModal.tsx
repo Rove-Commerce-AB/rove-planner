@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { X, Trash2 } from "lucide-react";
 import { getRoles } from "@/lib/roles";
 import { updateAllocation, deleteAllocation } from "@/lib/allocations";
+import { revalidateAllocationPage } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { ConfirmModal, Select } from "@/components/ui";
 
@@ -69,6 +70,7 @@ export function EditAllocationModal({
         role_id: roleId,
         hours: h,
       });
+      await revalidateAllocationPage();
       resetForm();
       onSuccess();
       onClose();
@@ -85,6 +87,7 @@ export function EditAllocationModal({
     setDeleting(true);
     try {
       await deleteAllocation(allocation.id);
+      await revalidateAllocationPage();
       setShowDeleteConfirm(false);
       resetForm();
       onSuccess();

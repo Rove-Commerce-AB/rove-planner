@@ -27,6 +27,28 @@ export async function getCustomerRates(
   }));
 }
 
+/** Fetch rates for multiple customers in one query. */
+export async function getCustomerRatesByCustomerIds(
+  customerIds: string[]
+): Promise<CustomerRate[]> {
+  if (customerIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("customer_rates")
+    .select("id,customer_id,role_id,rate_per_hour,currency")
+    .in("customer_id", customerIds);
+
+  if (error) throw error;
+
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    customer_id: r.customer_id,
+    role_id: r.role_id,
+    rate_per_hour: Number(r.rate_per_hour),
+    currency: r.currency ?? "SEK",
+  }));
+}
+
 export async function createCustomerRate(
   customerId: string,
   roleId: string,

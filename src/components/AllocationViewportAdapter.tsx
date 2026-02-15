@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PageLoading } from "@/components/ui/PageLoading";
 
 const LEFT_COL_WIDTH = 300;
 const MIN_WEEK_WIDTH = 28;
@@ -25,15 +26,26 @@ export function AllocationViewportAdapter({
 }: Props) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasObservedRef = useRef(false);
+  const lastRequestedParamsRef = useRef<{
+    year: number;
+    from: number;
+    to: number;
+  } | null>(null);
+
+  const [ready, setReady] = useState(false);
 
   const applyWeeks = useCallback(
-    (visibleWeeks: number) => {
+    (visibleWeeks: number, onNoChange?: () => void) => {
       const clamped = Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, visibleWeeks));
       const currentSpan =
         weekFrom <= weekTo
           ? weekTo - weekFrom + 1
           : 52 - weekFrom + 1 + weekTo;
-      if (clamped === currentSpan) return;
+      if (clamped === currentSpan) {
+        onNoChange?.();
+        return;
+      }
 
       const newFrom = weekFrom;
       const newTo =
@@ -41,6 +53,7 @@ export function AllocationViewportAdapter({
           ? weekFrom + clamped - 1
           : weekFrom + clamped - 1 - 52;
 
+      lastRequestedParamsRef.current = { year, from: newFrom, to: newTo };
       router.replace(`/allocation?year=${year}&from=${newFrom}&to=${newTo}`);
     },
     [year, weekFrom, weekTo, router]
@@ -60,12 +73,18 @@ export function AllocationViewportAdapter({
       if (visibleWeeks < MIN_WEEKS) return;
 
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => applyWeeks(visibleWeeks), DEBOUNCE_MS);
+      timeoutId = setTimeout(() => {
+        if (!hasObservedRef.current) {
+          hasObservedRef.current = true;
+          applyWeeks(visibleWeeks, () => setReady(true));
+        } else {
+          applyWeeks(visibleWeeks);
+        }
+      }, DEBOUNCE_MS);
     };
 
     const ro = new ResizeObserver(updateWeeks);
     ro.observe(el);
-    // Don't run updateWeeks() on mount – only on resize – to avoid URL change and visual jump on first load
 
     return () => {
       ro.disconnect();
@@ -73,5 +92,23 @@ export function AllocationViewportAdapter({
     };
   }, [applyWeeks]);
 
-  return <div ref={containerRef}>{children}</div>;
+  useEffect(() => {
+    if (!ready && hasObservedRef.current && lastRequestedParamsRef.current) {
+      const req = lastRequestedParamsRef.current;
+      if (
+        year === req.year &&
+        weekFrom === req.from &&
+        weekTo === req.to
+      ) {
+        setReady(true);
+        lastRequestedParamsRef.current = null;
+      }
+    }
+  }, [ready, year, weekFrom, weekTo]);
+
+  return (
+    <div ref={containerRef}>
+      {ready ? children : <PageLoading />}
+    </div>
+  );
 }

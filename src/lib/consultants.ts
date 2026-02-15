@@ -285,6 +285,7 @@ export async function getConsultantsWithDetails(
     { projectName: string; hours: number }[]
   >();
   for (const a of allocations) {
+    if (a.consultant_id == null) continue; // "To plan" – skip for consultant list
     const list = allocationsByConsultant.get(a.consultant_id) ?? [];
     list.push({
       projectName: projectMap.get(a.project_id) ?? "Unknown",

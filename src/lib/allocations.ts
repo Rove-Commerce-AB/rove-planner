@@ -3,7 +3,7 @@ import { isoWeeksInYear } from "./dateUtils";
 
 export type AllocationRecord = {
   id: string;
-  consultant_id: string;
+  consultant_id: string | null;
   project_id: string;
   role_id: string | null;
   year: number;
@@ -13,7 +13,7 @@ export type AllocationRecord = {
 
 function mapAllocation(r: {
   id: string;
-  consultant_id: string;
+  consultant_id: string | null;
   project_id: string;
   role_id: string | null;
   year: number;
@@ -22,7 +22,7 @@ function mapAllocation(r: {
 }): AllocationRecord {
   return {
     id: r.id,
-    consultant_id: r.consultant_id,
+    consultant_id: r.consultant_id ?? null,
     project_id: r.project_id,
     role_id: r.role_id ?? null,
     year: r.year,
@@ -77,40 +77,49 @@ export async function getAllocationsByProjectIds(
 
 const ALLOCATIONS_PAGE_SIZE = 1000;
 
-/** Fetches allocations for exactly the (year, week) pairs in `weeks`. Paginates per year to avoid PostgREST 1000-row default limit. */
+async function getAllocationsForOneYear(
+  year: number,
+  weeksInYear: { year: number; week: number }[]
+): Promise<AllocationRecord[]> {
+  const minWeek = Math.min(...weeksInYear.map((w) => w.week));
+  const maxWeek = Math.max(...weeksInYear.map((w) => w.week));
+  const orderOpts = { ascending: true } as const;
+  const results: AllocationRecord[] = [];
+  let offset = 0;
+  let page: unknown[];
+  do {
+    const { data, error } = await supabase
+      .from("allocations")
+      .select("id,consultant_id,project_id,role_id,year,week,hours")
+      .eq("year", year)
+      .gte("week", minWeek)
+      .lte("week", maxWeek)
+      .order("year", orderOpts)
+      .order("week", orderOpts)
+      .order("consultant_id", orderOpts)
+      .order("project_id", orderOpts)
+      .order("id", orderOpts)
+      .range(offset, offset + ALLOCATIONS_PAGE_SIZE - 1);
+    if (error) throw error;
+    page = data ?? [];
+    results.push(...(page as Parameters<typeof mapAllocation>[0][]).map(mapAllocation));
+    offset += ALLOCATIONS_PAGE_SIZE;
+  } while (page.length === ALLOCATIONS_PAGE_SIZE);
+  return results;
+}
+
+/** Fetches allocations for exactly the (year, week) pairs in `weeks`. Paginates per year to avoid PostgREST 1000-row default limit. Years are fetched in parallel. */
 export async function getAllocationsForWeeks(
   weeks: { year: number; week: number }[]
 ): Promise<AllocationRecord[]> {
   if (weeks.length === 0) return [];
-  const uniqueYears = [...new Set(weeks.map((w) => w.year))];
-  const results: AllocationRecord[] = [];
-  const orderOpts = { ascending: true } as const;
-  for (const y of uniqueYears) {
-    const weeksInYear = weeks.filter((w) => w.year === y);
-    const minWeek = Math.min(...weeksInYear.map((w) => w.week));
-    const maxWeek = Math.max(...weeksInYear.map((w) => w.week));
-    let offset = 0;
-    let page: unknown[];
-    do {
-      const { data, error } = await supabase
-        .from("allocations")
-        .select("id,consultant_id,project_id,role_id,year,week,hours")
-        .eq("year", y)
-        .gte("week", minWeek)
-        .lte("week", maxWeek)
-        .order("year", orderOpts)
-        .order("week", orderOpts)
-        .order("consultant_id", orderOpts)
-        .order("project_id", orderOpts)
-        .order("id", orderOpts)
-        .range(offset, offset + ALLOCATIONS_PAGE_SIZE - 1);
-      if (error) throw error;
-      page = data ?? [];
-      results.push(...(page as Parameters<typeof mapAllocation>[0][]).map(mapAllocation));
-      offset += ALLOCATIONS_PAGE_SIZE;
-    } while (page.length === ALLOCATIONS_PAGE_SIZE);
-  }
-  return results;
+  const uniqueYears = [...new Set(weeks.map((w) => w.year))].sort((a, b) => a - b);
+  const yearResults = await Promise.all(
+    uniqueYears.map((y) =>
+      getAllocationsForOneYear(y, weeks.filter((w) => w.year === y))
+    )
+  );
+  return yearResults.flat();
 }
 
 export async function getAllocationsForWeekRange(
@@ -157,7 +166,7 @@ export async function getAllocationsForWeekRange(
 }
 
 export type CreateAllocationInput = {
-  consultant_id: string;
+  consultant_id: string | null;
   project_id: string;
   role_id?: string | null;
   year: number;
@@ -171,7 +180,7 @@ export async function createAllocation(
   const { data, error } = await supabase
     .from("allocations")
     .insert({
-      consultant_id: input.consultant_id,
+      consultant_id: input.consultant_id ?? null,
       project_id: input.project_id,
       role_id: input.role_id ?? null,
       year: input.year,
@@ -185,20 +194,31 @@ export async function createAllocation(
   return mapAllocation(data);
 }
 
-async function findExistingAllocation(
-  consultant_id: string,
+function weekKey(year: number, week: number): string {
+  return `${year}-${week}`;
+}
+
+/** Fetch all existing allocations for (consultant, project, role) in the given week list (one query). consultant_id null = "To plan". */
+async function getExistingAllocationsInRange(
+  consultant_id: string | null,
   project_id: string,
   role_id: string | null,
-  year: number,
-  week: number
-): Promise<AllocationRecord | null> {
+  weeks: { y: number; w: number }[]
+): Promise<Map<string, AllocationRecord>> {
+  if (weeks.length === 0) return new Map();
+
+  const years = [...new Set(weeks.map((w) => w.y))];
   let query = supabase
     .from("allocations")
     .select("id,consultant_id,project_id,role_id,year,week,hours")
-    .eq("consultant_id", consultant_id)
     .eq("project_id", project_id)
-    .eq("year", year)
-    .eq("week", week);
+    .in("year", years);
+
+  if (consultant_id === null) {
+    query = query.is("consultant_id", null);
+  } else {
+    query = query.eq("consultant_id", consultant_id);
+  }
 
   if (role_id === null) {
     query = query.is("role_id", null);
@@ -206,14 +226,20 @@ async function findExistingAllocation(
     query = query.eq("role_id", role_id);
   }
 
-  const { data, error } = await query.maybeSingle();
-
+  const { data, error } = await query;
   if (error) throw error;
-  return data ? mapAllocation(data) : null;
+
+  const weekSet = new Set(weeks.map(({ y, w }) => weekKey(y, w)));
+  const map = new Map<string, AllocationRecord>();
+  for (const r of data ?? []) {
+    const key = weekKey(r.year, r.week);
+    if (weekSet.has(key)) map.set(key, mapAllocation(r));
+  }
+  return map;
 }
 
 export async function createAllocationsForWeekRange(
-  consultant_id: string,
+  consultant_id: string | null,
   project_id: string,
   role_id: string | null,
   year: number,
@@ -221,9 +247,7 @@ export async function createAllocationsForWeekRange(
   weekTo: number,
   hoursPerWeek: number
 ): Promise<AllocationRecord[]> {
-  const results: AllocationRecord[] = [];
   const weeks: { y: number; w: number }[] = [];
-
   if (weekFrom <= weekTo) {
     for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
   } else {
@@ -231,33 +255,60 @@ export async function createAllocationsForWeekRange(
     for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
   }
 
-  for (const { y, w } of weeks) {
-    const existing = await findExistingAllocation(
-      consultant_id,
-      project_id,
-      role_id,
-      y,
-      w
-    );
+  const existingMap = await getExistingAllocationsInRange(
+    consultant_id,
+    project_id,
+    role_id,
+    weeks
+  );
 
+  const toUpdate: { existing: AllocationRecord; newHours: number }[] = [];
+  const toCreate: { y: number; w: number }[] = [];
+
+  for (const { y, w } of weeks) {
+    const key = weekKey(y, w);
+    const existing = existingMap.get(key);
     if (existing) {
-      const newHours = existing.hours + hoursPerWeek;
-      const updated = await updateAllocation(existing.id, { hours: newHours });
-      results.push(updated);
+      toUpdate.push({ existing, newHours: existing.hours + hoursPerWeek });
     } else {
-      const created = await createAllocation({
-        consultant_id,
-        project_id,
-        role_id,
-        year: y,
-        week: w,
-        hours: hoursPerWeek,
-      });
-      results.push(created);
+      toCreate.push({ y, w });
     }
   }
 
-  return results;
+  const updateResults =
+    toUpdate.length > 0
+      ? await Promise.all(
+          toUpdate.map(({ existing, newHours }) =>
+            updateAllocation(existing.id, { hours: newHours })
+          )
+        )
+      : [];
+
+  let insertResults: AllocationRecord[] = [];
+  if (toCreate.length > 0) {
+    const { data, error } = await supabase
+      .from("allocations")
+      .insert(
+        toCreate.map(({ y, w }) => ({
+          consultant_id,
+          project_id,
+          role_id: role_id ?? null,
+          year: y,
+          week: w,
+          hours: hoursPerWeek,
+        }))
+      )
+      .select("id,consultant_id,project_id,role_id,year,week,hours");
+
+    if (error) throw error;
+    insertResults = (data ?? []).map(mapAllocation);
+  }
+
+  const byKey = new Map<string, AllocationRecord>();
+  for (const r of updateResults) byKey.set(weekKey(r.year, r.week), r);
+  for (const r of insertResults) byKey.set(weekKey(r.year, r.week), r);
+
+  return weeks.map(({ y, w }) => byKey.get(weekKey(y, w))!);
 }
 
 /**
@@ -265,7 +316,7 @@ export async function createAllocationsForWeekRange(
  * (e.g. for %-based allocation: hours = percent/100 * availableHoursForWeek).
  */
 export async function createAllocationsForWeekRangeWithGetter(
-  consultant_id: string,
+  consultant_id: string | null,
   project_id: string,
   role_id: string | null,
   year: number,
@@ -273,9 +324,7 @@ export async function createAllocationsForWeekRangeWithGetter(
   weekTo: number,
   getHoursForWeek: (y: number, w: number) => Promise<number>
 ): Promise<AllocationRecord[]> {
-  const results: AllocationRecord[] = [];
   const weeks: { y: number; w: number }[] = [];
-
   if (weekFrom <= weekTo) {
     for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
   } else {
@@ -283,33 +332,63 @@ export async function createAllocationsForWeekRangeWithGetter(
     for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
   }
 
+  const [existingMap, hoursByWeek] = await Promise.all([
+    getExistingAllocationsInRange(consultant_id, project_id, role_id, weeks),
+    Promise.all(
+      weeks.map(async ({ y, w }) => ({ y, w, hours: await getHoursForWeek(y, w) }))
+    ),
+  ]);
+
+  const hoursMap = new Map(hoursByWeek.map((h) => [weekKey(h.y, h.w), h.hours]));
+
+  const toUpdate: { existing: AllocationRecord; newHours: number }[] = [];
+  const toCreate: { y: number; w: number; hours: number }[] = [];
+
   for (const { y, w } of weeks) {
-    const hours = await getHoursForWeek(y, w);
-    const existing = await findExistingAllocation(
-      consultant_id,
-      project_id,
-      role_id,
-      y,
-      w
-    );
+    const key = weekKey(y, w);
+    const hours = hoursMap.get(key) ?? 0;
+    const existing = existingMap.get(key);
     if (existing) {
-      const newHours = existing.hours + hours;
-      const updated = await updateAllocation(existing.id, { hours: newHours });
-      results.push(updated);
+      toUpdate.push({ existing, newHours: existing.hours + hours });
     } else {
-      const created = await createAllocation({
-        consultant_id,
-        project_id,
-        role_id,
-        year: y,
-        week: w,
-        hours,
-      });
-      results.push(created);
+      toCreate.push({ y, w, hours });
     }
   }
 
-  return results;
+  const updateResults =
+    toUpdate.length > 0
+      ? await Promise.all(
+          toUpdate.map(({ existing, newHours }) =>
+            updateAllocation(existing.id, { hours: newHours })
+          )
+        )
+      : [];
+
+  let insertResults: AllocationRecord[] = [];
+  if (toCreate.length > 0) {
+    const { data, error } = await supabase
+      .from("allocations")
+      .insert(
+        toCreate.map(({ y, w, hours }) => ({
+          consultant_id,
+          project_id,
+          role_id: role_id ?? null,
+          year: y,
+          week: w,
+          hours,
+        }))
+      )
+      .select("id,consultant_id,project_id,role_id,year,week,hours");
+
+    if (error) throw error;
+    insertResults = (data ?? []).map(mapAllocation);
+  }
+
+  const byKey = new Map<string, AllocationRecord>();
+  for (const r of updateResults) byKey.set(weekKey(r.year, r.week), r);
+  for (const r of insertResults) byKey.set(weekKey(r.year, r.week), r);
+
+  return weeks.map(({ y, w }) => byKey.get(weekKey(y, w))!);
 }
 
 export type UpdateAllocationInput = {

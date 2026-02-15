@@ -1,8 +1,8 @@
 import { unstable_cache } from "next/cache";
 import { getWorkingDaysByMonthInWeek, isoWeeksInYear } from "./dateUtils";
 import { getAllocationsForWeeks } from "./allocations";
-import { getCalendarHolidays } from "./calendarHolidays";
-import { getCustomerRates } from "./customerRates";
+import { getCalendarHolidaysByCalendarIds } from "./calendarHolidays";
+import { getCustomerRatesByCustomerIds } from "./customerRates";
 import { supabase } from "./supabaseClient";
 
 export type RevenueForecastByCustomer = {
@@ -62,7 +62,9 @@ export async function getRevenueForecast(
         return [];
       }
 
-      const consultantIds = [...new Set(allocations.map((a) => a.consultant_id))];
+      const consultantIds = [
+        ...new Set(allocations.map((a) => a.consultant_id).filter((id): id is string => id != null)),
+      ];
   const projectIds = [...new Set(allocations.map((a) => a.project_id))];
 
   const [consultantsData, projectsData] = await Promise.all([
@@ -109,36 +111,32 @@ export async function getRevenueForecast(
   const customerNames = new Map(
     (customersData ?? []).map((c) => [c.id, c.name ?? c.id])
   );
+  const allRates = await getCustomerRatesByCustomerIds(customerIds);
   const ratesByCustomer = new Map<string, { role_id: string; rate_per_hour: number; currency: string }[]>();
-  await Promise.all(
-    customerIds.map(async (cid) => {
-      const rates = await getCustomerRates(cid);
-      ratesByCustomer.set(
-        cid,
-        rates.map((r) => ({
+  for (const cid of customerIds) {
+    ratesByCustomer.set(
+      cid,
+      allRates
+        .filter((r) => r.customer_id === cid)
+        .map((r) => ({
           role_id: r.role_id,
           rate_per_hour: r.rate_per_hour,
           currency: r.currency ?? "SEK",
         }))
-      );
-    })
-  );
+    );
+  }
 
   const calendarIds = [
     ...new Set(
       (consultantsData.data ?? []).map((c) => c.calendar_id).filter(Boolean)
     ),
   ] as string[];
+  const holidaysByCalendarRaw = await getCalendarHolidaysByCalendarIds(calendarIds);
   const holidaysByCalendar = new Map<string, Set<string>>();
-  await Promise.all(
-    calendarIds.map(async (calId) => {
-      const holidays = await getCalendarHolidays(calId);
-      holidaysByCalendar.set(
-        calId,
-        new Set(holidays.map((h) => h.holiday_date))
-      );
-    })
-  );
+  for (const calId of calendarIds) {
+    const holidays = holidaysByCalendarRaw.get(calId) ?? [];
+    holidaysByCalendar.set(calId, new Set(holidays.map((h) => h.holiday_date)));
+  }
 
   const revenueByMonth = new Map<
     string,

@@ -175,7 +175,9 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
     // Allocations table may not exist yet
   }
 
-  const consultantIds = [...new Set(allocations.map((a) => a.consultant_id))];
+  const consultantIds = [
+    ...new Set(allocations.map((a) => a.consultant_id).filter((id): id is string => id != null)),
+  ];
   let consultants: { id: string; name: string }[] = [];
   try {
     const { data } = await supabase
@@ -189,15 +191,14 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
   const consultantMap = new Map(
     consultants.map((c) => [c.id, getInitials(c.name)])
   );
-
   const byProject = new Map<
     string,
-    { totalHours: number; consultantIds: Set<string> }
+    { totalHours: number; consultantIds: Set<string | null> }
   >();
   for (const a of allocations) {
     const existing = byProject.get(a.project_id) ?? {
       totalHours: 0,
-      consultantIds: new Set<string>(),
+      consultantIds: new Set<string | null>(),
     };
     existing.totalHours += a.hours;
     existing.consultantIds.add(a.consultant_id);
@@ -210,7 +211,7 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       ? Array.from(stats.consultantIds)
       : [];
     const initials = consultantIdsList
-      .map((id) => consultantMap.get(id) ?? "?")
+      .map((id) => (id == null ? "TP" : consultantMap.get(id) ?? "?"))
       .filter(Boolean);
 
     const cust = customerMap.get(p.customer_id);

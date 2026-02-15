@@ -10,8 +10,9 @@ import {
 } from "@/lib/projects";
 import { getRolesWithRateForAllocation } from "@/lib/projectRates";
 import { createAllocationsForWeekRange } from "@/lib/allocations";
-import { createAllocationsByPercent } from "@/app/(app)/allocation/actions";
+import { createAllocationsByPercent, revalidateAllocationPage } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
+import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
 
 type Props = {
   isOpen: boolean;
@@ -90,12 +91,11 @@ export function AddAllocationModal({
     }
   }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear, initialWeekFrom, initialWeekTo]);
 
-  // When consultant changes, load projects available for that consultant (or all if empty).
-  // Always use cancellation so a slow "all projects" fetch can't overwrite a later filtered result.
+  // When consultant changes, load projects available for that consultant (or all if empty / To plan).
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    if (!consultantId) {
+    if (!consultantId || consultantId === TO_PLAN_CONSULTANT_ID) {
       getProjectsWithCustomer()
         .then((list) => {
           if (!cancelled) setProjects(list);
@@ -172,9 +172,12 @@ export function AddAllocationModal({
     }
   }, [consultantId, projectId, projects, roles, roleId]);
 
+  const isToPlan = consultantId === TO_PLAN_CONSULTANT_ID;
+  const effectiveConsultantId = isToPlan ? null : consultantId;
+
   const handleSubmit = async () => {
     setError(null);
-    if (!consultantId) {
+    if (!effectiveConsultantId && !isToPlan) {
       setError("Select a consultant");
       return;
     }
@@ -183,11 +186,7 @@ export function AddAllocationModal({
       return;
     }
     const project = projects.find((p) => p.id === projectId);
-    if (project?.type === "customer" && (!roleId || roleId === "")) {
-      setError("Select a role for this customer project");
-      return;
-    }
-    const effectiveRoleId = project?.type === "customer" ? roleId : null;
+    const effectiveRoleId = project?.type === "customer" ? (roleId || null) : null;
     setSubmitting(true);
     try {
       if (inputMode === "percent") {
@@ -198,7 +197,7 @@ export function AddAllocationModal({
           return;
         }
         await createAllocationsByPercent(
-          consultantId,
+          effectiveConsultantId ?? null,
           projectId,
           effectiveRoleId,
           allocYear,
@@ -214,7 +213,7 @@ export function AddAllocationModal({
           return;
         }
         await createAllocationsForWeekRange(
-          consultantId,
+          effectiveConsultantId ?? null,
           projectId,
           effectiveRoleId,
           allocYear,
@@ -222,6 +221,7 @@ export function AddAllocationModal({
           toWeek,
           hours
         );
+        await revalidateAllocationPage();
       }
       onSuccess();
       handleClose();
@@ -306,31 +306,39 @@ export function AddAllocationModal({
             </p>
           )}
 
-          <div>
-            <label
-              htmlFor="alloc-consultant"
-              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-            >
-              Consultant
-            </label>
-            <Select
-              id="alloc-consultant"
-              value={consultantId}
-              onValueChange={(v) => {
-                setConsultantId(v);
-                setProjectId("");
-              }}
-              placeholder="Select consultant"
-              triggerClassName="mt-1.5 border-panel"
-              options={[
-                { value: "", label: "Select consultant" },
-                ...(consultantId && initialConsultantName && !consultants.some((c) => c.id === consultantId)
-                  ? [{ value: consultantId, label: initialConsultantName }]
-                  : []),
-                ...consultants.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-          </div>
+          {!isToPlan && (
+            <div>
+              <label
+                htmlFor="alloc-consultant"
+                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+              >
+                Consultant
+              </label>
+              <Select
+                id="alloc-consultant"
+                value={consultantId === TO_PLAN_CONSULTANT_ID ? "" : consultantId}
+                onValueChange={(v) => {
+                  setConsultantId(v);
+                  setProjectId("");
+                }}
+                placeholder="Select consultant"
+                triggerClassName="mt-1.5 border-panel"
+                options={[
+                  { value: "", label: "Select consultant" },
+                  { value: TO_PLAN_CONSULTANT_ID, label: "To plan" },
+                  ...(consultantId && initialConsultantName && consultantId !== TO_PLAN_CONSULTANT_ID && !consultants.some((c) => c.id === consultantId)
+                    ? [{ value: consultantId, label: initialConsultantName }]
+                    : []),
+                  ...consultants.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+            </div>
+          )}
+          {isToPlan && (
+            <p className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+              Adding to <strong>To plan</strong>
+            </p>
+          )}
 
           <div>
             <label
@@ -343,11 +351,7 @@ export function AddAllocationModal({
               id="alloc-project"
               value={projectId}
               onValueChange={setProjectId}
-              placeholder={
-                consultantId && projects.length === 0
-                  ? "No projects – assign the consultant to a customer under Customer > CONSULTANTS"
-                  : "Select project"
-              }
+              placeholder="Select project"
               triggerClassName="mt-1.5 border-panel"
               viewportClassName="max-h-60 overflow-y-auto"
               options={[...projects]
@@ -359,28 +363,29 @@ export function AddAllocationModal({
             />
           </div>
 
-          {projects.find((p) => p.id === projectId)?.type === "customer" && (
-            <div>
-              <label
-                htmlFor="alloc-role"
-                className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-              >
-                Role
-              </label>
-              <Select
-                id="alloc-role"
-                value={roleId ?? ""}
-                onValueChange={(v) => setRoleId(v || null)}
-                placeholder={
-                  roles.length === 0
+          <div>
+            <label
+              htmlFor="alloc-role"
+              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
+            >
+              Role
+            </label>
+            <Select
+              id="alloc-role"
+              value={roleId ?? ""}
+              onValueChange={(v) => setRoleId(v || null)}
+              placeholder={
+                projects.find((p) => p.id === projectId)?.type !== "customer"
+                  ? "Select a customer project first"
+                  : roles.length === 0
                     ? "No roles with rate – add customer or project rates"
                     : "Select role"
-                }
-                triggerClassName="mt-1.5 border-panel"
-                options={roles.map((r) => ({ value: r.id, label: r.name }))}
-              />
-            </div>
-          )}
+              }
+              disabled={projects.find((p) => p.id === projectId)?.type !== "customer"}
+              triggerClassName="mt-1.5 border-panel"
+              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>

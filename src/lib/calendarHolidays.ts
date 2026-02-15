@@ -26,6 +26,35 @@ export async function getCalendarHolidays(
   }));
 }
 
+/** Fetch holidays for multiple calendars in one query. Returns a map calendar_id -> holidays. */
+export async function getCalendarHolidaysByCalendarIds(
+  calendarIds: string[]
+): Promise<Map<string, CalendarHoliday[]>> {
+  if (calendarIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("calendar_holidays")
+    .select("id,calendar_id,holiday_date,name")
+    .in("calendar_id", calendarIds)
+    .order("holiday_date");
+
+  if (error) throw error;
+
+  const byCalendar = new Map<string, CalendarHoliday[]>();
+  for (const h of data ?? []) {
+    const row = {
+      id: h.id,
+      calendar_id: h.calendar_id,
+      holiday_date: h.holiday_date,
+      name: h.name,
+    };
+    const list = byCalendar.get(h.calendar_id) ?? [];
+    list.push(row);
+    byCalendar.set(h.calendar_id, list);
+  }
+  return byCalendar;
+}
+
 /** Returns true if the calendar has any holiday falling within the given date range (inclusive). */
 export function hasHolidayInRange(
   holidays: CalendarHoliday[],

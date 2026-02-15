@@ -9,6 +9,7 @@ import {
   addWeeksToYearWeek,
 } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPage";
+import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Select, Tabs, TabsList, TabsTrigger, PageHeader, Dialog, Button } from "@/components/ui";
 import {
@@ -17,6 +18,7 @@ import {
   deleteAllocation,
   deleteAllocations,
 } from "@/lib/allocations";
+import { revalidateAllocationPage } from "@/app/(app)/allocation/actions";
 
 const AddAllocationModal = dynamic(
   () => import("./AddAllocationModal").then((m) => ({ default: m.AddAllocationModal })),
@@ -25,6 +27,15 @@ const AddAllocationModal = dynamic(
 
 const EditAllocationModal = dynamic(
   () => import("./EditAllocationModal").then((m) => ({ default: m.EditAllocationModal })),
+  { ssr: false }
+);
+
+/** Customer and project tab content loaded on demand to reduce initial bundle. */
+const AllocationCustomerProjectTabs = dynamic(
+  () =>
+    import("./AllocationCustomerProjectTabs").then((m) => ({
+      default: m.AllocationCustomerProjectTabs,
+    })),
   { ssr: false }
 );
 
@@ -102,17 +113,20 @@ function buildPerConsultantView(
   >();
 
   for (const a of data.allocations) {
-    if (!byConsultant.has(a.consultant_id)) {
-      byConsultant.set(
-        a.consultant_id,
-        new Map()
-      );
+    const consultantKey = a.consultant_id ?? TO_PLAN_CONSULTANT_ID;
+    const projectRowKey =
+      consultantKey === TO_PLAN_CONSULTANT_ID
+        ? `${a.project_id}\0${a.role_id ?? ""}`
+        : a.project_id;
+
+    if (!byConsultant.has(consultantKey)) {
+      byConsultant.set(consultantKey, new Map());
     }
-    const byProject = byConsultant.get(a.consultant_id)!;
-    if (!byProject.has(a.project_id)) {
-      byProject.set(a.project_id, new Map());
+    const byProject = byConsultant.get(consultantKey)!;
+    if (!byProject.has(projectRowKey)) {
+      byProject.set(projectRowKey, new Map());
     }
-    const byWeek = byProject.get(a.project_id)!;
+    const byWeek = byProject.get(projectRowKey)!;
     byWeek.set(weekKey(a.year, a.week), {
       id: a.id,
       hours: a.hours,
@@ -121,9 +135,12 @@ function buildPerConsultantView(
     });
   }
 
-  const sortedConsultants = [...data.consultants].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  const sortedConsultants = [...data.consultants].sort((a, b) => {
+    if (a.id === TO_PLAN_CONSULTANT_ID) return -1;
+    if (b.id === TO_PLAN_CONSULTANT_ID) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
   return sortedConsultants.map((c) => {
     const projectsMap = byConsultant.get(c.id);
     const projectRows: {
@@ -138,7 +155,11 @@ function buildPerConsultantView(
 
     if (projectsMap) {
       const rows: (typeof projectRows)[number][] = [];
-      for (const [projectId, byWeek] of projectsMap) {
+      for (const [projectRowKey, byWeek] of projectsMap) {
+        const projectId =
+          c.id === TO_PLAN_CONSULTANT_ID
+            ? projectRowKey.split("\0")[0] ?? projectRowKey
+            : projectRowKey;
         const proj = projectMap.get(projectId);
         const weeks = data.weeks.map((w) => {
           const raw = byWeek.get(weekKey(w.year, w.week)) ?? null;
@@ -648,7 +669,8 @@ export function AllocationPageClient({
           weeks: data.weeks ?? [],
         };
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
+    await revalidateAllocationPage();
     router.refresh();
   };
 
@@ -675,6 +697,7 @@ export function AllocationPageClient({
             });
           }
         }
+        await revalidateAllocationPage();
         router.refresh();
         setEditingCell(null);
       } catch {
@@ -724,7 +747,7 @@ export function AllocationPageClient({
         } else {
           if (hours > 0) {
             await createAllocation({
-              consultant_id: cell.consultantId,
+              consultant_id: cell.consultantId === TO_PLAN_CONSULTANT_ID ? null : cell.consultantId,
               project_id: cell.projectId,
               role_id: cell.roleId ?? undefined,
               year: cell.year,
@@ -733,6 +756,7 @@ export function AllocationPageClient({
             });
           }
         }
+        await revalidateAllocationPage();
         router.refresh();
         setEditingCellConsultant(null);
       } catch {
@@ -1013,7 +1037,7 @@ export function AllocationPageClient({
         </div>
       )}
 
-      <div className="allocation-tables overflow-x-hidden space-y-8">
+      <div className="allocation-tables space-y-8">
           {activeTab === "consultant" && (
             <>
               <div className="p-2">
@@ -1087,10 +1111,11 @@ export function AllocationPageClient({
                     {perConsultantInternal.map((row) => {
                 const expanded = expandedConsultants.has(row.consultant.id);
                 const hasProjects = row.projectRows.length > 0;
+                const isToPlan = row.consultant.id === TO_PLAN_CONSULTANT_ID;
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr
-                      className={`border-b border-grid-light-subtle last:border-border ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                      className={`border-b border-grid-light-subtle last:border-border ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <button
@@ -1126,13 +1151,16 @@ export function AllocationPageClient({
                       </td>
                       {row.percentByWeek.map((pct, i) => {
                         const details = row.percentDetailsByWeek?.[i];
-                        const isOverallocated = pct > 115;
+                        const totalHours = details?.total ?? 0;
+                        const isOverallocated = !isToPlan && pct > 115;
                         const title =
-                          details && pct > 0
-                            ? `${details.total}h of ${details.available}h (${pct}%)`
-                            : undefined;
-                        const hasBooking = pct > 0;
-                        const prevHasBooking = i > 0 && (row.percentByWeek[i - 1] ?? 0) > 0;
+                          isToPlan && totalHours > 0
+                            ? `${totalHours}h`
+                            : details && pct > 0
+                              ? `${details.total}h of ${details.available}h (${pct}%)`
+                              : undefined;
+                        const hasBooking = isToPlan ? totalHours > 0 : pct > 0;
+                        const prevHasBooking = i > 0 && (isToPlan ? (row.percentDetailsByWeek?.[i - 1]?.total ?? 0) > 0 : (row.percentByWeek[i - 1] ?? 0) > 0);
                         const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                         const w = data.weeks[i];
                         const isDragRange =
@@ -1148,7 +1176,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -1172,7 +1200,7 @@ export function AllocationPageClient({
                                     : undefined
                                 }
                               >
-                                {pct}%
+                                {isToPlan ? `${totalHours}h` : `${pct}%`}
                               </span>
                             ) : null}
                           </td>
@@ -1196,7 +1224,7 @@ export function AllocationPageClient({
                         const hasAnyBooking = allocationsWithBooking.length > 0;
                         return (
                         <tr
-                          key={pr.projectId}
+                          key={pr.projectId + (pr.roleName || "")}
                           className="border-b border-grid-light-subtle last:border-border"
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
@@ -1608,452 +1636,46 @@ export function AllocationPageClient({
               </div>
             </>
           )}
-          {activeTab === "customer" && (
-            <div className="p-2">
-              <div className="mb-2 flex items-center justify-end gap-2 px-1">
-                <span className="text-[10px] tabular-nums text-text-primary opacity-70">
-                  {weekFrom <= weekTo
-                        ? `${year} · v${weekFrom}–v${weekTo}`
-                        : `${year} v${weekFrom} – ${year + 1} v${weekTo}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={goToPreviousWeeks}
-                  onMouseEnter={() => router.prefetch(getPreviousUrl())}
-                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-                  aria-label="Previous weeks"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={goToNextWeeks}
-                  onMouseEnter={() => router.prefetch(getNextUrl())}
-                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-                  aria-label="Next weeks"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
-              <colgroup>
-                <col style={{ width: 300 }} />
-                {data.weeks.map((w) => (
-                  <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
-                ))}
-              </colgroup>
-              <thead>
-                <tr className="border-b border-grid">
-                  <th
-                    rowSpan={2}
-                    style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
-                    className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
-                  >
-                    Customer / Consultant
-                  </th>
-                  {monthSpans.map((span, i) => (
-                    <th
-                      key={i}
-                      colSpan={span.colSpan}
-                      className="border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
-                    >
-                      {span.label}
-                    </th>
-                  ))}
-                </tr>
-                <tr className="border-b border-grid">
-                  {renderWeekHeaderCells("customer", "border-grid")}
-                </tr>
-              </thead>
-              <tbody>
-                {perCustomer.map((row) => {
-                const expanded = expandedCustomers.has(row.customer.id);
-                const hasConsultants = row.consultantRows.length > 0;
-                return (
-                  <Fragment key={row.customer.id}>
-                    <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
-                      <td className="border-r border-grid-light px-2 py-1 align-top">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            hasConsultants &&
-                            toggleCustomer(row.customer.id)
-                          }
-                          className="flex items-center gap-1 whitespace-nowrap text-left"
-                        >
-                          {hasConsultants ? (
-                            expanded ? (
-                              <ChevronDown className="h-4 w-4 shrink-0" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 shrink-0" />
-                            )
-                          ) : (
-                            <span className="w-4 shrink-0" />
-                          )}
-                          <span className="font-semibold text-text-primary">{row.customer.name}</span>
-                        </button>
-                      </td>
-                      {data.weeks.map((w, i) => {
-                        const total = row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
-                        const hasBooking = total > 0;
-                        const prev = data.weeks[i - 1];
-                        const prevTotal = i > 0 && prev ? row.totalByWeek.get(`${prev.year}-${prev.week}`) ?? 0 : 0;
-                        const showLeftBorder = hasBooking && (i === 0 || prevTotal === 0);
-                        return (
-                          <td
-                            key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
-                          >
-                            {hasBooking ? `${total}h` : null}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    {expanded &&
-                      row.consultantRows.map((cr) => (
-                          <tr
-                            key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
-                            className="border-b border-grid-light last:border-border bg-bg-default"
-                          >
-                            <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
-                              <span className="whitespace-nowrap font-normal text-text-primary">
-                                {cr.consultantName}
-                                {cr.roleName ? (
-                                  <span className="opacity-80"> · {cr.roleName}</span>
-                                ) : null}
-                              </span>
-                            </td>
-                            {cr.weeks.map((w, i) => {
-                              const cells = w.cells;
-                              const totalHours = cells.reduce(
-                                (s, x) => s + x.hours,
-                                0
-                              );
-                              const displayTotal = cells.reduce(
-                                (s, x) => s + (x.isHidden ? 0 : x.displayHours),
-                                0
-                              );
-                              const hasBooking = totalHours > 0;
-                              const prevHours = i > 0 ? cr.weeks[i - 1].cells.reduce((s, x) => s + (x.isHidden ? 0 : x.displayHours), 0) : 0;
-                              const showLeftBorder = hasBooking && (i === 0 || prevHours === 0);
-                              const weekInfo = data.weeks[i];
-                              const firstProjectForCustomer = data.projects.find(
-                                (p) => p.customer_id === row.customer.id
-                              );
-                              const isEditing =
-                                editingCell?.customerId === row.customer.id &&
-                                editingCell?.consultantId === cr.consultantId &&
-                                editingCell?.roleId === cr.roleId &&
-                                editingCell?.weekIndex === i;
-                              return (
-                                <td
-                                  key={`${weekInfo.year}-${weekInfo.week}`}
-                                  className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
-                                  onClick={(e) => {
-                                    if (
-                                      (e.target as HTMLElement).closest("input")
-                                    )
-                                      return;
-                                    setEditingCell({
-                                      customerId: row.customer.id,
-                                      consultantId: cr.consultantId,
-                                      roleId: cr.roleId,
-                                      weekIndex: i,
-                                      week: w.week,
-                                      year: weekInfo.year,
-                                      allocationId: cells[0]?.id ?? null,
-                                      otherAllocationIds: cells
-                                        .slice(1)
-                                        .map((c) => c.id),
-                                      projectId:
-                                        cells[0]?.projectId ??
-                                        firstProjectForCustomer?.id ??
-                                        "",
-                                      currentHours: totalHours,
-                                    });
-                                    setEditingCellValue(
-                                      String(totalHours || "")
-                                    );
-                                  }}
-                                >
-                                  {isEditing ? (
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step={1}
-                                      value={editingCellValue}
-                                      onChange={(e) =>
-                                        setEditingCellValue(e.target.value)
-                                      }
-                                      onFocus={(e) => e.target.select()}
-                                      onBlur={handleCellInputBlur}
-                                      onKeyDown={handleCellInputKeyDown}
-                                      disabled={savingCell}
-                                      className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                      onClick={(e) => e.stopPropagation()}
-                                      autoFocus
-                                    />
-                                  ) : displayTotal > 0 ? (
-                                    <span className="text-[10px] text-text-primary">
-                                      {displayTotal}h
-                                    </span>
-                                  ) : totalHours > 0 ? (
-                                    <span className="text-[10px] text-text-primary opacity-70">—</span>
-                                  ) : null}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                      ))}
-                  </Fragment>
-                );
-              })}
-              </tbody>
-            </table>
-            </div>
-          )}
-          {activeTab === "project" && (
-            <div className="p-2">
-              <div className="mb-2 flex items-center justify-end gap-2 px-1">
-                <span className="text-[10px] tabular-nums text-text-primary opacity-70">
-                  {weekFrom <= weekTo
-                    ? `${year} · v${weekFrom}–v${weekTo}`
-                    : `${year} v${weekFrom} – ${year + 1} v${weekTo}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={goToPreviousWeeks}
-                  onMouseEnter={() => router.prefetch(getPreviousUrl())}
-                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-                  aria-label="Previous weeks"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={goToNextWeeks}
-                  onMouseEnter={() => router.prefetch(getNextUrl())}
-                  className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-                  aria-label="Next weeks"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
-                <colgroup>
-                  <col style={{ width: 300 }} />
-                  {data.weeks.map((w) => (
-                    <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
-                  ))}
-                  <col className="w-[4rem]" />
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-grid">
-                    <th
-                      rowSpan={2}
-                      style={{ width: 300, maxWidth: 300, boxSizing: "border-box" }}
-                      className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
-                    >
-                      Project / Consultant
-                    </th>
-                    {monthSpans.map((span, i) => (
-                      <th
-                        key={i}
-                        colSpan={span.colSpan}
-                        className="border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
-                      >
-                        {span.label}
-                      </th>
-                    ))}
-                    <th
-                      rowSpan={2}
-                      className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
-                    >
-                      Total
-                    </th>
-                  </tr>
-                  <tr className="border-b border-grid">
-                    {renderWeekHeaderCells("project", "border-grid")}
-                  </tr>
-                </thead>
-                <tbody>
-                  {perProject.map((row) => {
-                    const expanded = expandedProjects.has(row.project.id);
-                    const hasConsultants = row.consultantRows.length > 0;
-                    return (
-                      <Fragment key={row.project.id}>
-                        <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
-                          <td className="border-r border-grid-light px-2 py-1 align-top">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                hasConsultants && toggleProject(row.project.id)
-                              }
-                              className="flex items-center gap-1 whitespace-nowrap text-left"
-                            >
-                              {hasConsultants ? (
-                                expanded ? (
-                                  <ChevronDown className="h-4 w-4 shrink-0" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4 shrink-0" />
-                                )
-                              ) : (
-                                <span className="w-4 shrink-0" />
-                              )}
-                              <span className="flex items-center gap-1 font-semibold text-text-primary">
-                                {row.project.showProbabilitySymbol && (
-                                  <Percent
-                                    className="h-3 w-3 shrink-0 opacity-60"
-                                    aria-label="Sannolikhet under 100%"
-                                  />
-                                )}
-                                {row.project.label}
-                              </span>
-                            </button>
-                          </td>
-                          {data.weeks.map((w, i) => {
-                            const total =
-                              row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
-                            const hasBooking = total > 0;
-                            const prev = data.weeks[i - 1];
-                            const prevTotal =
-                              i > 0 && prev
-                                ? row.totalByWeek.get(
-                                    `${prev.year}-${prev.week}`
-                                  ) ?? 0
-                                : 0;
-                            const showLeftBorder =
-                              hasBooking && (i === 0 || prevTotal === 0);
-                            return (
-                              <td
-                                key={`${w.year}-${w.week}`}
-                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
-                              >
-                                {hasBooking ? `${total}h` : null}
-                              </td>
-                            );
-                          })}
-                          <td className="border-r border-grid-light px-1 py-1 text-right font-medium text-text-primary tabular-nums">
-                            {(() => {
-                              const projectTotal = data.weeks.reduce(
-                                (sum, w) =>
-                                  sum + (row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
-                                0
-                              );
-                              return projectTotal > 0 ? `${projectTotal}h` : null;
-                            })()}
-                          </td>
-                        </tr>
-                        {expanded &&
-                          row.consultantRows.map((cr) => (
-                            <tr
-                              key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
-                              className="border-b border-grid-light last:border-border bg-bg-default"
-                            >
-                              <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
-                                <span className="whitespace-nowrap font-normal text-text-primary">
-                                  {cr.consultantName}
-                                  {cr.roleName ? (
-                                    <span className="opacity-80">
-                                      {" "}
-                                      · {cr.roleName}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </td>
-                              {cr.weeks.map((w, i) => {
-                                const cells = w.cells;
-                                const totalHours = cells.reduce(
-                                  (s, x) => s + x.hours,
-                                  0
-                                );
-                                const displayTotal = cells.reduce(
-                                  (s, x) => s + (x.isHidden ? 0 : x.displayHours),
-                                  0
-                                );
-                                const hasBooking = totalHours > 0;
-                                const prevHours =
-                                  i > 0
-                                    ? cr.weeks[i - 1].cells.reduce(
-                                        (s, x) => s + (x.isHidden ? 0 : x.displayHours),
-                                        0
-                                      )
-                                    : 0;
-                                const showLeftBorder =
-                                  hasBooking &&
-                                  (i === 0 || prevHours === 0);
-                                const weekInfo = data.weeks[i];
-                                const isEditing =
-                                  editingCell?.projectId === row.project.id &&
-                                  editingCell?.consultantId === cr.consultantId &&
-                                  editingCell?.roleId === cr.roleId &&
-                                  editingCell?.weekIndex === i;
-                                return (
-                                  <td
-                                    key={`${weekInfo.year}-${weekInfo.week}`}
-                                    className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center cursor-pointer ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} hover:bg-bg-muted/50 ${isEditing ? "p-0 align-middle" : ""}`}
-                                    onClick={(e) => {
-                                      if (
-                                        (e.target as HTMLElement).closest(
-                                          "input"
-                                        )
-                                      )
-                                        return;
-                                      setEditingCell({
-                                        customerId: row.project.customer_id,
-                                        consultantId: cr.consultantId,
-                                        roleId: cr.roleId,
-                                        weekIndex: i,
-                                        week: w.week,
-                                        year: weekInfo.year,
-                                        allocationId: cells[0]?.id ?? null,
-                                        otherAllocationIds: cells
-                                          .slice(1)
-                                          .map((c) => c.id),
-                                        projectId: row.project.id,
-                                        currentHours: totalHours,
-                                      });
-                                      setEditingCellValue(
-                                        String(totalHours || "")
-                                      );
-                                    }}
-                                  >
-                                    {isEditing ? (
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step={1}
-                                        value={editingCellValue}
-                                        onChange={(e) =>
-                                          setEditingCellValue(e.target.value)
-                                        }
-                                        onFocus={(e) => e.target.select()}
-                                        onBlur={handleCellInputBlur}
-                                        onKeyDown={handleCellInputKeyDown}
-                                        disabled={savingCell}
-                                        className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        onClick={(e) => e.stopPropagation()}
-                                        autoFocus
-                                      />
-                                    ) : displayTotal > 0 ? (
-                                      <span className="text-[10px] text-text-primary">
-                                        {displayTotal}h
-                                      </span>
-                                    ) : totalHours > 0 ? (
-                                      <span className="text-[10px] text-text-primary opacity-70">—</span>
-                                    ) : null}
-                                  </td>
-                                );
-                              })}
-                              <td className="border-r border-grid-light px-1 py-1" aria-hidden />
-                            </tr>
-                          ))}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          {(activeTab === "customer" || activeTab === "project") && (
+            <AllocationCustomerProjectTabs
+              tab={activeTab}
+              data={data}
+              year={year}
+              weekFrom={weekFrom}
+              weekTo={weekTo}
+              monthSpans={monthSpans}
+              isCurrentWeek={isCurrentWeek}
+              renderWeekHeaderCells={renderWeekHeaderCells}
+              goToPreviousWeeks={goToPreviousWeeks}
+              goToNextWeeks={goToNextWeeks}
+              getPreviousUrl={getPreviousUrl}
+              getNextUrl={getNextUrl}
+              router={router}
+              expandedCustomers={expandedCustomers}
+              toggleCustomer={toggleCustomer}
+              perCustomer={perCustomer}
+              expandedProjects={expandedProjects}
+              toggleProject={toggleProject}
+              perProject={perProject}
+              editingCell={editingCell}
+              setEditingCell={setEditingCell}
+              editingCellValue={editingCellValue}
+              setEditingCellValue={setEditingCellValue}
+              handleCellInputBlur={handleCellInputBlur}
+              handleCellInputKeyDown={handleCellInputKeyDown}
+              savingCell={savingCell}
+              setAddModalOpen={setAddModalOpen}
+              setAddInitialParams={setAddInitialParams}
+              editingCellConsultant={editingCellConsultant}
+              setEditingCellConsultant={setEditingCellConsultant}
+              editingCellConsultantValue={editingCellConsultantValue}
+              setEditingCellConsultantValue={setEditingCellConsultantValue}
+              saveCellHoursConsultant={saveCellHoursConsultant}
+              handleCellConsultantInputBlur={handleCellConsultantInputBlur}
+              handleCellConsultantInputKeyDown={handleCellConsultantInputKeyDown}
+              savingCellConsultant={savingCellConsultant}
+              formatWeekLabel={formatWeekLabel}
+            />
           )}
       </div>
 

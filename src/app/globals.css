@@ -59,6 +59,18 @@ body {
   border-color: #9a9a9a;
 }
 
+/* Sticky table headers so month/week rows stay visible when scrolling (single scroll = main). */
+.allocation-tables thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-muted);
+  box-shadow: 0 1px 0 0 #9a9a9a;
+}
+.allocation-tables thead tr {
+  background: var(--color-bg-muted);
+}
+
 /* Current week column: orange border (same as Add allocation button). Width 2px so it wins over adjacent 1px borders in border-collapse. */
 .allocation-tables td.current-week-cell,
 .allocation-tables th.current-week-header {
