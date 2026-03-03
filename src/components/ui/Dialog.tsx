@@ -30,21 +30,16 @@ export function Dialog({
         >
           <DialogPrimitive.Title
             id={id}
-            className="sr-only"
+            className="pr-10 text-lg font-semibold text-text-primary"
           >
             {title}
           </DialogPrimitive.Title>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-text-primary" aria-hidden>
-              {title}
-            </h2>
-            <DialogPrimitive.Close
-              className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-signal"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </DialogPrimitive.Close>
-          </div>
+          <DialogPrimitive.Close
+            className="absolute right-4 top-4 rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-signal"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </DialogPrimitive.Close>
           {children}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

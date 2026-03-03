@@ -263,6 +263,29 @@ export async function getProjectsByIds(
   return data ?? [];
 }
 
+/** Id, project name and customer name for given project ids (e.g. for personal dashboard). */
+export async function getProjectsWithCustomerNames(
+  ids: string[]
+): Promise<{ id: string; name: string; customerName: string }[]> {
+  if (ids.length === 0) return [];
+  const { data: projects, error: projErr } = await supabase
+    .from("projects")
+    .select("id,name,customer_id")
+    .in("id", ids);
+  if (projErr || !projects?.length) return [];
+  const customerIds = [...new Set(projects.map((p) => p.customer_id).filter(Boolean))];
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id,name")
+    .in("id", customerIds);
+  const customerMap = new Map((customers ?? []).map((c) => [c.id, c.name]));
+  return projects.map((p) => ({
+    id: p.id,
+    name: p.name ?? "Unknown",
+    customerName: customerMap.get(p.customer_id) ?? "Unknown",
+  }));
+}
+
 export type ProjectWithCustomer = {
   id: string;
   name: string;

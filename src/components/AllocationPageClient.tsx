@@ -24,6 +24,7 @@ import {
   logAllocationHistoryUpdate,
   deleteAllocationWithHistory,
   deleteAllocationsWithHistory,
+  getBookingAllocationsForRow,
 } from "@/app/(app)/allocation/actions";
 import type { AllocationHistoryEntry } from "@/types";
 import { AllocationHistoryTable } from "@/components/AllocationHistoryTable";
@@ -650,6 +651,7 @@ export function AllocationPageClient({
     new Set()
   );
   const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
+  const [defaultRoleFilterId, setDefaultRoleFilterId] = useState<string | null>(null);
   const [probabilityDisplay, setProbabilityDisplay] = useState<ProbabilityDisplay>("weighted");
   const [projectVisibility, setProjectVisibility] = useState<ProjectVisibility>("all");
   const [showProjectsWithoutBooking, setShowProjectsWithoutBooking] = useState(false);
@@ -681,16 +683,17 @@ export function AllocationPageClient({
     useState("");
   const [savingCellConsultant, setSavingCellConsultant] = useState(false);
 
-  type DeleteBookingItem = { allocationId: string; year: number; week: number; weekIndex: number };
+  type DeleteBookingItem = { allocationId: string; year: number; week: number };
   const [deleteBookingDialog, setDeleteBookingDialog] = useState<{
     consultantId: string;
     consultantName: string;
     projectId: string;
     projectLabel: string;
     allocations: DeleteBookingItem[];
-    selectedWeekIndices: Set<number>;
+    selectedAllocationIds: Set<string>;
   } | null>(null);
   const [deletingBooking, setDeletingBooking] = useState(false);
+  const [loadingDeleteBooking, setLoadingDeleteBooking] = useState(false);
   const [optimisticCellHours, setOptimisticCellHours] = useState<Record<string, number>>({});
 
   function allocationCellKey(
@@ -752,6 +755,8 @@ export function AllocationPageClient({
       : {
           consultants: data.consultants.filter((c) => {
             if (teamFilterId !== null && c.teamId !== teamFilterId)
+              return false;
+            if (defaultRoleFilterId !== null && c.defaultRoleId !== defaultRoleFilterId)
               return false;
             return true;
           }),
@@ -1220,6 +1225,17 @@ export function AllocationPageClient({
               className="w-auto min-w-[120px]"
             />
           )}
+          {activeTab !== "history" && data.roles.length > 0 && (
+            <Select
+              value={defaultRoleFilterId ?? ""}
+              onValueChange={(v) => setDefaultRoleFilterId(v ? v : null)}
+              options={[
+                { value: "", label: "All default roles" },
+                ...data.roles.map((r) => ({ value: r.id, label: r.name })),
+              ]}
+              className="w-auto min-w-[140px]"
+            />
+          )}
           {activeTab === "project" && (
             <label className="flex cursor-pointer select-none items-center gap-2">
               <input
@@ -1447,7 +1463,6 @@ export function AllocationPageClient({
                               allocationId: w.cell.id,
                               year: data.weeks[i].year,
                               week: data.weeks[i].week,
-                              weekIndex: i,
                             });
                           }
                         });
@@ -1608,18 +1623,37 @@ export function AllocationPageClient({
                             {hasAnyBooking ? (
                               <button
                                 type="button"
-                                onClick={(e) => {
+                                disabled={loadingDeleteBooking}
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  setDeleteBookingDialog({
-                                    consultantId: row.consultant.id,
-                                    consultantName: row.consultant.name,
-                                    projectId: pr.projectId,
-                                    projectLabel: `${pr.customerName} - ${pr.projectName}`,
-                                    allocations: allocationsWithBooking,
-                                    selectedWeekIndices: new Set(allocationsWithBooking.map((a) => a.weekIndex)),
-                                  });
+                                  const roleId =
+                                    pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
+                                  setLoadingDeleteBooking(true);
+                                  try {
+                                    const list = await getBookingAllocationsForRow(
+                                      row.consultant.id === TO_PLAN_CONSULTANT_ID ? null : row.consultant.id,
+                                      pr.projectId,
+                                      roleId
+                                    );
+                                    setDeleteBookingDialog({
+                                      consultantId: row.consultant.id,
+                                      consultantName: row.consultant.name,
+                                      projectId: pr.projectId,
+                                      projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                      allocations: list.map((a) => ({
+                                        allocationId: a.id,
+                                        year: a.year,
+                                        week: a.week,
+                                      })),
+                                      selectedAllocationIds: new Set(),
+                                    });
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : "Failed to load booking");
+                                  } finally {
+                                    setLoadingDeleteBooking(false);
+                                  }
                                 }}
-                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal disabled:opacity-50"
                                 aria-label="Remove booking"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1807,7 +1841,6 @@ export function AllocationPageClient({
                               allocationId: w.cell.id,
                               year: data.weeks[i].year,
                               week: data.weeks[i].week,
-                              weekIndex: i,
                             });
                           }
                         });
@@ -1968,18 +2001,37 @@ export function AllocationPageClient({
                             {hasAnyBooking ? (
                               <button
                                 type="button"
-                                onClick={(e) => {
+                                disabled={loadingDeleteBooking}
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  setDeleteBookingDialog({
-                                    consultantId: row.consultant.id,
-                                    consultantName: row.consultant.name,
-                                    projectId: pr.projectId,
-                                    projectLabel: `${pr.customerName} - ${pr.projectName}`,
-                                    allocations: allocationsWithBooking,
-                                    selectedWeekIndices: new Set(allocationsWithBooking.map((a) => a.weekIndex)),
-                                  });
+                                  const roleId =
+                                    pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
+                                  setLoadingDeleteBooking(true);
+                                  try {
+                                    const list = await getBookingAllocationsForRow(
+                                      row.consultant.id === TO_PLAN_CONSULTANT_ID ? null : row.consultant.id,
+                                      pr.projectId,
+                                      roleId
+                                    );
+                                    setDeleteBookingDialog({
+                                      consultantId: row.consultant.id,
+                                      consultantName: row.consultant.name,
+                                      projectId: pr.projectId,
+                                      projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                      allocations: list.map((a) => ({
+                                        allocationId: a.id,
+                                        year: a.year,
+                                        week: a.week,
+                                      })),
+                                      selectedAllocationIds: new Set(),
+                                    });
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : "Failed to load booking");
+                                  } finally {
+                                    setLoadingDeleteBooking(false);
+                                  }
                                 }}
-                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal disabled:opacity-50"
                                 aria-label="Remove booking"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -2105,14 +2157,14 @@ export function AllocationPageClient({
                     >
                       <input
                         type="checkbox"
-                        checked={deleteBookingDialog.selectedWeekIndices.has(a.weekIndex)}
+                        checked={deleteBookingDialog.selectedAllocationIds.has(a.allocationId)}
                         onChange={() => {
                           setDeleteBookingDialog((prev) => {
                             if (!prev) return null;
-                            const next = new Set(prev.selectedWeekIndices);
-                            if (next.has(a.weekIndex)) next.delete(a.weekIndex);
-                            else next.add(a.weekIndex);
-                            return { ...prev, selectedWeekIndices: next };
+                            const next = new Set(prev.selectedAllocationIds);
+                            if (next.has(a.allocationId)) next.delete(a.allocationId);
+                            else next.add(a.allocationId);
+                            return { ...prev, selectedAllocationIds: next };
                           });
                         }}
                         className="rounded border-border"
@@ -2124,10 +2176,10 @@ export function AllocationPageClient({
                 <Button
                   variant="secondary"
                   className="mt-2 border-danger text-danger hover:bg-danger/10"
-                  disabled={deletingBooking || deleteBookingDialog.selectedWeekIndices.size === 0}
+                  disabled={deletingBooking || deleteBookingDialog.selectedAllocationIds.size === 0}
                   onClick={async () => {
                     const idsToDelete = deleteBookingDialog.allocations
-                      .filter((a) => deleteBookingDialog.selectedWeekIndices.has(a.weekIndex))
+                      .filter((a) => deleteBookingDialog.selectedAllocationIds.has(a.allocationId))
                       .map((a) => a.allocationId);
                     setDeletingBooking(true);
                     try {
@@ -2139,7 +2191,7 @@ export function AllocationPageClient({
                     }
                   }}
                 >
-                  Remove selected ({deleteBookingDialog.selectedWeekIndices.size})
+                  Remove selected ({deleteBookingDialog.selectedAllocationIds.size})
                 </Button>
               </div>
             </div>

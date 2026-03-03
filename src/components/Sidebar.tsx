@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
+  BarChart2,
   Users,
   Building2,
   CalendarCheck,
@@ -54,7 +55,9 @@ function NavLink({
   );
 }
 
-export function Sidebar() {
+type SidebarProps = { isAdmin?: boolean };
+
+export function Sidebar({ isAdmin = false }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -96,6 +99,15 @@ export function Sidebar() {
             <NavLink key={item.href} pathname={pathname} {...item} />
           ))}
         </div>
+
+        {isAdmin && (
+          <>
+            <div className="my-2 border-t border-border-subtle" />
+            <div className="space-y-0.5">
+              <NavLink href="/reports" label="Reports" icon={BarChart2} pathname={pathname} />
+            </div>
+          </>
+        )}
       </nav>
 
       <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">

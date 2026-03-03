@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { getCurrentAppUser } from "./appUsers";
 import { getCachedConsultantsRaw } from "./allocationPage";
 import { getRoles } from "./roles";
 import { getCalendars } from "./calendars";
@@ -112,6 +113,31 @@ export type ConsultantForEdit = {
   startDate: string | null;
   endDate: string | null;
 };
+
+/** Returns consultant id and name if a consultant has this email (for linking app user to consultant). */
+export async function getConsultantByEmail(
+  email: string
+): Promise<{ id: string; name: string } | null> {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return null;
+  const { data, error } = await supabase
+    .from("consultants")
+    .select("id,name")
+    .eq("email", normalized)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { id: data.id, name: data.name };
+}
+
+/** Consultant linked to the currently logged-in user (by email), or null. */
+export async function getConsultantForCurrentUser(): Promise<{
+  id: string;
+  name: string;
+} | null> {
+  const user = await getCurrentAppUser();
+  if (!user?.email) return null;
+  return getConsultantByEmail(user.email);
+}
 
 export async function getConsultantById(
   id: string

@@ -78,6 +78,8 @@ export type AllocationConsultant = {
   initials: string;
   hoursPerWeek: number;
   defaultRoleName: string;
+  /** Consultant's default role (used for "Default role" filter). */
+  defaultRoleId: string | null;
   teamId: string | null;
   teamName: string | null;
   isExternal: boolean;
@@ -234,6 +236,7 @@ export async function getAllocationPageData(
         initials: getInitials(c.name),
         hoursPerWeek,
         defaultRoleName: roleMap.get(c.role_id) ?? "Unknown",
+        defaultRoleId: c.role_id ?? null,
         teamId: c.team_id ?? null,
         teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
         isExternal: c.is_external ?? false,
@@ -252,6 +255,7 @@ export async function getAllocationPageData(
       initials: "TP",
       hoursPerWeek: 0,
       defaultRoleName: "",
+      defaultRoleId: null,
       teamId: null,
       teamName: null,
       isExternal: false,

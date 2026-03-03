@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Globe, Trash2, Plus, UsersRound, ShieldCheck, MessageCirclePlus, Pencil } from "lucide-react";
+import { Users, Globe, Trash2, Plus, UsersRound, ShieldCheck, MessageCirclePlus, Pencil, Check } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/roles";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
@@ -10,6 +10,7 @@ import { addAppUser, removeAppUser, type AppUser } from "@/lib/appUsers";
 import {
   updateFeatureRequest,
   deleteFeatureRequest,
+  setFeatureRequestImplemented,
   type FeatureRequest,
 } from "@/lib/featureRequests";
 import { Button, ConfirmModal, PageHeader, Panel, Input } from "@/components/ui";
@@ -70,6 +71,7 @@ export function SettingsPageClient({
   const [editingFeatureRequestValue, setEditingFeatureRequestValue] = useState("");
   const [savingFeatureRequest, setSavingFeatureRequest] = useState(false);
   const [featureRequestToDelete, setFeatureRequestToDelete] = useState<FeatureRequest | null>(null);
+  const [togglingImplementedId, setTogglingImplementedId] = useState<string | null>(null);
 
   const handleRoleDelete = async () => {
     if (!roleToDelete) return;
@@ -131,6 +133,18 @@ export function SettingsPageClient({
       router.refresh();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to delete");
+    }
+  };
+
+  const handleToggleImplemented = async (fr: FeatureRequest) => {
+    setTogglingImplementedId(fr.id);
+    try {
+      await setFeatureRequestImplemented(fr.id, !fr.is_implemented);
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setTogglingImplementedId(null);
     }
   };
 
@@ -517,7 +531,7 @@ export function SettingsPageClient({
                 initialFeatureRequests.map((fr) => (
                   <li
                     key={fr.id}
-                    className="flex items-start gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
+                    className={`flex items-start gap-3 rounded-lg border border-panel px-3 py-2 ${fr.is_implemented ? "bg-green-100/80 dark:bg-green-900/20" : "bg-bg-default"}`}
                   >
                     {editingFeatureRequestId === fr.id ? (
                       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -554,26 +568,45 @@ export function SettingsPageClient({
                       </div>
                     ) : (
                       <>
-                        <p className="min-w-0 flex-1 text-sm text-text-primary">
-                          {fr.content}
-                        </p>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-text-primary">
+                            {fr.content}
+                          </p>
+                          {fr.submitted_by_email && (
+                            <p className="mt-1 text-xs text-text-primary opacity-60">
+                              Requested by: {fr.submitted_by_email}
+                            </p>
+                          )}
+                        </div>
                         <div className="flex flex-shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleImplemented(fr)}
+                            disabled={togglingImplementedId === fr.id}
+                            className={`cursor-pointer rounded-sm p-1.5 ${fr.is_implemented ? "text-green-600 opacity-100" : "text-text-primary opacity-60 hover:opacity-100"} hover:bg-bg-muted disabled:opacity-50`}
+                            aria-label={fr.is_implemented ? "Mark as not implemented" : "Mark as implemented"}
+                            title={fr.is_implemented ? "Mark as not implemented" : "Implemented"}
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
                               setEditingFeatureRequestId(fr.id);
                               setEditingFeatureRequestValue(fr.content);
                             }}
-                            className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                            className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                             aria-label="Edit"
+                            title="Edit"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
                             onClick={() => setFeatureRequestToDelete(fr)}
-                            className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
+                            className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                             aria-label="Delete"
+                            title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

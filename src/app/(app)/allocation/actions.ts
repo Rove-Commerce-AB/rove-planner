@@ -151,6 +151,38 @@ async function getAllocationSnapshot(
   };
 }
 
+/** All allocations for one row (consultant+project+role) for the delete-booking dialog. */
+export async function getBookingAllocationsForRow(
+  consultantId: string | null,
+  projectId: string,
+  roleId: string | null
+): Promise<{ id: string; year: number; week: number }[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("allocations")
+    .select("id,year,week")
+    .eq("project_id", projectId)
+    .order("year", { ascending: true })
+    .order("week", { ascending: true });
+  if (consultantId === null) {
+    query = query.is("consultant_id", null);
+  } else {
+    query = query.eq("consultant_id", consultantId);
+  }
+  if (roleId === null) {
+    query = query.is("role_id", null);
+  } else {
+    query = query.eq("role_id", roleId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    year: r.year,
+    week: r.week,
+  }));
+}
+
 /** Delete one allocation after logging to history (with snapshot so delete row shows data). */
 export async function deleteAllocationWithHistory(
   allocationId: string
