@@ -22,6 +22,10 @@ export type ProjectWithDetails = {
   endDate: string | null;
   /** 1–100, default 100. null treated as 100. */
   probability: number | null;
+  /** Optional link to Jira project (project_key). Mutually exclusive with devopsProject. */
+  jiraProjectKey: string | null;
+  /** Optional link to DevOps project name. Mutually exclusive with jiraProjectKey. */
+  devopsProject: string | null;
   consultantCount: number;
   totalHoursAllocated: number;
   consultantInitials: string[];

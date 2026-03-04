@@ -95,7 +95,7 @@ Columns:
 ---
 
 ## projects
-A project always belongs to a customer.
+A project always belongs to a customer. Optionally linked to one external project: either a Jira project or a DevOps project (for time reporting etc.).
 
 Columns:
 - id (uuid, pk)
@@ -106,6 +106,42 @@ Columns:
 - end_date (date, nullable)
 - created_at (timestamptz)
 - updated_at (timestamptz)
+- jira_project_key (text, nullable)  # Link to jira_issues.project_key; mutually exclusive with devops_project
+- devops_project (text, nullable)   # Link to devops_work_items.project; mutually exclusive with jira_project_key
+
+---
+
+## jira_issues
+Issues synced from Jira. Filled automatically by an external sync process.
+
+Columns:
+- jira_key (text, pk)
+- summary (text)
+- parent_key (text, nullable)
+- parent_summary (text, nullable)
+- parent_type (text, nullable)
+- status (text)
+- created_at (timestamptz)
+- updated_at (timestamptz)
+- due_date (date, nullable)
+- issue_type (text)
+- original_estimate_hours (numeric, nullable)
+- source_instance (text)
+- last_synced_at (timestamptz)
+- project_key (text)   # Used to link projects.jira_project_key
+- project_name (text, nullable)
+
+---
+
+## devops_work_items
+Work items synced from Azure DevOps. Filled automatically by an external sync process.
+
+Columns:
+- work_item_id (int8, pk)
+- title (text)
+- project (text)   # Used to link projects.devops_project
+- state (text)
+- last_synced_at (timestamptz)
 
 ---
 

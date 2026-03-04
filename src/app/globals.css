@@ -80,6 +80,12 @@ body {
   border-right-color: var(--color-brand-signal) !important;
 }
 
+/* When dragging over project row cells: force crosshair cursor everywhere so it wins over cell cursor-pointer. */
+body.allocation-project-row-dragging,
+body.allocation-project-row-dragging * {
+  cursor: crosshair !important;
+}
+
 /* Drag-range cells: same signal color for border and background so all marked cells look identical. Override hover so last cell (under cursor) stays same color. */
 .allocation-tables td.drag-range-cell,
 .allocation-tables td.drag-range-cell:hover {

@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { updateProject, deleteProject } from "@/lib/projects";
+import {
+  updateProject,
+  deleteProject,
+  getUniqueJiraAndDevopsProjects,
+  type IntegrationProjectOption,
+} from "@/lib/projects";
 import { getCustomers } from "@/lib/customers";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 import {
@@ -17,7 +22,14 @@ import { ProjectRatesTab } from "./ProjectRatesTab";
 const tableBorder = "border-panel";
 
 const PROBABILITY_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
-type EditField = "name" | "customerId" | "startDate" | "endDate" | "probability" | null;
+type EditField =
+  | "name"
+  | "customerId"
+  | "integration"
+  | "startDate"
+  | "endDate"
+  | "probability"
+  | null;
 
 type Props = {
   project: ProjectWithDetails;
@@ -40,6 +52,9 @@ export function ProjectDetailClient({ project: initial }: Props) {
   const [ratesError, setRatesError] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [integrationOptions, setIntegrationOptions] = useState<
+    IntegrationProjectOption[]
+  >([]);
 
   const syncFromInitial = useCallback(() => {
     setName(initial.name);
@@ -59,6 +74,12 @@ export function ProjectDetailClient({ project: initial }: Props) {
     getCustomers()
       .then((c) => setCustomers(c))
       .catch(() => setCustomers([]));
+  }, []);
+
+  useEffect(() => {
+    getUniqueJiraAndDevopsProjects()
+      .then(setIntegrationOptions)
+      .catch(() => setIntegrationOptions([{ value: "", label: "—" }]));
   }, []);
 
   const saveField = async (field: EditField, value: string) => {
@@ -107,6 +128,25 @@ export function ProjectDetailClient({ project: initial }: Props) {
           }
           await updateProject(initial.id, { probability: num });
           setProbability(num);
+          break;
+        }
+        case "integration": {
+          if (trimmed === "") {
+            await updateProject(initial.id, {
+              jira_project_key: null,
+              devops_project: null,
+            });
+          } else if (trimmed.startsWith("jira:")) {
+            await updateProject(initial.id, {
+              jira_project_key: trimmed.slice(5),
+              devops_project: null,
+            });
+          } else if (trimmed.startsWith("devops:")) {
+            await updateProject(initial.id, {
+              jira_project_key: null,
+              devops_project: trimmed.slice(7),
+            });
+          }
           break;
         }
         default:
@@ -316,6 +356,52 @@ export function ProjectDetailClient({ project: initial }: Props) {
                   }}
                 >
                   {initial.customerName ?? "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Jira / DevOps project</div>
+              {editingField === "integration" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Select
+                    value={editValue}
+                    onValueChange={setEditValue}
+                    options={integrationOptions}
+                    placeholder="Select project"
+                    className="min-w-[220px]"
+                    triggerClassName="!border-2 !border-brand-signal"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("integration", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    const val = initial.jiraProjectKey
+                      ? `jira:${initial.jiraProjectKey}`
+                      : initial.devopsProject
+                        ? `devops:${initial.devopsProject}`
+                        : "";
+                    setEditValue(val);
+                    setEditingField("integration");
+                  }}
+                >
+                  {initial.jiraProjectKey
+                    ? `Jira: ${initial.jiraProjectKey}`
+                    : initial.devopsProject
+                      ? `DevOps: ${initial.devopsProject}`
+                      : "—"}
                 </button>
               )}
             </div>

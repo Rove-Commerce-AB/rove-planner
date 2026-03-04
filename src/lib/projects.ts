@@ -24,6 +24,8 @@ export type ProjectRecord = {
   end_date: string | null;
   /** 1–100, default 100. */
   probability: number | null;
+  jira_project_key: string | null;
+  devops_project: string | null;
 };
 
 export type CreateProjectInput = {
@@ -34,6 +36,8 @@ export type CreateProjectInput = {
   start_date?: string | null;
   end_date?: string | null;
   probability?: number | null;
+  jira_project_key?: string | null;
+  devops_project?: string | null;
 };
 
 export type UpdateProjectInput = {
@@ -44,7 +48,12 @@ export type UpdateProjectInput = {
   start_date?: string | null;
   end_date?: string | null;
   probability?: number | null;
+  jira_project_key?: string | null;
+  devops_project?: string | null;
 };
+
+const PROJECT_SELECT =
+  "id,customer_id,name,is_active,type,start_date,end_date,probability,jira_project_key,devops_project";
 
 export async function createProject(
   input: CreateProjectInput
@@ -60,8 +69,10 @@ export async function createProject(
       start_date: input.start_date?.trim() || null,
       end_date: input.end_date?.trim() || null,
       probability: prob,
+      jira_project_key: input.jira_project_key?.trim() || null,
+      devops_project: input.devops_project?.trim() || null,
     })
-    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
+    .select(PROJECT_SELECT)
     .single();
 
   if (error) throw error;
@@ -82,12 +93,16 @@ export async function updateProject(
   if (input.end_date !== undefined)
     updates.end_date = input.end_date?.trim() || null;
   if (input.probability !== undefined) updates.probability = input.probability;
+  if (input.jira_project_key !== undefined)
+    updates.jira_project_key = input.jira_project_key?.trim() || null;
+  if (input.devops_project !== undefined)
+    updates.devops_project = input.devops_project?.trim() || null;
 
   const { data, error } = await supabase
     .from("projects")
     .update(updates)
     .eq("id", id)
-    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
+    .select(PROJECT_SELECT)
     .single();
 
   if (error) throw error;
@@ -100,13 +115,48 @@ export async function deleteProject(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Options for the Jira/DevOps project dropdown: value is "" | "jira:KEY" | "devops:ProjectName", label for display. */
+export type IntegrationProjectOption = { value: string; label: string };
+
+/** Fetch unique Jira project keys and DevOps project names for the project integration dropdown. Uses DB RPCs so we get distinct values without pulling all issue rows. */
+export async function getUniqueJiraAndDevopsProjects(): Promise<IntegrationProjectOption[]> {
+  const [jiraRes, devopsRes] = await Promise.all([
+    supabase.rpc("get_distinct_jira_projects"),
+    supabase.rpc("get_distinct_devops_projects"),
+  ]);
+
+  const jiraOptions: IntegrationProjectOption[] = (jiraRes.data ?? []).map(
+    (row: { project_key: string; project_name: string | null }) => {
+      const key = row.project_key?.trim() ?? "";
+      const name = (row.project_name ?? key).trim();
+      return {
+        value: `jira:${key}`,
+        label: `Jira: ${key}${name && name !== key ? ` (${name})` : ""}`,
+      };
+    }
+  );
+
+  const devopsOptions: IntegrationProjectOption[] = (devopsRes.data ?? []).map(
+    (row: { project: string }) => {
+      const p = (row.project ?? "").trim();
+      return { value: `devops:${p}`, label: `DevOps: ${p}` };
+    }
+  );
+
+  return [
+    { value: "", label: "—" },
+    ...jiraOptions,
+    ...devopsOptions,
+  ];
+}
+
 export async function getProjectWithDetailsById(
   id: string
 ): Promise<ProjectWithDetails | null> {
   const [project, customers] = await Promise.all([
     supabase
       .from("projects")
-      .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
+      .select(PROJECT_SELECT)
       .eq("id", id)
       .single(),
     getCustomers(),
@@ -135,6 +185,8 @@ export async function getProjectWithDetailsById(
     startDate: p.start_date ?? null,
     endDate: p.end_date ?? null,
     probability,
+    jiraProjectKey: p.jira_project_key ?? null,
+    devopsProject: p.devops_project ?? null,
     consultantCount: 0,
     totalHoursAllocated: 0,
     consultantInitials: [],
@@ -145,7 +197,7 @@ export async function getProjectWithDetailsById(
 export async function getProjects(): Promise<ProjectRecord[]> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
+    .select(PROJECT_SELECT)
     .order("is_active", { ascending: false })
     .order("name");
 
@@ -227,6 +279,8 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       startDate: p.start_date ?? null,
       endDate: p.end_date ?? null,
       probability,
+      jiraProjectKey: p.jira_project_key ?? null,
+      devopsProject: p.devops_project ?? null,
       consultantCount: consultantIdsList.length,
       totalHoursAllocated: stats?.totalHours ?? 0,
       consultantInitials: initials,
@@ -242,7 +296,7 @@ export async function getProjectsByCustomerIds(
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id,customer_id,name,is_active,type,start_date,end_date,probability")
+    .select(PROJECT_SELECT)
     .in("customer_id", customerIds);
 
   if (error) throw error;

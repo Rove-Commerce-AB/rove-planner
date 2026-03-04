@@ -39,6 +39,14 @@ const EditAllocationModal = dynamic(
   { ssr: false }
 );
 
+const EditAllocationRangeModal = dynamic(
+  () =>
+    import("./EditAllocationRangeModal").then((m) => ({
+      default: m.EditAllocationRangeModal,
+    })),
+  { ssr: false }
+);
+
 /** Customer and project tab content loaded on demand to reduce initial bundle. */
 const AllocationCustomerProjectTabs = dynamic(
   () =>
@@ -695,6 +703,28 @@ export function AllocationPageClient({
   const [deletingBooking, setDeletingBooking] = useState(false);
   const [loadingDeleteBooking, setLoadingDeleteBooking] = useState(false);
   const [optimisticCellHours, setOptimisticCellHours] = useState<Record<string, number>>({});
+  const preventNextCellClickRef = useRef(false);
+  const [projectRowDrag, setProjectRowDrag] = useState<{
+    consultantId: string;
+    projectId: string;
+    roleId: string | null;
+    consultantName: string;
+    projectLabel: string;
+    roleName?: string;
+    weekIndexStart: number;
+    weekIndexEnd: number;
+  } | null>(null);
+  const [projectRowDragMoved, setProjectRowDragMoved] = useState(false);
+  const [editRangeModalParams, setEditRangeModalParams] = useState<{
+    consultantId: string;
+    consultantName: string;
+    projectId: string;
+    projectLabel: string;
+    roleId: string | null;
+    roleName?: string;
+    weeks: { year: number; week: number; allocationId: string | null; currentHours: number }[];
+    availableHoursByWeek: number[];
+  } | null>(null);
 
   function allocationCellKey(
     consultantId: string,
@@ -1065,6 +1095,63 @@ export function AllocationPageClient({
     };
   }, [cellDragConsultant, handleCellDragEnd]);
 
+  const handleProjectRowDragEnd = useCallback(() => {
+    if (projectRowDrag === null || !data || !projectRowDragMoved) {
+      setProjectRowDrag(null);
+      setProjectRowDragMoved(false);
+      return;
+    }
+    const internalRows = internalRowsRef.current;
+    const row = internalRows.find((r) => r.consultant.id === projectRowDrag.consultantId);
+    const pr = row?.projectRows.find((p) => p.projectId === projectRowDrag.projectId);
+    if (!row || !pr) {
+      setProjectRowDrag(null);
+      setProjectRowDragMoved(false);
+      return;
+    }
+    const lo = Math.min(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd);
+    const hi = Math.max(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd);
+    const weeks: { year: number; week: number; allocationId: string | null; currentHours: number }[] = [];
+    const availableHoursByWeek: number[] = [];
+    for (let idx = lo; idx <= hi; idx++) {
+      const wk = data.weeks[idx];
+      if (!wk) continue;
+      weeks.push({
+        year: wk.year,
+        week: wk.week,
+        allocationId: pr.weeks[idx]?.cell?.id ?? null,
+        currentHours: pr.weeks[idx]?.cell?.hours ?? 0,
+      });
+      availableHoursByWeek.push(row.consultant.availableHoursByWeek[idx] ?? 0);
+    }
+    if (weeks.length > 0) {
+      preventNextCellClickRef.current = true;
+      setEditRangeModalParams({
+        consultantId: projectRowDrag.consultantId,
+        consultantName: projectRowDrag.consultantName,
+        projectId: projectRowDrag.projectId,
+        projectLabel: projectRowDrag.projectLabel,
+        roleId: projectRowDrag.roleId,
+        roleName: projectRowDrag.roleName,
+        weeks,
+        availableHoursByWeek,
+      });
+    }
+    setProjectRowDrag(null);
+    setProjectRowDragMoved(false);
+  }, [projectRowDrag, projectRowDragMoved, data]);
+
+  useEffect(() => {
+    if (projectRowDrag === null) return;
+    const onMouseUp = () => handleProjectRowDragEnd();
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.classList.add("allocation-project-row-dragging");
+    return () => {
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.classList.remove("allocation-project-row-dragging");
+    };
+  }, [projectRowDrag, handleProjectRowDragEnd]);
+
   const currentYearNum = currentYearProp;
   const currentWeekNum = currentWeekProp;
   const isCurrentWeekHeader = (w: { year: number; week: number }) =>
@@ -1146,7 +1233,7 @@ export function AllocationPageClient({
       ? perProject
       : perProject.filter((r) => r.consultantRows.length > 0);
   const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
-  internalRowsRef.current = perConsultantInternal;
+  internalRowsRef.current = perConsultant;
   const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
   const expandableConsultantIds = new Set(
     perConsultant.filter((r) => r.projectRows.length > 0).map((r) => r.consultant.id)
@@ -1576,10 +1663,35 @@ export function AllocationPageClient({
                                 String(effectiveHours)
                               );
                             };
+                            const isProjectDragRange =
+                              projectRowDrag?.consultantId === row.consultant.id &&
+                              projectRowDrag?.projectId === pr.projectId &&
+                              i >= Math.min(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd) &&
+                              i <= Math.max(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd);
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-l border-r border-brand-signal bg-brand-signal/20" : ""}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setProjectRowDrag({
+                                  consultantId: row.consultant.id,
+                                  projectId: pr.projectId,
+                                  roleId,
+                                  consultantName: row.consultant.name,
+                                  projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                  roleName: pr.roleName ?? row.consultant.defaultRoleName ?? undefined,
+                                  weekIndexStart: i,
+                                  weekIndexEnd: i,
+                                });
+                                setProjectRowDragMoved(false);
+                              }}
+                              onMouseEnter={() => {
+                                if (projectRowDrag?.consultantId === row.consultant.id && projectRowDrag?.projectId === pr.projectId) {
+                                  setProjectRowDrag((prev) => (prev ? { ...prev, weekIndexEnd: i } : null));
+                                  setProjectRowDragMoved(true);
+                                }
+                              }}
                             >
                               {isEditingConsultant ? (
                                 <input
@@ -1608,6 +1720,10 @@ export function AllocationPageClient({
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    if (preventNextCellClickRef.current) {
+                                      preventNextCellClickRef.current = false;
+                                      return;
+                                    }
                                     openEditor();
                                   }}
                                   className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
@@ -1954,10 +2070,35 @@ export function AllocationPageClient({
                                 String(effectiveHours)
                               );
                             };
+                            const isProjectDragRangeExt =
+                              projectRowDrag?.consultantId === row.consultant.id &&
+                              projectRowDrag?.projectId === pr.projectId &&
+                              i >= Math.min(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd) &&
+                              i <= Math.max(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd);
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""} ${isProjectDragRangeExt ? "drag-range-cell border-t border-b border-l border-r border-brand-signal bg-brand-signal/20" : ""}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setProjectRowDrag({
+                                  consultantId: row.consultant.id,
+                                  projectId: pr.projectId,
+                                  roleId,
+                                  consultantName: row.consultant.name,
+                                  projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                  roleName: pr.roleName ?? row.consultant.defaultRoleName ?? undefined,
+                                  weekIndexStart: i,
+                                  weekIndexEnd: i,
+                                });
+                                setProjectRowDragMoved(false);
+                              }}
+                              onMouseEnter={() => {
+                                if (projectRowDrag?.consultantId === row.consultant.id && projectRowDrag?.projectId === pr.projectId) {
+                                  setProjectRowDrag((prev) => (prev ? { ...prev, weekIndexEnd: i } : null));
+                                  setProjectRowDragMoved(true);
+                                }
+                              }}
                             >
                               {isEditingConsultant ? (
                                 <input
@@ -1986,6 +2127,10 @@ export function AllocationPageClient({
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    if (preventNextCellClickRef.current) {
+                                      preventNextCellClickRef.current = false;
+                                      return;
+                                    }
                                     openEditorExt();
                                   }}
                                   className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
@@ -2205,6 +2350,42 @@ export function AllocationPageClient({
         onClose={() => setEditingAllocation(null)}
         onSuccess={handleSuccess}
       />
+
+      {editRangeModalParams && (
+        <EditAllocationRangeModal
+          isOpen={true}
+          onClose={() => setEditRangeModalParams(null)}
+          onSuccess={(savedHours) => {
+            const params = editRangeModalParams;
+            if (params) {
+              setOptimisticCellHours((prev) => {
+                const next = { ...prev };
+                for (const w of params.weeks) {
+                  const key = allocationCellKey(
+                    params.consultantId,
+                    params.projectId,
+                    params.roleId,
+                    w.year,
+                    w.week
+                  );
+                  if (savedHours > 0) next[key] = savedHours;
+                  else delete next[key];
+                }
+                return next;
+              });
+            }
+            router.refresh();
+          }}
+          consultantId={editRangeModalParams.consultantId}
+          consultantName={editRangeModalParams.consultantName}
+          projectId={editRangeModalParams.projectId}
+          projectLabel={editRangeModalParams.projectLabel}
+          roleId={editRangeModalParams.roleId}
+          roleName={editRangeModalParams.roleName}
+          weeks={editRangeModalParams.weeks}
+          availableHoursByWeek={editRangeModalParams.availableHoursByWeek}
+        />
+      )}
     </>
   );
 }
