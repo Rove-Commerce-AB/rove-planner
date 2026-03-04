@@ -2360,16 +2360,30 @@ export function AllocationPageClient({
             if (params) {
               setOptimisticCellHours((prev) => {
                 const next = { ...prev };
-                for (const w of params.weeks) {
-                  const key = allocationCellKey(
-                    params.consultantId,
-                    params.projectId,
-                    params.roleId,
-                    w.year,
-                    w.week
-                  );
-                  if (savedHours > 0) next[key] = savedHours;
-                  else delete next[key];
+                if (typeof savedHours === "number") {
+                  for (const w of params.weeks) {
+                    const key = allocationCellKey(
+                      params.consultantId,
+                      params.projectId,
+                      params.roleId,
+                      w.year,
+                      w.week
+                    );
+                    if (savedHours > 0) next[key] = savedHours;
+                    else delete next[key];
+                  }
+                } else {
+                  for (const { year, week, hours } of savedHours) {
+                    const key = allocationCellKey(
+                      params.consultantId,
+                      params.projectId,
+                      params.roleId,
+                      year,
+                      week
+                    );
+                    if (hours > 0) next[key] = hours;
+                    else delete next[key];
+                  }
                 }
                 return next;
               });

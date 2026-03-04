@@ -22,7 +22,8 @@ export type EditAllocationRangeWeek = {
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (savedHours: number) => void;
+  /** Single number = same hours for all weeks (hours mode). Array = per-week hours (percent mode). */
+  onSuccess: (savedHours: number | { year: number; week: number; hours: number }[]) => void;
   consultantId: string;
   consultantName: string;
   projectId: string;
@@ -85,21 +86,66 @@ export function EditAllocationRangeModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const hours = hoursFromInput();
-    if (hours < 0) {
-      setError(
-        inputMode === "hours"
-          ? "Ange ett giltigt antal timmar (≥ 0)."
-          : "Ange en giltig procent (0–100)."
-      );
+    const consultantIdOrNull =
+      consultantId === TO_PLAN_CONSULTANT_ID ? null : consultantId;
+
+    if (inputMode === "hours") {
+      const hours = hoursFromInput();
+      if (hours < 0) {
+        setError("Ange ett giltigt antal timmar (≥ 0).");
+        return;
+      }
+      setError(null);
+      setSubmitting(true);
+      try {
+        const promises = weeks.map(async (w) => {
+          if (hours === 0) {
+            if (w.allocationId) {
+              await deleteAllocationWithHistory(w.allocationId);
+            }
+          } else {
+            if (w.allocationId) {
+              await updateAllocation(w.allocationId, { hours });
+              await logAllocationHistoryUpdate(w.allocationId, hours);
+            } else {
+              const created = await createAllocation({
+                consultant_id: consultantIdOrNull,
+                project_id: projectId,
+                role_id: roleId ?? undefined,
+                year: w.year,
+                week: w.week,
+                hours,
+              });
+              await logAllocationHistoryCreate(created.id);
+            }
+          }
+        });
+        await Promise.all(promises);
+        await revalidateAllocationPage();
+        onSuccess(hours);
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Kunde inte spara");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    const p = parseFloat(percentStr.replace(",", "."));
+    if (Number.isNaN(p) || p < 0 || p > 100) {
+      setError("Ange en giltig procent (0–100).");
       return;
     }
     setError(null);
     setSubmitting(true);
     try {
-      const consultantIdOrNull =
-        consultantId === TO_PLAN_CONSULTANT_ID ? null : consultantId;
-      const promises = weeks.map(async (w) => {
+      const hoursPerWeek = weeks.map((w, i) => {
+        const available = availableHoursByWeek[i] ?? 0;
+        return (p / 100) * available;
+      });
+      const promises = weeks.map(async (w, i) => {
+        const hours = hoursPerWeek[i] ?? 0;
         if (hours === 0) {
           if (w.allocationId) {
             await deleteAllocationWithHistory(w.allocationId);
@@ -123,7 +169,9 @@ export function EditAllocationRangeModal({
       });
       await Promise.all(promises);
       await revalidateAllocationPage();
-      onSuccess(hours);
+      onSuccess(
+        weeks.map((w, i) => ({ year: w.year, week: w.week, hours: hoursPerWeek[i] ?? 0 }))
+      );
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunde inte spara");
