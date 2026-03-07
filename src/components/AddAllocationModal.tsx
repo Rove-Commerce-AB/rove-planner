@@ -33,6 +33,9 @@ type Props = {
   /** Pre-fill week range when opening from header drag */
   initialWeekFrom?: number;
   initialWeekTo?: number;
+  /** Pre-fill and lock project when opening from project detail planning panel */
+  initialProjectId?: string;
+  initialProjectLabel?: string;
 };
 
 type Consultant = { id: string; name: string; role_id: string | null };
@@ -58,6 +61,8 @@ export function AddAllocationModal({
   initialYear,
   initialWeekFrom,
   initialWeekTo,
+  initialProjectId,
+  initialProjectLabel,
 }: Props) {
   const [consultants, setConsultants] = useState<Consultant[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -80,7 +85,7 @@ export function AddAllocationModal({
       const allocY = initialYear ?? year;
       setAllocYear(allocY);
       setConsultantId(initialConsultantId ?? "");
-      setProjectId("");
+      setProjectId(initialProjectId ?? "");
       if (initialWeekFrom != null && initialWeekTo != null) {
         setFromWeek(initialWeekFrom);
         setToWeek(initialWeekTo);
@@ -93,7 +98,7 @@ export function AddAllocationModal({
         .then(setConsultants)
         .catch(() => setConsultants([]));
     }
-  }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear, initialWeekFrom, initialWeekTo]);
+  }, [isOpen, year, weekFrom, weekTo, initialConsultantId, initialConsultantName, initialWeek, initialYear, initialWeekFrom, initialWeekTo, initialProjectId]);
 
   // When consultant changes, load projects available for that consultant (or all if empty / To plan).
   useEffect(() => {
@@ -178,6 +183,10 @@ export function AddAllocationModal({
 
   const isToPlan = consultantId === TO_PLAN_CONSULTANT_ID;
   const effectiveConsultantId = isToPlan ? null : consultantId;
+  /** When opened from consultant row drag: lock consultant; lock project when pre-filled (project page) or after user selects one. */
+  const lockFromDrag = !!initialConsultantId;
+  const lockConsultant = lockFromDrag;
+  const lockProject = lockFromDrag && (!!initialProjectId || !!projectId);
 
   const handleSubmit = async () => {
     setError(null);
@@ -326,24 +335,30 @@ export function AddAllocationModal({
               >
                 Consultant
               </label>
-              <Select
-                id="alloc-consultant"
-                value={consultantId === TO_PLAN_CONSULTANT_ID ? "" : consultantId}
-                onValueChange={(v) => {
-                  setConsultantId(v);
-                  setProjectId("");
-                }}
-                placeholder="Select consultant"
-                triggerClassName="mt-1.5 border-panel"
-                options={[
-                  { value: "", label: "Select consultant" },
-                  { value: TO_PLAN_CONSULTANT_ID, label: "To plan" },
-                  ...(consultantId && initialConsultantName && consultantId !== TO_PLAN_CONSULTANT_ID && !consultants.some((c) => c.id === consultantId)
-                    ? [{ value: consultantId, label: initialConsultantName }]
-                    : []),
-                  ...consultants.map((c) => ({ value: c.id, label: c.name })),
-                ]}
-              />
+              {lockConsultant ? (
+                <p id="alloc-consultant" className="mt-1.5 font-medium text-text-primary">
+                  {initialConsultantName ?? consultants.find((c) => c.id === consultantId)?.name ?? consultantId}
+                </p>
+              ) : (
+                <Select
+                  id="alloc-consultant"
+                  value={consultantId === TO_PLAN_CONSULTANT_ID ? "" : consultantId}
+                  onValueChange={(v) => {
+                    setConsultantId(v);
+                    setProjectId("");
+                  }}
+                  placeholder="Select consultant"
+                  triggerClassName="mt-1.5 border-panel"
+                  options={[
+                    { value: "", label: "Select consultant" },
+                    { value: TO_PLAN_CONSULTANT_ID, label: "To plan" },
+                    ...(consultantId && initialConsultantName && consultantId !== TO_PLAN_CONSULTANT_ID && !consultants.some((c) => c.id === consultantId)
+                      ? [{ value: consultantId, label: initialConsultantName }]
+                      : []),
+                    ...consultants.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                />
+              )}
             </div>
           )}
           {isToPlan && (
@@ -359,20 +374,29 @@ export function AddAllocationModal({
             >
               Project
             </label>
-            <Select
-              id="alloc-project"
-              value={projectId}
-              onValueChange={setProjectId}
-              placeholder="Select project"
-              triggerClassName="mt-1.5 border-panel"
-              viewportClassName="max-h-60 overflow-y-auto"
-              options={[...projects]
-                .sort((a, b) => a.customerName.localeCompare(b.customerName))
-                .map((p) => ({
-                  value: p.id,
-                  label: `${p.customerName} - ${p.name}`,
-                }))}
-            />
+            {lockProject ? (
+              <p id="alloc-project" className="mt-1.5 font-medium text-text-primary">
+                {initialProjectLabel ?? (() => {
+                  const p = projects.find((x) => x.id === projectId);
+                  return p ? `${p.customerName} - ${p.name}` : projectId;
+                })()}
+              </p>
+            ) : (
+              <Select
+                id="alloc-project"
+                value={projectId}
+                onValueChange={setProjectId}
+                placeholder="Select project"
+                triggerClassName="mt-1.5 border-panel"
+                viewportClassName="max-h-60 overflow-y-auto"
+                options={[...projects]
+                  .sort((a, b) => a.customerName.localeCompare(b.customerName))
+                  .map((p) => ({
+                    value: p.id,
+                    label: `${p.customerName} - ${p.name}`,
+                  }))}
+              />
+            )}
           </div>
 
           <div>

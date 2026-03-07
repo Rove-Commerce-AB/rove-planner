@@ -26,6 +26,10 @@ export type ProjectWithDetails = {
   jiraProjectKey: string | null;
   /** Optional link to DevOps project name. Mutually exclusive with jiraProjectKey. */
   devopsProject: string | null;
+  /** Optional budget in hours; shown in planning footer. */
+  budgetHours: number | null;
+  /** Optional budget in SEK; shown in planning footer. */
+  budgetMoney: number | null;
   consultantCount: number;
   totalHoursAllocated: number;
   consultantInitials: string[];

@@ -75,6 +75,20 @@ export async function getAllocationsByProjectIds(
   }));
 }
 
+/** All allocations for one project with year, week, role_id. Used to compute totals without double-counting same (consultant, year, week, role). */
+export async function getAllocationsForProjectWithWeeks(
+  projectId: string
+): Promise<AllocationRecord[]> {
+  const { data, error } = await supabase
+    .from("allocations")
+    .select("id,consultant_id,project_id,role_id,year,week,hours")
+    .eq("project_id", projectId);
+
+  if (error) throw error;
+
+  return (data ?? []).map(mapAllocation);
+}
+
 const ALLOCATIONS_PAGE_SIZE = 1000;
 
 async function getAllocationsForOneYear(

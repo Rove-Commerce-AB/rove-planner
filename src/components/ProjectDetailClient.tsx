@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,7 +10,9 @@ import {
   type IntegrationProjectOption,
 } from "@/lib/projects";
 import { getCustomers } from "@/lib/customers";
+import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
 import type { ProjectWithDetails, ProjectType } from "@/types";
+import type { AllocationPageData } from "@/lib/allocationPage";
 import {
   ConfirmModal,
   Select,
@@ -19,6 +22,14 @@ import {
 } from "@/components/ui";
 import { ProjectRatesTab } from "./ProjectRatesTab";
 
+const AllocationPageClient = dynamic(
+  () =>
+    import("./AllocationPageClient").then((m) => ({
+      default: m.AllocationPageClient,
+    })),
+  { ssr: false }
+);
+
 const tableBorder = "border-panel";
 
 const PROBABILITY_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
@@ -26,6 +37,8 @@ type EditField =
   | "name"
   | "customerId"
   | "integration"
+  | "budgetHours"
+  | "budgetMoney"
   | "startDate"
   | "endDate"
   | "probability"
@@ -33,9 +46,28 @@ type EditField =
 
 type Props = {
   project: ProjectWithDetails;
+  allocationData: AllocationPageData | null;
+  allocationError: string | null;
+  allocationYear: number;
+  allocationWeekFrom: number;
+  allocationWeekTo: number;
+  currentYear: number;
+  currentWeek: number;
+  /** Role ID -> rate per hour (SEK) for planning panel revenue row. */
+  allocationRates?: Record<string, number>;
 };
 
-export function ProjectDetailClient({ project: initial }: Props) {
+export function ProjectDetailClient({
+  project: initial,
+  allocationData,
+  allocationError,
+  allocationYear,
+  allocationWeekFrom,
+  allocationWeekTo,
+  currentYear,
+  currentWeek,
+  allocationRates,
+}: Props) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
   const [customerId, setCustomerId] = useState(initial.customer_id);
@@ -44,6 +76,12 @@ export function ProjectDetailClient({ project: initial }: Props) {
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
   const [probability, setProbability] = useState(initial.probability ?? 100);
+  const [budgetHours, setBudgetHours] = useState<number | null>(
+    initial.budgetHours != null ? Number(initial.budgetHours) : null
+  );
+  const [budgetMoney, setBudgetMoney] = useState<number | null>(
+    initial.budgetMoney != null ? Number(initial.budgetMoney) : null
+  );
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +93,45 @@ export function ProjectDetailClient({ project: initial }: Props) {
   const [integrationOptions, setIntegrationOptions] = useState<
     IntegrationProjectOption[]
   >([]);
+  const [planningData, setPlanningData] = useState<AllocationPageData | null>(allocationData);
+  const [planningError, setPlanningError] = useState<string | null>(allocationError);
+  const [planningYear, setPlanningYear] = useState(allocationYear);
+  const [planningWeekFrom, setPlanningWeekFrom] = useState(allocationWeekFrom);
+  const [planningWeekTo, setPlanningWeekTo] = useState(allocationWeekTo);
+  const [planningLoading, setPlanningLoading] = useState(false);
+
+  useEffect(() => {
+    setPlanningData(allocationData);
+    setPlanningError(allocationError);
+    setPlanningYear(allocationYear);
+    setPlanningWeekFrom(allocationWeekFrom);
+    setPlanningWeekTo(allocationWeekTo);
+  }, [allocationData, allocationError, allocationYear, allocationWeekFrom, allocationWeekTo]);
+
+  const handleWeekRangeChange = useCallback(
+    async (year: number, weekFrom: number, weekTo: number) => {
+      setPlanningLoading(true);
+      try {
+        const { data, error } = await getProjectAllocationData(
+          initial.id,
+          initial.customer_id ?? "",
+          year,
+          weekFrom,
+          weekTo
+        );
+        setPlanningData(data);
+        setPlanningError(error);
+        setPlanningYear(year);
+        setPlanningWeekFrom(weekFrom);
+        setPlanningWeekTo(weekTo);
+        const q = `year=${year}&from=${weekFrom}&to=${weekTo}`;
+        router.replace(`/projects/${initial.id}?${q}`, { scroll: false });
+      } finally {
+        setPlanningLoading(false);
+      }
+    },
+    [initial.id, initial.customer_id, router]
+  );
 
   const syncFromInitial = useCallback(() => {
     setName(initial.name);
@@ -64,6 +141,8 @@ export function ProjectDetailClient({ project: initial }: Props) {
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
     setProbability(initial.probability ?? 100);
+    setBudgetHours(initial.budgetHours != null ? Number(initial.budgetHours) : null);
+    setBudgetMoney(initial.budgetMoney != null ? Number(initial.budgetMoney) : null);
   }, [initial]);
 
   useEffect(() => {
@@ -147,6 +226,28 @@ export function ProjectDetailClient({ project: initial }: Props) {
               devops_project: trimmed.slice(7),
             });
           }
+          break;
+        }
+        case "budgetHours": {
+          const num = trimmed === "" ? null : parseInt(trimmed, 10);
+          if (trimmed !== "" && (Number.isNaN(num) || num < 0)) {
+            setError("Ange ett positivt heltal eller tomt");
+            setSubmitting(false);
+            return;
+          }
+          await updateProject(initial.id, { budget_hours: num ?? null });
+          setBudgetHours(num ?? null);
+          break;
+        }
+        case "budgetMoney": {
+          const num = trimmed === "" ? null : parseInt(trimmed, 10);
+          if (trimmed !== "" && (Number.isNaN(num) || num < 0)) {
+            setError("Ange ett positivt heltal (SEK) eller tomt");
+            setSubmitting(false);
+            return;
+          }
+          await updateProject(initial.id, { budget_money: num ?? null });
+          setBudgetMoney(num ?? null);
           break;
         }
         default:
@@ -405,6 +506,86 @@ export function ProjectDetailClient({ project: initial }: Props) {
                 </button>
               )}
             </div>
+
+            <div>
+              <div className={labelClass}>Budget (hours)</div>
+              {editingField === "budgetHours" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder="—"
+                    className="min-w-[100px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("budgetHours", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(budgetHours != null ? String(budgetHours) : "");
+                    setEditingField("budgetHours");
+                  }}
+                >
+                  {budgetHours != null ? `${budgetHours} h` : "—"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <div className={labelClass}>Budget (SEK)</div>
+              {editingField === "budgetMoney" ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder="—"
+                    className="min-w-[100px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => saveField("budgetMoney", editValue)}
+                    disabled={submitting}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
+                  onClick={() => {
+                    setEditValue(budgetMoney != null ? String(budgetMoney) : "");
+                    setEditingField("budgetMoney");
+                  }}
+                >
+                  {budgetMoney != null
+                    ? `${String(budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} SEK`
+                    : "—"}
+                </button>
+              )}
+            </div>
           </div>
         </Panel>
 
@@ -574,6 +755,30 @@ export function ProjectDetailClient({ project: initial }: Props) {
             projectId={initial.id}
             onError={setRatesError}
             showDescription={false}
+          />
+        </div>
+      </Panel>
+
+      {/* PLANNING */}
+      <Panel className="mt-6">
+        <h2
+          className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
+          suppressHydrationWarning
+        >
+          PLANNING
+        </h2>
+        <div className="p-5">
+          <AllocationPageClient
+            data={planningData}
+            error={planningError}
+            year={planningYear}
+            weekFrom={planningWeekFrom}
+            weekTo={planningWeekTo}
+            currentYear={currentYear}
+            currentWeek={currentWeek}
+            embedMode={{ projectId: initial.id, rates: allocationRates, budgetHours: budgetHours ?? undefined, budgetMoney: budgetMoney ?? undefined }}
+            onWeekRangeChange={handleWeekRangeChange}
+            embedWeekNavLoading={planningLoading}
           />
         </div>
       </Panel>

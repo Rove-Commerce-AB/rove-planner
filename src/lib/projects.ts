@@ -26,6 +26,8 @@ export type ProjectRecord = {
   probability: number | null;
   jira_project_key: string | null;
   devops_project: string | null;
+  budget_hours: number | null;
+  budget_money: number | null;
 };
 
 export type CreateProjectInput = {
@@ -38,6 +40,8 @@ export type CreateProjectInput = {
   probability?: number | null;
   jira_project_key?: string | null;
   devops_project?: string | null;
+  budget_hours?: number | null;
+  budget_money?: number | null;
 };
 
 export type UpdateProjectInput = {
@@ -50,10 +54,12 @@ export type UpdateProjectInput = {
   probability?: number | null;
   jira_project_key?: string | null;
   devops_project?: string | null;
+  budget_hours?: number | null;
+  budget_money?: number | null;
 };
 
 const PROJECT_SELECT =
-  "id,customer_id,name,is_active,type,start_date,end_date,probability,jira_project_key,devops_project";
+  "id,customer_id,name,is_active,type,start_date,end_date,probability,jira_project_key,devops_project,budget_hours,budget_money";
 
 export async function createProject(
   input: CreateProjectInput
@@ -71,6 +77,8 @@ export async function createProject(
       probability: prob,
       jira_project_key: input.jira_project_key?.trim() || null,
       devops_project: input.devops_project?.trim() || null,
+      budget_hours: input.budget_hours ?? null,
+      budget_money: input.budget_money ?? null,
     })
     .select(PROJECT_SELECT)
     .single();
@@ -97,6 +105,8 @@ export async function updateProject(
     updates.jira_project_key = input.jira_project_key?.trim() || null;
   if (input.devops_project !== undefined)
     updates.devops_project = input.devops_project?.trim() || null;
+  if (input.budget_hours !== undefined) updates.budget_hours = input.budget_hours ?? null;
+  if (input.budget_money !== undefined) updates.budget_money = input.budget_money ?? null;
 
   const { data, error } = await supabase
     .from("projects")
@@ -187,6 +197,8 @@ export async function getProjectWithDetailsById(
     probability,
     jiraProjectKey: p.jira_project_key ?? null,
     devopsProject: p.devops_project ?? null,
+    budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
+    budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
     consultantCount: 0,
     totalHoursAllocated: 0,
     consultantInitials: [],

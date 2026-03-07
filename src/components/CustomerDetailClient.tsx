@@ -506,7 +506,6 @@ export function CustomerDetailClient({
               )}
             </div>
           </Panel>
-        </div>
 
         {/* PROJECTS */}
         <Panel className="mt-6">
@@ -525,21 +524,10 @@ export function CustomerDetailClient({
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[200px] text-sm">
-              <thead>
-                <tr className={`border-b ${tableBorder} bg-bg-muted/80`}>
-                  <th className="px-4 py-3 text-left font-medium text-text-primary">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-text-primary">
-                    Type
-                  </th>
-                </tr>
-              </thead>
               <tbody>
                 {initialCustomer.projects.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={2}
                       className={`border-b ${tableBorder} px-4 py-6 text-center text-sm text-text-primary opacity-60`}
                     >
                       No projects for this customer.
@@ -557,13 +545,6 @@ export function CustomerDetailClient({
                         <td className={`border-b ${tableBorder} px-4 py-3 font-medium text-text-primary`}>
                           {p.name}
                         </td>
-                        <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary`}>
-                          {p.type === "customer"
-                            ? "Customer"
-                            : p.type === "internal"
-                              ? "Internal"
-                              : "Absence"}
-                        </td>
                       </tr>
                     ))
                 )}
@@ -571,6 +552,7 @@ export function CustomerDetailClient({
             </table>
           </div>
         </Panel>
+        </div>
       </div>
 
       <AddProjectModal

@@ -65,6 +65,17 @@ type Props = {
   /** Passed from server so first paint matches hydration (avoids jump from current-week highlight). */
   currentYear: number;
   currentWeek: number;
+  /** When set, show only the Per consultant table with no header, tabs, or filters (e.g. project detail planning panel). */
+  embedMode?: {
+    projectId: string;
+    rates?: Record<string, number>;
+    budgetHours?: number;
+    budgetMoney?: number;
+  };
+  /** When set (embed), week arrows call this instead of router.push for client-side nav without full reload. */
+  onWeekRangeChange?: (year: number, weekFrom: number, weekTo: number) => void | Promise<void>;
+  /** When true (embed), show loading state on week nav (e.g. disabled arrows or spinner). */
+  embedWeekNavLoading?: boolean;
 };
 
 export type ProbabilityDisplay = "weighted" | "none";
@@ -615,6 +626,9 @@ export function AllocationPageClient({
   weekTo,
   currentYear: currentYearProp,
   currentWeek: currentWeekProp,
+  embedMode,
+  onWeekRangeChange,
+  embedWeekNavLoading = false,
 }: Props) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -631,6 +645,8 @@ export function AllocationPageClient({
     weekFrom?: number;
     weekTo?: number;
     year: number;
+    projectId?: string;
+    projectLabel?: string;
   } | null>(null);
   const [cellDragConsultant, setCellDragConsultant] = useState<{
     id: string;
@@ -974,8 +990,13 @@ export function AllocationPageClient({
     };
   };
 
-  const toUrl = (first: { year: number; week: number }, last: { year: number; week: number }) =>
-    `/allocation?year=${first.year}&from=${first.week}&to=${last.week}`;
+  const toUrl = (first: { year: number; week: number }, last: { year: number; week: number }) => {
+    const q = `year=${first.year}&from=${first.week}&to=${last.week}`;
+    if (embedMode) {
+      return `/projects/${embedMode.projectId}?${q}`;
+    }
+    return `/allocation?${q}`;
+  };
 
   const getPreviousUrl = () => {
     const { first, last } = getFirstLastWeek();
@@ -991,8 +1012,37 @@ export function AllocationPageClient({
     return toUrl(newFirst, newLast);
   };
 
-  const goToPreviousWeeks = () => router.push(getPreviousUrl());
-  const goToNextWeeks = () => router.push(getNextUrl());
+  const getPreviousRange = (): { year: number; weekFrom: number; weekTo: number } => {
+    const { first, last } = getFirstLastWeek();
+    const newFirst = addWeeksToYearWeek(first.year, first.week, -SHIFT_WEEKS);
+    const newLast = addWeeksToYearWeek(last.year, last.week, -SHIFT_WEEKS);
+    return { year: newFirst.year, weekFrom: newFirst.week, weekTo: newLast.week };
+  };
+
+  const getNextRange = (): { year: number; weekFrom: number; weekTo: number } => {
+    const { first, last } = getFirstLastWeek();
+    const newFirst = addWeeksToYearWeek(first.year, first.week, SHIFT_WEEKS);
+    const newLast = addWeeksToYearWeek(last.year, last.week, SHIFT_WEEKS);
+    return { year: newFirst.year, weekFrom: newFirst.week, weekTo: newLast.week };
+  };
+
+  const goToPreviousWeeks = () => {
+    if (embedMode && onWeekRangeChange) {
+      const { year: y, weekFrom: f, weekTo: t } = getPreviousRange();
+      void onWeekRangeChange(y, f, t);
+      return;
+    }
+    router.push(getPreviousUrl());
+  };
+
+  const goToNextWeeks = () => {
+    if (embedMode && onWeekRangeChange) {
+      const { year: y, weekFrom: f, weekTo: t } = getNextRange();
+      void onWeekRangeChange(y, f, t);
+      return;
+    }
+    router.push(getNextUrl());
+  };
 
   const toggleConsultant = (id: string) => {
     setExpandedConsultants((prev) => {
@@ -1068,19 +1118,25 @@ export function AllocationPageClient({
     const wFrom = data.weeks[fromIdx];
     const wTo = data.weeks[toIdx];
     if (wFrom && wTo) {
+      const project =
+        embedMode && data.projects.length > 0 ? data.projects[0] : null;
       setAddInitialParams({
         consultantId: cellDragConsultant.id,
         consultantName: cellDragConsultant.name,
         year: wFrom.year,
         weekFrom: wFrom.week,
         weekTo: wTo.week,
+        projectId: project?.id,
+        projectLabel: project
+          ? `${project.customerName} - ${project.name}`
+          : undefined,
       });
       setAddModalOpen(true);
     }
     setCellDragConsultant(null);
     setCellDragWeekStart(null);
     setCellDragWeekEnd(null);
-  }, [cellDragConsultant, cellDragWeekStart, cellDragWeekEnd, data]);
+  }, [cellDragConsultant, cellDragWeekStart, cellDragWeekEnd, data, embedMode]);
 
   useEffect(() => {
     if (cellDragConsultant === null) return;
@@ -1172,15 +1228,17 @@ export function AllocationPageClient({
   if (error) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-text-primary">Allocation</h1>
-        <p className="mt-4 text-danger">{error}</p>
+        {!embedMode && (
+          <h1 className="text-2xl font-bold text-text-primary">Allocation</h1>
+        )}
+        <p className={embedMode ? "text-danger" : "mt-4 text-danger"}>{error}</p>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="p-6">
+      <div className={embedMode ? "py-4" : "p-6"}>
         <div className="mb-6 h-8 w-48 animate-pulse rounded bg-bg-muted" />
         <div className="mb-4 h-4 w-64 animate-pulse rounded bg-bg-muted" />
         <div className="h-64 animate-pulse rounded-lg border border-border bg-bg-default" />
@@ -1192,11 +1250,13 @@ export function AllocationPageClient({
     data && filteredData
       ? getProjectProbabilityMap(filteredData.projects)
       : new Map<string, number>();
+  /** On project detail (embed) we always show raw hours and ignore probability. */
+  const effectiveProbabilityDisplay = embedMode ? "none" : probabilityDisplay;
   const perConsultant =
     filteredData && data
       ? buildPerConsultantView(
           filteredData,
-          probabilityDisplay,
+          effectiveProbabilityDisplay,
           projectVisibility,
           projectProbabilityMap,
           (consultantId, projectId, roleId, year, week) => {
@@ -1212,7 +1272,7 @@ export function AllocationPageClient({
             const { displayHours } = getDisplayHours(
               raw,
               projectId,
-              probabilityDisplay,
+              effectiveProbabilityDisplay,
               projectVisibility,
               projectProbabilityMap
             );
@@ -1222,11 +1282,11 @@ export function AllocationPageClient({
       : [];
   const perCustomer =
     filteredData && data
-      ? buildPerCustomerView(filteredData, probabilityDisplay, projectVisibility, projectProbabilityMap)
+      ? buildPerCustomerView(filteredData, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap)
       : [];
   const perProject =
     data && filteredData
-      ? buildPerProjectView(filteredData, probabilityDisplay, projectVisibility, projectProbabilityMap)
+      ? buildPerProjectView(filteredData, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap)
       : [];
   const perProjectFiltered =
     showProjectsWithoutBooking
@@ -1244,15 +1304,80 @@ export function AllocationPageClient({
   const isCurrentWeek = (w: { year: number; week: number }) =>
     mounted && w.year === currentYear && w.week === currentWeek;
 
+  const showConsultantView = !!embedMode || activeTab === "consultant";
+
+  /** Consultants to show in embed mode (To plan row hidden on project detail only). */
+  const perConsultantDisplay = perConsultant.filter(
+    (r) => r.consultant.id !== TO_PLAN_CONSULTANT_ID
+  );
+  const perConsultantInternalDisplay = perConsultantInternal.filter(
+    (r) => r.consultant.id !== TO_PLAN_CONSULTANT_ID
+  );
+  /** Week totals (hours) for footer; only used in embed mode. */
+  const weekTotalsHours =
+    data.weeks.length > 0
+      ? data.weeks.map((_, i) =>
+          (embedMode ? perConsultantDisplay : perConsultantInternalDisplay).reduce(
+            (sum, row) => sum + (row.percentDetailsByWeek?.[i]?.total ?? 0),
+            0
+          )
+        )
+      : [];
+  const grandTotalHours = weekTotalsHours.reduce((a, b) => a + b, 0);
+
+  /** Week revenue (SEK) when embedMode has rates; computed from displayed project rows × rate per role. */
+  let weekTotalsMoney: number[] | null = null;
+  let grandTotalMoney = 0;
+  if (embedMode?.rates && data) {
+    const rates = embedMode.rates;
+    const rowsForMoney = embedMode ? perConsultantDisplay : perConsultantInternalDisplay;
+    weekTotalsMoney = data.weeks.map((_, weekIndex) => {
+      let sum = 0;
+      for (const row of rowsForMoney) {
+        for (const pr of row.projectRows) {
+          const w = pr.weeks[weekIndex];
+          const weekKey = data.weeks[weekIndex];
+          if (!weekKey || !w) continue;
+          const roleId =
+            w.cell?.roleId ??
+            pr.weeks.find((x) => x.cell?.roleId)?.cell?.roleId ??
+            null;
+          const cellKey = allocationCellKey(
+            row.consultant.id,
+            pr.projectId,
+            roleId,
+            weekKey.year,
+            w.week
+          );
+          const hours =
+            optimisticCellHours[cellKey] != null
+              ? optimisticCellHours[cellKey]!
+              : (w.cell?.displayHours ?? 0);
+          const rate = rates[roleId ?? ""] ?? 0;
+          sum += hours * rate;
+        }
+      }
+      return sum;
+    });
+    grandTotalMoney = weekTotalsMoney.reduce((a, b) => a + b, 0);
+  }
+  /** Revenue in thousands with apostrophe (e.g. 23200 → "23,2'") to fit in narrow cells. */
+  const formatSek = (n: number) =>
+    n > 0
+      ? `${(n / 1000).toLocaleString("sv-SE", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}'`
+      : "\u00A0";
+
   return (
     <>
-      <PageHeader
-        title="Allocation"
-        description="Manage allocations per week"
-        className="mb-6"
-      />
+      {!embedMode && (
+        <PageHeader
+          title="Allocation"
+          description="Manage allocations per week"
+          className="mb-6"
+        />
+      )}
 
-      {mounted ? (
+      {!embedMode && (mounted ? (
         <Tabs
           value={activeTab}
           onValueChange={(v) =>
@@ -1278,9 +1403,9 @@ export function AllocationPageClient({
             Allocation history
           </span>
         </div>
-      )}
+      ))}
 
-      {data && (
+      {data && !embedMode && (
         <div className="mb-3 flex flex-wrap items-center gap-3 px-2">
           <Select
             value={probabilityDisplay}
@@ -1339,34 +1464,37 @@ export function AllocationPageClient({
         </div>
       )}
 
-      {activeTab === "consultant" && expandableConsultantIds.size > 0 && (
-        <div className="mb-2 mt-4 flex items-center gap-2 px-2">
-          <button
-            type="button"
-            onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
-            className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
-          >
-            Expand all
-          </button>
-          <span className="text-xs text-text-primary opacity-50">|</span>
-          <button
-            type="button"
-            onClick={() => setExpandedConsultants(new Set())}
-            className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
-          >
-            Collapse all
-          </button>
-        </div>
-      )}
-
       <div className="allocation-tables space-y-8">
-          {activeTab === "consultant" && (
+          {showConsultantView && (
             <>
               <div className="p-2">
+                {expandableConsultantIds.size > 0 && (
+                  <div className="mb-1 flex items-center gap-2 px-1">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
+                      className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+                    >
+                      Expand all
+                    </button>
+                    <span className="text-xs text-text-primary opacity-50">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedConsultants(new Set())}
+                      className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+                    >
+                      Collapse all
+                    </button>
+                  </div>
+                )}
                 <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                  {embedMode ? (
+                    <span className="shrink-0" />
+                  ) : (
                   <h3 className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
                     Internal
                   </h3>
+                  )}
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] tabular-nums text-text-primary opacity-70">
                       {weekFrom <= weekTo
@@ -1376,8 +1504,9 @@ export function AllocationPageClient({
                     <button
                       type="button"
                       onClick={goToPreviousWeeks}
-                      onMouseEnter={() => router.prefetch(getPreviousUrl())}
-                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                      disabled={embedWeekNavLoading}
+                      onMouseEnter={() => !embedMode?.projectId && router.prefetch(getPreviousUrl())}
+                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100 disabled:opacity-50 disabled:pointer-events-none"
                       aria-label="Previous weeks"
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
@@ -1385,8 +1514,9 @@ export function AllocationPageClient({
                     <button
                       type="button"
                       onClick={goToNextWeeks}
-                      onMouseEnter={() => router.prefetch(getNextUrl())}
-                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
+                      disabled={embedWeekNavLoading}
+                      onMouseEnter={() => !embedMode?.projectId && router.prefetch(getNextUrl())}
+                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100 disabled:opacity-50 disabled:pointer-events-none"
                       aria-label="Next weeks"
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -1395,17 +1525,22 @@ export function AllocationPageClient({
                 </div>
                 <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
                   <colgroup>
-                    <col style={{ width: 300 }} />
+                    <col style={{ width: embedMode ? 72 : 300 }} />
                     {data.weeks.map((w) => (
-                      <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
+                      <col
+                        key={`${w.year}-${w.week}`}
+                        className={embedMode ? "w-[10px]" : "w-[1.75rem]"}
+                      />
                     ))}
-                    <col className="w-6" />
+                    {embedMode && <col className="w-5" />}
+                    {embedMode && data.consultantTotalHours != null && <col className="w-5" />}
+                    {!embedMode && <col className="w-6" />}
                   </colgroup>
                   <thead>
                     <tr className="border-b border-grid-subtle bg-bg-muted/80">
                       <th
                         rowSpan={2}
-                        style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
+                        style={{ width: embedMode ? 72 : 300, maxWidth: embedMode ? 72 : 300, boxSizing: 'border-box' }}
                         className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
                         Consultant / Project
@@ -1419,18 +1554,38 @@ export function AllocationPageClient({
                           {span.label}
                         </th>
                       ))}
-                      <th
-                        rowSpan={2}
-                        className="w-6 border-r border-grid-subtle px-0 py-0.5 text-center"
-                        aria-label="Remove booking"
-                      />
+                      {embedMode && (
+                        <th
+                          rowSpan={2}
+                          className="w-5 border-l border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                        >
+                          Tot view
+                        </th>
+                      )}
+                      {embedMode && data.consultantTotalHours != null && (
+                        <th
+                          rowSpan={2}
+                          className="w-5 border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                        >
+                          Tot
+                          <br />
+                          <span className="font-normal opacity-70">(Budget)</span>
+                        </th>
+                      )}
+                      {!embedMode && (
+                        <th
+                          rowSpan={2}
+                          className="w-6 border-r border-grid-subtle px-0 py-0.5 text-center"
+                          aria-label="Remove booking"
+                        />
+                      )}
                     </tr>
                     <tr className="border-b border-grid-subtle bg-bg-muted">
                       {renderWeekHeaderCells("internal")}
                     </tr>
                   </thead>
                   <tbody>
-                    {perConsultantInternal.map((row) => {
+                    {(embedMode ? perConsultantDisplay : perConsultantInternal).map((row) => {
                 const expanded = expandedConsultants.has(row.consultant.id);
                 const hasProjects = row.projectRows.length > 0;
                 const isToPlan = row.consultant.id === TO_PLAN_CONSULTANT_ID;
@@ -1439,14 +1594,14 @@ export function AllocationPageClient({
                     <tr
                       className={`border-b border-grid-light-subtle last:border-border ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
                     >
-                      <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
-                        <div className="flex items-center justify-between gap-1 w-full">
+                      <td className={`border-r border-grid-light-subtle px-2 py-1.5 align-top ${embedMode ? "max-w-0" : ""}`}>
+                        <div className={`flex items-center justify-between gap-1 w-full ${embedMode ? "min-w-0" : ""}`}>
                           <button
                             type="button"
                             onClick={() =>
                               hasProjects && toggleConsultant(row.consultant.id)
                             }
-                            className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                            className={`flex min-w-0 flex-1 items-center gap-1 text-left ${embedMode ? "overflow-hidden" : "whitespace-nowrap"}`}
                           >
                             {hasProjects ? (
                               expanded ? (
@@ -1457,9 +1612,9 @@ export function AllocationPageClient({
                             ) : (
                               <span className="w-4 shrink-0" />
                             )}
-                            <span className="font-medium text-text-primary">
+                            <span className={`font-medium text-text-primary ${embedMode ? "min-w-0 truncate" : ""}`} title={embedMode ? row.consultant.name : undefined}>
                               {row.consultant.name}
-                              {row.consultant.teamName && (
+                              {!embedMode && row.consultant.teamName && (
                                 <span className="ml-2 text-text-primary opacity-60">
                                   ({row.consultant.teamName})
                                 </span>
@@ -1486,14 +1641,15 @@ export function AllocationPageClient({
                         const details = row.percentDetailsByWeek?.[i];
                         const totalHours = details?.total ?? 0;
                         const isOverallocated = !isToPlan && pct > 115;
+                        const showHoursOnNameRow = embedMode || isToPlan;
                         const title =
-                          isToPlan && totalHours > 0
-                            ? `${totalHours}h`
+                          showHoursOnNameRow && totalHours > 0
+                            ? `${totalHours}`
                             : details && pct > 0
-                              ? `${details.total}h of ${details.available}h (${pct}%)`
+                              ? `${details.total} of ${details.available} (${pct}%)`
                               : undefined;
-                        const hasBooking = isToPlan ? totalHours > 0 : pct > 0;
-                        const prevHasBooking = i > 0 && (isToPlan ? (row.percentDetailsByWeek?.[i - 1]?.total ?? 0) > 0 : (row.percentByWeek[i - 1] ?? 0) > 0);
+                        const hasBooking = isToPlan ? totalHours > 0 : (embedMode ? totalHours > 0 : pct > 0);
+                        const prevHasBooking = i > 0 && (isToPlan ? (row.percentDetailsByWeek?.[i - 1]?.total ?? 0) > 0 : embedMode ? (row.percentDetailsByWeek?.[i - 1]?.total ?? 0) > 0 : (row.percentByWeek[i - 1] ?? 0) > 0);
                         const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                         const w = data.weeks[i];
                         const isDragRange =
@@ -1509,7 +1665,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -1533,13 +1689,32 @@ export function AllocationPageClient({
                                     : undefined
                                 }
                               >
-                                {isToPlan ? `${totalHours}h` : `${pct}%`}
+                                {showHoursOnNameRow ? `${totalHours}` : `${pct}%`}
                               </span>
                             ) : null}
                           </td>
                         );
                       })}
-                      <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6" />
+                      {embedMode && (() => {
+                        const rowTotal = (row.percentDetailsByWeek ?? []).reduce(
+                          (s, d) => s + (d?.total ?? 0),
+                          0
+                        );
+                        return (
+                          <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                            {rowTotal > 0 ? `${rowTotal}` : "\u00A0"}
+                          </td>
+                        );
+                      })()}
+                      {embedMode && data.consultantTotalHours != null && (() => {
+                        const allTimeTotal = data.consultantTotalHours[row.consultant.id] ?? 0;
+                        return (
+                          <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary font-medium">
+                            {allTimeTotal > 0 ? `${allTimeTotal}` : "\u00A0"}
+                          </td>
+                        );
+                      })()}
+                      {!embedMode && <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6" />}
                     </tr>
                     {expanded &&
                       row.projectRows.map((pr) => {
@@ -1562,38 +1737,46 @@ export function AllocationPageClient({
                             backgroundColor: `${pr.customerColor}18`,
                           }}
                         >
-                          <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
-                            <span className="flex items-center gap-1 whitespace-nowrap">
-                              {pr.showProbabilitySymbol && (
+                          <td className={`border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary ${embedMode ? "max-w-0" : ""}`}>
+                            <span className={`flex items-center gap-1 ${embedMode ? "min-w-0 overflow-hidden" : "whitespace-nowrap"}`}>
+                              {!embedMode && pr.showProbabilitySymbol && (
                                 <Percent
                                   className="h-3 w-3 shrink-0 opacity-60"
                                   aria-label="Sannolikhet under 100%"
                                 />
                               )}
-                              {pr.customerId ? (
-                                <Link
-                                  href={`/customers/${pr.customerId}`}
-                                  className="cursor-pointer hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {pr.customerName}
-                                </Link>
-                              ) : (
-                                pr.customerName
-                              )}
-                              {" - "}
-                              <Link
-                                href={`/projects/${pr.projectId}`}
-                                className="cursor-pointer hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {pr.projectName}
-                              </Link>
-                              {(pr.roleName || row.consultant.defaultRoleName) && (
-                                <span className="ml-2 text-text-primary opacity-70">
-                                  · {pr.roleName || row.consultant.defaultRoleName}
-                                </span>
-                              )}
+                              <span className={embedMode ? "min-w-0 truncate" : ""} title={embedMode ? (pr.roleName || row.consultant.defaultRoleName) || undefined : undefined}>
+                                {embedMode ? (
+                                  pr.roleName || row.consultant.defaultRoleName || "\u00A0"
+                                ) : (
+                                  <>
+                                    {pr.customerId ? (
+                                      <Link
+                                        href={`/customers/${pr.customerId}`}
+                                        className="cursor-pointer hover:underline"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {pr.customerName}
+                                      </Link>
+                                    ) : (
+                                      pr.customerName
+                                    )}
+                                    {" - "}
+                                    <Link
+                                      href={`/projects/${pr.projectId}`}
+                                      className="cursor-pointer hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {pr.projectName}
+                                    </Link>
+                                    {(pr.roleName || row.consultant.defaultRoleName) && (
+                                      <span className="ml-2 text-text-primary opacity-70">
+                                        · {pr.roleName || row.consultant.defaultRoleName}
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </span>
                             </span>
                           </td>
                           {pr.weeks.map((w, i) => {
@@ -1638,7 +1821,7 @@ export function AllocationPageClient({
                                 ? "—"
                                 : effectiveDisplayHours != null &&
                                     effectiveDisplayHours > 0
-                                  ? `${effectiveDisplayHours}h`
+                                  ? `${effectiveDisplayHours}`
                                   : null;
                             const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                             const isEditingConsultant =
@@ -1735,47 +1918,81 @@ export function AllocationPageClient({
                             </td>
                           );
                           })}
-                          <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6 align-middle text-center">
-                            {hasAnyBooking ? (
-                              <button
-                                type="button"
-                                disabled={loadingDeleteBooking}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const roleId =
-                                    pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
-                                  setLoadingDeleteBooking(true);
-                                  try {
-                                    const list = await getBookingAllocationsForRow(
-                                      row.consultant.id === TO_PLAN_CONSULTANT_ID ? null : row.consultant.id,
-                                      pr.projectId,
-                                      roleId
-                                    );
-                                    setDeleteBookingDialog({
-                                      consultantId: row.consultant.id,
-                                      consultantName: row.consultant.name,
-                                      projectId: pr.projectId,
-                                      projectLabel: `${pr.customerName} - ${pr.projectName}`,
-                                      allocations: list.map((a) => ({
-                                        allocationId: a.id,
-                                        year: a.year,
-                                        week: a.week,
-                                      })),
-                                      selectedAllocationIds: new Set(),
-                                    });
-                                  } catch (err) {
-                                    alert(err instanceof Error ? err.message : "Failed to load booking");
-                                  } finally {
-                                    setLoadingDeleteBooking(false);
-                                  }
-                                }}
-                                className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal disabled:opacity-50"
-                                aria-label="Remove booking"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            ) : null}
-                          </td>
+                          {embedMode && (() => {
+                            const prRowTotal = pr.weeks.reduce((s, w, i) => {
+                              const weekKey = data.weeks[i];
+                              const roleId =
+                                w.cell?.roleId ??
+                                pr.weeks.find((x) => x.cell?.roleId)?.cell?.roleId ??
+                                null;
+                              const cellKey = weekKey
+                                ? allocationCellKey(
+                                    row.consultant.id,
+                                    pr.projectId,
+                                    roleId,
+                                    weekKey.year,
+                                    w.week
+                                  )
+                                : "";
+                              const opt = optimisticCellHours[cellKey];
+                              const hours =
+                                opt != null ? opt : (w.cell?.displayHours ?? 0);
+                              return s + hours;
+                            }, 0);
+                            return (
+                              <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
+                                {prRowTotal > 0 ? `${prRowTotal}` : "\u00A0"}
+                              </td>
+                            );
+                          })()}
+                          {embedMode && data.consultantTotalHours != null && (
+                            <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] text-text-primary align-middle">
+                              {"\u00A0"}
+                            </td>
+                          )}
+                          {!embedMode && (
+                            <td className="border-r border-grid-light-subtle px-0 py-0.5 w-6 align-middle text-center">
+                              {hasAnyBooking ? (
+                                <button
+                                  type="button"
+                                  disabled={loadingDeleteBooking}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const roleId =
+                                      pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
+                                    setLoadingDeleteBooking(true);
+                                    try {
+                                      const list = await getBookingAllocationsForRow(
+                                        row.consultant.id === TO_PLAN_CONSULTANT_ID ? null : row.consultant.id,
+                                        pr.projectId,
+                                        roleId
+                                      );
+                                      setDeleteBookingDialog({
+                                        consultantId: row.consultant.id,
+                                        consultantName: row.consultant.name,
+                                        projectId: pr.projectId,
+                                        projectLabel: `${pr.customerName} - ${pr.projectName}`,
+                                        allocations: list.map((a) => ({
+                                          allocationId: a.id,
+                                          year: a.year,
+                                          week: a.week,
+                                        })),
+                                        selectedAllocationIds: new Set(),
+                                      });
+                                    } catch (err) {
+                                      alert(err instanceof Error ? err.message : "Failed to load booking");
+                                    } finally {
+                                      setLoadingDeleteBooking(false);
+                                    }
+                                  }}
+                                  className="cursor-pointer inline-flex rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 hover:text-danger focus:outline-none focus:ring-2 focus:ring-brand-signal disabled:opacity-50"
+                                  aria-label="Remove booking"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              ) : null}
+                            </td>
+                          )}
                         </tr>
                       );
                       })}
@@ -1783,8 +2000,77 @@ export function AllocationPageClient({
                 );
               })}
                   </tbody>
+                  {embedMode && (
+                  <tfoot>
+                    <tr className="border-t-2 border-grid-subtle bg-bg-muted/60">
+                      <td className="border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
+                        Week total (h)
+                      </td>
+                      {data.weeks.map((w, i) => (
+                        <td
+                          key={`ft-h-${w.year}-${w.week}`}
+                          className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary"
+                        >
+                          {weekTotalsHours[i] > 0 ? `${weekTotalsHours[i]}` : "\u00A0"}
+                        </td>
+                      ))}
+                      <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary [border-left-color:var(--color-grid-border-subtle)]">
+                        {grandTotalHours > 0 ? `${grandTotalHours}` : "\u00A0"}
+                      </td>
+                      {data.consultantTotalHours != null && (
+                        <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] font-medium tabular-nums text-text-primary">
+                          {Object.values(data.consultantTotalHours).reduce((a, b) => a + b, 0) > 0
+                            ? `${Object.values(data.consultantTotalHours).reduce((a, b) => a + b, 0)}`
+                            : "\u00A0"}
+                          {embedMode?.budgetHours != null && (
+                            <>
+                              <br />
+                              <span className="opacity-70">({embedMode.budgetHours})</span>
+                            </>
+                          )}
+                        </td>
+                      )}
+                      {!embedMode && <td className="w-6 border-r border-grid-light-subtle px-0 py-0.5" />}
+                    </tr>
+                    <tr className="border-t border-grid-subtle bg-bg-muted/40">
+                      <td className="border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
+                        Revenue total
+                      </td>
+                      {data.weeks.map((w, i) => (
+                        <td
+                          key={`ft-m-${w.year}-${w.week}`}
+                          className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary"
+                        >
+                          {weekTotalsMoney != null
+                            ? formatSek(weekTotalsMoney[i] ?? 0)
+                            : "—"}
+                        </td>
+                      ))}
+                      <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary">
+                        {weekTotalsMoney != null
+                          ? formatSek(grandTotalMoney)
+                          : "—"}
+                      </td>
+                      {data.consultantTotalHours != null && (
+                        <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] font-medium tabular-nums text-text-primary">
+                          {weekTotalsMoney != null
+                            ? formatSek(grandTotalMoney)
+                            : "—"}
+                          {embedMode?.budgetMoney != null && (
+                            <>
+                              <br />
+                              <span className="opacity-70">({formatSek(embedMode.budgetMoney)})</span>
+                            </>
+                          )}
+                        </td>
+                      )}
+                      {!embedMode && <td className="w-6 border-r border-grid-light-subtle px-0 py-0.5" />}
+                    </tr>
+                  </tfoot>
+                  )}
                 </table>
               </div>
+              {!embedMode && (
               <div className="p-2">
                 <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
                   External
@@ -1897,7 +2183,7 @@ export function AllocationPageClient({
                         const isOverallocated = pct > 115;
                         const title =
                           details && pct > 0
-                            ? `${details.total}h of ${details.available}h (${pct}%)`
+                            ? `${details.total} of ${details.available} (${pct}%)`
                             : undefined;
                         const hasBooking = pct > 0;
                         const prevHasBooking = i > 0 && (row.percentByWeek[i - 1] ?? 0) > 0;
@@ -2045,7 +2331,7 @@ export function AllocationPageClient({
                                 ? "—"
                                 : effectiveDisplayHours != null &&
                                     effectiveDisplayHours > 0
-                                  ? `${effectiveDisplayHours}h`
+                                  ? `${effectiveDisplayHours}`
                                   : null;
                             const showLeftBorder = hasBooking && (i === 0 || !prevHasBooking);
                             const isEditingConsultant =
@@ -2192,6 +2478,7 @@ export function AllocationPageClient({
                   </tbody>
                 </table>
               </div>
+              )}
             </>
           )}
           {activeTab === "history" && (
@@ -2259,6 +2546,8 @@ export function AllocationPageClient({
         initialYear={addInitialParams?.year}
         initialWeekFrom={addInitialParams?.weekFrom}
         initialWeekTo={addInitialParams?.weekTo}
+        initialProjectId={addInitialParams?.projectId}
+        initialProjectLabel={addInitialParams?.projectLabel}
       />
 
       <Dialog

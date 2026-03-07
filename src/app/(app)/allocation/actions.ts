@@ -6,6 +6,10 @@ import { createAllocationsForWeekRangeWithGetter } from "@/lib/allocations";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { createClient } from "@/lib/supabase/server";
 import type { AllocationHistoryDetails, AllocationHistoryEntry } from "@/types";
+import {
+  getAllocationPageDataForProject,
+  type AllocationPageData,
+} from "@/lib/allocationPage";
 
 /** Call after any allocation create/update/delete so allocation page cache shows fresh data. */
 export async function revalidateAllocationPage(): Promise<void> {
@@ -286,5 +290,28 @@ export async function createAllocationsByPercent(
       records.map((r) => r.id),
       records.reduce((s, r) => s + r.hours, 0)
     );
+  }
+}
+
+/** Fetch allocation data for project detail planning panel (client-side week nav without full page reload). */
+export async function getProjectAllocationData(
+  projectId: string,
+  customerId: string,
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<{ data: AllocationPageData | null; error: string | null }> {
+  try {
+    const data = await getAllocationPageDataForProject(
+      projectId,
+      customerId,
+      year,
+      weekFrom,
+      weekTo
+    );
+    return { data, error: null };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Kunde inte ladda planeringsdata";
+    return { data: null, error: message };
   }
 }
