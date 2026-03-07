@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getAllocationPageData } from "@/lib/allocationPage";
-import { AllocationPageClient } from "@/components/AllocationPageClient";
+import { AllocationPageWrapper } from "@/components/AllocationPageWrapper";
 import { AllocationViewportAdapter } from "@/components/AllocationViewportAdapter";
 
 const FALLBACK_WEEKS = 12;
@@ -40,7 +40,7 @@ export default async function AllocationPage({ searchParams }: Props) {
       weekTo={weekTo}
     >
       <div className="p-6">
-        <AllocationPageClient
+        <AllocationPageWrapper
           data={data}
           error={error}
           year={year}

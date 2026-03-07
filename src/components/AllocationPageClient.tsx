@@ -1027,7 +1027,7 @@ export function AllocationPageClient({
   };
 
   const goToPreviousWeeks = () => {
-    if (embedMode && onWeekRangeChange) {
+    if (onWeekRangeChange) {
       const { year: y, weekFrom: f, weekTo: t } = getPreviousRange();
       void onWeekRangeChange(y, f, t);
       return;
@@ -1036,7 +1036,7 @@ export function AllocationPageClient({
   };
 
   const goToNextWeeks = () => {
-    if (embedMode && onWeekRangeChange) {
+    if (onWeekRangeChange) {
       const { year: y, weekFrom: f, weekTo: t } = getNextRange();
       void onWeekRangeChange(y, f, t);
       return;
@@ -1505,7 +1505,7 @@ export function AllocationPageClient({
                       type="button"
                       onClick={goToPreviousWeeks}
                       disabled={embedWeekNavLoading}
-                      onMouseEnter={() => !embedMode?.projectId && router.prefetch(getPreviousUrl())}
+                      onMouseEnter={() => !onWeekRangeChange && router.prefetch(getPreviousUrl())}
                       className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100 disabled:opacity-50 disabled:pointer-events-none"
                       aria-label="Previous weeks"
                     >
@@ -1515,7 +1515,7 @@ export function AllocationPageClient({
                       type="button"
                       onClick={goToNextWeeks}
                       disabled={embedWeekNavLoading}
-                      onMouseEnter={() => !embedMode?.projectId && router.prefetch(getNextUrl())}
+                      onMouseEnter={() => !onWeekRangeChange && router.prefetch(getNextUrl())}
                       className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100 disabled:opacity-50 disabled:pointer-events-none"
                       aria-label="Next weeks"
                     >
@@ -1665,7 +1665,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -2202,7 +2202,7 @@ export function AllocationPageClient({
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
