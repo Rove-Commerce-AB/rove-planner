@@ -230,7 +230,7 @@ export function ProjectDetailClient({
         }
         case "budgetHours": {
           const num = trimmed === "" ? null : parseInt(trimmed, 10);
-          if (trimmed !== "" && (Number.isNaN(num) || num < 0)) {
+          if (trimmed !== "" && (num === null || Number.isNaN(num) || num < 0)) {
             setError("Ange ett positivt heltal eller tomt");
             setSubmitting(false);
             return;
@@ -241,7 +241,7 @@ export function ProjectDetailClient({
         }
         case "budgetMoney": {
           const num = trimmed === "" ? null : parseInt(trimmed, 10);
-          if (trimmed !== "" && (Number.isNaN(num) || num < 0)) {
+          if (trimmed !== "" && (num === null || Number.isNaN(num) || num < 0)) {
             setError("Ange ett positivt heltal (SEK) eller tomt");
             setSubmitting(false);
             return;
