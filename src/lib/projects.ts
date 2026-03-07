@@ -293,6 +293,8 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       probability,
       jiraProjectKey: p.jira_project_key ?? null,
       devopsProject: p.devops_project ?? null,
+      budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
+      budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
       consultantCount: consultantIdsList.length,
       totalHoursAllocated: stats?.totalHours ?? 0,
       consultantInitials: initials,
