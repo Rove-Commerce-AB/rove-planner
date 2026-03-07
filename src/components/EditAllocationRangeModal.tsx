@@ -125,7 +125,7 @@ export function EditAllocationRangeModal({
         onSuccess(hours);
         onClose();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Kunde inte spara");
+        setError(err instanceof Error ? err.message : "Could not save");
       } finally {
         setSubmitting(false);
       }
@@ -174,7 +174,7 @@ export function EditAllocationRangeModal({
       );
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kunde inte spara");
+      setError(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSubmitting(false);
     }
@@ -216,13 +216,13 @@ export function EditAllocationRangeModal({
             id="edit-allocation-range-title"
             className="text-lg font-semibold text-text-primary"
           >
-            Redigera allokering
+            Edit allocation
           </h2>
           <button
             type="button"
             onClick={handleClose}
             className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Stäng"
+            aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
@@ -237,14 +237,14 @@ export function EditAllocationRangeModal({
 
           <div>
             <label className="block text-sm font-medium text-text-primary">
-              Konsult
+              Consultant
             </label>
             <p className="mt-1 text-text-primary">{consultantName}</p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-text-primary">
-              Projekt
+              Project
             </label>
             <p className="mt-1 text-text-primary">{projectLabel}</p>
           </div>
@@ -252,7 +252,7 @@ export function EditAllocationRangeModal({
           {roleName != null && roleName !== "" && (
             <div>
               <label className="block text-sm font-medium text-text-primary">
-                Roll
+                Role
               </label>
               <p className="mt-1 text-text-primary">{roleName}</p>
             </div>
@@ -260,7 +260,7 @@ export function EditAllocationRangeModal({
 
           <div>
             <label className="block text-sm font-medium text-text-primary">
-              Veckor
+              Weeks
             </label>
             <p className="mt-1 text-text-primary">{weekRangeLabel}</p>
           </div>
@@ -275,7 +275,7 @@ export function EditAllocationRangeModal({
                   : "border-border bg-bg-default text-text-primary hover:bg-bg-muted"
               }`}
             >
-              Timmar
+              Hours
             </button>
             <button
               type="button"
@@ -296,7 +296,7 @@ export function EditAllocationRangeModal({
                 htmlFor="edit-range-hours"
                 className="block text-sm font-medium text-text-primary"
               >
-                Timmar per vecka
+                Hours per week
               </label>
               <input
                 id="edit-range-hours"
@@ -309,7 +309,7 @@ export function EditAllocationRangeModal({
               />
               {firstAvailable > 0 && (
                 <p className="mt-1 text-xs text-text-primary opacity-60">
-                  ≈ {displayPercent()} % av kapacitet (v{weeks[0].week})
+                  ≈ {displayPercent()}% of capacity (w{weeks[0].week})
                 </p>
               )}
             </div>
@@ -319,7 +319,7 @@ export function EditAllocationRangeModal({
                 htmlFor="edit-range-percent"
                 className="block text-sm font-medium text-text-primary"
               >
-                Procent av kapacitet (v{weeks[0].week})
+                Percent of capacity (w{weeks[0].week})
               </label>
               <input
                 id="edit-range-percent"
@@ -340,7 +340,7 @@ export function EditAllocationRangeModal({
           )}
 
           <p className="text-xs text-text-primary opacity-60">
-            Sätt 0 för att ta bort bokning i alla valda veckor.
+            Set 0 to remove allocation in all selected weeks.
           </p>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -349,14 +349,14 @@ export function EditAllocationRangeModal({
               onClick={handleClose}
               className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
             >
-              Avbryt
+              Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
             >
-              {submitting ? "Sparar…" : "Spara"}
+              {submitting ? "Saving…" : "Save"}
             </button>
           </div>
         </form>

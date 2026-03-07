@@ -327,7 +327,7 @@ export async function getProjectAllocationData(
     );
     return { data, error: null };
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Kunde inte ladda planeringsdata";
+    const message = e instanceof Error ? e.message : "Could not load planning data";
     return { data: null, error: message };
   }
 }

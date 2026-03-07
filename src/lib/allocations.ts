@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { isoWeeksInYear } from "./dateUtils";
+import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
 
 export type AllocationRecord = {
   id: string;
@@ -440,4 +440,76 @@ export async function deleteAllocations(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   const { error } = await supabase.from("allocations").delete().in("id", ids);
   if (error) throw error;
+}
+
+/** Delete all allocations for a project. */
+export async function deleteAllocationsByProjectId(
+  projectId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("allocations")
+    .delete()
+    .eq("project_id", projectId);
+  if (error) throw error;
+}
+
+/**
+ * Move all allocations for a project by delta weeks (positive = forward, negative = backward).
+ * Allocations that would land in the same (consultant, role, year, week) are merged (hours summed).
+ */
+export async function moveAllocationsForProject(
+  projectId: string,
+  deltaWeeks: number
+): Promise<{ moved: number }> {
+  if (deltaWeeks === 0) return { moved: 0 };
+  const rows = await getAllocationsForProjectWithWeeks(projectId);
+  if (rows.length === 0) return { moved: 0 };
+
+  type Key = string;
+  const groupKey = (
+    c: string | null,
+    r: string | null,
+    y: number,
+    w: number
+  ): Key => `${c ?? ""}|${r ?? ""}|${y}|${w}`;
+  const grouped = new Map<Key, { consultant_id: string | null; role_id: string | null; year: number; week: number; hours: number }>();
+  for (const a of rows) {
+    const { year: newYear, week: newWeek } = addWeeksToYearWeek(
+      a.year,
+      a.week,
+      deltaWeeks
+    );
+    const key = groupKey(a.consultant_id, a.role_id, newYear, newWeek);
+    const existing = grouped.get(key);
+    const hours = Number(a.hours);
+    if (existing) {
+      existing.hours += hours;
+    } else {
+      grouped.set(key, {
+        consultant_id: a.consultant_id,
+        role_id: a.role_id,
+        year: newYear,
+        week: newWeek,
+        hours,
+      });
+    }
+  }
+
+  await deleteAllocationsByProjectId(projectId);
+  const toInsert = Array.from(grouped.values()).map((g) => ({
+    consultant_id: g.consultant_id,
+    project_id: projectId,
+    role_id: g.role_id,
+    year: g.year,
+    week: g.week,
+    hours: g.hours,
+  }));
+  if (toInsert.length === 0) return { moved: 0 };
+  const BATCH = 100;
+  for (let i = 0; i < toInsert.length; i += BATCH) {
+    const batch = toInsert.slice(i, i + BATCH);
+    const { error } = await supabase.from("allocations").insert(batch);
+    if (error) throw error;
+  }
+  return { moved: toInsert.length };
 }

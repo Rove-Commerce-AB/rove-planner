@@ -1742,7 +1742,7 @@ export function AllocationPageClient({
                               {!embedMode && pr.showProbabilitySymbol && (
                                 <Percent
                                   className="h-3 w-3 shrink-0 opacity-60"
-                                  aria-label="Sannolikhet under 100%"
+                                  aria-label="Probability below 100%"
                                 />
                               )}
                               <span className={embedMode ? "min-w-0 truncate" : ""} title={embedMode ? (pr.roleName || row.consultant.defaultRoleName) || undefined : undefined}>
@@ -2260,7 +2260,7 @@ export function AllocationPageClient({
                               {pr.showProbabilitySymbol && (
                                 <Percent
                                   className="h-3 w-3 shrink-0 opacity-60"
-                                  aria-label="Sannolikhet under 100%"
+                                  aria-label="Probability below 100%"
                                 />
                               )}
                               {pr.customerId ? (

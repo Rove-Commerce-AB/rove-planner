@@ -43,7 +43,7 @@ export default async function ProjectPage({ params, searchParams }: Props) {
     );
   } catch (e) {
     allocationError =
-      e instanceof Error ? e.message : "Kunde inte ladda planeringsdata";
+      e instanceof Error ? e.message : "Could not load planning data";
   }
 
   const [projectRates, customerRates] = await Promise.all([

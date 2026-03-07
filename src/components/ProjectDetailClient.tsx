@@ -15,11 +15,14 @@ import type { ProjectWithDetails, ProjectType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPage";
 import {
   ConfirmModal,
+  Dialog,
   Select,
   Button,
   DetailPageHeader,
   Panel,
+  Input,
 } from "@/components/ui";
+import { moveEntireBookingAction } from "@/app/(app)/projects/[id]/actions";
 import { ProjectRatesTab } from "./ProjectRatesTab";
 
 const AllocationPageClient = dynamic(
@@ -99,6 +102,11 @@ export function ProjectDetailClient({
   const [planningWeekFrom, setPlanningWeekFrom] = useState(allocationWeekFrom);
   const [planningWeekTo, setPlanningWeekTo] = useState(allocationWeekTo);
   const [planningLoading, setPlanningLoading] = useState(false);
+  const [showMoveBookingModal, setShowMoveBookingModal] = useState(false);
+  const [moveWeeks, setMoveWeeks] = useState("1");
+  const [moveForward, setMoveForward] = useState(true);
+  const [moveBookingError, setMoveBookingError] = useState<string | null>(null);
+  const [moveBookingSubmitting, setMoveBookingSubmitting] = useState(false);
 
   useEffect(() => {
     setPlanningData(allocationData);
@@ -231,7 +239,7 @@ export function ProjectDetailClient({
         case "budgetHours": {
           const num = trimmed === "" ? null : parseInt(trimmed, 10);
           if (trimmed !== "" && (num === null || Number.isNaN(num) || num < 0)) {
-            setError("Ange ett positivt heltal eller tomt");
+            setError("Enter a positive integer or leave empty");
             setSubmitting(false);
             return;
           }
@@ -242,7 +250,7 @@ export function ProjectDetailClient({
         case "budgetMoney": {
           const num = trimmed === "" ? null : parseInt(trimmed, 10);
           if (trimmed !== "" && (num === null || Number.isNaN(num) || num < 0)) {
-            setError("Ange ett positivt heltal (SEK) eller tomt");
+            setError("Enter a positive integer (SEK) or leave empty");
             setSubmitting(false);
             return;
           }
@@ -316,6 +324,40 @@ export function ProjectDetailClient({
       setError(e instanceof Error ? e.message : "Failed to update");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleMoveBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const weeks = Math.max(1, Math.floor(Number(moveWeeks.replace(",", ".")) || 1));
+    const delta = moveForward ? weeks : -weeks;
+    setMoveBookingError(null);
+    setMoveBookingSubmitting(true);
+    try {
+      const result = await moveEntireBookingAction(initial.id, delta);
+      if (result.ok) {
+        setShowMoveBookingModal(false);
+        setMoveWeeks("1");
+        setMoveForward(true);
+        router.refresh();
+        if (planningData) {
+          setPlanningLoading(true);
+          const { data, error } = await getProjectAllocationData(
+            initial.id,
+            initial.customer_id ?? "",
+            planningYear,
+            planningWeekFrom,
+            planningWeekTo
+          );
+          setPlanningData(data);
+          setPlanningError(error);
+          setPlanningLoading(false);
+        }
+      } else {
+        setMoveBookingError(result.error ?? "Failed to move");
+      }
+    } finally {
+      setMoveBookingSubmitting(false);
     }
   };
 
@@ -761,12 +803,26 @@ export function ProjectDetailClient({
 
       {/* PLANNING */}
       <Panel className="mt-6">
-        <h2
-          className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 border-b ${tableBorder} bg-bg-muted/40 px-4 py-3`}
           suppressHydrationWarning
         >
-          PLANNING
-        </h2>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+            PLANNING
+          </h2>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setMoveBookingError(null);
+              setMoveWeeks("1");
+              setMoveForward(true);
+              setShowMoveBookingModal(true);
+            }}
+          >
+            Move entire booking
+          </Button>
+        </div>
         <div className="p-5">
           <AllocationPageClient
             data={planningData}
@@ -792,6 +848,82 @@ export function ProjectDetailClient({
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
       />
+
+      <Dialog
+        open={showMoveBookingModal}
+        onOpenChange={(open) => {
+          if (!open) setMoveBookingError(null);
+          setShowMoveBookingModal(open);
+        }}
+        title="Move entire booking"
+      >
+        <form onSubmit={handleMoveBookingSubmit} className="mt-4 space-y-4">
+          {moveBookingError && (
+            <p className="text-sm text-danger" role="alert">
+              {moveBookingError}
+            </p>
+          )}
+          <div>
+            <label
+              htmlFor="move-booking-weeks"
+              className="block text-sm font-medium text-text-primary"
+            >
+              Number of weeks
+            </label>
+            <Input
+              id="move-booking-weeks"
+              type="number"
+              min={1}
+              value={moveWeeks}
+              onChange={(e) => setMoveWeeks(e.target.value || "1")}
+              className="mt-1 w-24"
+            />
+          </div>
+          <div>
+            <span className="block text-sm font-medium text-text-primary mb-2">
+              Direction
+            </span>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="move-direction"
+                  checked={moveForward}
+                  onChange={() => setMoveForward(true)}
+                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                />
+                <span className="text-text-primary">Forward</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="move-direction"
+                  checked={!moveForward}
+                  onChange={() => setMoveForward(false)}
+                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                />
+                <span className="text-text-primary">Backward</span>
+              </label>
+            </div>
+          </div>
+          <p className="text-xs text-text-primary opacity-70">
+            All allocations for this project (all people) will be moved by the chosen number of weeks.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowMoveBookingModal(false)}
+              disabled={moveBookingSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={moveBookingSubmitting}>
+              {moveBookingSubmitting ? "Moving…" : "Move"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </>
   );
 }

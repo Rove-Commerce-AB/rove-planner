@@ -112,18 +112,20 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
 
       <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
         <div className="space-y-0.5 p-2">
-          <Link
-            href="/settings"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              pathname === "/settings"
-                ? "bg-nav-active text-brand-signal font-semibold"
-                : "text-text-primary hover:bg-nav-hover"
-            }`}
-          >
-            <Settings className="h-5 w-5" />
-            Settings
-          </Link>
-          <div className="my-2 border-t border-border-subtle" aria-hidden />
+          {isAdmin && (
+            <Link
+              href="/settings"
+              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                pathname === "/settings"
+                  ? "bg-nav-active text-brand-signal font-semibold"
+                  : "text-text-primary hover:bg-nav-hover"
+              }`}
+            >
+              <Settings className="h-5 w-5" />
+              Settings
+            </Link>
+          )}
+          {isAdmin && <div className="my-2 border-t border-border-subtle" aria-hidden />}
           <button
           type="button"
           onClick={handleSignOut}

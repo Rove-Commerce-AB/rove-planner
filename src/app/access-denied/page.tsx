@@ -19,18 +19,18 @@ export default function AccessDeniedPage() {
     <div className="flex min-h-screen flex-col items-center justify-center p-6">
       <Panel className="w-full max-w-sm p-8">
         <h1 className="text-xl font-semibold text-text-primary">
-          Ingen åtkomst
+          Access denied
         </h1>
         <p className="mt-2 text-sm text-text-primary opacity-70">
-          Du har inte behörighet att använda denna app. Kontakta en
-          administratör om du tror att det är fel.
+          You do not have permission to use this app. Contact an
+          administrator if you believe this is an error.
         </p>
         <Button
           type="button"
           onClick={handleSignOut}
           className="mt-6 w-full"
         >
-          Tillbaka till inloggning
+          Back to login
         </Button>
       </Panel>
     </div>

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getRoles } from "@/lib/roles";
 import { getTeams } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
@@ -6,6 +7,11 @@ import { getFeatureRequests } from "@/lib/featureRequests";
 import { SettingsPageClient } from "@/components/SettingsPageClient";
 
 export default async function SettingsPage() {
+  const user = await getCurrentAppUser();
+  if (!user || user.role !== "admin") {
+    redirect("/access-denied");
+  }
+
   let roles: Awaited<ReturnType<typeof getRoles>> = [];
   let teams: Awaited<ReturnType<typeof getTeams>> = [];
   let calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>> = [];

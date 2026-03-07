@@ -58,7 +58,7 @@ export async function addAppUser(formData: FormData) {
   const name = (formData.get("name") as string)?.trim() || null;
   const role = ((formData.get("role") as string) || "member") as "admin" | "member";
 
-  if (!email) throw new Error("E-post krävs");
+  if (!email) throw new Error("Email is required");
 
   const admin = createAdminClient();
   const { error } = await admin.from("app_users").insert({
