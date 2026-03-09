@@ -15,7 +15,7 @@ export function CustomerCard({ customer }: Props) {
   return (
     <Link
       href={`/customers/${customer.id}`}
-      className="block rounded-lg border border-border border-l-4 bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
+      className="block rounded-lg border border-form border-l-4 bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
       style={{ borderLeftColor: color }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -54,7 +54,7 @@ export function CustomerCard({ customer }: Props) {
       )}
 
       {customer.primaryProject && (
-        <div className="mt-4 border-t border-border pt-3">
+        <div className="mt-4 border-t border-form pt-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <FolderKanban className="h-4 w-4 flex-shrink-0 opacity-60" />

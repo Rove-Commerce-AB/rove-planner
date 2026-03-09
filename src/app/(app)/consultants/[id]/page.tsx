@@ -14,7 +14,7 @@ export default async function ConsultantPage({ params }: Props) {
 
   return (
     <div className="p-6">
-      <div className="max-w-6xl">
+      <div className="mx-auto w-full max-w-3xl">
         <ConsultantDetailClient consultant={consultant} />
       </div>
     </div>

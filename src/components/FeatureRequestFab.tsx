@@ -34,7 +34,7 @@ export function FeatureRequestFab() {
     <div className="fixed bottom-6 right-6 z-40">
       {open ? (
         <div
-          className="w-80 rounded-lg border border-border bg-bg-default p-4 shadow-lg"
+          className="w-80 rounded-lg border border-form bg-bg-default p-4 shadow-lg"
           style={{ borderColor: "var(--panel-border)" }}
         >
           <div className="flex items-center justify-between mb-3">
@@ -61,13 +61,13 @@ export function FeatureRequestFab() {
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Describe your idea or improvement..."
               rows={3}
-              className="w-full rounded-lg border border-border bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+              className="w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
             />
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-lg border border-border bg-bg-default px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-muted"
+                className="rounded-lg border border-form bg-bg-default px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-muted"
               >
                 Cancel
               </button>

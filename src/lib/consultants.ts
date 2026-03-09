@@ -4,6 +4,16 @@ import { getCachedConsultantsRaw } from "./allocationPage";
 import { getRoles } from "./roles";
 import { getCalendars } from "./calendars";
 import { getTeams } from "./teams";
+
+export type ConsultantListItem = {
+  id: string;
+  name: string;
+  initials: string;
+  teamId: string | null;
+  teamName: string | null;
+  isExternal: boolean;
+  isActive: boolean;
+};
 import { getAllocationsForWeek } from "./allocations";
 import { getProjectsByIds } from "./projects";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
@@ -196,6 +206,44 @@ export async function getConsultantsWithDefaultRole(): Promise<
     name: c.name,
     role_id: c.role_id ?? null,
   }));
+}
+
+/** For side panel list: consultants with team and active state (end_date in past = inactive). */
+export async function getConsultantsList(): Promise<ConsultantListItem[]> {
+  const { data: rows, error } = await supabase
+    .from("consultants")
+    .select("id,name,team_id,is_external,end_date")
+    .order("name");
+
+  if (error) throw error;
+  if (!rows?.length) return [];
+
+  const teams = await getTeams();
+  const teamMap = new Map(teams.map((t) => [t.id, t.name]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const getInitialsFromName = (name: string) =>
+    name
+      .split(" ")
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+
+  return rows.map((r) => {
+    const endDate = r.end_date ? new Date(r.end_date) : null;
+    const isActive = !endDate || endDate >= today;
+    return {
+      id: r.id,
+      name: r.name,
+      initials: getInitialsFromName(r.name),
+      teamId: r.team_id ?? null,
+      teamName: r.team_id ? teamMap.get(r.team_id) ?? null : null,
+      isExternal: r.is_external ?? false,
+      isActive,
+    };
+  });
 }
 
 /** Id → name for given consultant ids (e.g. for account manager display). */

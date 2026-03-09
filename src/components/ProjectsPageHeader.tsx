@@ -16,7 +16,7 @@ export function ProjectsPageHeader({ count, onAdd }: Props) {
     >
       <Button onClick={onAdd}>
         <Plus className="h-4 w-4" />
-        Create project
+        Add project
       </Button>
     </PageHeader>
   );

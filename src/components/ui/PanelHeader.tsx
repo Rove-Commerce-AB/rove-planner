@@ -18,12 +18,12 @@ export function PanelHeader({
 }: Props) {
   return (
     <div
-      className={`flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between ${className}`.trim()}
+      className={`flex flex-col gap-1 px-3 py-1.5 shadow-panel-header sm:flex-row sm:items-center sm:justify-between ${className}`.trim()}
     >
       <div>
         <h1 className="text-xl font-bold text-text-primary">{title}</h1>
         {subtitle != null && (
-          <p className="mt-0.5 text-sm text-text-primary opacity-70">
+          <p className="mt-0 text-sm text-text-primary opacity-70">
             {subtitle}
           </p>
         )}

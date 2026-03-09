@@ -78,6 +78,7 @@ export type CustomerWithDetails = {
   accountManagerName: string | null;
   color: string;
   logoUrl: string | null;
+  url: string | null;
   initials: string;
   isActive: boolean;
   activeProjectCount: number;

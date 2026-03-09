@@ -12,6 +12,9 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
+    console.error("[auth/callback] exchangeCodeForSession failed:", error.message, error);
+    const msg = encodeURIComponent(error.message);
+    return NextResponse.redirect(`${origin}/login?error=auth&message=${msg}`);
   }
 
   return NextResponse.redirect(`${origin}/login?error=auth`);

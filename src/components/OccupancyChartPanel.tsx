@@ -12,16 +12,17 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addWeeksToYearWeek } from "@/lib/dateUtils";
 import type { Role } from "@/lib/roles";
+import type { Team } from "@/lib/teams";
 import type {
   OccupancyReportResult,
   OccupancyDataPoint,
   OccupancyWeek,
 } from "@/lib/occupancyReport";
 import { getOccupancyReportDataAction } from "@/app/(app)/reports/actions";
-import { Panel, Select } from "@/components/ui";
+import { Panel, PanelSectionTitle, Select } from "@/components/ui";
 
 const WINDOW_SIZE = 28;
 const STEP_WEEKS = 4;
@@ -35,8 +36,6 @@ type ChartPoint = OccupancyWeek &
     internalPct: number;
     absencePct: number;
   };
-
-const panelHeaderBorder = "border-panel";
 
 function buildWeeksForOffset(
   currentYear: number,
@@ -81,9 +80,9 @@ function CustomTooltip({
     (point.internalPct ?? 0) +
     (point.absencePct ?? 0);
   return (
-    <div className="rounded-lg border border-border bg-bg-default px-3 py-2 text-sm shadow-lg">
+    <div className="rounded-lg border border-form bg-bg-default px-3 py-2 text-sm shadow-lg">
       <p className="mb-1 font-medium text-text-primary">{label}</p>
-      <div className="mt-2 border-t border-border pt-2">
+      <div className="mt-2 border-t border-form pt-2">
         <p className="mb-1.5 font-medium text-text-primary">
           Total: {Math.round(totalPct)}%
         </p>
@@ -110,11 +109,13 @@ function CustomTooltip({
 export function OccupancyChartPanel({
   initialData,
   roles,
+  teams,
   currentYear,
   currentWeek,
 }: Props) {
   const [data, setData] = useState<OccupancyReportResult>(initialData);
   const [roleId, setRoleId] = useState<string>("");
+  const [teamId, setTeamId] = useState<string>("");
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -124,10 +125,14 @@ export function OccupancyChartPanel({
   );
 
   const fetchData = useCallback(
-    async (weeks: { year: number; week: number }[], role: string | null) => {
+    async (
+      weeks: { year: number; week: number }[],
+      role: string | null,
+      team: string | null
+    ) => {
       setLoading(true);
       try {
-        const result = await getOccupancyReportDataAction(weeks, role);
+        const result = await getOccupancyReportDataAction(weeks, role, team);
         setData(result);
       } finally {
         setLoading(false);
@@ -139,24 +144,48 @@ export function OccupancyChartPanel({
   const onRoleChange = useCallback(
     (value: string) => {
       setRoleId(value);
-      fetchData(weeksForOffset, value === "" ? null : value);
+      fetchData(
+        weeksForOffset,
+        value === "" ? null : value,
+        teamId === "" ? null : teamId
+      );
     },
-    [weeksForOffset, fetchData]
+    [weeksForOffset, fetchData, teamId]
+  );
+
+  const onTeamChange = useCallback(
+    (value: string) => {
+      setTeamId(value);
+      fetchData(
+        weeksForOffset,
+        roleId === "" ? null : roleId,
+        value === "" ? null : value
+      );
+    },
+    [weeksForOffset, fetchData, roleId]
   );
 
   const onPrev = useCallback(() => {
     const newOffset = offset - 1;
     setOffset(newOffset);
     const weeks = buildWeeksForOffset(currentYear, currentWeek, newOffset);
-    fetchData(weeks, roleId === "" ? null : roleId);
-  }, [offset, currentYear, currentWeek, roleId, fetchData]);
+    fetchData(
+      weeks,
+      roleId === "" ? null : roleId,
+      teamId === "" ? null : teamId
+    );
+  }, [offset, currentYear, currentWeek, roleId, teamId, fetchData]);
 
   const onNext = useCallback(() => {
     const newOffset = offset + 1;
     setOffset(newOffset);
     const weeks = buildWeeksForOffset(currentYear, currentWeek, newOffset);
-    fetchData(weeks, roleId === "" ? null : roleId);
-  }, [offset, currentYear, currentWeek, roleId, fetchData]);
+    fetchData(
+      weeks,
+      roleId === "" ? null : roleId,
+      teamId === "" ? null : teamId
+    );
+  }, [offset, currentYear, currentWeek, roleId, teamId, fetchData]);
 
   const chartData: ChartPoint[] = data.weeks.map((w, i) => {
     const p = data.points[i];
@@ -187,46 +216,56 @@ export function OccupancyChartPanel({
     { value: "", label: "All roles" },
     ...roles.map((r) => ({ value: r.id, label: r.name })),
   ];
+  const teamOptions = [
+    { value: "", label: "All teams" },
+    ...teams.map((t) => ({ value: t.id, label: t.name })),
+  ];
 
   return (
     <Panel>
-      <div
-        className={`flex flex-wrap items-center gap-3 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
-        suppressHydrationWarning
-      >
-        <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-          <TrendingUp className="h-4 w-4" />
-          Occupancy
-        </h2>
-        <div className="flex items-center gap-2">
+      <PanelSectionTitle>OCCUPANCY</PanelSectionTitle>
+      <div className="p-3 pt-0">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+            Filter
+          </span>
+          <Select
+            variant="filter"
+            value={roleId}
+            onValueChange={onRoleChange}
+            options={roleOptions}
+            placeholder="All roles"
+            className="w-auto min-w-0"
+            triggerClassName="min-w-[90px]"
+          />
+          <Select
+            variant="filter"
+            value={teamId}
+            onValueChange={onTeamChange}
+            options={teamOptions}
+            placeholder="All teams"
+            className="w-auto min-w-0"
+            triggerClassName="min-w-[90px]"
+          />
+        </div>
+        <div className="mb-2 flex items-center justify-end gap-1">
           <button
             type="button"
             onClick={onPrev}
-            className="rounded-lg border border-border bg-bg-default p-1.5 text-text-primary opacity-80 transition hover:bg-bg-muted hover:opacity-100"
+            className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
             aria-label="Previous period"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
             onClick={onNext}
-            className="rounded-lg border border-border bg-bg-default p-1.5 text-text-primary opacity-80 transition hover:bg-bg-muted hover:opacity-100"
+            className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
             aria-label="Next period"
           >
-            <ChevronRight className="h-5 w-5" />
+            <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="ml-auto w-48">
-          <Select
-            size="sm"
-            value={roleId}
-            onValueChange={onRoleChange}
-            options={roleOptions}
-            placeholder="Role"
-          />
-        </div>
-      </div>
-      <div className="p-4">
         {loading ? (
           <p className="py-8 text-center text-sm text-text-primary opacity-70">
             Loading…
@@ -236,7 +275,7 @@ export function OccupancyChartPanel({
             No data for the selected period.
           </p>
         ) : (
-          <div className="h-[300px] w-full">
+          <div className="h-[300px] w-full min-h-0">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={chartData}
@@ -255,6 +294,7 @@ export function OccupancyChartPanel({
                 />
                 <YAxis
                   domain={[0, 120]}
+                  ticks={[0, 20, 40, 60, 80, 100, 120]}
                   tickFormatter={formatPercent}
                   tick={{ fontSize: 11, fill: "var(--color-text-primary)", opacity: 0.8 }}
                   tickLine={false}

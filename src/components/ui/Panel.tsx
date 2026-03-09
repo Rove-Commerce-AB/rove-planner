@@ -5,13 +5,13 @@ type Props = {
 
 /**
  * Single container for control-panel / dashboard content.
- * Sections inside should use PanelSection so content "hangs together" with dividers.
+ * Lighter border and no shadow so cards feel like sections rather than heavy boxes.
  */
 export function Panel({ children, className = "" }: Props) {
   return (
     <div
-      className={`overflow-hidden rounded-panel border border-border ${className}`.trim()}
-      style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--panel-border)' }}
+      className={`overflow-visible rounded-panel border border-panel ${className}`.trim()}
+      style={{ backgroundColor: "var(--panel-bg)" }}
     >
       {children}
     </div>

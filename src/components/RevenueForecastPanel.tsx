@@ -1,17 +1,15 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { BarChart3, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { RevenueForecastMonth } from "@/lib/revenueForecast";
 import { getMonthLabel } from "@/lib/dateUtils";
-import { Panel } from "@/components/ui";
+import { Panel, PanelSectionTitle } from "@/components/ui";
 
 type Props = {
   forecast: RevenueForecastMonth[];
   currentYear: number;
 };
-
-const panelHeaderBorder = "border-panel";
 
 function formatRevenue(value: number, currency: string): string {
   return (
@@ -85,15 +83,8 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
 
   return (
     <Panel>
-      <div
-        className={`flex items-center gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
-      >
-        <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-          <BarChart3 className="h-4 w-4" />
-          Planned revenue (forecast)
-        </h2>
-      </div>
-      <div className="p-5">
+      <PanelSectionTitle>PLANNED REVENUE (FORECAST)</PanelSectionTitle>
+      <div className="p-3 pt-0">
         {forecast.length === 0 ? (
           <p className="text-sm text-text-primary opacity-70">
             No allocations with customer rates in the selected range.

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
-import { Select } from "@/components/ui";
+import { Dialog, Select, Button, modalInputClass, modalSelectTriggerClass, modalFocusClass } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultants";
 import {
   getProjectsWithCustomer,
@@ -15,7 +14,6 @@ import {
   revalidateAllocationPage,
   logBulkAllocationHistory,
 } from "@/app/(app)/allocation/actions";
-import { useEscToClose } from "@/lib/useEscToClose";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
 
 type Props = {
@@ -278,49 +276,15 @@ export function AddAllocationModal({
     }
   }, [isOpen]);
 
-  useEscToClose(isOpen, handleClose);
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md overflow-hidden rounded-panel border border-panel bg-bg-default shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-allocation-title"
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()} title="Add allocation">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit();
+        }}
+        className="modal-form-discreet mt-6 space-y-6"
       >
-        <div className="flex items-center justify-between border-b border-panel bg-bg-muted/40 px-4 py-3">
-          <h2
-            id="add-allocation-title"
-            className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-          >
-            Add allocation
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
-          className="space-y-6 p-5"
-        >
           {error && (
             <p className="text-sm text-danger" role="alert">
               {error}
@@ -348,7 +312,8 @@ export function AddAllocationModal({
                     setProjectId("");
                   }}
                   placeholder="Select consultant"
-                  triggerClassName="mt-1.5 border-panel"
+                  variant="modal"
+                  triggerClassName={`mt-1.5 ${modalSelectTriggerClass}`}
                   options={[
                     { value: "", label: "Select consultant" },
                     { value: TO_PLAN_CONSULTANT_ID, label: "To plan" },
@@ -387,7 +352,8 @@ export function AddAllocationModal({
                 value={projectId}
                 onValueChange={setProjectId}
                 placeholder="Select project"
-                triggerClassName="mt-1.5 border-panel"
+                variant="modal"
+                triggerClassName={`mt-1.5 ${modalSelectTriggerClass}`}
                 viewportClassName="max-h-60 overflow-y-auto"
                 options={[...projects]
                   .sort((a, b) => a.customerName.localeCompare(b.customerName))
@@ -416,7 +382,8 @@ export function AddAllocationModal({
                   : "Select role"
               }
               disabled={projects.find((p) => p.id === projectId)?.type !== "customer"}
-              triggerClassName="mt-1.5 border-panel"
+              variant="modal"
+              triggerClassName={`mt-1.5 ${modalSelectTriggerClass}`}
               options={roles.map((r) => ({ value: r.id, label: r.name }))}
             />
           </div>
@@ -436,7 +403,7 @@ export function AddAllocationModal({
                 max={52}
                 value={fromWeek}
                 onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
-                className="mt-1.5 w-full rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                className={`mt-1.5 ${modalInputClass}`}
               />
             </div>
             <div>
@@ -453,7 +420,7 @@ export function AddAllocationModal({
                 max={52}
                 value={toWeek}
                 onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
-                className="mt-1.5 w-full rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                className={`mt-1.5 ${modalInputClass}`}
               />
             </div>
           </div>
@@ -466,7 +433,7 @@ export function AddAllocationModal({
                   name="alloc-mode"
                   checked={inputMode === "hours"}
                   onChange={() => setInputMode("hours")}
-                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                  className="rounded-full border-form text-brand-signal focus:ring-brand-signal"
                 />
                 Hours per week
               </label>
@@ -476,7 +443,7 @@ export function AddAllocationModal({
                   name="alloc-mode"
                   checked={inputMode === "percent"}
                   onChange={() => setInputMode("percent")}
-                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                  className="rounded-full border-form text-brand-signal focus:ring-brand-signal"
                 />
                 % of available week
               </label>
@@ -489,7 +456,7 @@ export function AddAllocationModal({
                 step={0.5}
                 value={hoursPerWeek}
                 onChange={(e) => setHoursPerWeek(e.target.value)}
-                className="mt-1.5 w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                className={`mt-1.5 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
             ) : (
               <input
@@ -500,29 +467,20 @@ export function AddAllocationModal({
                 step={5}
                 value={percent}
                 onChange={(e) => setPercent(e.target.value)}
-                className="mt-1.5 w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                className={`mt-1.5 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
             )}
           </div>
 
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? "Adding…" : "Add"}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   );
 }

@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { useEscToClose } from "@/lib/useEscToClose";
-import { ConfirmModal, Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
+import { Button, ConfirmModal, Tabs, TabsList, TabsTrigger, TabsContent, modalInputClass } from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
 import type { CustomerWithDetails } from "@/types";
 
@@ -152,7 +152,7 @@ export function EditCustomerModal({
           <form
             id="edit-customer-form"
             onSubmit={handleSubmit}
-            className="mt-6 space-y-4"
+            className="modal-form-discreet mt-6 space-y-4"
           >
             {error && (
               <p className="text-sm text-danger" role="alert">
@@ -173,7 +173,7 @@ export function EditCustomerModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Company AB"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className={`mt-1 ${modalInputClass}`}
               />
             </div>
 
@@ -188,7 +188,7 @@ export function EditCustomerModal({
                 id="edit-customer-account-manager"
                 value={accountManagerId}
                 onChange={(e) => setAccountManagerId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className={`mt-1 ${modalInputClass}`}
               >
                 <option value="">—</option>
                 {allConsultants.map((c) => (
@@ -212,14 +212,14 @@ export function EditCustomerModal({
                   type="color"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
-                  className="h-10 w-14 cursor-pointer rounded border border-border bg-transparent p-0"
+                  className="h-10 w-14 cursor-pointer rounded border border-form bg-transparent p-0"
                 />
                 <input
                   type="text"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                   placeholder={DEFAULT_CUSTOMER_COLOR}
-                  className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                  className={`flex-1 ${modalInputClass}`}
                 />
               </div>
             </div>
@@ -237,7 +237,7 @@ export function EditCustomerModal({
                 value={logoUrl}
                 onChange={(e) => setLogoUrl(e.target.value)}
                 placeholder="https://example.com/logo.png"
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className={`mt-1 ${modalInputClass}`}
               />
             </div>
           </form>
@@ -257,31 +257,26 @@ export function EditCustomerModal({
         </Tabs>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <button
+          <Button
             type="button"
+            variant="dangerSecondary"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={submitting || deleting}
-            className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             {deleting ? "Deleting…" : "Delete"}
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               {activeTab === "rates" ? "Close" : "Cancel"}
-            </button>
+            </Button>
             {activeTab === "information" && (
-              <button
+              <Button
                 type="submit"
                 form="edit-customer-form"
                 disabled={submitting || deleting}
-                className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
               >
                 {submitting ? "Saving…" : "Save"}
-              </button>
+              </Button>
             )}
           </div>
         </div>

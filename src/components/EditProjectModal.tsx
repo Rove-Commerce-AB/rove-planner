@@ -8,7 +8,7 @@ import {
   getProjectWithDetailsById,
 } from "@/lib/projects";
 import { useEscToClose } from "@/lib/useEscToClose";
-import { ConfirmModal, Select, Switch } from "@/components/ui";
+import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
 import { getCustomers } from "@/lib/customers";
 import type { ProjectWithDetails } from "@/types";
 
@@ -171,7 +171,7 @@ export function EditProjectModal({
             e.preventDefault();
             handleSubmit();
           }}
-          className="mt-6 space-y-4"
+          className="modal-form-discreet mt-6 space-y-4"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -192,7 +192,7 @@ export function EditProjectModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Website redesign"
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 ${modalInputClass}`}
             />
           </div>
 
@@ -202,11 +202,13 @@ export function EditProjectModal({
             value={customerId}
             onValueChange={setCustomerId}
             placeholder="Select customer"
+            variant="modal"
             options={(
               customerId && !customers.some((c) => c.id === customerId) && project
                 ? [{ value: customerId, label: project.customerName }]
                 : []
             ).concat(customers.map((c) => ({ value: c.id, label: c.name })))}
+            triggerClassName={modalSelectTriggerClass}
           />
 
           <div className="grid grid-cols-2 gap-4">
@@ -222,7 +224,7 @@ export function EditProjectModal({
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className={`mt-1 ${modalInputClass}`}
               />
             </div>
             <div>
@@ -237,7 +239,7 @@ export function EditProjectModal({
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className={`mt-1 ${modalInputClass}`}
               />
             </div>
           </div>
@@ -251,30 +253,25 @@ export function EditProjectModal({
         </form>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <button
+          <Button
             type="button"
+            variant="dangerSecondary"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={submitting || deleting}
-            className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             {deleting ? "Deleting…" : "Delete"}
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               form="edit-project-form"
               disabled={submitting || deleting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

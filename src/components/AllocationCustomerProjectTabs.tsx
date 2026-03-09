@@ -66,6 +66,7 @@ export type AllocationCustomerProjectTabsProps = {
   handleCellInputBlur: () => void;
   handleCellInputKeyDown: (e: React.KeyboardEvent) => void;
   savingCell: boolean;
+  cellError: string | null;
   setAddModalOpen: Dispatch<SetStateAction<boolean>>;
   setAddInitialParams: Dispatch<SetStateAction<AddInitialParams | null>>;
   editingCellConsultant: EditingCellConsultant | null;
@@ -115,19 +116,19 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
     return (
       <div className="p-2">
         {weekNav(p)}
-        <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
+        <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
           <colgroup>
             <col style={{ width: 300 }} />
             {data.weeks.map((w) => (
-              <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
+              <col key={`${w.year}-${w.week}`} className="w-[29px]" />
             ))}
           </colgroup>
           <thead>
-            <tr className="border-b border-grid">
+            <tr className="border-b border-grid-subtle">
               <th
                 rowSpan={2}
                 style={{ width: 300, maxWidth: 300, boxSizing: "border-box" }}
-                className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+                className="border-r border-grid-subtle px-2 py-1 text-left font-medium text-text-primary opacity-80"
               >
                 Customer / Consultant
               </th>
@@ -141,7 +142,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                 </th>
               ))}
             </tr>
-            <tr className="border-b border-grid">
+            <tr className="border-b border-grid-subtle">
               {p.renderWeekHeaderCells("customer", "border-grid")}
             </tr>
           </thead>
@@ -151,13 +152,13 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               const hasConsultants = row.consultantRows.length > 0;
               return (
                 <Fragment key={row.customer.id}>
-                  <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
-                    <td className="border-r border-grid-light px-2 py-1 align-top">
+                  <tr className={`border-b border-grid-light-subtle last:border-form ${expanded && hasConsultants ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}>
+                    <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                       <div className="flex items-center justify-between gap-1 w-full">
                         <button
                           type="button"
                           onClick={() => hasConsultants && p.toggleCustomer(row.customer.id)}
-                          className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                          className="flex min-w-0 flex-1 items-center gap-1 text-left whitespace-nowrap"
                         >
                           {hasConsultants ? (
                             expanded ? (
@@ -168,7 +169,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           ) : (
                             <span className="w-4 shrink-0" />
                           )}
-                          <span className="font-semibold text-text-primary">{row.customer.name}</span>
+                          <span className="font-medium text-text-primary">{row.customer.name}</span>
                         </button>
                         <Link
                           href={`/customers/${row.customer.id}`}
@@ -188,7 +189,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       return (
                         <td
                           key={`${w.year}-${w.week}`}
-                          className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
+                          className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
                         >
                           {hasBooking ? `${total}h` : null}
                         </td>
@@ -206,10 +207,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                     }>).map((cr) => (
                       <tr
                         key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
-                        className="border-b border-grid-light last:border-border bg-bg-default"
+                        className="border-b border-grid-light-subtle last:border-form"
                       >
-                        <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
-                          <span className="whitespace-nowrap font-normal text-text-primary">
+                        <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
+                          <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
                             {cr.consultantName}
                             {cr.roleName ? (
                               <span className="opacity-80"> · {cr.roleName}</span>
@@ -234,23 +235,28 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           return (
                             <td
                               key={`${weekInfo.year}-${weekInfo.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
                             >
                               {isEditing ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={p.editingCellValue}
-                                  onChange={(e) => p.setEditingCellValue(e.target.value)}
-                                  onFocus={(e) => e.target.select()}
-                                  onBlur={p.handleCellInputBlur}
-                                  onKeyDown={p.handleCellInputKeyDown}
-                                  disabled={p.savingCell}
-                                  className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  onClick={(e) => e.stopPropagation()}
-                                  autoFocus
-                                />
+                                <div className="flex flex-col min-w-0">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={p.editingCellValue}
+                                    onChange={(e) => p.setEditingCellValue(e.target.value)}
+                                    onFocus={(e) => e.target.select()}
+                                    onBlur={p.handleCellInputBlur}
+                                    onKeyDown={p.handleCellInputKeyDown}
+                                    disabled={p.savingCell}
+                                    className="w-full min-w-0 max-w-[3rem] min-h-[1.5rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[9px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal focus:ring-inset [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                    autoFocus
+                                  />
+                                  <div className="min-h-[0.75rem] shrink-0 text-[9px] leading-tight text-danger">
+                                    {p.savingCell ? "Saving…" : p.cellError ?? "\u00A0"}
+                                  </div>
+                                </div>
                               ) : (
                                 <button
                                   type="button"
@@ -271,7 +277,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                     });
                                     p.setEditingCellValue(String(totalHours || ""));
                                   }}
-                                  className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+                                  className="block w-full min-h-[1.5rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-center text-[9px] text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
                                   tabIndex={0}
                                 >
                                   {displayTotal > 0 ? `${displayTotal}h` : totalHours > 0 ? "—" : "\u00A0"}
@@ -308,20 +314,20 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
   return (
     <div className="p-2">
       {weekNav(p)}
-      <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
+      <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
         <colgroup>
           <col style={{ width: 300 }} />
           {data.weeks.map((w) => (
-            <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
+            <col key={`${w.year}-${w.week}`} className="w-[29px]" />
           ))}
           <col className="w-[4rem]" />
         </colgroup>
         <thead>
-          <tr className="border-b border-grid">
+          <tr className="border-b border-grid-subtle">
             <th
               rowSpan={2}
               style={{ width: 300, maxWidth: 300, boxSizing: "border-box" }}
-              className="border-r border-grid px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
+              className="border-r border-grid-subtle px-2 py-1 text-left font-medium text-text-primary opacity-80"
             >
               Project / Consultant
             </th>
@@ -341,7 +347,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               Total
             </th>
           </tr>
-          <tr className="border-b border-grid">
+          <tr className="border-b border-grid-subtle">
             {p.renderWeekHeaderCells("project", "border-grid")}
           </tr>
         </thead>
@@ -351,13 +357,13 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
             const hasConsultants = row.consultantRows.length > 0;
             return (
               <Fragment key={row.project.id}>
-                <tr className="border-b border-grid-light last:border-border bg-bg-muted/60">
-                  <td className="border-r border-grid-light px-2 py-1 align-top">
+                <tr className={`border-b border-grid-light-subtle last:border-form ${expanded && hasConsultants ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}>
+                  <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                     <div className="flex items-center justify-between gap-1 w-full">
                       <button
                         type="button"
                         onClick={() => hasConsultants && p.toggleProject(row.project.id)}
-                        className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap text-left"
+                        className="flex min-w-0 flex-1 items-center gap-1 text-left whitespace-nowrap"
                       >
                         {hasConsultants ? (
                           expanded ? (
@@ -368,7 +374,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         ) : (
                           <span className="w-4 shrink-0" />
                         )}
-                        <span className="flex items-center gap-1 font-semibold text-text-primary">
+                        <span className="flex items-center gap-1 font-medium text-text-primary">
                           {row.project.showProbabilitySymbol && (
                             <Percent
                               className="h-3 w-3 shrink-0 opacity-60"
@@ -396,13 +402,13 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                     return (
                       <td
                         key={`${w.year}-${w.week}`}
-                        className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
+                        className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
                       >
                         {hasBooking ? `${total}h` : null}
                       </td>
                     );
                   })}
-                  <td className="border-r border-grid-light px-1 py-1 text-right font-medium text-text-primary tabular-nums">
+                  <td className="border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
                     {(() => {
                       const projectTotal = data.weeks.reduce(
                         (sum, w) => sum + (row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
@@ -416,10 +422,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                   row.consultantRows.map((cr) => (
                     <tr
                       key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
-                      className="border-b border-grid-light last:border-border bg-bg-default"
+                      className="border-b border-grid-light-subtle last:border-form"
                     >
-                      <td className="border-r border-grid-light px-2 py-1 pl-8 text-[10px]">
-                        <span className="whitespace-nowrap font-normal text-text-primary">
+                      <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
+                        <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
                           {cr.consultantName}
                           {cr.roleName ? (
                             <span className="opacity-80"> · {cr.roleName}</span>
@@ -446,23 +452,28 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         return (
                           <td
                             key={`${weekInfo.year}-${weekInfo.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
                           >
                             {isEditing ? (
-                              <input
-                                type="number"
-                                min={0}
-                                step={1}
-                                value={p.editingCellValue}
-                                onChange={(e) => p.setEditingCellValue(e.target.value)}
-                                onFocus={(e) => e.target.select()}
-                                onBlur={p.handleCellInputBlur}
-                                onKeyDown={p.handleCellInputKeyDown}
-                                disabled={p.savingCell}
-                                className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[10px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                onClick={(e) => e.stopPropagation()}
-                                autoFocus
-                              />
+                              <div className="flex flex-col min-w-0">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={p.editingCellValue}
+                                  onChange={(e) => p.setEditingCellValue(e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onBlur={p.handleCellInputBlur}
+                                  onKeyDown={p.handleCellInputKeyDown}
+                                  disabled={p.savingCell}
+                                  className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[9px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                  autoFocus
+                                />
+                                <div className="min-h-[0.75rem] shrink-0 text-[9px] leading-tight text-danger">
+                                  {p.savingCell ? "Saving…" : p.cellError ?? "\u00A0"}
+                                </div>
+                              </div>
                             ) : (
                               <button
                                 type="button"
@@ -483,7 +494,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                   });
                                   p.setEditingCellValue(String(totalHours || ""));
                                 }}
-                                className="block w-full min-h-[1.5rem] cursor-pointer border-0 bg-transparent px-1 py-0.5 text-center text-[10px] text-text-primary hover:bg-bg-muted/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+                                className="block w-full min-h-[1.5rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-center text-[9px] text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
                                 tabIndex={0}
                               >
                                 {displayTotal > 0 ? `${displayTotal}h` : totalHours > 0 ? "—" : "\u00A0"}

@@ -10,6 +10,7 @@ import {
   deleteAllocationWithHistory,
 } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
+import { Button, modalFocusClass } from "@/components/ui";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
 
 export type EditAllocationRangeWeek = {
@@ -228,7 +229,7 @@ export function EditAllocationRangeModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="modal-form-discreet mt-6 space-y-4">
           {error && (
             <p className="text-sm text-danger" role="alert">
               {error}
@@ -272,7 +273,7 @@ export function EditAllocationRangeModal({
               className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
                 inputMode === "hours"
                   ? "border-brand-signal bg-brand-signal/20 text-text-primary"
-                  : "border-border bg-bg-default text-text-primary hover:bg-bg-muted"
+                  : "border-form bg-bg-default text-text-primary hover:bg-bg-muted"
               }`}
             >
               Hours
@@ -283,7 +284,7 @@ export function EditAllocationRangeModal({
               className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
                 inputMode === "percent"
                   ? "border-brand-signal bg-brand-signal/20 text-text-primary"
-                  : "border-border bg-bg-default text-text-primary hover:bg-bg-muted"
+                  : "border-form bg-bg-default text-text-primary hover:bg-bg-muted"
               }`}
             >
               %
@@ -305,7 +306,7 @@ export function EditAllocationRangeModal({
                 step={0.5}
                 value={hoursStr}
                 onChange={(e) => setHoursStr(e.target.value)}
-                className="mt-1 w-24 rounded-lg border border-border bg-bg-default px-3 py-2 text-text-primary"
+                className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
               {firstAvailable > 0 && (
                 <p className="mt-1 text-xs text-text-primary opacity-60">
@@ -329,7 +330,7 @@ export function EditAllocationRangeModal({
                 step={5}
                 value={percentStr}
                 onChange={(e) => setPercentStr(e.target.value)}
-                className="mt-1 w-24 rounded-lg border border-border bg-bg-default px-3 py-2 text-text-primary"
+                className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
               {firstAvailable > 0 && percentStr !== "" && !Number.isNaN(parseFloat(percentStr)) && (
                 <p className="mt-1 text-xs text-text-primary opacity-60">
@@ -344,20 +345,12 @@ export function EditAllocationRangeModal({
           </p>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

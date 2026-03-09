@@ -6,12 +6,7 @@ import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
 import { getRoles } from "@/lib/roles";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { getCalendars } from "@/lib/calendars";
-import { Select } from "@/components/ui";
-
-const PERCENTAGE_OPTIONS = Array.from(
-  { length: 21 },
-  (_, i) => i * 5
-); // 0, 5, 10, ..., 100
+import { Button, modalInputClass } from "@/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -25,8 +20,6 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [defaultRoleId, setDefaultRoleId] = useState<string | null>(null);
   const [defaultCalendarId, setDefaultCalendarId] = useState<string | null>(null);
-  const [workPercentage, setWorkPercentage] = useState(100);
-  const [overheadPercentage, setOverheadPercentage] = useState(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -58,8 +51,8 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
         name: name.trim(),
         role_id: defaultRoleId,
         calendar_id: defaultCalendarId,
-        work_percentage: workPercentage,
-        overhead_percentage: overheadPercentage,
+        work_percentage: 100,
+        overhead_percentage: 0,
       });
       resetForm();
       onClose();
@@ -74,8 +67,6 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
 
   const resetForm = () => {
     setName("");
-    setWorkPercentage(100);
-    setOverheadPercentage(0);
     setError(null);
   };
 
@@ -108,7 +99,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
             id="add-consultant-title"
             className="text-lg font-semibold text-text-primary"
           >
-            Add new consultant
+            Add consultant
           </h2>
           <button
             type="button"
@@ -125,7 +116,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
             e.preventDefault();
             handleSubmit();
           }}
-          className="mt-6 space-y-4"
+          className="modal-form-discreet mt-6 space-y-4"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -146,50 +137,18 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Anna Andersson"
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 ${modalInputClass}`}
               autoFocus
             />
           </div>
 
-          <Select
-            id="add-consultant-capacity"
-            label="Capacity (%)"
-            value={String(workPercentage)}
-            onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
-            placeholder="Select"
-            options={PERCENTAGE_OPTIONS.filter((p) => p >= 5).map((p) => ({
-              value: String(p),
-              label: `${p}%`,
-            }))}
-          />
-
-          <Select
-            id="add-consultant-overhead"
-            label="Overhead (%)"
-            value={String(overheadPercentage)}
-            onValueChange={(v) => setOverheadPercentage(parseInt(v, 10))}
-            placeholder="Select"
-            options={PERCENTAGE_OPTIONS.map((p) => ({
-              value: String(p),
-              label: `${p}%`,
-            }))}
-          />
-
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

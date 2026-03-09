@@ -34,6 +34,7 @@ const config: Config = {
         border: {
           DEFAULT: "var(--color-border-default)",
           subtle: "var(--color-border-subtle)",
+          form: "var(--color-border-form)",
         },
         grid: {
           DEFAULT: "var(--color-grid-border)",
@@ -66,6 +67,9 @@ const config: Config = {
         md: "var(--radius-md)",
         lg: "var(--radius-lg)",
         panel: "var(--radius-panel)",
+      },
+      boxShadow: {
+        "panel-header": "var(--panel-header-shadow)",
       },
       keyframes: {
         "loading-bar": {

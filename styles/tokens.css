@@ -23,15 +23,18 @@
     --color-bg-default: var(--color-white);
     --color-bg-page: var(--color-bg-content);
     --color-bg-muted: var(--color-gray-100);
-    --color-border-default: #ddd9d5;          /* Light gray – slightly darker than panel bg */
-    --color-border-subtle: #e8e4e0;          /* Very light gray – sidebar and dividers, not black */
+    --color-border-default: #e5e1dc;          /* Soft gray – low contrast, never harsh */
+    --color-border-subtle: #ebe8e4;           /* Very light – dividers, sidebar */
+    --color-border-form: #ebe8e4;             /* Form controls: inputs, selects, buttons – lighter, less prominent. Use for all interactive form elements so borders stay consistent and non-harsh. */
+    --color-tabs-border: #ebe9e8;            /* Tabs divider line – light, discrete */
     /* Allocation table – soft mid-gray, less prominent lines */
     --color-grid-border: #e5e1dc;
     --color-grid-border-light: #ebe8e4;
     --color-grid-border-subtle: #efebe8;
     --color-grid-border-light-subtle: #f2efec;
     --color-grid-row: #f2eeeb;         /* Allocation table – subtle row dividers */
-    --color-text-primary: var(--color-gray-900);
+    --color-allocation-thead: #f2f1f0; /* Allocation table header – neutral light gray, discrete (no warm/beige) */
+    --color-text-primary: #404040; /* Soft gray, not pure black */
     --color-text-inverse: var(--color-white);
     --color-text-muted: #9ca3af; /* placeholder, secondary text */
     --color-danger: #dc2626; /* Destructive actions */
@@ -50,21 +53,23 @@
     --radius-panel: 8px;  /* Panel container (same as lg for homogeneity) */
 
     /* === Layout (prototype) === */
-    --color-bg-content: #fafafa;             /* Right content area – light gray */
-    --color-nav-active: #fff8f0;             /* Active nav item bg – light warm orange */
-    /* Active nav text: use primary (design system – neutral default), not accent */
-    --color-nav-hover: #f5f5f5;              /* Nav item hover bg – light grey */
+    --color-bg-content: #fafafa;             /* Right content area – light gray (lagom) */
+    --color-nav-active: #e8e8e8;             /* Active nav item bg – soft gray */
+    --color-nav-active-accent: #e0ddda;      /* Left border accent for active item – subtle */
+    --color-nav-hover: #eee;                 /* Nav item hover bg – subtle */
 
     /* === Panel (control panel / dashboard) === */
     --panel-bg: var(--color-white);          /* Panels – white on light gray content area */
-    --panel-border: #ddd9d5;                 /* Light gray – slightly darker than content */
+    --panel-border: #e8e4e0;                  /* Soft gray – subtle, low-contrast frame */
     --section-divider: var(--color-border-default);
+    /* Elevated panel header: visible drop shadow under the header toward content */
+    --panel-header-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
 
-    /* === Spacing === */
+    /* === Spacing (compact dashboard default) === */
     --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 16px;
-    --space-lg: 24px;
-    --space-xl: 32px;
+    --space-sm: 6px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
   }
   

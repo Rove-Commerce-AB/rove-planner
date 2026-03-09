@@ -18,6 +18,7 @@
   --color-text-muted: var(--color-text-muted);
   --color-border-default: var(--color-border-default);
   --color-border-subtle: var(--color-border-subtle);
+  --color-border-form: var(--color-border-form);
   --color-danger: var(--color-danger);
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
@@ -51,6 +52,22 @@ body {
   border-color: var(--panel-border);
 }
 
+/* Modal form controls: force discreet gray border so it wins over browser defaults.
+   All modal forms should use class "modal-form-discreet" and the shared modal styles
+   (modalFocusClass, modalInputClass, modalSelectTriggerClass, Select variant="modal")
+   from components/ui/inlineEditStyles and Input/Select for a consistent look. */
+.modal-form-discreet input:not(:focus),
+.modal-form-discreet select:not(:focus),
+.modal-form-discreet button[type="button"]:not(.btn-primary):not(.btn-danger):not(:focus) {
+  border-color: var(--color-border-form) !important;
+}
+
+/* Primary/danger actions in modals: no border so they don’t get a dark frame. */
+.modal-form-discreet .btn-primary,
+.modal-form-discreet .btn-danger {
+  border: none !important;
+}
+
 /* Allocation tables: grid lines solid mid grey (between grey and black) */
 .allocation-tables table,
 .allocation-tables table th,
@@ -64,11 +81,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--color-bg-muted);
+  background: var(--color-allocation-thead);
   box-shadow: 0 1px 0 0 #9a9a9a;
 }
 .allocation-tables thead tr {
-  background: var(--color-bg-muted);
+  background: var(--color-allocation-thead);
 }
 
 /* Current week column: orange border (same as Add allocation button). Width 2px so it wins over adjacent 1px borders in border-collapse. */
@@ -94,4 +111,10 @@ body.allocation-project-row-dragging * {
   border-right-color: var(--color-brand-signal) !important;
   border-top-color: var(--color-brand-signal) !important;
   border-bottom-color: var(--color-brand-signal) !important;
+}
+
+/* Inline edit: saved checkmark fades out over 2s (visible ~50%, then fade). */
+@keyframes savedCheckFade {
+  0%, 50% { opacity: 1; }
+  100% { opacity: 0; }
 }

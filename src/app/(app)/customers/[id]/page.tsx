@@ -20,7 +20,7 @@ export default async function CustomerPage({ params }: Props) {
 
   return (
     <div className="p-6">
-      <div className="max-w-6xl">
+      <div className="mx-auto w-full max-w-3xl">
         <CustomerDetailClient
           customer={customer}
           initialConsultants={consultants}

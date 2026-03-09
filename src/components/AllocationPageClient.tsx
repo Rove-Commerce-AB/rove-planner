@@ -1395,7 +1395,7 @@ export function AllocationPageClient({
           </TabsList>
         </Tabs>
       ) : (
-        <div className="mb-4 flex w-full gap-2 border-b border-border px-1 py-2" aria-hidden="true">
+        <div className="mb-4 flex w-full gap-2 border-b border-[var(--color-tabs-border)] px-1 py-2" aria-hidden="true">
           <span className="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70">
             Per consultant
           </span>
@@ -1406,46 +1406,66 @@ export function AllocationPageClient({
       ))}
 
       {data && !embedMode && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 px-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2 px-2">
+          {/* VY – hur tabellen visas (sannolikhet, vilka projektrader) */}
+          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+            Vy
+          </span>
           <Select
+            variant="filter"
             value={probabilityDisplay}
             onValueChange={(v) => setProbabilityDisplay(v as ProbabilityDisplay)}
             options={[
-              { value: "weighted", label: "Show with probability" },
-              { value: "none", label: "Show without probability" },
+              { value: "weighted", label: "Med sannolikhet" },
+              { value: "none", label: "Utan sannolikhet" },
             ]}
-            className="w-auto min-w-[200px]"
+            className="w-auto min-w-0"
+            triggerClassName={`min-w-[130px] ${probabilityDisplay === "weighted" ? "bg-brand-lilac/25 text-text-primary" : ""}`}
           />
           <Select
+            variant="filter"
             value={projectVisibility}
             onValueChange={(v) => setProjectVisibility(v as ProjectVisibility)}
             options={[
-              { value: "all", label: "Show all" },
-              { value: "hideNon100", label: "Hide projects that are not 100%" },
-              { value: "hide100", label: "Hide projects that are 100%" },
+              { value: "all", label: "Alla projekt" },
+              { value: "hideNon100", label: "Dölj ofullständiga" },
+              { value: "hide100", label: "Dölj 100 %" },
             ]}
-            className="w-auto min-w-[200px]"
+            className="w-auto min-w-0"
+            triggerClassName="min-w-[130px]"
           />
+          <span
+            className="mx-1 h-4 w-px shrink-0 bg-[var(--color-border-subtle)]"
+            aria-hidden
+          />
+          {/* FILTER – vilka konsulter som visas (team, roll) */}
+          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+            Filter
+          </span>
           {data.teams.length > 0 && (
             <Select
+              variant="filter"
               value={teamFilterId ?? ""}
               onValueChange={(v) => setTeamFilterId(v ? v : null)}
               options={[
-                { value: "", label: "All teams" },
+                { value: "", label: "Alla team" },
                 ...data.teams.map((t) => ({ value: t.id, label: t.name })),
               ]}
-              className="w-auto min-w-[120px]"
+              className="w-auto min-w-0"
+              triggerClassName="min-w-[100px]"
             />
           )}
           {activeTab !== "history" && data.roles.length > 0 && (
             <Select
+              variant="filter"
               value={defaultRoleFilterId ?? ""}
               onValueChange={(v) => setDefaultRoleFilterId(v ? v : null)}
               options={[
-                { value: "", label: "All default roles" },
+                { value: "", label: "Alla roller" },
                 ...data.roles.map((r) => ({ value: r.id, label: r.name })),
               ]}
-              className="w-auto min-w-[140px]"
+              className="w-auto min-w-0"
+              triggerClassName="min-w-[100px]"
             />
           )}
           {activeTab === "project" && (
@@ -1454,7 +1474,7 @@ export function AllocationPageClient({
                 type="checkbox"
                 checked={showProjectsWithoutBooking}
                 onChange={(e) => setShowProjectsWithoutBooking(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-form"
               />
               <span className="text-sm text-text-primary">
                 Show projects without booking
@@ -1468,33 +1488,28 @@ export function AllocationPageClient({
           {showConsultantView && (
             <>
               <div className="p-2">
-                {expandableConsultantIds.size > 0 && (
-                  <div className="mb-1 flex items-center gap-2 px-1">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
-                      className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
-                    >
-                      Expand all
-                    </button>
-                    <span className="text-xs text-text-primary opacity-50">|</span>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedConsultants(new Set())}
-                      className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
-                    >
-                      Collapse all
-                    </button>
-                  </div>
-                )}
                 <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                  {embedMode ? (
-                    <span className="shrink-0" />
-                  ) : (
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
-                    Internal
-                  </h3>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {expandableConsultantIds.size > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedConsultants(new Set(expandableConsultantIds))}
+                          className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+                        >
+                          Expand all
+                        </button>
+                        <span className="text-xs text-text-primary opacity-50">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedConsultants(new Set())}
+                          className="cursor-pointer text-xs text-text-primary opacity-70 hover:underline hover:opacity-100"
+                        >
+                          Collapse all
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] tabular-nums text-text-primary opacity-70">
                       {weekFrom <= weekTo
@@ -1523,7 +1538,7 @@ export function AllocationPageClient({
                     </button>
                   </div>
                 </div>
-                <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
+                <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
                   <colgroup>
                     <col style={{ width: embedMode ? 72 : 300 }} />
                     {data.weeks.map((w) => (
@@ -1537,13 +1552,18 @@ export function AllocationPageClient({
                     {!embedMode && <col className="w-6" />}
                   </colgroup>
                   <thead>
-                    <tr className="border-b border-grid-subtle bg-bg-muted/80">
+                    <tr className="border-b border-grid-subtle">
                       <th
                         rowSpan={2}
                         style={{ width: embedMode ? 72 : 300, maxWidth: embedMode ? 72 : 300, boxSizing: 'border-box' }}
                         className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
-                        Consultant / Project
+                        <span className="block">Consultant / Project</span>
+                        {!embedMode && (
+                          <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-primary opacity-55">
+                            Internal
+                          </span>
+                        )}
                       </th>
                       {monthSpans.map((span, i) => (
                         <th
@@ -1580,7 +1600,7 @@ export function AllocationPageClient({
                         />
                       )}
                     </tr>
-                    <tr className="border-b border-grid-subtle bg-bg-muted">
+                    <tr className="border-b border-grid-subtle">
                       {renderWeekHeaderCells("internal")}
                     </tr>
                   </thead>
@@ -1592,7 +1612,7 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr
-                      className={`border-b border-grid-light-subtle last:border-border ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                      className={`border-b border-grid-light-subtle last:border-form ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
                     >
                       <td className={`border-r border-grid-light-subtle px-2 py-1.5 align-top ${embedMode ? "max-w-0" : ""}`}>
                         <div className={`flex items-center justify-between gap-1 w-full ${embedMode ? "min-w-0" : ""}`}>
@@ -1732,7 +1752,7 @@ export function AllocationPageClient({
                         return (
                         <tr
                           key={pr.projectId + (pr.roleName || "")}
-                          className="border-b border-grid-light-subtle last:border-border"
+                          className="border-b border-grid-light-subtle last:border-form"
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
                           }}
@@ -2072,10 +2092,7 @@ export function AllocationPageClient({
               </div>
               {!embedMode && (
               <div className="p-2">
-                <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-text-primary opacity-60">
-                  External
-                </h3>
-                <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
+                <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
                   <colgroup>
                     <col style={{ width: 300 }} />
                     {data.weeks.map((w) => (
@@ -2084,13 +2101,16 @@ export function AllocationPageClient({
                     <col className="w-6" />
                   </colgroup>
                   <thead>
-                    <tr className="border-b border-grid-subtle bg-bg-muted/80">
+                    <tr className="border-b border-grid-subtle">
                       <th
                         rowSpan={2}
                         style={{ width: 300, maxWidth: 300, boxSizing: 'border-box' }}
                         className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                       >
-                        Consultant / Project
+                        <span className="block">Consultant / Project</span>
+                        <span className="mt-0.5 block text-[9px] font-normal uppercase tracking-wider text-text-primary opacity-55">
+                          External
+                        </span>
                       </th>
                       {monthSpans.map((span, i) => (
                         <th
@@ -2107,7 +2127,7 @@ export function AllocationPageClient({
                         aria-label="Remove booking"
                       />
                     </tr>
-                    <tr className="border-b border-grid-subtle bg-bg-muted">
+                    <tr className="border-b border-grid-subtle">
                       {renderWeekHeaderCells("external")}
                     </tr>
                   </thead>
@@ -2118,7 +2138,7 @@ export function AllocationPageClient({
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr
-                      className={`border-b border-grid-light-subtle last:border-border ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                      className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <div className="flex items-center justify-between gap-1 w-full">
@@ -2250,7 +2270,7 @@ export function AllocationPageClient({
                         return (
                         <tr
                           key={pr.projectId}
-                          className="border-b border-grid-light-subtle last:border-border"
+                          className="border-b border-grid-light-subtle last:border-form"
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
                           }}
@@ -2601,7 +2621,7 @@ export function AllocationPageClient({
                             return { ...prev, selectedAllocationIds: next };
                           });
                         }}
-                        className="rounded border-border"
+                        className="rounded border-form"
                       />
                       <span>{formatWeekLabel(a.week, a.year)}</span>
                     </label>

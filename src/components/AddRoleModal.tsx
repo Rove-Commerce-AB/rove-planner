@@ -49,7 +49,7 @@ export function AddRoleModal({ isOpen, onClose, onSuccess }: Props) {
           e.preventDefault();
           handleSubmit();
         }}
-        className="mt-6 space-y-4"
+        className="modal-form-discreet mt-6 space-y-4"
       >
         <Input
           id="role-name"
@@ -58,6 +58,7 @@ export function AddRoleModal({ isOpen, onClose, onSuccess }: Props) {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Senior Developer"
           error={error ?? undefined}
+          modalStyle
           autoFocus
         />
 

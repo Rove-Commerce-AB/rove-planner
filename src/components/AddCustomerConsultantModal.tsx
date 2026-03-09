@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
-import { Select, Button } from "@/components/ui";
+import { Dialog, Select, Button, modalSelectTriggerClass } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultants";
 import { addConsultantToCustomer } from "@/lib/customerConsultants";
-import { useEscToClose } from "@/lib/useEscToClose";
 import type { CustomerConsultant } from "@/lib/customerConsultants";
 
 type Props = {
@@ -63,80 +61,51 @@ export function AddCustomerConsultantModal({
     }
   };
 
-  useEscToClose(isOpen, onClose);
-
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open) onClose();
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-sm overflow-hidden rounded-panel border border-panel bg-bg-default shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-consultant-title"
+    <Dialog open={isOpen} onOpenChange={handleOpenChange} title="Add consultant">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit();
+        }}
+        className="modal-form-discreet mt-6 space-y-4"
       >
-        <div className="flex items-center justify-between border-b border-panel bg-bg-muted/40 px-4 py-3">
-          <h2
-            id="add-consultant-title"
-            className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-          >
-            Add consultant
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-sm p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:text-text-primary"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
+        {error && (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+
+        <Select
+          id="add-consultant-select"
+          label="Consultant"
+          value={selectedId}
+          onValueChange={setSelectedId}
+          placeholder="Select consultant"
+          variant="modal"
+          triggerClassName={modalSelectTriggerClass}
+          options={options}
+        />
+
+        {options.length === 0 && allConsultants.length > 0 && (
+          <p className="text-sm text-text-primary opacity-70">
+            All consultants are already assigned to this customer.
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Adding…" : "Add"}
+          </Button>
         </div>
-        <div className="space-y-4 p-5">
-          {error && (
-            <p className="text-sm text-danger" role="alert">
-              {error}
-            </p>
-          )}
-          <div>
-            <label
-              htmlFor="add-consultant-select"
-              className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-            >
-              Consultant
-            </label>
-            <Select
-              id="add-consultant-select"
-              value={selectedId}
-              onValueChange={setSelectedId}
-              placeholder="Select consultant"
-              triggerClassName="mt-1.5 border-panel"
-              options={options}
-            />
-          </div>
-          {options.length === 0 && allConsultants.length > 0 && (
-            <p className="text-sm text-text-primary opacity-70">
-              All consultants are already assigned to this customer.
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || !selectedId}
-            >
-              {submitting ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+      </form>
+    </Dialog>
   );
 }

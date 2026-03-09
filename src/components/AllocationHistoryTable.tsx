@@ -9,7 +9,7 @@ type Props = {
 
 export function AllocationHistoryTable({ entries, loading }: Props) {
   return (
-    <div className="rounded border border-border bg-panel px-4 py-4">
+    <div className="rounded border border-form bg-panel px-4 py-4">
       <h3 className="mb-3 text-sm font-medium text-text-primary">
         Recent allocation changes
       </h3>
@@ -23,7 +23,7 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-0 text-left text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/40 text-[10px] font-medium uppercase tracking-wider text-text-primary">
+              <tr className="border-b border-form bg-muted/40 text-[10px] font-medium uppercase tracking-wider text-text-primary">
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Customer - Project</th>
                 <th className="px-4 py-3">Consultant</th>
@@ -37,7 +37,7 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
               {entries.map((entry) => (
                 <tr
                   key={entry.id}
-                  className="border-b border-border/60 last:border-0"
+                  className="border-b border-form/60 last:border-0"
                 >
                   <td className="px-4 py-2.5">
                     <span

@@ -11,7 +11,7 @@ const TabsList = forwardRef<
 >(({ className = "", ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
-    className={`flex gap-2 border-b border-border ${className}`}
+    className={`flex gap-2 border-b border-[var(--color-tabs-border)] ${className}`}
     {...props}
   />
 ));

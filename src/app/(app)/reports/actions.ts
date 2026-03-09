@@ -5,7 +5,8 @@ import type { OccupancyReportResult } from "@/lib/occupancyReport";
 
 export async function getOccupancyReportDataAction(
   weeks: { year: number; week: number }[],
-  roleId: string | null
+  roleId: string | null,
+  teamId?: string | null
 ): Promise<OccupancyReportResult> {
-  return getOccupancyReportData(weeks, roleId);
+  return getOccupancyReportData(weeks, roleId, teamId);
 }

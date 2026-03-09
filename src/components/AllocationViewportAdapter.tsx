@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageLoading } from "@/components/ui/PageLoading";
 
 const LEFT_COL_WIDTH = 300;
-const MIN_WEEK_WIDTH = 28;
+const MIN_WEEK_WIDTH = 29; // week column width in px; used to avoid horizontal scroll by showing fewer weeks
 const EXTRA_PADDING = 56;
 const MIN_WEEKS = 8;
 const MAX_WEEKS = 52;

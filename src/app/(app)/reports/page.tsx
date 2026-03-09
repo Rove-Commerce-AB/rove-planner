@@ -5,6 +5,7 @@ import { getCurrentYearWeek, addWeeksToYearWeek } from "@/lib/dateUtils";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getOccupancyReportData, getOccupancyByRoleReport } from "@/lib/occupancyReport";
 import { getRoles } from "@/lib/roles";
+import { getTeams } from "@/lib/teams";
 import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { OccupancyChartPanel } from "@/components/OccupancyChartPanel";
 import { RoleOccupancyPanel } from "@/components/RoleOccupancyPanel";
@@ -27,22 +28,23 @@ export default async function ReportsPage() {
     weeks.push(addWeeksToYearWeek(currentYear, currentWeek, i));
   }
 
-  const weeksNext10 = [];
-  for (let i = 0; i < 10; i++) {
-    weeksNext10.push(addWeeksToYearWeek(currentYear, currentWeek, i));
+  const weeksRoleOccupancy = 21; // 2 back + current + 18 ahead
+  const weeksForRoleOccupancy = [];
+  for (let i = -2; i < weeksRoleOccupancy - 2; i++) {
+    weeksForRoleOccupancy.push(addWeeksToYearWeek(currentYear, currentWeek, i));
   }
 
-  const roles = await getRoles();
+  const [roles, teams] = await Promise.all([getRoles(), getTeams()]);
   const [data, forecast, occupancyData, roleOccupancyRows] = await Promise.all([
     getDashboardData(),
     getRevenueForecast(currentYear, 1, currentYear + 1, 52),
-    getOccupancyReportData(weeks, undefined),
-    getOccupancyByRoleReport(weeksNext10, roles),
+    getOccupancyReportData(weeks, undefined, undefined),
+    getOccupancyByRoleReport(weeksForRoleOccupancy, roles),
   ]);
 
   return (
     <div className="p-6">
-      <div className="max-w-6xl">
+      <div className="mx-auto max-w-6xl">
         <PageHeader
           title="Reports"
           description={`Week ${data.currentWeek}, ${data.currentYear}`}
@@ -53,10 +55,15 @@ export default async function ReportsPage() {
           <OccupancyChartPanel
             initialData={occupancyData}
             roles={roles}
+            teams={teams}
             currentYear={currentYear}
             currentWeek={currentWeek}
           />
-          <RoleOccupancyPanel rows={roleOccupancyRows} />
+          <RoleOccupancyPanel
+            rows={roleOccupancyRows}
+            currentYear={currentYear}
+            currentWeek={currentWeek}
+          />
           <RevenueForecastPanel forecast={forecast} currentYear={data.currentYear} />
         </div>
       </div>

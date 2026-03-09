@@ -34,6 +34,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
   const router = useRouter();
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -65,7 +66,19 @@ export function ProjectsPageClient({ projects, error }: Props) {
           p.customerName.toLowerCase().includes(q)
       );
     }
-    const sorted = [...result].sort((a, b) => {
+    return result;
+  }, [projects, search]);
+
+  const visibleProjects = useMemo(
+    () =>
+      showInactive
+        ? filteredProjects
+        : filteredProjects.filter((p) => p.isActive),
+    [filteredProjects, showInactive]
+  );
+
+  const sortedProjects = useMemo(() => {
+    const sorted = [...visibleProjects].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case "name":
@@ -94,7 +107,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [projects, search, sortKey, sortDir]);
+  }, [visibleProjects, sortKey, sortDir]);
 
   const handleSuccess = async () => {
     await revalidateProjects();
@@ -122,8 +135,8 @@ export function ProjectsPageClient({ projects, error }: Props) {
       {!error && projects.length === 0 && (
         <EmptyState
           title="No projects yet"
-          description="Create your first project to start allocating consultants and tracking hours."
-          actionLabel="Create project"
+          description="Add your first project to start allocating consultants and tracking hours."
+          actionLabel="Add project"
           onAction={() => setAddModalOpen(true)}
         />
       )}
@@ -131,7 +144,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
       {!error && projects.length > 0 && (
         <>
           <div
-            className="mt-6 rounded-panel border border-border p-4"
+            className="mt-6 rounded-panel border border-form p-4"
             style={{ backgroundColor: "var(--panel-bg)", borderColor: "var(--panel-border)" }}
           >
             <div className="relative w-full sm:max-w-xs">
@@ -141,7 +154,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
                 placeholder="Search projects…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                className="w-full rounded-lg border border-form py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
               />
             </div>
           </div>
@@ -156,7 +169,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
           ) : (
             <Panel className="mt-6">
               <h2
-                className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-base font-semibold text-text-primary`}
+                className={`bg-bg-muted/40 px-4 py-3 text-base font-semibold text-text-primary shadow-panel-header`}
               >
                 Projects
               </h2>
@@ -227,7 +240,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProjects.map((project) => {
+                    {sortedProjects.map((project) => {
                       const color = project.color || DEFAULT_CUSTOMER_COLOR;
                       const isInactive = !project.isActive;
                       const dateRange =
@@ -289,6 +302,30 @@ export function ProjectsPageClient({ projects, error }: Props) {
                   </tbody>
                 </table>
               </div>
+              {!showInactive && filteredProjects.some((p) => !p.isActive) && (
+                <div className="border-t border-panel px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowInactive(true)}
+                    className="w-full rounded-md py-2 text-center text-sm font-medium text-text-primary opacity-70 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
+                    aria-label="Show inactive projects"
+                  >
+                    Show inactive ({filteredProjects.filter((p) => !p.isActive).length})
+                  </button>
+                </div>
+              )}
+              {showInactive && filteredProjects.some((p) => !p.isActive) && (
+                <div className="border-t border-panel px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowInactive(false)}
+                    className="w-full rounded-md py-2 text-center text-sm font-medium text-text-primary opacity-70 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
+                    aria-label="Hide inactive projects"
+                  >
+                    Hide inactive
+                  </button>
+                </div>
+              )}
             </Panel>
           )}
         </>

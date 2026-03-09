@@ -1,63 +1,78 @@
 "use client";
 
-import { Users } from "lucide-react";
 import type { RoleOccupancyRow } from "@/lib/occupancyReport";
-import { Panel } from "@/components/ui";
-
-const panelHeaderBorder = "border-panel";
+import { getMonthSpansForWeeks } from "@/lib/dateUtils";
+import { Panel, PanelSectionTitle } from "@/components/ui";
 
 type Props = {
   rows: RoleOccupancyRow[];
+  currentYear: number;
+  currentWeek: number;
 };
 
-function occupancyColor(pct: number): string {
-  if (pct <= 0) return "text-text-primary opacity-50";
-  if (pct <= 95) return "text-text-primary";
-  if (pct <= 100) return "text-brand-signal";
-  return "text-amber-600 dark:text-amber-400";
+/** Same scale as allocation table percentage cells. */
+function getOccupancyCellBgClass(pct: number): string {
+  if (pct === 0) return "bg-bg-muted/20";
+  if (pct < 50) return "bg-danger/18";
+  if (pct < 75) return "bg-danger/10";
+  if (pct < 95) return "bg-success/10";
+  if (pct <= 105) return "bg-success/20";
+  if (pct <= 120) return "bg-brand-blue/14";
+  return "bg-brand-blue/25";
 }
 
-function occupancyBg(pct: number): string {
-  if (pct <= 0) return "bg-transparent";
-  if (pct <= 95) return "bg-brand-signal/10";
-  if (pct <= 100) return "bg-brand-signal/15";
-  return "bg-amber-500/15";
-}
-
-export function RoleOccupancyPanel({ rows }: Props) {
-  const weekLabels =
-    rows.length > 0 && rows[0].weeks.length > 0
-      ? rows[0].weeks.slice(0, 10).map((w) => w.label)
-      : [];
+export function RoleOccupancyPanel({
+  rows,
+  currentYear,
+  currentWeek,
+}: Props) {
+  const weekCount =
+    rows.length > 0 && rows[0].weeks.length > 0 ? rows[0].weeks.length : 0;
+  const weeks =
+    weekCount > 0 ? rows[0].weeks.map((w) => ({ year: w.year, week: w.week })) : [];
+  const monthSpans = getMonthSpansForWeeks(weeks);
+  const isCurrentWeek = (year: number, week: number) =>
+    year === currentYear && week === currentWeek;
 
   return (
     <Panel>
-      <div
-        className={`flex items-center gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
-      >
-        <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-          <Users className="h-4 w-4" />
-          Occupancy by role — next 10 weeks
-        </h2>
-      </div>
-      <div className="overflow-x-auto p-4">
+      <PanelSectionTitle>OCCUPANCY BY ROLE</PanelSectionTitle>
+      <div className="overflow-x-auto p-3 pt-0">
         {rows.length === 0 ? (
           <p className="py-4 text-center text-sm text-text-primary opacity-70">
             No roles to display.
           </p>
         ) : (
-          <table className="w-full min-w-[520px] border-collapse text-sm">
+          <table className="w-full min-w-0 border-collapse text-sm">
             <thead>
               <tr>
-                <th className="border-b border-panel py-2 pr-4 text-left font-medium text-text-primary opacity-80">
+                <th
+                  rowSpan={2}
+                  className="w-0 max-w-[6rem] border-b border-r border-panel py-2 pr-2 text-left text-xs font-medium text-text-primary opacity-80"
+                >
                   Role
                 </th>
-                {weekLabels.map((label) => (
+                {monthSpans.map((span, i) => (
                   <th
-                    key={label}
-                    className="border-b border-panel px-2 py-2 text-center font-medium text-text-primary opacity-80"
+                    key={i}
+                    colSpan={span.colSpan}
+                    className="w-0 min-w-[2.25rem] border-b border-panel px-0.5 py-1 text-center text-xs font-medium uppercase tracking-wide text-text-primary opacity-60"
                   >
-                    {label}
+                    {span.label}
+                  </th>
+                ))}
+              </tr>
+              <tr className="border-b border-panel">
+                {weeks.map((w, i) => (
+                  <th
+                    key={`${w.year}-${w.week}`}
+                    className={`w-0 min-w-[2.25rem] border-r border-panel/60 px-1 py-1 text-center text-xs font-medium text-text-primary opacity-80 ${
+                      isCurrentWeek(w.year, w.week)
+                        ? "current-week-header bg-brand-signal/20 border-l border-r"
+                        : ""
+                    }`}
+                  >
+                    v{w.week}
                   </th>
                 ))}
               </tr>
@@ -68,16 +83,20 @@ export function RoleOccupancyPanel({ rows }: Props) {
                   key={row.roleId || "all"}
                   className="border-b border-panel/60 last:border-b-0"
                 >
-                  <td className="py-2.5 pr-4 font-medium text-text-primary">
+                  <td className="max-w-[6rem] truncate border-r border-panel/60 py-2 pr-2 font-medium text-text-primary">
                     {row.roleName}
                   </td>
-                  {Array.from({ length: 10 }, (_, i) => {
+                  {Array.from({ length: weekCount }, (_, i) => {
+                    const wk = row.weeks[i];
                     const p = row.points[i];
+                    const current = wk && isCurrentWeek(wk.year, wk.week);
                     if (p == null) {
                       return (
                         <td
                           key={i}
-                          className="px-2 py-2 text-center text-text-primary opacity-40"
+                          className={`px-1 py-1.5 text-center text-xs text-text-primary opacity-40 ${
+                            current ? "bg-brand-signal/15 border-l border-r border-brand-signal/30" : ""
+                          }`}
                         >
                           —
                         </td>
@@ -86,10 +105,12 @@ export function RoleOccupancyPanel({ rows }: Props) {
                     const pct = p.occupancyExkl;
                     return (
                       <td
-                        key={row.weeks[i]?.label ?? i}
-                        className={`px-2 py-2 text-center ${occupancyBg(pct)} ${occupancyColor(pct)}`}
+                        key={wk?.label ?? i}
+                        className={`w-0 min-w-[2.25rem] border-r border-panel/60 px-1 py-1.5 text-center text-xs tabular-nums text-text-primary ${getOccupancyCellBgClass(pct)} ${
+                          current ? "current-week-cell bg-brand-signal/15 border-l border-r border-brand-signal/30" : ""
+                        }`}
                       >
-                        <span className="tabular-nums">{pct}%</span>
+                        {pct}%
                       </td>
                     );
                   })}

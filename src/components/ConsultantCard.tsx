@@ -16,7 +16,7 @@ export function ConsultantCard({ consultant }: Props) {
   return (
     <Link
       href={`/consultants/${consultant.id}`}
-      className="flex flex-col rounded-lg border border-border bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
+      className="flex flex-col rounded-lg border border-form bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
     >
       <div className="flex min-h-[140px] flex-col justify-between">
         <div className="flex items-start justify-between gap-2">
@@ -80,7 +80,7 @@ export function ConsultantCard({ consultant }: Props) {
         </div>
       </div>
 
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-form pt-4">
         <p className="mb-2 text-xs font-medium text-text-primary opacity-60">
           Week {consultant.weekNumber}
         </p>

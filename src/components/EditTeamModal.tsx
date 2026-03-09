@@ -63,7 +63,7 @@ export function EditTeamModal({
           e.preventDefault();
           handleSubmit();
         }}
-        className="mt-6 space-y-4"
+        className="modal-form-discreet mt-6 space-y-4"
       >
         <Input
           id="edit-team-name"
@@ -72,6 +72,7 @@ export function EditTeamModal({
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Team Sthlm"
           error={error ?? undefined}
+          modalStyle
         />
 
         <div className="flex justify-end gap-2">

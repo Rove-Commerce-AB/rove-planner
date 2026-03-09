@@ -22,11 +22,11 @@ export function PanelSection({
 }: Props) {
   return (
     <section
-      className={`border-t border-border first:border-t-0 ${className}`.trim()}
+      className={`border-t border-form first:border-t-0 ${className}`.trim()}
     >
-      <div className="p-6">
+      <div className="px-3 py-1.5">
         {(title ?? icon ?? description) && (
-          <div className="mb-4">
+          <div className="mb-1.5">
             {(title ?? icon) && (
               <h2 className="flex items-center gap-2 text-lg font-semibold text-text-primary">
                 {icon}
@@ -41,7 +41,7 @@ export function PanelSection({
           </div>
         )}
         {children}
-        {footer && <div className="mt-6">{footer}</div>}
+        {footer && <div className="mt-2">{footer}</div>}
       </div>
     </section>
   );

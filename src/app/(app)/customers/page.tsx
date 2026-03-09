@@ -1,21 +1,9 @@
-import { getCustomersWithDetails } from "@/lib/customers";
-import { CustomersPageClient } from "@/components/CustomersPageClient";
+import { redirect } from "next/navigation";
 
-export default async function CustomersPage() {
-  let customers: Awaited<ReturnType<typeof getCustomersWithDetails>> = [];
-  let error: string | null = null;
-
-  try {
-    customers = await getCustomersWithDetails();
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to fetch customers";
-  }
-
-  return (
-    <div className="p-6">
-      <div className="max-w-6xl">
-        <CustomersPageClient customers={customers} error={error} />
-      </div>
-    </div>
-  );
+/**
+ * Customer list is now in the side panel (click Customers in the sidebar).
+ * Redirect so old bookmarks to /customers still work.
+ */
+export default function CustomersPage() {
+  redirect("/");
 }

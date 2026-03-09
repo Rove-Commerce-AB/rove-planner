@@ -12,7 +12,7 @@ const AccordionItem = forwardRef<
 >(({ className = "", ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={`rounded-lg border border-border bg-bg-default ${className}`}
+    className={`rounded-lg border border-form bg-bg-default ${className}`}
     {...props}
   />
 ));
@@ -25,7 +25,7 @@ const AccordionTrigger = forwardRef<
   <AccordionPrimitive.Header>
     <AccordionPrimitive.Trigger
       ref={ref}
-      className={`flex w-full items-center justify-between p-4 text-left hover:bg-bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset data-[state=open]:rounded-t-lg [&[data-state=open]>svg]:rotate-180 ${className}`}
+      className={`flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset data-[state=open]:rounded-t-lg [&[data-state=open]>svg]:rotate-180 ${className}`}
       {...props}
     >
       {children}

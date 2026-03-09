@@ -57,16 +57,16 @@ export default async function ProjectPage({ params, searchParams }: Props) {
   return (
     <div className="p-6">
       <ProjectDetailClient
-          project={project}
-          allocationData={allocationData}
-          allocationError={allocationError}
-          allocationYear={year}
-          allocationWeekFrom={weekFrom}
-          allocationWeekTo={weekTo}
-          currentYear={currentYear}
-          currentWeek={currentWeek}
-          allocationRates={Object.keys(allocationRates).length > 0 ? allocationRates : undefined}
-        />
+        project={project}
+        allocationData={allocationData}
+        allocationError={allocationError}
+        allocationYear={year}
+        allocationWeekFrom={weekFrom}
+        allocationWeekTo={weekTo}
+        currentYear={currentYear}
+        currentWeek={currentWeek}
+        allocationRates={Object.keys(allocationRates).length > 0 ? allocationRates : undefined}
+      />
     </div>
   );
 }

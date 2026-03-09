@@ -30,7 +30,7 @@ export function ProjectCard({ project }: Props) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      className={`flex overflow-hidden rounded-lg border border-border bg-bg-default shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 ${
+      className={`flex overflow-hidden rounded-lg border border-form bg-bg-default shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 ${
         isInactive ? "opacity-60 grayscale" : ""
       }`}
     >
@@ -69,7 +69,7 @@ export function ProjectCard({ project }: Props) {
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+        <div className="mt-4 flex items-center justify-between border-t border-form pt-4">
           <div>
             <p className="text-xs text-text-primary opacity-60">
               Total allocated

@@ -12,6 +12,7 @@ export type Customer = {
   account_manager_id: string | null;
   color: string | null;
   logo_url: string | null;
+  url: string | null;
   is_active: boolean;
 };
 
@@ -22,6 +23,7 @@ export type CreateCustomerInput = {
   account_manager_id?: string | null;
   color?: string | null;
   logo_url?: string | null;
+  url?: string | null;
   is_active?: boolean;
 };
 
@@ -32,6 +34,7 @@ export type UpdateCustomerInput = {
   account_manager_id?: string | null;
   color?: string | null;
   logo_url?: string | null;
+  url?: string | null;
   is_active?: boolean;
 };
 
@@ -48,7 +51,7 @@ function getInitials(name: string): string {
 export async function getCustomerById(id: string): Promise<CustomerWithDetails | null> {
   const { data, error } = await supabase
     .from("customers")
-    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active")
     .eq("id", id)
     .single();
 
@@ -93,6 +96,7 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
       : null,
     color: data.color || DEFAULT_CUSTOMER_COLOR,
     logoUrl: data.logo_url ?? null,
+    url: data.url ?? null,
     initials: getInitials(data.name),
     isActive: data.is_active ?? true,
     activeProjectCount: activeProjects.length,
@@ -111,7 +115,7 @@ export async function getCustomerById(id: string): Promise<CustomerWithDetails |
 export async function getCustomers(): Promise<Customer[]> {
   const { data, error } = await supabase
     .from("customers")
-    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active")
     .order("name");
 
   if (error) throw error;
@@ -162,10 +166,11 @@ export async function updateCustomer(
       ...(input.logo_url !== undefined && {
         logo_url: input.logo_url?.trim() || null,
       }),
+      ...(input.url !== undefined && { url: input.url?.trim() || null }),
       ...(input.is_active !== undefined && { is_active: input.is_active }),
     })
     .eq("id", id)
-    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active")
     .single();
 
   if (error) throw error;
@@ -224,6 +229,7 @@ export async function getCustomersWithDetails(): Promise<CustomerWithDetails[]> 
         : null,
       color: c.color || DEFAULT_CUSTOMER_COLOR,
       logoUrl: c.logo_url ?? null,
+      url: c.url ?? null,
       initials: getInitials(c.name),
       isActive: c.is_active ?? true,
       activeProjectCount: activeProjects.length,

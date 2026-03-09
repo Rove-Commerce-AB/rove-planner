@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { updateConsultant, deleteConsultant } from "@/lib/consultants";
 import { useEscToClose } from "@/lib/useEscToClose";
-import { ConfirmModal, Select, Switch } from "@/components/ui";
+import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
 import { getRoles } from "@/lib/roles";
 import { getCalendars } from "@/lib/calendars";
 import { getTeams } from "@/lib/teams";
@@ -196,7 +196,7 @@ export function EditConsultantModal({
             e.preventDefault();
             handleSubmit();
           }}
-          className="mt-6 space-y-4"
+          className="modal-form-discreet mt-6 space-y-4"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -217,7 +217,7 @@ export function EditConsultantModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Anna Andersson"
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 ${modalInputClass}`}
             />
           </div>
 
@@ -228,6 +228,7 @@ export function EditConsultantModal({
             value={roleId}
             onValueChange={setRoleId}
             placeholder="Select role"
+            variant="modal"
             options={(() => {
               const base = roles.map((r) => ({ value: r.id, label: r.name }));
               if (roleId && consultant.roleName && !base.some((o) => o.value === roleId)) {
@@ -235,6 +236,7 @@ export function EditConsultantModal({
               }
               return base;
             })()}
+            triggerClassName={modalSelectTriggerClass}
           />
 
           <div>
@@ -250,7 +252,7 @@ export function EditConsultantModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="anna@company.com"
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 ${modalInputClass}`}
             />
           </div>
 
@@ -261,6 +263,7 @@ export function EditConsultantModal({
             value={calendarId}
             onValueChange={setCalendarId}
             placeholder="Select calendar"
+            variant="modal"
             options={(() => {
               const base = calendars.map((c) => ({
                 value: c.id,
@@ -271,6 +274,7 @@ export function EditConsultantModal({
               }
               return base;
             })()}
+            triggerClassName={modalSelectTriggerClass}
           />
 
           <Select
@@ -279,10 +283,12 @@ export function EditConsultantModal({
             value={String(workPercentage)}
             onValueChange={(v) => setWorkPercentage(parseInt(v, 10))}
             placeholder="Select"
+            variant="modal"
             options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
               value: String(p),
               label: `${p}%`,
             }))}
+            triggerClassName={modalSelectTriggerClass}
           />
 
           <Select
@@ -291,10 +297,12 @@ export function EditConsultantModal({
             value={String(overheadPercentage)}
             onValueChange={(v) => setOverheadPercentage(parseInt(v, 10))}
             placeholder="Select"
+            variant="modal"
             options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
               value: String(p),
               label: `${p}%`,
             }))}
+            triggerClassName={modalSelectTriggerClass}
           />
 
           <Select
@@ -303,6 +311,7 @@ export function EditConsultantModal({
             value={teamId ?? ""}
             onValueChange={(v) => setTeamId(v ? v : null)}
             placeholder="No team"
+            variant="modal"
             options={[
               { value: "", label: "No team" },
               ...(teamId && consultant.teamName && !teams.some((t) => t.id === teamId)
@@ -310,6 +319,7 @@ export function EditConsultantModal({
                 : []),
               ...teams.map((t) => ({ value: t.id, label: t.name })),
             ]}
+            triggerClassName={modalSelectTriggerClass}
           />
 
           <Switch
@@ -321,30 +331,25 @@ export function EditConsultantModal({
         </form>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <button
+          <Button
             type="button"
+            variant="dangerSecondary"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={submitting || deleting}
-            className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             {deleting ? "Deleting…" : "Delete"}
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               form="edit-consultant-form"
               disabled={submitting || deleting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

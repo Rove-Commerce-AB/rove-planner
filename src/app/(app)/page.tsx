@@ -67,10 +67,10 @@ export default async function DashboardPage() {
                 your allocations here.
               </p>
               <Link
-                href="/consultants"
+                href="/"
                 className="mt-4 inline-block text-brand-signal hover:underline"
               >
-                Go to Consultants →
+                Go to Dashboard →
               </Link>
             </div>
           </Panel>
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
 
         <Panel>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-0 table-fixed border border-border text-[10px]">
+            <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
               <colgroup>
                 <col style={{ width: 280 }} />
                 {weeks.map((w) => (
@@ -164,7 +164,7 @@ export default async function DashboardPage() {
                   return (
                     <tr
                       key={keyStr(key)}
-                      className="border-b border-grid-light-subtle last:border-border bg-bg-default"
+                      className="border-b border-grid-light-subtle last:border-form bg-bg-default"
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1 align-middle text-left">
                         <span className="text-text-primary opacity-90">

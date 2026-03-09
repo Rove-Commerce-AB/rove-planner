@@ -1,19 +1,30 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { updateConsultant, deleteConsultant } from "@/lib/consultants";
 import type { ConsultantForEdit } from "@/lib/consultants";
 import {
-  ConfirmModal,
-  Select,
   Button,
+  ConfirmModal,
   DetailPageHeader,
+  FieldLabel,
+  FieldValue,
+  InlineEditFieldContainer,
+  InlineEditStatus,
+  InlineEditTrigger,
   Panel,
+  PanelSectionTitle,
+  Select,
+  SAVED_DURATION_MS,
+  editInputClass,
+  editTriggerClass,
 } from "@/components/ui";
 import { getRoles } from "@/lib/roles";
 import { getCalendars } from "@/lib/calendars";
 import { getTeams } from "@/lib/teams";
+import { isInlineEditValueChanged } from "@/lib/inlineEdit";
+import { useSidePanel } from "@/contexts/SidePanelContext";
 
 const WORK_PERCENTAGE_OPTIONS = Array.from(
   { length: 20 },
@@ -45,6 +56,7 @@ type Props = {
 
 export function ConsultantDetailClient({ consultant: initial }: Props) {
   const router = useRouter();
+  const { refreshConsultants } = useSidePanel();
   const [name, setName] = useState(initial.name);
   const [roleId, setRoleId] = useState(initial.role_id);
   const [email, setEmail] = useState(initial.email ?? "");
@@ -67,6 +79,10 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const originalEditValueRef = useRef<string>("");
+  const [showSaved, setShowSaved] = useState(false);
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedFieldRef = useRef<EditField>(null);
 
   const syncFromInitial = useCallback(() => {
     setName(initial.name);
@@ -97,65 +113,137 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
       .catch(() => setOptionsReady(true));
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
+
   const saveField = async (field: EditField, value: string) => {
     if (field == null) return;
     setError(null);
+    const trimmed = value.trim();
+    switch (field) {
+      case "name":
+        setName(trimmed);
+        break;
+      case "email":
+        setEmail(trimmed);
+        break;
+      case "role":
+        setRoleId(value);
+        break;
+      case "calendar":
+        setCalendarId(value);
+        break;
+      case "workPercentage":
+        setWorkPercentage(parseInt(value, 10));
+        break;
+      case "overheadPercentage":
+        setOverheadPercentage(parseInt(value, 10));
+        break;
+      case "team":
+        setTeamId(value || null);
+        break;
+      case "startDate":
+        setStartDate(trimmed);
+        break;
+      case "endDate":
+        setEndDate(trimmed);
+        break;
+      default:
+        break;
+    }
+    lastSavedFieldRef.current = field;
+    setEditingField(null);
+    setShowSaved(true);
+    if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    savedTimeoutRef.current = setTimeout(() => {
+      savedTimeoutRef.current = null;
+      lastSavedFieldRef.current = null;
+      setShowSaved(false);
+    }, SAVED_DURATION_MS);
     setSubmitting(true);
     try {
-      const payload: Parameters<typeof updateConsultant>[1] = { id: initial.id } as never;
       switch (field) {
         case "name":
-          await updateConsultant(initial.id, { name: value.trim() });
-          setName(value.trim());
+          await updateConsultant(initial.id, { name: trimmed });
           break;
         case "email":
-          await updateConsultant(initial.id, { email: value.trim() || null });
-          setEmail(value.trim());
+          await updateConsultant(initial.id, { email: trimmed || null });
           break;
         case "role":
           await updateConsultant(initial.id, { role_id: value });
-          setRoleId(value);
           break;
         case "calendar":
           await updateConsultant(initial.id, { calendar_id: value });
-          setCalendarId(value);
           break;
         case "workPercentage":
           await updateConsultant(initial.id, { work_percentage: parseInt(value, 10) });
-          setWorkPercentage(parseInt(value, 10));
           break;
         case "overheadPercentage":
           await updateConsultant(initial.id, { overhead_percentage: parseInt(value, 10) });
-          setOverheadPercentage(parseInt(value, 10));
           break;
         case "team":
           await updateConsultant(initial.id, { team_id: value || null });
-          setTeamId(value || null);
           break;
         case "startDate":
-          await updateConsultant(initial.id, { start_date: value.trim() || null });
-          setStartDate(value.trim());
+          await updateConsultant(initial.id, { start_date: trimmed || null });
           break;
         case "endDate":
-          await updateConsultant(initial.id, { end_date: value.trim() || null });
-          setEndDate(value.trim());
+          await updateConsultant(initial.id, { end_date: trimmed || null });
           break;
         default:
           break;
       }
+      refreshConsultants();
       router.refresh();
-      setEditingField(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
+      setShowSaved(false);
+      lastSavedFieldRef.current = null;
+      switch (field) {
+        case "name": setName(initial.name); break;
+        case "email": setEmail(initial.email ?? ""); break;
+        case "role": setRoleId(initial.role_id); break;
+        case "calendar": setCalendarId(initial.calendar_id); break;
+        case "team": setTeamId(initial.team_id); break;
+        case "workPercentage": setWorkPercentage(initial.workPercentage); break;
+        case "overheadPercentage": setOverheadPercentage(initial.overheadPercentage); break;
+        case "startDate": setStartDate(initial.startDate ?? ""); break;
+        case "endDate": setEndDate(initial.endDate ?? ""); break;
+        default: break;
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
+  const startEdit = (field: EditField, value: string) => {
+    setError(null);
+    originalEditValueRef.current = value;
+    setEditValue(value);
+    setEditingField(field);
+  };
+
   const cancelEdit = () => {
+    setEditValue(originalEditValueRef.current);
     setEditingField(null);
     setError(null);
   };
+
+  const commitEdit = (overrideValue?: string) => {
+    if (editingField == null) return;
+    const val = overrideValue ?? editValue;
+    if (!isInlineEditValueChanged(originalEditValueRef.current, val)) {
+      setEditingField(null);
+      return;
+    }
+    saveField(editingField, val);
+  };
+
+  const inlineEditStatus =
+    submitting ? "saving" : showSaved ? "saved" : error ? "error" : "idle";
 
   const handleDelete = async () => {
     setError(null);
@@ -163,7 +251,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     try {
       await deleteConsultant(initial.id);
       setShowDeleteConfirm(false);
-      router.push("/consultants");
+      router.push("/");
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
@@ -178,6 +266,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     try {
       await updateConsultant(initial.id, { is_external: !isExternal });
       setIsExternal(!isExternal);
+      refreshConsultants();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -224,27 +313,11 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     ...teams.map((t) => ({ value: t.id, label: t.name })),
   ];
 
-  const labelClass = "text-xs font-medium uppercase tracking-wider text-text-primary opacity-70";
-  const valueClass = "font-semibold text-text-primary";
-
   return (
     <>
       <DetailPageHeader
-        backHref="/consultants"
-        backLabel="Back to Consultants"
         avatar={<span>{initials}</span>}
         title={name}
-        subtitle={isExternal ? "External Consultant" : "Internal Consultant"}
-        action={
-          <Button
-            variant="secondary"
-            className="border-danger text-danger hover:bg-danger/10"
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-          >
-            Delete Consultant
-          </Button>
-        }
       />
 
       {error && (
@@ -253,383 +326,358 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* INFORMATION */}
-        <Panel>
-          <h2 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}>
-            INFORMATION
-          </h2>
-          <div className="space-y-6 p-5">
-            <div>
-              <div className={labelClass}>Name</div>
-              {editingField === "name" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <Panel>
+        <PanelSectionTitle>GENERAL INFORMATION</PanelSectionTitle>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 p-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="min-w-0">
+            <FieldLabel>Name</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "name"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "name"}
+                displayContent={
+                  <InlineEditTrigger onClick={() => startEdit("name", name)}>
+                    <FieldValue>{name}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <input
                     type="text"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    className="flex-1 min-w-[120px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    onBlur={() => commitEdit()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                    }}
+                    className={editInputClass}
                     autoFocus
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("name", editValue)}
-                    disabled={submitting || !editValue.trim()}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(name);
-                    setEditingField("name");
-                  }}
-                >
-                  {name}
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
+          </div>
 
-            <div>
-              <div className={labelClass}>Email</div>
-              {editingField === "email" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>Email</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "email"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "email"}
+                displayContent={
+                  <InlineEditTrigger
+                    className={email ? "text-brand-signal" : "text-text-primary opacity-70"}
+                    onClick={() => startEdit("email", email)}
+                  >
+                    <FieldValue>{email || "—"}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <input
                     type="email"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    className="flex-1 min-w-[120px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    onBlur={() => commitEdit()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                    }}
+                    className={editInputClass}
                     autoFocus
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("email", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline ${email ? "text-brand-signal" : "text-text-primary opacity-70"}`}
-                  onClick={() => {
-                    setEditValue(email);
-                    setEditingField("email");
-                  }}
-                >
-                  {email || "—"}
-                </button>
-              )}
-            </div>
-
-            <div>
-              <div className={labelClass}>Default role</div>
-              {editingField === "role" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <Select
-                    value={editValue}
-                    onValueChange={setEditValue}
-                    options={roleOptions}
-                    placeholder="Select role"
-                    className="min-w-[160px]"
-                    triggerClassName="!border-2 !border-brand-signal"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("role", editValue)}
-                    disabled={submitting || !editValue}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(roleId);
-                    setEditingField("role");
-                  }}
-                >
-                  {initial.roleName}
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
           </div>
-        </Panel>
 
-        {/* TEAM & AVAILABILITY */}
-        <Panel>
-          <h2 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}>
-            TEAM &amp; AVAILABILITY
-          </h2>
-          <div className="space-y-6 p-5">
-            <div>
-              <div className={labelClass}>Team</div>
-              {editingField === "team" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>Default role</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "role"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "role"}
+                displayContent={
+                  <InlineEditTrigger onClick={() => startEdit("role", roleId)}>
+                    <FieldValue>{initial.roleName}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <Select
                     value={editValue}
-                    onValueChange={setEditValue}
+                    onValueChange={(v) => {
+                      setEditValue(v);
+                      commitEdit(v);
+                    }}
+                    onBlur={() => commitEdit()}
+                    options={roleOptions}
+                    placeholder="Select role"
+                    className="min-w-0 flex-1 w-full"
+                    triggerClassName={editTriggerClass}
+                  />
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <FieldLabel>Team</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "team"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "team"}
+                displayContent={
+                  <InlineEditTrigger onClick={() => startEdit("team", teamId ?? "")}>
+                    <FieldValue>{initial.teamName ?? "—"}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
+                  <Select
+                    value={editValue}
+                    onValueChange={(v) => {
+                      setEditValue(v);
+                      commitEdit(v);
+                    }}
+                    onBlur={() => commitEdit()}
                     options={teamOptions}
                     placeholder="No team"
-                    className="min-w-[160px]"
-                    triggerClassName="!border-2 !border-brand-signal"
+                    className="min-w-0 flex-1 w-full"
+                    triggerClassName={editTriggerClass}
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("team", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(teamId ?? "");
-                    setEditingField("team");
-                  }}
-                >
-                  {initial.teamName ?? "—"}
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
+          </div>
 
-            <div>
-              <div className={labelClass}>Capacity</div>
-              {editingField === "workPercentage" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>Capacity</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "workPercentage"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "workPercentage"}
+                displayContent={
+                  <InlineEditTrigger
+                    onClick={() =>
+                      startEdit("workPercentage", String(workPercentage))
+                    }
+                  >
+                    <FieldValue>{workPercentage}%</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <Select
                     value={editValue}
-                    onValueChange={setEditValue}
+                    onValueChange={(v) => {
+                      setEditValue(v);
+                      commitEdit(v);
+                    }}
+                    onBlur={() => commitEdit()}
                     options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
                       value: String(p),
                       label: `${p}%`,
                     }))}
                     placeholder="Select"
-                    className="min-w-[100px]"
-                    triggerClassName="!border-2 !border-brand-signal"
+                    className="min-w-0 flex-1 w-full"
+                    triggerClassName={editTriggerClass}
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("workPercentage", editValue)}
-                    disabled={submitting || !editValue}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(String(workPercentage));
-                    setEditingField("workPercentage");
-                  }}
-                >
-                  {workPercentage}%
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
+          </div>
 
-            <div>
-              <div className={labelClass}>Overhead (%)</div>
-              {editingField === "overheadPercentage" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>Overhead (%)</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "overheadPercentage"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "overheadPercentage"}
+                displayContent={
+                  <InlineEditTrigger
+                    onClick={() =>
+                      startEdit(
+                        "overheadPercentage",
+                        String(overheadPercentage ?? 0)
+                      )
+                    }
+                  >
+                    <FieldValue>{overheadPercentage ?? 0}%</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <Select
                     value={editValue}
-                    onValueChange={setEditValue}
+                    onValueChange={(v) => {
+                      setEditValue(v);
+                      commitEdit(v);
+                    }}
+                    onBlur={() => commitEdit()}
                     options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
                       value: String(p),
                       label: `${p}%`,
                     }))}
                     placeholder="Select"
-                    className="min-w-[100px]"
-                    triggerClassName="!border-2 !border-brand-signal"
+                    className="min-w-0 flex-1 w-full"
+                    triggerClassName={editTriggerClass}
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("overheadPercentage", editValue)}
-                    disabled={submitting || editValue === ""}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(String(overheadPercentage ?? 0));
-                    setEditingField("overheadPercentage");
-                  }}
-                >
-                  {overheadPercentage ?? 0}%
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
+          </div>
 
-            <div>
-              <div className={labelClass}>Start date</div>
-              {editingField === "startDate" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>Start date</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "startDate"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "startDate"}
+                displayContent={
+                  <InlineEditTrigger
+                    className={startDate ? "text-brand-signal" : "text-text-primary opacity-70"}
+                    onClick={() => startEdit("startDate", startDate)}
+                  >
+                    <FieldValue>{startDate || "—"}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <input
                     type="date"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    className="rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    onBlur={() => commitEdit()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                    }}
+                    className={editInputClass}
                     autoFocus
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("startDate", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline ${startDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
-                  onClick={() => {
-                    setEditValue(startDate);
-                    setEditingField("startDate");
-                  }}
-                >
-                  {startDate || "—"}
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
+          </div>
 
-            <div>
-              <div className={labelClass}>End date</div>
-              {editingField === "endDate" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>End date</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "endDate"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "endDate"}
+                displayContent={
+                  <InlineEditTrigger
+                    className={endDate ? "text-brand-signal" : "text-text-primary opacity-70"}
+                    onClick={() => startEdit("endDate", endDate)}
+                  >
+                    <FieldValue>{endDate || "—"}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <input
                     type="date"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    className="rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
+                    onBlur={() => commitEdit()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                    }}
+                    className={editInputClass}
                     autoFocus
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("endDate", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline ${endDate ? "text-brand-signal" : "text-text-primary opacity-70"}`}
-                  onClick={() => {
-                    setEditValue(endDate);
-                    setEditingField("endDate");
-                  }}
-                >
-                  {endDate || "—"}
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
+          </div>
 
-            <div>
-              <div className={labelClass}>Calendar</div>
-              {editingField === "calendar" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <FieldLabel>Calendar</FieldLabel>
+            <div className="mt-0.5">
+              <InlineEditFieldContainer
+                isEditing={editingField === "calendar"}
+                onRequestClose={commitEdit}
+                showSavedIndicator={showSaved && lastSavedFieldRef.current === "calendar"}
+                displayContent={
+                  <InlineEditTrigger onClick={() => startEdit("calendar", calendarId)}>
+                    <FieldValue>{initial.calendarName}</FieldValue>
+                  </InlineEditTrigger>
+                }
+                editContent={
                   <Select
                     value={editValue}
-                    onValueChange={setEditValue}
+                    onValueChange={(v) => {
+                      setEditValue(v);
+                      commitEdit(v);
+                    }}
+                    onBlur={() => commitEdit()}
                     options={calendarOptions}
                     placeholder="Select calendar"
-                    className="min-w-[180px]"
-                    triggerClassName="!border-2 !border-brand-signal"
+                    className="min-w-0 flex-1 w-full"
+                    triggerClassName={editTriggerClass}
                   />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("calendar", editValue)}
-                    disabled={submitting || !editValue}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(calendarId);
-                    setEditingField("calendar");
-                  }}
-                >
-                  {initial.calendarName}
-                </button>
-              )}
+                }
+                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+              />
             </div>
           </div>
-        </Panel>
 
-        {/* ADDITIONAL INFORMATION + TYPE */}
-        <Panel className="lg:col-span-2">
-          <h2 className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}>
-            ADDITIONAL INFORMATION
-          </h2>
-          <div className="grid grid-cols-1 gap-6 p-5 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <div className={labelClass}>Internal ID</div>
-              <p className={`mt-1.5 ${valueClass}`}>{initial.id.slice(0, 8)}…</p>
-            </div>
-            <div>
-              <div className={labelClass}>Type</div>
-              <div className="mt-1.5">
-                <button
-                  type="button"
-                  onClick={toggleExternal}
-                  disabled={submitting}
-                  className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isExternal ? "External" : "Internal"}
-                </button>
-              </div>
+          <div className="min-w-0">
+            <FieldLabel>Internal ID</FieldLabel>
+            <p className="mt-0.5">
+              <FieldValue>{initial.id.slice(0, 8)}…</FieldValue>
+            </p>
+          </div>
+
+          <div className="min-w-0">
+            <FieldLabel>Type</FieldLabel>
+            <div className="mt-0.5">
+              <button
+                type="button"
+                onClick={toggleExternal}
+                disabled={submitting}
+                className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isExternal ? "External" : "Internal"}
+              </button>
             </div>
           </div>
-        </Panel>
+        </div>
+      </Panel>
+
+      <div className="pt-4">
+        <Button
+          variant="ghost"
+          className="text-danger hover:bg-danger/10 hover:text-danger"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={submitting || deleting}
+        >
+          Delete consultant
+        </Button>
       </div>
 
       <ConfirmModal

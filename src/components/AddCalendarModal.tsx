@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { createCalendar } from "@/lib/calendars";
 import { useEscToClose } from "@/lib/useEscToClose";
+import { Button, modalInputClass, modalFocusClass } from "@/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -101,7 +102,7 @@ export function AddCalendarModal({ isOpen, onClose, onSuccess }: Props) {
             e.preventDefault();
             handleSubmit();
           }}
-          className="mt-6 space-y-4"
+          className="modal-form-discreet mt-6 space-y-4"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -122,7 +123,7 @@ export function AddCalendarModal({ isOpen, onClose, onSuccess }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Sweden"
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 ${modalInputClass}`}
               autoFocus
             />
           </div>
@@ -141,7 +142,7 @@ export function AddCalendarModal({ isOpen, onClose, onSuccess }: Props) {
               onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
               placeholder="e.g. SE"
               maxLength={2}
-              className="mt-1 w-24 rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted ${modalFocusClass}`}
             />
           </div>
 
@@ -158,25 +159,17 @@ export function AddCalendarModal({ isOpen, onClose, onSuccess }: Props) {
               value={hoursPerWeek}
               onChange={(e) => setHoursPerWeek(e.target.value)}
               placeholder="e.g. 40 or 37.5"
-              className="mt-1 w-32 rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 w-32 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted ${modalFocusClass}`}
             />
           </div>
 
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? "Adding…" : "Add"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

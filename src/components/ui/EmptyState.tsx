@@ -12,7 +12,7 @@ export function EmptyState({
   onAction,
 }: Props) {
   return (
-    <div className="mt-8 flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-muted/30 px-6 py-12 text-center">
+    <div className="mt-8 flex flex-col items-center justify-center rounded-lg border border-dashed border-form bg-bg-muted/30 px-6 py-12 text-center">
       <h3 className="text-lg font-medium text-text-primary">{title}</h3>
       <p className="mt-2 max-w-sm text-sm text-text-primary opacity-70">
         {description}

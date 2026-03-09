@@ -36,7 +36,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="p-6">
-      <div className="max-w-6xl">
+      <div className="mx-auto w-full max-w-3xl">
         <SettingsPageClient
           roles={roles}
           teams={teams}

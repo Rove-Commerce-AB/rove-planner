@@ -10,7 +10,7 @@ import {
   deleteAllocationWithHistory,
 } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
-import { ConfirmModal, Select } from "@/components/ui";
+import { Button, ConfirmModal, Select, modalFocusClass } from "@/components/ui";
 
 type AllocationData = {
   id: string;
@@ -156,7 +156,7 @@ export function EditAllocationModal({
             e.preventDefault();
             handleSubmit();
           }}
-          className="mt-6 space-y-4"
+          className="modal-form-discreet mt-6 space-y-4"
         >
           {error && (
             <p className="text-sm text-danger" role="alert">
@@ -195,6 +195,7 @@ export function EditAllocationModal({
             value={roleId ?? ""}
             onValueChange={(v) => setRoleId(v ? v : null)}
             placeholder="No role"
+            variant="modal"
             options={[
               { value: "", label: "No role" },
               ...roles.map((r) => ({ value: r.id, label: r.name })),
@@ -218,7 +219,7 @@ export function EditAllocationModal({
               step={0.5}
               value={hours}
               onChange={(e) => setHours(e.target.value)}
-              className="mt-1 w-24 rounded-lg border border-border px-3 py-2 text-text-primary"
+              className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
             />
             <p className="mt-1 text-xs text-text-primary opacity-60">
               Set to 0 to remove the allocation
@@ -226,30 +227,22 @@ export function EditAllocationModal({
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <button
+            <Button
               type="button"
+              variant="dangerSecondary"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={deleting}
-              className="inline-flex items-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4" />
               Delete
-            </button>
+            </Button>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-              >
+              <Button type="button" variant="secondary" onClick={handleClose}>
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
-              >
+              </Button>
+              <Button type="submit" disabled={submitting}>
                 {submitting ? "Saving…" : "Save"}
-              </button>
+              </Button>
             </div>
           </div>
         </form>

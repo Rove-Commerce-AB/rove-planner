@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { createCustomerAction } from "@/app/(app)/customers/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
+import { Button, modalInputClass } from "@/components/ui";
 
 type Props = {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
       const customer = await createCustomerAction({
         name: name.trim(),
       });
+      onSuccess();
       onClose();
       await router.push(`/customers/${customer.id}`);
       router.refresh();
@@ -71,7 +73,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
             id="add-customer-title"
             className="text-lg font-semibold text-text-primary"
           >
-            Add new customer
+            Add customer
           </h2>
           <button
             type="button"
@@ -83,7 +85,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="modal-form-discreet mt-6 space-y-4">
           {error && (
             <p className="text-sm text-danger" role="alert">
               {error}
@@ -103,26 +105,18 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Company AB"
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+              className={`mt-1 ${modalInputClass}`}
               autoFocus
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-border bg-bg-default px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-muted"
-            >
+            <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-brand-signal px-4 py-2 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? "Adding…" : "Add"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

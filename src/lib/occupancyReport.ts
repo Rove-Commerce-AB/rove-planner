@@ -51,12 +51,13 @@ function weekLabel(year: number, week: number): string {
 }
 
 /**
- * Fetches occupancy report data for the given weeks, optionally filtered by role.
- * Capacity and allocations are limited to consultants with the given role when roleId is set.
+ * Fetches occupancy report data for the given weeks, optionally filtered by role and/or team.
+ * Capacity and allocations are limited to consultants matching the filters when set.
  */
 export async function getOccupancyReportData(
   weeks: { year: number; week: number }[],
-  roleId: string | null | undefined
+  roleId: string | null | undefined,
+  teamId?: string | null
 ): Promise<OccupancyReportResult> {
   const weeksWithLabel: OccupancyWeek[] = weeks.map((w) => ({
     year: w.year,
@@ -82,13 +83,16 @@ export async function getOccupancyReportData(
   }
 
   const consultantIds = consultantsRaw
+    .filter((c) => !(c as { is_external?: boolean }).is_external)
     .filter((c) => (roleId == null || c.role_id === roleId))
+    .filter((c) => (teamId == null || teamId === "" || (c as { team_id?: string | null }).team_id === teamId))
     .map((c) => c.id);
   const consultantIdSet = new Set(consultantIds);
 
   const calendarIds = [
     ...new Set(
       consultantsRaw
+        .filter((c) => !(c as { is_external?: boolean }).is_external)
         .filter((c) => consultantIdSet.has(c.id))
         .map((c) => c.calendar_id)
         .filter(Boolean)

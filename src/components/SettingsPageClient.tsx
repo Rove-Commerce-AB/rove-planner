@@ -1,21 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Globe, Trash2, Plus, UsersRound, ShieldCheck, MessageCirclePlus, Pencil, Check } from "lucide-react";
+import { Plus, Trash2, Pencil, Check } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/roles";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
-import { addAppUser, removeAppUser, type AppUser } from "@/lib/appUsers";
+import { removeAppUser, type AppUser } from "@/lib/appUsers";
 import {
   updateFeatureRequest,
   deleteFeatureRequest,
   setFeatureRequestImplemented,
   type FeatureRequest,
 } from "@/lib/featureRequests";
-import { Button, ConfirmModal, PageHeader, Panel, Input } from "@/components/ui";
+import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, editInputListClass, inlineEditTriggerListClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
+import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
-const panelHeaderBorder = "border-panel";
+import { AddAppUserModal } from "./AddAppUserModal";
 import { AddRoleModal } from "./AddRoleModal";
 import { AddTeamModal } from "./AddTeamModal";
 import { AddCalendarModal } from "./AddCalendarModal";
@@ -46,14 +47,14 @@ export function SettingsPageClient({
   const isAdmin = currentAppUser?.role === "admin";
   const [addRoleOpen, setAddRoleOpen] = useState(false);
   const [appUserToDelete, setAppUserToDelete] = useState<AppUser | null>(null);
-  const [addingAppUser, setAddingAppUser] = useState(false);
-  const [addAppUserError, setAddAppUserError] = useState<string | null>(null);
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"member" | "admin">("member");
+  const [addAppUserModalOpen, setAddAppUserModalOpen] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [editingRoleValue, setEditingRoleValue] = useState("");
   const [savingRole, setSavingRole] = useState(false);
+  const [showSavedRole, setShowSavedRole] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const savedRoleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedRoleIdRef = useRef<string | null>(null);
   const [addCalendarOpen, setAddCalendarOpen] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<{
     id: string;
@@ -63,6 +64,10 @@ export function SettingsPageClient({
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingTeamValue, setEditingTeamValue] = useState("");
   const [savingTeam, setSavingTeam] = useState(false);
+  const [showSavedTeam, setShowSavedTeam] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const savedTeamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedTeamIdRef = useRef<string | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<{
     id: string;
     name: string;
@@ -70,8 +75,20 @@ export function SettingsPageClient({
   const [editingFeatureRequestId, setEditingFeatureRequestId] = useState<string | null>(null);
   const [editingFeatureRequestValue, setEditingFeatureRequestValue] = useState("");
   const [savingFeatureRequest, setSavingFeatureRequest] = useState(false);
+  const [showSavedFeatureRequest, setShowSavedFeatureRequest] = useState(false);
+  const [featureRequestError, setFeatureRequestError] = useState<string | null>(null);
+  const savedFeatureRequestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedFeatureRequestIdRef = useRef<string | null>(null);
   const [featureRequestToDelete, setFeatureRequestToDelete] = useState<FeatureRequest | null>(null);
   const [togglingImplementedId, setTogglingImplementedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (savedRoleTimeoutRef.current) clearTimeout(savedRoleTimeoutRef.current);
+      if (savedTeamTimeoutRef.current) clearTimeout(savedTeamTimeoutRef.current);
+      if (savedFeatureRequestTimeoutRef.current) clearTimeout(savedFeatureRequestTimeoutRef.current);
+    };
+  }, []);
 
   const handleRoleDelete = async () => {
     if (!roleToDelete) return;
@@ -110,19 +127,48 @@ export function SettingsPageClient({
     }
   };
 
-  const saveFeatureRequestInline = async () => {
-    if (!editingFeatureRequestId || !editingFeatureRequestValue.trim()) return;
-    setSavingFeatureRequest(true);
-    try {
-      await updateFeatureRequest(editingFeatureRequestId, editingFeatureRequestValue.trim());
+  const saveFeatureRequestInline = async (originalContent: string) => {
+    if (!editingFeatureRequestId) return;
+    if (!editingFeatureRequestValue.trim()) {
       setEditingFeatureRequestId(null);
       setEditingFeatureRequestValue("");
+      return;
+    }
+    if (!isInlineEditValueChanged(originalContent, editingFeatureRequestValue)) {
+      setEditingFeatureRequestId(null);
+      setEditingFeatureRequestValue("");
+      return;
+    }
+    setFeatureRequestError(null);
+    const frIdToSave = editingFeatureRequestId;
+    const valueToSave = editingFeatureRequestValue.trim();
+    lastSavedFeatureRequestIdRef.current = frIdToSave;
+    setEditingFeatureRequestId(null);
+    setEditingFeatureRequestValue("");
+    setShowSavedFeatureRequest(true);
+    if (savedFeatureRequestTimeoutRef.current) clearTimeout(savedFeatureRequestTimeoutRef.current);
+    savedFeatureRequestTimeoutRef.current = setTimeout(() => {
+      savedFeatureRequestTimeoutRef.current = null;
+      lastSavedFeatureRequestIdRef.current = null;
+      setShowSavedFeatureRequest(false);
+    }, SAVED_DURATION_MS);
+    setSavingFeatureRequest(true);
+    try {
+      await updateFeatureRequest(frIdToSave, valueToSave);
       router.refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update");
+      setFeatureRequestError(e instanceof Error ? e.message : "Failed to update");
+      setShowSavedFeatureRequest(false);
+      lastSavedFeatureRequestIdRef.current = null;
     } finally {
       setSavingFeatureRequest(false);
     }
+  };
+
+  const cancelFeatureRequestEdit = (restoreContent: string) => {
+    setEditingFeatureRequestValue(restoreContent);
+    setEditingFeatureRequestId(null);
+    setFeatureRequestError(null);
   };
 
   const handleFeatureRequestDelete = async () => {
@@ -148,59 +194,92 @@ export function SettingsPageClient({
     }
   };
 
-  const handleAddAppUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddAppUserError(null);
-    if (!newUserEmail.trim()) {
-      setAddAppUserError("Email is required");
-      return;
-    }
-    setAddingAppUser(true);
-    try {
-      const formData = new FormData();
-      formData.set("email", newUserEmail.trim());
-      formData.set("name", newUserName.trim());
-      formData.set("role", newUserRole);
-      await addAppUser(formData);
-      setNewUserEmail("");
-      setNewUserName("");
-      setNewUserRole("member");
-      router.refresh();
-    } catch (e) {
-      setAddAppUserError(e instanceof Error ? e.message : "Could not add");
-    } finally {
-      setAddingAppUser(false);
-    }
-  };
-
-  const saveRoleInline = async () => {
-    if (!editingRoleId || !editingRoleValue.trim()) return;
-    setSavingRole(true);
-    try {
-      await updateRole(editingRoleId, editingRoleValue.trim());
+  const saveRoleInline = async (originalName: string) => {
+    if (!editingRoleId) return;
+    if (!editingRoleValue.trim()) {
       setEditingRoleId(null);
       setEditingRoleValue("");
+      return;
+    }
+    if (!isInlineEditValueChanged(originalName, editingRoleValue)) {
+      setEditingRoleId(null);
+      setEditingRoleValue("");
+      return;
+    }
+    setRoleError(null);
+    const roleIdToSave = editingRoleId;
+    const valueToSave = editingRoleValue.trim();
+    lastSavedRoleIdRef.current = roleIdToSave;
+    setEditingRoleId(null);
+    setEditingRoleValue("");
+    setShowSavedRole(true);
+    if (savedRoleTimeoutRef.current) clearTimeout(savedRoleTimeoutRef.current);
+    savedRoleTimeoutRef.current = setTimeout(() => {
+      savedRoleTimeoutRef.current = null;
+      lastSavedRoleIdRef.current = null;
+      setShowSavedRole(false);
+    }, SAVED_DURATION_MS);
+    setSavingRole(true);
+    try {
+      await updateRole(roleIdToSave, valueToSave);
       router.refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update role");
+      setRoleError(e instanceof Error ? e.message : "Failed to update role");
+      setShowSavedRole(false);
+      lastSavedRoleIdRef.current = null;
     } finally {
       setSavingRole(false);
     }
   };
 
-  const saveTeamInline = async () => {
-    if (!editingTeamId || !editingTeamValue.trim()) return;
-    setSavingTeam(true);
-    try {
-      await updateTeam(editingTeamId, editingTeamValue.trim());
+  const cancelRoleEdit = (restoreName: string) => {
+    setEditingRoleValue(restoreName);
+    setEditingRoleId(null);
+    setRoleError(null);
+  };
+
+  const saveTeamInline = async (originalName: string) => {
+    if (!editingTeamId) return;
+    if (!editingTeamValue.trim()) {
       setEditingTeamId(null);
       setEditingTeamValue("");
+      return;
+    }
+    if (!isInlineEditValueChanged(originalName, editingTeamValue)) {
+      setEditingTeamId(null);
+      setEditingTeamValue("");
+      return;
+    }
+    setTeamError(null);
+    const teamIdToSave = editingTeamId;
+    const valueToSave = editingTeamValue.trim();
+    lastSavedTeamIdRef.current = teamIdToSave;
+    setEditingTeamId(null);
+    setEditingTeamValue("");
+    setShowSavedTeam(true);
+    if (savedTeamTimeoutRef.current) clearTimeout(savedTeamTimeoutRef.current);
+    savedTeamTimeoutRef.current = setTimeout(() => {
+      savedTeamTimeoutRef.current = null;
+      lastSavedTeamIdRef.current = null;
+      setShowSavedTeam(false);
+    }, SAVED_DURATION_MS);
+    setSavingTeam(true);
+    try {
+      await updateTeam(teamIdToSave, valueToSave);
       router.refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update team");
+      setTeamError(e instanceof Error ? e.message : "Failed to update team");
+      setShowSavedTeam(false);
+      lastSavedTeamIdRef.current = null;
     } finally {
       setSavingTeam(false);
     }
+  };
+
+  const cancelTeamEdit = (restoreName: string) => {
+    setEditingTeamValue(restoreName);
+    setEditingTeamId(null);
+    setTeamError(null);
   };
 
   return (
@@ -208,73 +287,40 @@ export function SettingsPageClient({
       <PageHeader
         title="Settings"
         description="Manage calendars, roles and system configuration"
+        className="mb-6"
       />
 
       {error && (
-        <p className="mt-6 text-sm text-danger">Error: {error}</p>
+        <p className="mb-4 text-sm text-danger" role="alert">
+          {error}
+        </p>
       )}
 
-      {isAdmin && (
-        <div className="mt-8">
+      <div className="flex flex-col gap-5">
+        {isAdmin && (
           <Panel>
-            <div
-              className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+            <PanelSectionTitle
+              action={
+                <IconButton
+                  aria-label="Add user"
+                  onClick={() => setAddAppUserModalOpen(true)}
+                  className="text-text-muted hover:text-text-primary"
+                >
+                  <Plus className="h-4 w-4" />
+                </IconButton>
+              }
             >
-              <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-                <ShieldCheck className="h-4 w-4" />
-                Access / Users
-              </h2>
-            </div>
-            <div className="space-y-4 p-5">
-              <p className="text-sm text-text-primary opacity-70">
-                Users with access to the app. Only email addresses in the list
-                can log in. Add or remove users.
-              </p>
-              <form onSubmit={handleAddAppUser} className="flex flex-wrap items-end gap-3">
-                <Input
-                  type="email"
-                  label="Email"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  placeholder="namn@example.com"
-                  className="min-w-[200px]"
-                />
-                <Input
-                  type="text"
-                  label="Name (optional)"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="Name"
-                  className="min-w-[140px]"
-                />
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-text-primary">
-                    Role
-                  </label>
-                  <select
-                    value={newUserRole}
-                    onChange={(e) => setNewUserRole(e.target.value as "member" | "admin")}
-                    className="h-10 rounded-lg border border-border bg-bg-default px-3 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                <Button type="submit" disabled={addingAppUser}>
-                  Add
-                </Button>
-              </form>
-              {addAppUserError && (
-                <p className="text-sm text-danger">{addAppUserError}</p>
-              )}
-              <ul className="space-y-3">
+              ACCESS / USERS
+            </PanelSectionTitle>
+            <div className="overflow-x-auto p-3 pt-0">
+              <ul className="space-y-0.5">
                 {initialAppUsers.map((u) => (
                   <li
                     key={u.id}
-                    className="flex items-center gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
+                    className="flex h-[2.25rem] items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50"
                   >
-                    <div className="min-w-0 flex-1">
-                      <span className="font-medium text-text-primary">{u.email}</span>
+                    <div className="min-w-0 flex-1 truncate">
+                      <span className="text-sm font-medium text-text-primary">{u.email}</span>
                       {u.name && (
                         <span className="ml-2 text-sm text-text-primary opacity-70">
                           ({u.name})
@@ -284,102 +330,96 @@ export function SettingsPageClient({
                         {u.role === "admin" ? "Admin" : "Member"}
                       </span>
                     </div>
-                    <button
-                      type="button"
+                    <IconButton
+                      variant="ghostDanger"
                       onClick={() => setAppUserToDelete(u)}
-                      className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                       aria-label={`Remove ${u.email}`}
+                      className="shrink-0"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </IconButton>
                   </li>
                 ))}
               </ul>
             </div>
           </Panel>
-        </div>
-      )}
+        )}
 
-      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Panel>
-          <div
-            className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+          <PanelSectionTitle
+            action={
+              <IconButton
+                aria-label="Add role"
+                onClick={() => setAddRoleOpen(true)}
+                className="text-text-muted hover:text-text-primary"
+              >
+                <Plus className="h-4 w-4" />
+              </IconButton>
+            }
           >
-            <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-              <Users className="h-4 w-4" />
-              Roles
-            </h2>
-            <Button onClick={() => setAddRoleOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add role
-            </Button>
-          </div>
-          <div className="space-y-4 p-5">
-            <p className="text-sm text-text-primary opacity-70">
-              Manage roles that can be assigned to allocations. Also used for
-              customer-specific hourly rates.
-            </p>
-            <ul className="space-y-3">
+            ROLES
+          </PanelSectionTitle>
+          <div className="overflow-x-auto p-3 pt-0">
+            <ul className="space-y-0.5">
               {initialRoles.map((role) => (
                 <li
                   key={role.id}
-                  className="flex items-center gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
+                  className={`flex items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50 ${editingRoleId === role.id ? "py-1" : "h-[2.25rem]"}`}
                 >
-                  {editingRoleId === role.id ? (
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <input
-                        type="text"
-                        value={editingRoleValue}
-                        onChange={(e) => setEditingRoleValue(e.target.value)}
-                        className="min-w-[120px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveRoleInline();
-                          if (e.key === "Escape") {
-                            setEditingRoleId(null);
-                            setEditingRoleValue("");
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        onClick={saveRoleInline}
-                        disabled={savingRole || !editingRoleValue.trim()}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        onClick={() => {
-                          setEditingRoleId(null);
-                          setEditingRoleValue("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <div className="min-h-[2rem] flex items-center gap-2">
+                      {editingRoleId === role.id ? (
+                        <input
+                          type="text"
+                          value={editingRoleValue}
+                          onChange={(e) => setEditingRoleValue(e.target.value)}
+                          onBlur={() => saveRoleInline(role.name)}
+                          className={editInputListClass}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveRoleInline(role.name);
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelRoleEdit(role.name);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRoleError(null);
+                              setEditingRoleId(role.id);
+                              setEditingRoleValue(role.name);
+                            }}
+                            className={inlineEditTriggerListClassRowHover}
+                          >
+                            {role.name}
+                          </button>
+                          {showSavedRole && lastSavedRoleIdRef.current === role.id && <SavedCheckmark />}
+                        </>
+                      )}
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingRoleId(role.id);
-                        setEditingRoleValue(role.name);
-                      }}
-                      className="flex-1 text-left text-sm font-medium text-text-primary hover:underline"
-                    >
-                      {role.name}
-                    </button>
-                  )}
+                    {editingRoleId === role.id && (
+                      <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
+                        <InlineEditStatus
+                          status={
+                            savingRole ? "saving" : showSavedRole ? "saved" : roleError ? "error" : "idle"
+                          }
+                          message={roleError}
+                        />
+                      </div>
+                    )}
+                  </div>
                   {editingRoleId !== role.id && (
-                    <button
-                      type="button"
+                    <IconButton
+                      variant="ghostDanger"
                       onClick={() => setRoleToDelete(role)}
-                      className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                       aria-label={`Delete ${role.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </IconButton>
                   )}
                 </li>
               ))}
@@ -388,113 +428,103 @@ export function SettingsPageClient({
         </Panel>
 
         <Panel>
-          <div
-            className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+          <PanelSectionTitle
+            action={
+              <IconButton
+                aria-label="Add team"
+                onClick={() => setAddTeamOpen(true)}
+                className="text-text-muted hover:text-text-primary"
+              >
+                <Plus className="h-4 w-4" />
+              </IconButton>
+            }
           >
-            <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-              <UsersRound className="h-4 w-4" />
-              Teams
-            </h2>
-            <Button onClick={() => setAddTeamOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add team
-            </Button>
-          </div>
-          <div className="space-y-4 p-5">
-            <p className="text-sm text-text-primary opacity-70">
-              Manage teams for grouping consultants. Used for filtering on the
-              Allocation page.
-            </p>
-            <ul className="space-y-3">
+            TEAMS
+          </PanelSectionTitle>
+          <div className="overflow-x-auto p-3 pt-0">
+            <ul className="space-y-0.5">
               {initialTeams.map((team) => (
                 <li
                   key={team.id}
-                  className="flex items-center gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
+                  className={`flex items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50 ${editingTeamId === team.id ? "py-1" : "h-[2.25rem]"}`}
                 >
-                  {editingTeamId === team.id ? (
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <input
-                        type="text"
-                        value={editingTeamValue}
-                        onChange={(e) => setEditingTeamValue(e.target.value)}
-                        className="min-w-[120px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveTeamInline();
-                          if (e.key === "Escape") {
-                            setEditingTeamId(null);
-                            setEditingTeamValue("");
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        onClick={saveTeamInline}
-                        disabled={savingTeam || !editingTeamValue.trim()}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        onClick={() => {
-                          setEditingTeamId(null);
-                          setEditingTeamValue("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <div className="min-h-[2rem] flex items-center gap-2">
+                      {editingTeamId === team.id ? (
+                        <input
+                          type="text"
+                          value={editingTeamValue}
+                          onChange={(e) => setEditingTeamValue(e.target.value)}
+                          onBlur={() => saveTeamInline(team.name)}
+                          className={editInputListClass}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveTeamInline(team.name);
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelTeamEdit(team.name);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeamError(null);
+                              setEditingTeamId(team.id);
+                              setEditingTeamValue(team.name);
+                            }}
+                            className={inlineEditTriggerListClassRowHover}
+                          >
+                            {team.name}
+                          </button>
+                          {showSavedTeam && lastSavedTeamIdRef.current === team.id && <SavedCheckmark />}
+                        </>
+                      )}
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingTeamId(team.id);
-                        setEditingTeamValue(team.name);
-                      }}
-                      className="flex-1 text-left text-sm font-medium text-text-primary hover:underline"
-                    >
-                      {team.name}
-                    </button>
-                  )}
+                    {editingTeamId === team.id && (
+                      <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
+                        <InlineEditStatus
+                          status={
+                            savingTeam ? "saving" : showSavedTeam ? "saved" : teamError ? "error" : "idle"
+                          }
+                          message={teamError}
+                        />
+                      </div>
+                    )}
+                  </div>
                   {editingTeamId !== team.id && (
-                    <button
-                      type="button"
+                    <IconButton
+                      variant="ghostDanger"
                       onClick={() => setTeamToDelete(team)}
-                      className="rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                       aria-label={`Delete ${team.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </IconButton>
                   )}
                 </li>
               ))}
             </ul>
           </div>
         </Panel>
-      </div>
 
-      <div className="mt-6">
         <Panel>
-          <div
-            className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+          <PanelSectionTitle
+            action={
+              <IconButton
+                aria-label="Add calendar"
+                onClick={() => setAddCalendarOpen(true)}
+                className="text-text-muted hover:text-text-primary"
+              >
+                <Plus className="h-4 w-4" />
+              </IconButton>
+            }
           >
-            <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-              <Globe className="h-4 w-4" />
-              Calendars
-            </h2>
-            <Button onClick={() => setAddCalendarOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add calendar
-            </Button>
-          </div>
-          <div className="space-y-4 p-5">
-            <p className="text-sm text-text-primary opacity-70">
-              Manage calendars with holidays for different countries. Consultants
-              are linked to a calendar to determine their working hours and days
-              off.
-            </p>
-            <div className="space-y-3">
+            CALENDARS
+          </PanelSectionTitle>
+          <div className="overflow-x-auto p-3 pt-0">
+            <div className="space-y-0.5">
               {initialCalendars.map((calendar) => (
                 <CalendarAccordionItem
                   key={calendar.id}
@@ -506,84 +536,80 @@ export function SettingsPageClient({
             </div>
           </div>
         </Panel>
-      </div>
 
-      <div className="mt-6">
         <Panel>
-          <div
-            className={`flex items-center justify-between gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
-          >
-            <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-              <MessageCirclePlus className="h-4 w-4" />
-              Feature requests
-            </h2>
-          </div>
-          <div className="space-y-4 p-5">
-            <p className="text-sm text-text-primary opacity-70">
-              User-submitted feature requests. Edit or remove as needed.
-            </p>
-            <ul className="space-y-3">
+          <PanelSectionTitle>FEATURE REQUESTS</PanelSectionTitle>
+          <div className="overflow-x-auto p-3 pt-0">
+            <ul className="space-y-0.5">
               {initialFeatureRequests.length === 0 ? (
-                <li className="rounded-lg border border-panel bg-bg-default px-3 py-4 text-sm text-text-primary opacity-70">
+                <li className="rounded-md px-2 py-3 text-center text-sm text-text-primary opacity-60">
                   No feature requests yet.
                 </li>
               ) : (
                 initialFeatureRequests.map((fr) => (
                   <li
                     key={fr.id}
-                    className={`flex items-start gap-3 rounded-lg border border-panel px-3 py-2 ${fr.is_implemented ? "bg-green-100/80 dark:bg-green-900/20" : "bg-bg-default"}`}
+                    className={`flex items-start gap-4 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-muted/50 ${fr.is_implemented ? "bg-green-100/80 dark:bg-green-900/20" : ""}`}
                   >
-                    {editingFeatureRequestId === fr.id ? (
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                        <textarea
-                          value={editingFeatureRequestValue}
-                          onChange={(e) => setEditingFeatureRequestValue(e.target.value)}
-                          rows={2}
-                          className="min-w-[200px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") {
-                              setEditingFeatureRequestId(null);
-                              setEditingFeatureRequestValue("");
-                            }
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          onClick={saveFeatureRequestInline}
-                          disabled={savingFeatureRequest || !editingFeatureRequestValue.trim()}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          type="button"
-                          onClick={() => {
-                            setEditingFeatureRequestId(null);
-                            setEditingFeatureRequestValue("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
+                    <div className="min-w-0 flex-1 flex flex-col">
+                      <div className="flex min-h-[2rem] flex-col">
+                        {editingFeatureRequestId === fr.id ? (
+                          <textarea
+                            value={editingFeatureRequestValue}
+                            onChange={(e) => setEditingFeatureRequestValue(e.target.value)}
+                            onBlur={() => saveFeatureRequestInline(fr.content)}
+                            rows={2}
+                            className={editInputListClass}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelFeatureRequestEdit(fr.content);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="flex items-start gap-2 min-w-0 flex-1">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-text-primary">
+                                {fr.content}
+                              </p>
+                              {fr.submitted_by_email && (
+                                <p className="mt-1 text-xs text-text-primary opacity-60">
+                                  Requested by: {fr.submitted_by_email}
+                                </p>
+                              )}
+                            </div>
+                            {showSavedFeatureRequest && lastSavedFeatureRequestIdRef.current === fr.id && <SavedCheckmark />}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-text-primary">
-                            {fr.content}
-                          </p>
-                          {fr.submitted_by_email && (
-                            <p className="mt-1 text-xs text-text-primary opacity-60">
-                              Requested by: {fr.submitted_by_email}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-shrink-0 gap-1">
+                      <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
+                        {editingFeatureRequestId === fr.id ? (
+                          <InlineEditStatus
+                            status={
+                              savingFeatureRequest
+                                ? "saving"
+                                : showSavedFeatureRequest
+                                  ? "saved"
+                                  : featureRequestError
+                                    ? "error"
+                                    : "idle"
+                            }
+                            message={featureRequestError}
+                          />
+                        ) : (
+                          <div className={INLINE_EDIT_STATUS_ROW_MIN_H} aria-hidden />
+                        )}
+                      </div>
+                    </div>
+                    {editingFeatureRequestId !== fr.id && (
+                      <div className="flex flex-shrink-0 gap-1">
                           <button
                             type="button"
                             onClick={() => handleToggleImplemented(fr)}
                             disabled={togglingImplementedId === fr.id}
-                            className={`cursor-pointer rounded-sm p-1.5 ${fr.is_implemented ? "text-green-600 opacity-100" : "text-text-primary opacity-60 hover:opacity-100"} hover:bg-bg-muted disabled:opacity-50`}
+                            className={`cursor-pointer rounded-sm p-1.5 transition-colors disabled:opacity-50 ${fr.is_implemented ? "text-green-600 opacity-100" : "text-text-primary opacity-60 hover:opacity-100"} hover:bg-bg-muted/50`}
                             aria-label={fr.is_implemented ? "Mark as not implemented" : "Mark as implemented"}
                             title={fr.is_implemented ? "Mark as not implemented" : "Implemented"}
                           >
@@ -592,26 +618,25 @@ export function SettingsPageClient({
                           <button
                             type="button"
                             onClick={() => {
+                              setFeatureRequestError(null);
                               setEditingFeatureRequestId(fr.id);
                               setEditingFeatureRequestValue(fr.content);
                             }}
-                            className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
+                            className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
                             aria-label="Edit"
                             title="Edit"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
+                          <IconButton
+                            variant="ghostDanger"
                             onClick={() => setFeatureRequestToDelete(fr)}
-                            className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
                             aria-label="Delete"
                             title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </>
+                          </IconButton>
+                      </div>
                     )}
                   </li>
                 ))
@@ -620,6 +645,12 @@ export function SettingsPageClient({
           </div>
         </Panel>
       </div>
+
+      <AddAppUserModal
+        isOpen={addAppUserModalOpen}
+        onClose={() => setAddAppUserModalOpen(false)}
+        onSuccess={() => router.refresh()}
+      />
 
       <AddRoleModal
         isOpen={addRoleOpen}
@@ -668,7 +699,7 @@ export function SettingsPageClient({
             : ""
         }
         confirmLabel="Remove"
-        variant="danger"
+        variant="primary"
         onClose={() => setAppUserToDelete(null)}
         onConfirm={handleAppUserDelete}
       />

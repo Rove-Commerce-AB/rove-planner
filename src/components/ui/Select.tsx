@@ -19,11 +19,15 @@ type Props = {
   disabled?: boolean;
   /** Compact size for inline/filter use */
   size?: "sm" | "md";
+  /** Filter variant: small, discrete, pill-style for toolbar filters. Modal: discreet gray border, focus ring only. */
+  variant?: "default" | "filter" | "modal";
   className?: string;
   /** Extra classes for the trigger (e.g. h-10 for consistent height) */
   triggerClassName?: string;
   /** Extra classes for the dropdown viewport (e.g. max-h-60 overflow-y-auto for scroll) */
   viewportClassName?: string;
+  /** Called when the trigger loses focus (e.g. click outside) */
+  onBlur?: React.FocusEventHandler<HTMLButtonElement>;
 };
 
 export function Select({
@@ -36,9 +40,11 @@ export function Select({
   id,
   disabled,
   size = "md",
+  variant = "default",
   className = "",
   triggerClassName = "",
   viewportClassName = "",
+  onBlur,
 }: Props) {
   const EMPTY = "__empty__";
   const hasEmptyOption = options.some((o) => o.value === "");
@@ -49,11 +55,23 @@ export function Select({
         ? EMPTY
         : value;
 
-  const triggerSize = size === "sm" ? "py-1.5 px-3 text-sm" : "py-2 px-3";
+  const isFilter = variant === "filter";
+  const isModal = variant === "modal";
+  const triggerSize =
+    isFilter
+      ? "py-1 px-2.5 text-xs"
+      : size === "sm"
+        ? "py-1.5 px-3 text-sm"
+        : "py-2 px-3 text-sm";
+  const triggerShape = isFilter
+    ? "rounded-[14px] border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-form)] focus:ring-1 focus:ring-[var(--color-border-form)]"
+    : isModal
+      ? "rounded-lg border border-form bg-bg-default text-text-primary focus:border-form focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
+      : "rounded-lg border border-form bg-bg-default text-text-primary focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset";
 
   return (
     <div className={className}>
-      {label && (
+      {label && !isFilter && (
         <label
           htmlFor={id}
           className="mb-1 block text-sm font-medium text-text-primary"
@@ -70,16 +88,19 @@ export function Select({
       >
         <SelectPrimitive.Trigger
           id={id}
-          className={`inline-flex h-auto w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-bg-default text-left text-text-primary transition-colors placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted ${triggerSize} ${triggerClassName}`.trim()}
+          onBlur={onBlur}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error && id ? `${id}-error` : undefined}
+          className={`inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()}
         >
           <SelectPrimitive.Value placeholder={placeholder} />
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+            <ChevronDown className={isFilter ? "h-3.5 w-3.5 shrink-0 opacity-70" : "h-4 w-4 shrink-0 opacity-60"} />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content
-            className="z-[100] overflow-hidden rounded-lg border border-border bg-bg-default shadow-lg"
+            className="z-[100] overflow-hidden rounded-lg border border-form bg-bg-default shadow-lg"
             position="popper"
             sideOffset={4}
           >
@@ -90,7 +111,7 @@ export function Select({
                 <SelectPrimitive.Item
                   key={opt.value === "" ? EMPTY : opt.value}
                   value={opt.value === "" ? EMPTY : opt.value}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2 text-sm text-text-primary outline-none data-[highlighted]:bg-bg-muted data-[state=checked]:bg-brand-lilac/30 data-[state=checked]:text-text-primary data-[highlighted]:data-[state=checked]:bg-brand-lilac/40"
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-1.5 text-sm text-text-primary outline-none data-[highlighted]:bg-bg-muted data-[state=checked]:bg-brand-lilac/30 data-[state=checked]:text-text-primary data-[highlighted]:data-[state=checked]:bg-brand-lilac/40"
                 >
                   <SelectPrimitive.ItemText>{opt.label}</SelectPrimitive.ItemText>
                 </SelectPrimitive.Item>
@@ -100,7 +121,7 @@ export function Select({
         </SelectPrimitive.Portal>
       </SelectPrimitive.Root>
       {error && (
-        <p className="mt-1 text-sm text-danger" role="alert">
+        <p id={id ? `${id}-error` : undefined} className="mt-1 text-sm text-danger" role="alert">
           {error}
         </p>
       )}

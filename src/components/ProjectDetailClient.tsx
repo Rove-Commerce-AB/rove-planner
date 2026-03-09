@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRightLeft, Plus } from "lucide-react";
 import {
   updateProject,
   deleteProject,
@@ -14,16 +15,30 @@ import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPage";
 import {
+  Badge,
+  Button,
   ConfirmModal,
   Dialog,
-  Select,
-  Button,
   DetailPageHeader,
-  Panel,
+  FieldLabel,
+  FieldValue,
+  InlineEditFieldContainer,
+  InlineEditStatus,
+  InlineEditTrigger,
   Input,
+  IconButton,
+  Panel,
+  PanelSectionTitle,
+  PageLoading,
+  Select,
+  SAVED_DURATION_MS,
+  editInputClass,
+  editTriggerClass,
 } from "@/components/ui";
 import { moveEntireBookingAction } from "@/app/(app)/projects/[id]/actions";
 import { ProjectRatesTab } from "./ProjectRatesTab";
+import { AddProjectRateModal } from "./AddProjectRateModal";
+import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
 const AllocationPageClient = dynamic(
   () =>
@@ -32,6 +47,15 @@ const AllocationPageClient = dynamic(
     })),
   { ssr: false }
 );
+
+/** Same as Allocation page: week column 29px; left col 180px, two Tot cols 64px each in embed. Used to fit as many weeks as possible in planning panel. */
+const PLANNING_LEFT_COL_WIDTH = 180;
+const PLANNING_TOT_COLS_WIDTH = 64 * 2; // two Tot columns
+const PLANNING_MIN_WEEK_WIDTH = 29;
+const PLANNING_EXTRA_PADDING = 56;
+const PLANNING_MIN_WEEKS = 8;
+const PLANNING_MAX_WEEKS = 52;
+const PLANNING_VIEWPORT_DEBOUNCE_MS = 100;
 
 const tableBorder = "border-panel";
 
@@ -91,8 +115,13 @@ export function ProjectDetailClient({
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [ratesError, setRatesError] = useState<string | null>(null);
+  const [addRateModalOpen, setAddRateModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [showSaved, setShowSaved] = useState(false);
+  const originalEditValueRef = useRef<string>("");
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedFieldRef = useRef<EditField>(null);
   const [integrationOptions, setIntegrationOptions] = useState<
     IntegrationProjectOption[]
   >([]);
@@ -107,6 +136,9 @@ export function ProjectDetailClient({
   const [moveForward, setMoveForward] = useState(true);
   const [moveBookingError, setMoveBookingError] = useState<string | null>(null);
   const [moveBookingSubmitting, setMoveBookingSubmitting] = useState(false);
+  const planningContainerRef = useRef<HTMLDivElement>(null);
+  const [planningViewportReady, setPlanningViewportReady] = useState(false);
+  const planningViewportReadySetRef = useRef(false);
 
   useEffect(() => {
     setPlanningData(allocationData);
@@ -136,10 +168,60 @@ export function ProjectDetailClient({
         router.replace(`/projects/${initial.id}?${q}`, { scroll: false });
       } finally {
         setPlanningLoading(false);
+        setPlanningViewportReady(true);
       }
     },
     [initial.id, initial.customer_id, router]
   );
+
+  useEffect(() => {
+    const el = planningContainerRef.current;
+    if (!el) return;
+
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const updateWeeks = () => {
+      const w = el.clientWidth;
+      if (w < 100) return;
+      const available = w - PLANNING_LEFT_COL_WIDTH - PLANNING_TOT_COLS_WIDTH - PLANNING_EXTRA_PADDING;
+      const visibleWeeks = Math.floor(available / PLANNING_MIN_WEEK_WIDTH);
+      if (visibleWeeks < PLANNING_MIN_WEEKS) return;
+
+      const clamped = Math.min(PLANNING_MAX_WEEKS, visibleWeeks);
+      const currentSpan =
+        planningWeekFrom <= planningWeekTo
+          ? planningWeekTo - planningWeekFrom + 1
+          : 52 - planningWeekFrom + 1 + planningWeekTo;
+
+      if (clamped === currentSpan) {
+        if (!planningViewportReadySetRef.current) {
+          planningViewportReadySetRef.current = true;
+          setPlanningViewportReady(true);
+        }
+        return;
+      }
+
+      const newFrom = planningWeekFrom;
+      const newTo =
+        planningWeekFrom + clamped - 1 <= 52
+          ? planningWeekFrom + clamped - 1
+          : planningWeekFrom + clamped - 1 - 52;
+
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleWeekRangeChange(planningYear, newFrom, newTo);
+      }, PLANNING_VIEWPORT_DEBOUNCE_MS);
+    };
+
+    const ro = new ResizeObserver(updateWeeks);
+    ro.observe(el);
+    updateWeeks();
+
+    return () => {
+      ro.disconnect();
+      clearTimeout(timeoutId);
+    };
+  }, [planningYear, planningWeekFrom, planningWeekTo, handleWeekRangeChange]);
 
   const syncFromInitial = useCallback(() => {
     setName(initial.name);
@@ -169,55 +251,87 @@ export function ProjectDetailClient({
       .catch(() => setIntegrationOptions([{ value: "", label: "—" }]));
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
+
   const saveField = async (field: EditField, value: string) => {
     if (field == null) return;
     setError(null);
+    const trimmed = value.trim();
+    if (field === "name" && !trimmed) {
+      setError("Project name is required");
+      return;
+    }
+    if (field === "customerId" && !trimmed) {
+      setError("Customer is required");
+      return;
+    }
+    if (field === "probability") {
+      const num = parseInt(trimmed, 10);
+      if (Number.isNaN(num) || num < 10 || num > 100 || num % 10 !== 0) {
+        setError("Probability must be 10, 20, … 100");
+        return;
+      }
+    }
+    if (field === "budgetHours" && trimmed !== "") {
+      const num = parseInt(trimmed, 10);
+      if (num === null || Number.isNaN(num) || num < 0) {
+        setError("Enter a positive integer or leave empty");
+        return;
+      }
+    }
+    if (field === "budgetMoney" && trimmed !== "") {
+      const num = parseInt(trimmed, 10);
+      if (num === null || Number.isNaN(num) || num < 0) {
+        setError("Enter a positive integer (SEK) or leave empty");
+        return;
+      }
+    }
+    switch (field) {
+      case "name": setName(trimmed); break;
+      case "customerId": setCustomerId(trimmed); break;
+      case "startDate": setStartDate(trimmed); break;
+      case "endDate": setEndDate(trimmed); break;
+      case "probability": setProbability(parseInt(trimmed, 10)); break;
+      case "budgetHours":
+        setBudgetHours(trimmed === "" ? null : parseInt(trimmed, 10));
+        break;
+      case "budgetMoney":
+        setBudgetMoney(trimmed === "" ? null : parseInt(trimmed, 10));
+        break;
+      default: break;
+    }
+    lastSavedFieldRef.current = field;
+    setEditingField(null);
+    setShowSaved(true);
+    if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    savedTimeoutRef.current = setTimeout(() => {
+      lastSavedFieldRef.current = null;
+      setShowSaved(false);
+      savedTimeoutRef.current = null;
+    }, SAVED_DURATION_MS);
     setSubmitting(true);
     try {
-      const trimmed = value.trim();
       switch (field) {
         case "name":
-          if (!trimmed) {
-            setError("Project name is required");
-            setSubmitting(false);
-            return;
-          }
           await updateProject(initial.id, { name: trimmed });
-          setName(trimmed);
           break;
         case "customerId":
-          if (!trimmed) {
-            setError("Customer is required");
-            setSubmitting(false);
-            return;
-          }
           await updateProject(initial.id, { customer_id: trimmed });
-          setCustomerId(trimmed);
           break;
         case "startDate":
-          await updateProject(initial.id, {
-            start_date: trimmed || null,
-          });
-          setStartDate(trimmed || "");
+          await updateProject(initial.id, { start_date: trimmed || null });
           break;
         case "endDate":
-          await updateProject(initial.id, {
-            end_date: trimmed || null,
-          });
-          setEndDate(trimmed || "");
+          await updateProject(initial.id, { end_date: trimmed || null });
           break;
-        case "probability": {
-          const num = parseInt(trimmed, 10);
-          if (Number.isNaN(num) || num < 10 || num > 100 || num % 10 !== 0) {
-            setError("Probability must be 10, 20, … 100");
-            setSubmitting(false);
-            return;
-          }
-          await updateProject(initial.id, { probability: num });
-          setProbability(num);
+        case "probability":
+          await updateProject(initial.id, { probability: parseInt(trimmed, 10) });
           break;
-        }
-        case "integration": {
+        case "integration":
           if (trimmed === "") {
             await updateProject(initial.id, {
               jira_project_key: null,
@@ -235,45 +349,68 @@ export function ProjectDetailClient({
             });
           }
           break;
-        }
-        case "budgetHours": {
-          const num = trimmed === "" ? null : parseInt(trimmed, 10);
-          if (trimmed !== "" && (num === null || Number.isNaN(num) || num < 0)) {
-            setError("Enter a positive integer or leave empty");
-            setSubmitting(false);
-            return;
-          }
-          await updateProject(initial.id, { budget_hours: num ?? null });
-          setBudgetHours(num ?? null);
+        case "budgetHours":
+          await updateProject(initial.id, {
+            budget_hours: trimmed === "" ? null : parseInt(trimmed, 10),
+          });
           break;
-        }
-        case "budgetMoney": {
-          const num = trimmed === "" ? null : parseInt(trimmed, 10);
-          if (trimmed !== "" && (num === null || Number.isNaN(num) || num < 0)) {
-            setError("Enter a positive integer (SEK) or leave empty");
-            setSubmitting(false);
-            return;
-          }
-          await updateProject(initial.id, { budget_money: num ?? null });
-          setBudgetMoney(num ?? null);
+        case "budgetMoney":
+          await updateProject(initial.id, {
+            budget_money: trimmed === "" ? null : parseInt(trimmed, 10),
+          });
           break;
-        }
         default:
           break;
       }
       router.refresh();
-      setEditingField(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
+      setShowSaved(false);
+      lastSavedFieldRef.current = null;
+      switch (field) {
+        case "name": setName(initial.name); break;
+        case "customerId": setCustomerId(initial.customer_id); break;
+        case "startDate": setStartDate(initial.startDate ?? ""); break;
+        case "endDate": setEndDate(initial.endDate ?? ""); break;
+        case "probability": setProbability(initial.probability ?? 100); break;
+        case "budgetHours":
+          setBudgetHours(initial.budgetHours != null ? Number(initial.budgetHours) : null);
+          break;
+        case "budgetMoney":
+          setBudgetMoney(initial.budgetMoney != null ? Number(initial.budgetMoney) : null);
+          break;
+        default: break;
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
+  const startEdit = (field: EditField, value: string) => {
+    setError(null);
+    originalEditValueRef.current = value;
+    setEditValue(value);
+    setEditingField(field);
+  };
+
   const cancelEdit = () => {
+    setEditValue(originalEditValueRef.current);
     setEditingField(null);
     setError(null);
   };
+
+  const commitEdit = (overrideValue?: string) => {
+    if (editingField == null) return;
+    const val = overrideValue ?? editValue;
+    if (!isInlineEditValueChanged(originalEditValueRef.current, val)) {
+      setEditingField(null);
+      return;
+    }
+    saveField(editingField, val);
+  };
+
+  const inlineEditStatus =
+    submitting ? "saving" : showSaved ? "saved" : error ? "error" : "idle";
 
   const handleDelete = async () => {
     setError(null);
@@ -380,340 +517,295 @@ export function ProjectDetailClient({
     return base;
   })();
 
-  const labelClass =
-    "text-xs font-medium uppercase tracking-wider text-text-primary opacity-70";
-  const valueClass = "font-semibold text-text-primary";
-
   return (
     <>
-      <DetailPageHeader
-        backHref={`/customers/${initial.customer_id}`}
-        backLabel={`Back to ${initial.customerName ?? "Customer"}`}
-        avatar={
-          <div
-            className="flex h-full w-full items-center justify-center rounded-full"
-            style={{ backgroundColor: initial.color }}
-            aria-hidden
-          >
-            <span className="text-xs font-semibold text-text-inverse">
-              {projectInitials}
-            </span>
-          </div>
-        }
-        title={name}
-        subtitle={initial.customerName}
-        action={
-          <Button
-            variant="secondary"
-            className="border-danger text-danger hover:bg-danger/10"
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-          >
-            Delete Project
-          </Button>
-        }
-      />
+      <div className="mx-auto w-full max-w-3xl">
+        <DetailPageHeader
+          backHref={`/customers/${initial.customer_id}`}
+          backLabel={`Back to ${initial.customerName ?? "Customer"}`}
+          avatar={
+            <div
+              className="flex h-full w-full items-center justify-center rounded-full"
+              style={{ backgroundColor: initial.color }}
+              aria-hidden
+            >
+              <span className="text-xs font-semibold text-text-inverse">
+                {projectInitials}
+              </span>
+            </div>
+          }
+          title={name}
+          subtitle={initial.customerName}
+        />
 
-      {error && (
-        <p className="mb-4 text-sm text-danger" role="alert">
-          {error}
-        </p>
-      )}
+        {error && (
+          <p className="mb-4 text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* INFORMATION */}
+        <div className="flex flex-col gap-5">
+        {/* GENERAL INFORMATION */}
         <Panel>
-          <h2
-            className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
-          >
-            INFORMATION
-          </h2>
-          <div className="space-y-6 p-5">
-            <div>
-              <div className={labelClass}>Project name</div>
-              {editingField === "name" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    className="min-w-[120px] flex-1 rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                    placeholder="Website redesign"
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("name", editValue)}
-                    disabled={submitting || !editValue.trim()}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(name);
-                    setEditingField("name");
-                  }}
-                >
-                  {name}
-                </button>
-              )}
+          <PanelSectionTitle>GENERAL INFORMATION</PanelSectionTitle>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 p-3 sm:grid-cols-2">
+            <div className="min-w-0">
+              <FieldLabel>Project name</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "name"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "name"}
+                  displayContent={
+                    <InlineEditTrigger onClick={() => startEdit("name", name)}>
+                      <FieldValue>{name}</FieldValue>
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <input
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      className={editInputClass}
+                      placeholder="Website redesign"
+                      autoFocus
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Customer</div>
-              {editingField === "customerId" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <Select
-                    value={editValue}
-                    onValueChange={setEditValue}
-                    options={customerOptions}
-                    placeholder="Select customer"
-                    className="min-w-[180px]"
-                    triggerClassName="!border-2 !border-brand-signal"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("customerId", editValue)}
-                    disabled={submitting || !editValue}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(customerId);
-                    setEditingField("customerId");
-                  }}
-                >
-                  {initial.customerName ?? "—"}
-                </button>
-              )}
+            <div className="min-w-0">
+              <FieldLabel>Jira / DevOps project</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "integration"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "integration"}
+                  displayContent={
+                    <InlineEditTrigger
+                      onClick={() => {
+                        const val = initial.jiraProjectKey
+                          ? `jira:${initial.jiraProjectKey}`
+                          : initial.devopsProject
+                            ? `devops:${initial.devopsProject}`
+                            : "";
+                        startEdit("integration", val);
+                      }}
+                    >
+                      {initial.jiraProjectKey || initial.devopsProject ? (
+                        <FieldValue>
+                          {initial.jiraProjectKey
+                            ? `Jira: ${initial.jiraProjectKey}`
+                            : `DevOps: ${initial.devopsProject}`}
+                        </FieldValue>
+                      ) : (
+                        <span className="text-sm text-text-primary opacity-60">—</span>
+                      )}
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <Select
+                      value={editValue}
+                      onValueChange={(v) => {
+                        setEditValue(v);
+                        commitEdit(v);
+                      }}
+                      onBlur={() => commitEdit()}
+                      options={integrationOptions}
+                      placeholder="Select project"
+                      className="min-w-0 flex-1 w-full"
+                      triggerClassName={editTriggerClass}
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Jira / DevOps project</div>
-              {editingField === "integration" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <Select
-                    value={editValue}
-                    onValueChange={setEditValue}
-                    options={integrationOptions}
-                    placeholder="Select project"
-                    className="min-w-[220px]"
-                    triggerClassName="!border-2 !border-brand-signal"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("integration", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    const val = initial.jiraProjectKey
-                      ? `jira:${initial.jiraProjectKey}`
-                      : initial.devopsProject
-                        ? `devops:${initial.devopsProject}`
-                        : "";
-                    setEditValue(val);
-                    setEditingField("integration");
-                  }}
-                >
-                  {initial.jiraProjectKey
-                    ? `Jira: ${initial.jiraProjectKey}`
-                    : initial.devopsProject
-                      ? `DevOps: ${initial.devopsProject}`
-                      : "—"}
-                </button>
-              )}
+            <div className="min-w-0">
+              <FieldLabel>Budget (hours)</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "budgetHours"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "budgetHours"}
+                  displayContent={
+                    <InlineEditTrigger
+                      onClick={() =>
+                        startEdit("budgetHours", budgetHours != null ? String(budgetHours) : "")
+                      }
+                    >
+                      {budgetHours != null ? (
+                        <FieldValue>{budgetHours} h</FieldValue>
+                      ) : (
+                        <span className="text-sm text-text-primary opacity-60">—</span>
+                      )}
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      placeholder="—"
+                      className={editInputClass}
+                      autoFocus
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Budget (hours)</div>
-              {editingField === "budgetHours" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    placeholder="—"
-                    className="min-w-[100px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("budgetHours", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(budgetHours != null ? String(budgetHours) : "");
-                    setEditingField("budgetHours");
-                  }}
-                >
-                  {budgetHours != null ? `${budgetHours} h` : "—"}
-                </button>
-              )}
+            <div className="min-w-0">
+              <FieldLabel>Budget (SEK)</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "budgetMoney"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "budgetMoney"}
+                  displayContent={
+                    <InlineEditTrigger
+                      onClick={() =>
+                        startEdit(
+                          "budgetMoney",
+                          budgetMoney != null ? String(budgetMoney) : ""
+                        )
+                      }
+                    >
+                      {budgetMoney != null ? (
+                        <FieldValue>
+                          {String(budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} SEK
+                        </FieldValue>
+                      ) : (
+                        <span className="text-sm text-text-primary opacity-60">—</span>
+                      )}
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      placeholder="—"
+                      className={editInputClass}
+                      autoFocus
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Budget (SEK)</div>
-              {editingField === "budgetMoney" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    placeholder="—"
-                    className="min-w-[100px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("budgetMoney", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(budgetMoney != null ? String(budgetMoney) : "");
-                    setEditingField("budgetMoney");
-                  }}
-                >
-                  {budgetMoney != null
-                    ? `${String(budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} SEK`
-                    : "—"}
-                </button>
-              )}
-            </div>
-          </div>
-        </Panel>
-
-        {/* DATES & STATUS */}
-        <Panel>
-          <h2
-            className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
-          >
-            DATES &amp; STATUS
-          </h2>
-          <div className="space-y-6 p-5">
-            <div>
-              <div className={labelClass}>Start date</div>
-              {editingField === "startDate" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <input
-                    type="date"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    className="min-w-[140px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("startDate", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(startDate);
-                    setEditingField("startDate");
-                  }}
-                >
-                  {startDate || "—"}
-                </button>
-              )}
+            <div className="min-w-0">
+              <FieldLabel>Start date</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "startDate"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "startDate"}
+                  displayContent={
+                    <InlineEditTrigger onClick={() => startEdit("startDate", startDate)}>
+                      {startDate ? (
+                        <FieldValue>{startDate}</FieldValue>
+                      ) : (
+                        <span className="text-sm text-text-primary opacity-60">—</span>
+                      )}
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <input
+                      type="date"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      className={editInputClass}
+                      autoFocus
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>End date</div>
-              {editingField === "endDate" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <input
-                    type="date"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    className="min-w-[140px] rounded-lg border-2 border-brand-signal px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-signal"
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("endDate", editValue)}
-                    disabled={submitting}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(endDate);
-                    setEditingField("endDate");
-                  }}
-                >
-                  {endDate || "—"}
-                </button>
-              )}
+            <div className="min-w-0">
+              <FieldLabel>End date</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "endDate"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "endDate"}
+                  displayContent={
+                    <InlineEditTrigger onClick={() => startEdit("endDate", endDate)}>
+                      {endDate ? (
+                        <FieldValue>{endDate}</FieldValue>
+                      ) : (
+                        <span className="text-sm text-text-primary opacity-60">—</span>
+                      )}
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <input
+                      type="date"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      className={editInputClass}
+                      autoFocus
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Type</div>
-              <div className="mt-1.5">
+            <div className="min-w-0">
+              <FieldLabel>Type</FieldLabel>
+              <div className="mt-0.5">
                 <button
                   type="button"
                   onClick={cycleType}
@@ -725,105 +817,115 @@ export function ProjectDetailClient({
               </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Probability</div>
-              {editingField === "probability" ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <Select
-                    value={editValue}
-                    onValueChange={setEditValue}
-                    options={PROBABILITY_OPTIONS.map((n) => ({
-                      value: String(n),
-                      label: `${n}%`,
-                    }))}
-                    placeholder="Select"
-                    className="min-w-[100px]"
-                    triggerClassName="!border-2 !border-brand-signal"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => saveField("probability", editValue)}
-                    disabled={submitting || !editValue}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" type="button" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`cursor-pointer mt-1.5 block text-left ${valueClass} hover:underline`}
-                  onClick={() => {
-                    setEditValue(String(probability));
-                    setEditingField("probability");
-                  }}
-                >
-                  {probability}%
-                </button>
-              )}
+            <div className="min-w-0">
+              <FieldLabel>Probability</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "probability"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "probability"}
+                  displayContent={
+                    <InlineEditTrigger
+                      onClick={() => startEdit("probability", String(probability))}
+                    >
+                      <FieldValue>{probability}%</FieldValue>
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <Select
+                      value={editValue}
+                      onValueChange={(v) => {
+                        setEditValue(v);
+                        commitEdit(v);
+                      }}
+                      onBlur={() => commitEdit()}
+                      options={PROBABILITY_OPTIONS.map((n) => ({
+                        value: String(n),
+                        label: `${n}%`,
+                      }))}
+                      placeholder="Select"
+                      className="min-w-0 flex-1 w-full"
+                      triggerClassName={editTriggerClass}
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
             </div>
 
-            <div>
-              <div className={labelClass}>Status</div>
-              <div className="mt-1.5">
-                <button
-                  type="button"
+            <div className="min-w-0">
+              <FieldLabel>Status</FieldLabel>
+              <div className="mt-0.5">
+                <Badge
+                  variant={isActive ? "active" : "inactive"}
+                  interactive
                   onClick={toggleActive}
                   disabled={submitting}
-                  className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isActive ? "Active" : "Inactive"}
-                </button>
+                </Badge>
               </div>
             </div>
           </div>
         </Panel>
+
+        {/* RATES/TASKS */}
+        <Panel>
+          <PanelSectionTitle
+            action={
+              <IconButton
+                aria-label="Add rate"
+                onClick={() => setAddRateModalOpen(true)}
+                className="text-text-muted hover:text-text-primary"
+              >
+                <Plus className="h-4 w-4" />
+              </IconButton>
+            }
+          >
+            RATES/TASKS
+          </PanelSectionTitle>
+          <p className="px-3 pb-2 text-sm text-text-primary opacity-70">
+            Rates set here override customer rates for this project when both exist.
+          </p>
+          <div className="p-3 pt-0">
+            {ratesError && (
+              <p className="mb-4 text-sm text-danger">{ratesError}</p>
+            )}
+            <ProjectRatesTab
+              projectId={initial.id}
+              onError={setRatesError}
+              showDescription={false}
+            />
+          </div>
+        </Panel>
+        </div>
       </div>
 
-      {/* RATES */}
-      <Panel className="mt-6">
-        <h2
-          className={`border-b ${tableBorder} bg-bg-muted/40 px-4 py-3 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70`}
-        >
-          RATES/TASKS
-        </h2>
-        <div className="p-5">
-          {ratesError && (
-            <p className="mb-4 text-sm text-danger">{ratesError}</p>
-          )}
-          <ProjectRatesTab
-            projectId={initial.id}
-            onError={setRatesError}
-            showDescription={false}
-          />
-        </div>
-      </Panel>
-
-      {/* PLANNING */}
-      <Panel className="mt-6">
-        <div
-          className={`flex flex-wrap items-center justify-between gap-3 border-b ${tableBorder} bg-bg-muted/40 px-4 py-3`}
-          suppressHydrationWarning
-        >
-          <h2 className="text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
-            PLANNING
-          </h2>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              setMoveBookingError(null);
-              setMoveWeeks("1");
-              setMoveForward(true);
-              setShowMoveBookingModal(true);
-            }}
+      {/* PLANNING – full width; viewport adapter fits as many weeks as possible (29px per week, same as Allocation page) */}
+      <div ref={planningContainerRef} className="mt-3 w-full">
+      <Panel>
+        <PanelSectionTitle
+          action={
+            <button
+              type="button"
+              onClick={() => {
+                setMoveBookingError(null);
+                setMoveWeeks("1");
+                setMoveForward(true);
+                setShowMoveBookingModal(true);
+              }}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-primary opacity-80 transition-opacity hover:opacity-100 hover:bg-bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-1"
+              aria-label="Move entire booking"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>Move entire booking</span>
+            </button>
+          }
           >
-            Move entire booking
-          </Button>
-        </div>
-        <div className="p-5">
+            PLANNING
+          </PanelSectionTitle>
+        <div className="p-2 min-h-[200px]">
+          {planningViewportReady ? (
           <AllocationPageClient
             data={planningData}
             error={planningError}
@@ -836,8 +938,32 @@ export function ProjectDetailClient({
             onWeekRangeChange={handleWeekRangeChange}
             embedWeekNavLoading={planningLoading}
           />
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <PageLoading />
+            </div>
+          )}
         </div>
       </Panel>
+      </div>
+
+      <div className="mx-auto w-full max-w-3xl pt-4">
+        <Button
+          variant="ghost"
+          className="text-danger hover:bg-danger/10 hover:text-danger"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={submitting || deleting}
+        >
+          Delete project
+        </Button>
+      </div>
+
+      <AddProjectRateModal
+        isOpen={addRateModalOpen}
+        onClose={() => setAddRateModalOpen(false)}
+        onSuccess={() => router.refresh()}
+        projectId={initial.id}
+      />
 
       <ConfirmModal
         isOpen={showDeleteConfirm}
@@ -890,7 +1016,7 @@ export function ProjectDetailClient({
                   name="move-direction"
                   checked={moveForward}
                   onChange={() => setMoveForward(true)}
-                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                  className="rounded-full border-form text-brand-signal focus:ring-brand-signal"
                 />
                 <span className="text-text-primary">Forward</span>
               </label>
@@ -900,7 +1026,7 @@ export function ProjectDetailClient({
                   name="move-direction"
                   checked={!moveForward}
                   onChange={() => setMoveForward(false)}
-                  className="rounded-full border-border text-brand-signal focus:ring-brand-signal"
+                  className="rounded-full border-form text-brand-signal focus:ring-brand-signal"
                 />
                 <span className="text-text-primary">Backward</span>
               </label>

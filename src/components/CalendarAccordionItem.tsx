@@ -156,7 +156,7 @@ export function CalendarAccordionItem({
       onValueChange={(v) => setExpanded(v === calendar.id)}
     >
       <AccordionItem value={calendar.id} className="border-panel">
-        <AccordionTrigger>
+        <AccordionTrigger className="py-2 px-3 data-[state=open]:rounded-t-lg">
           <div className="flex items-center gap-3">
             <span className="flex-1 text-left text-sm font-medium text-text-primary">
               {calendar.name} ({calendar.country_code})

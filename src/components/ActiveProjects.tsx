@@ -8,8 +8,6 @@ type Props = {
   projects: Project[];
 };
 
-const panelHeaderBorder = "border-panel";
-
 function formatDate(dateStr: string) {
   if (!dateStr) return "–";
   const d = new Date(dateStr);
@@ -24,7 +22,7 @@ export function ActiveProjects({ projects }: Props) {
   return (
     <Panel>
       <div
-        className={`flex items-center gap-2 border-b ${panelHeaderBorder} bg-bg-muted/40 px-4 py-3`}
+        className={`flex items-center gap-2 bg-bg-muted/40 px-4 py-3 shadow-panel-header`}
       >
         <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
           <FolderKanban className="h-4 w-4" />

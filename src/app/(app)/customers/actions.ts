@@ -5,6 +5,7 @@ import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  getCustomersWithDetails,
 } from "@/lib/customers";
 import type {
   CreateCustomerInput,
@@ -37,4 +38,9 @@ export async function updateCustomerAction(
 export async function deleteCustomerAction(id: string): Promise<void> {
   await deleteCustomer(id);
   revalidatePath("/customers");
+}
+
+/** For side panel list; call from client. */
+export async function getCustomersListAction() {
+  return getCustomersWithDetails();
 }

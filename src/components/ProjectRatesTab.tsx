@@ -1,15 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Trash2, Plus } from "lucide-react";
-import { Select, Input, Button } from "@/components/ui";
+import { useState, useEffect, useRef } from "react";
+import { Trash2 } from "lucide-react";
+import {
+  IconButton,
+  InlineEditFieldContainer,
+  InlineEditStatus,
+  SAVED_DURATION_MS,
+} from "@/components/ui";
+import { editInputClass, inlineEditTriggerClass } from "@/components/ui";
 import { getRoles } from "@/lib/roles";
 import {
   getProjectRates,
-  createProjectRate,
   updateProjectRate,
   deleteProjectRate,
 } from "@/lib/projectRates";
+import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import type { Role } from "@/lib/roles";
 import type { ProjectRate } from "@/lib/projectRates";
 
@@ -27,10 +33,14 @@ export function ProjectRatesTab({
   const [roles, setRoles] = useState<Role[]>([]);
   const [rates, setRates] = useState<ProjectRate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRoleId, setSelectedRoleId] = useState("");
-  const [newRate, setNewRate] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState<Record<string, string>>({});
+  const [editingRateId, setEditingRateId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const originalValueRef = useRef("");
+  const [rateError, setRateError] = useState<string | null>(null);
+  const [showSavedRate, setShowSavedRate] = useState(false);
+  const lastSavedRateIdRef = useRef<string | null>(null);
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,53 +75,86 @@ export function ProjectRatesTab({
     };
   }, [projectId]);
 
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
+
   const getRoleName = (roleId: string) =>
     roles.find((r) => r.id === roleId)?.name ?? "Unknown";
 
-  const usedRoleIds = rates.map((r) => r.role_id);
-  const availableRoles = roles.filter((r) => !usedRoleIds.includes(r.id));
-
-  const handleAdd = async () => {
-    const roleId = selectedRoleId;
-    const rateNum = parseFloat(newRate);
-    if (!roleId || isNaN(rateNum) || rateNum < 0) {
-      onError("Select a role and enter a valid rate");
-      return;
-    }
-    try {
-      await createProjectRate(projectId, roleId, rateNum);
-      const updated = await getProjectRates(projectId);
-      setRates(updated);
-      setSelectedRoleId("");
-      setNewRate("");
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to add rate");
-    }
-  };
-
   const handleUpdate = async (rate: ProjectRate, newVal: number) => {
     if (newVal === rate.rate_per_hour) return;
+    setRateError(null);
+    const previousVal = rate.rate_per_hour;
+    setRates((prev) =>
+      prev.map((r) =>
+        r.id === rate.id ? { ...r, rate_per_hour: newVal } : r
+      )
+    );
+    setEditingRateId(null);
+    lastSavedRateIdRef.current = rate.id;
+    setShowSavedRate(true);
+    if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    savedTimeoutRef.current = setTimeout(() => {
+      savedTimeoutRef.current = null;
+      setShowSavedRate(false);
+      lastSavedRateIdRef.current = null;
+    }, SAVED_DURATION_MS);
     setUpdatingId(rate.id);
     try {
       await updateProjectRate(rate.id, newVal);
+    } catch (e) {
+      setRateError(e instanceof Error ? e.message : "Failed to update rate");
+      setShowSavedRate(false);
+      lastSavedRateIdRef.current = null;
       setRates((prev) =>
         prev.map((r) =>
-          r.id === rate.id ? { ...r, rate_per_hour: newVal } : r
+          r.id === rate.id ? { ...r, rate_per_hour: previousVal } : r
         )
       );
-      setEditingValue((prev) => {
-        const next = { ...prev };
-        delete next[rate.id];
-        return next;
-      });
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to update rate");
     } finally {
       setUpdatingId(null);
     }
   };
 
+  const startEdit = (rate: ProjectRate) => {
+    setRateError(null);
+    originalValueRef.current = String(rate.rate_per_hour);
+    setEditValue(originalValueRef.current);
+    setEditingRateId(rate.id);
+  };
+
+  const cancelEdit = () => {
+    setEditingRateId(null);
+    setRateError(null);
+  };
+
+  const commitEdit = (rate: ProjectRate) => {
+    if (editingRateId !== rate.id) return;
+    const trimmed = editValue.trim();
+    if (trimmed === "") {
+      setEditingRateId(null);
+      return;
+    }
+    const num = parseFloat(trimmed.replace(",", "."));
+    if (isNaN(num) || num < 0) {
+      setRateError("Enter a valid number");
+      return;
+    }
+    if (!isInlineEditValueChanged(originalValueRef.current, trimmed)) {
+      setEditingRateId(null);
+      return;
+    }
+    handleUpdate(rate, num);
+  };
+
   const handleRemove = async (rate: ProjectRate) => {
+    if (editingRateId === rate.id) {
+      setEditingRateId(null);
+      setRateError(null);
+    }
     try {
       await deleteProjectRate(rate.id);
       setRates((prev) => prev.filter((r) => r.id !== rate.id));
@@ -120,123 +163,94 @@ export function ProjectRatesTab({
     }
   };
 
+  const rateStatus = (rateId: string) =>
+    updatingId === rateId
+      ? "saving"
+      : showSavedRate && lastSavedRateIdRef.current === rateId
+        ? "saved"
+        : rateError
+          ? "error"
+          : "idle";
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {loading ? (
         <p className="text-sm text-text-primary opacity-60">Loading rates…</p>
       ) : (
         <>
-          <ul className="space-y-3">
-            {rates.map((r) => (
-              <li
-                key={r.id}
-                className="flex items-center gap-3 rounded-lg border border-panel bg-bg-default px-3 py-2"
-              >
-                <span className="flex-1 text-sm font-medium text-text-primary">
-                  {getRoleName(r.role_id)}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={
-                    r.id in editingValue ? editingValue[r.id] : String(r.rate_per_hour)
-                  }
-                  onChange={(e) =>
-                    setEditingValue((prev) => ({
-                      ...prev,
-                      [r.id]: e.target.value,
-                    }))
-                  }
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (
-                      !isNaN(val) &&
-                      val >= 0 &&
-                      val !== r.rate_per_hour
-                    ) {
-                      handleUpdate(r, val);
-                    }
-                  }}
-                  disabled={updatingId === r.id}
-                  className="w-24 rounded-lg border border-panel bg-bg-default px-3 py-2 text-right text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 disabled:opacity-50"
-                />
-                <span className="text-xs text-text-primary opacity-60">SEK/h</span>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(r)}
-                  className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 hover:bg-danger/10 hover:text-danger"
-                  aria-label="Remove rate"
+          <ul className="space-y-1">
+            {rates.map((r) => {
+              const isEdit = editingRateId === r.id;
+              return (
+                <li
+                  key={r.id}
+                  className="flex min-w-0 flex-nowrap items-center gap-3 rounded-md bg-bg-muted/20 px-2 py-1"
                 >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+                    {getRoleName(r.role_id)}
+                  </span>
+                  <div className="min-w-[5.5rem] shrink-0">
+                    <InlineEditFieldContainer
+                      isEditing={isEdit}
+                      onRequestClose={() => commitEdit(r)}
+                      showSavedIndicator={showSavedRate && lastSavedRateIdRef.current === r.id}
+                      reserveStatusRow={false}
+                      displayContent={
+                        <button
+                          type="button"
+                          onClick={() => startEdit(r)}
+                          className={`${inlineEditTriggerClass} w-full min-w-[5rem] whitespace-nowrap text-right`}
+                        >
+                          <span className="text-sm font-medium text-text-primary">{r.rate_per_hour} SEK/h</span>
+                        </button>
+                      }
+                      editContent={
+                        <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={() => commitEdit(r)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                commitEdit(r);
+                              }
+                              if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEdit();
+                              }
+                            }}
+                            disabled={updatingId === r.id}
+                            className={`w-20 text-right ${editInputClass}`}
+                            autoFocus
+                          />
+                          <span className="shrink-0 text-sm text-text-primary opacity-70">SEK/h</span>
+                        </div>
+                      }
+                      statusContent={
+                        <InlineEditStatus
+                          status={rateStatus(r.id)}
+                          message={rateError}
+                        />
+                      }
+                    />
+                  </div>
+                  <IconButton
+                    variant="ghostDanger"
+                    onClick={() => handleRemove(r)}
+                    aria-label="Remove rate"
+                    className="shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </IconButton>
+                </li>
+              );
+            })}
           </ul>
 
-          {availableRoles.length > 0 && (
-            <div className="flex flex-nowrap items-end gap-3 border-t border-panel pt-5">
-              <div className="min-w-[12rem] w-56 shrink-0">
-                <label
-                  htmlFor="project-rate-role"
-                  className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-                >
-                  Role
-                </label>
-                <Select
-                  id="project-rate-role"
-                  value={selectedRoleId}
-                  onValueChange={setSelectedRoleId}
-                  placeholder="Select role"
-                  options={availableRoles.map((r) => ({
-                    value: r.id,
-                    label: r.name,
-                  }))}
-                  size="md"
-                  className="w-full"
-                  triggerClassName="h-10 border-panel"
-                  viewportClassName="max-h-60 overflow-y-auto"
-                />
-              </div>
-              <div className="w-32 shrink-0">
-                <label
-                  htmlFor="project-rate-value"
-                  className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70"
-                >
-                  Hourly rate (SEK)
-                </label>
-                <Input
-                  id="project-rate-value"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={newRate}
-                  onChange={(e) => setNewRate(e.target.value)}
-                  className="h-10 border-panel"
-                />
-              </div>
-              <Button
-                type="button"
-                onClick={handleAdd}
-                className="h-10 shrink-0"
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </Button>
-            </div>
-          )}
-
-          {roles.length === 0 && (
-            <p className="text-sm text-text-primary opacity-60">
-              No roles found. Add roles first to set project rates.
-            </p>
-          )}
-
-          {rates.length === 0 && roles.length > 0 && (
-            <p className="text-sm text-text-primary opacity-60">
-              No project-specific rates. Customer rates apply. Add rates here to override.
-            </p>
-          )}
         </>
       )}
     </div>
