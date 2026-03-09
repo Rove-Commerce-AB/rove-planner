@@ -134,13 +134,14 @@ export async function createCustomer(
       account_manager_id: input.account_manager_id ?? null,
       color: input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
       logo_url: input.logo_url?.trim() || null,
+      url: input.url?.trim() ?? null,
       is_active: input.is_active ?? true,
     })
-    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,is_active")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active")
     .single();
 
   if (error) throw error;
-  return data;
+  return data as Customer;
 }
 
 export async function updateCustomer(
