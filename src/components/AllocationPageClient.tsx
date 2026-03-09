@@ -693,6 +693,7 @@ export function AllocationPageClient({
   } | null>(null);
   const [editingCellValue, setEditingCellValue] = useState("");
   const [savingCell, setSavingCell] = useState(false);
+  const [cellError, setCellError] = useState<string | null>(null);
   const [editingCellConsultant, setEditingCellConsultant] = useState<{
     consultantId: string;
     projectId: string;
@@ -826,6 +827,7 @@ export function AllocationPageClient({
     async (cell: NonNullable<typeof editingCell>, value: string) => {
       const hours = parseFloat(value.replace(",", "."));
       if (isNaN(hours) || hours < 0) return;
+      setCellError(null);
       setSavingCell(true);
       try {
         if (cell.allocationId) {
@@ -857,8 +859,8 @@ export function AllocationPageClient({
         await revalidateAllocationPage();
         router.refresh();
         setEditingCell(null);
-      } catch {
-        // Keep editing on error; could show toast
+      } catch (e) {
+        setCellError(e instanceof Error ? e.message : "Failed to save");
       } finally {
         setSavingCell(false);
       }
@@ -2535,6 +2537,7 @@ export function AllocationPageClient({
               handleCellInputBlur={handleCellInputBlur}
               handleCellInputKeyDown={handleCellInputKeyDown}
               savingCell={savingCell}
+              cellError={cellError}
               setAddModalOpen={setAddModalOpen}
               setAddInitialParams={setAddInitialParams}
               editingCellConsultant={editingCellConsultant}
