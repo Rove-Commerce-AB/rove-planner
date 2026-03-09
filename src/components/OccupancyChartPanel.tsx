@@ -53,6 +53,7 @@ function buildWeeksForOffset(
 type Props = {
   initialData: OccupancyReportResult;
   roles: Role[];
+  teams: Team[];
   currentYear: number;
   currentWeek: number;
 };
