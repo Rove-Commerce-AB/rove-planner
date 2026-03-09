@@ -11,7 +11,7 @@ export async function createConsultantAndRevalidate(
   input: CreateConsultantInput
 ): Promise<{ id: string; name: string }> {
   const result = await createConsultant(input);
-  revalidateTag("allocation-consultants");
+  revalidateTag("allocation-consultants", "max");
   revalidatePath("/consultants");
   revalidatePath("/allocation");
   return result;
