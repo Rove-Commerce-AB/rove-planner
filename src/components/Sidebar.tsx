@@ -176,9 +176,9 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
         <div className="space-y-0.5">
           {navGroup3.map((item) =>
             "href" in item ? (
-              <NavLink key={item.href} pathname={pathname} collapsed={effectiveCollapsed} {...item} />
+              <NavLink key={item.href as string} pathname={pathname} collapsed={effectiveCollapsed} {...item} />
             ) : (
-              <NavPanelButton key={item.panel} collapsed={effectiveCollapsed} {...item} />
+              <NavPanelButton key={item.panel as string} collapsed={effectiveCollapsed} {...item} />
             )
           )}
         </div>
