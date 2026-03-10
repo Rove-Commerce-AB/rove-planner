@@ -409,7 +409,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                 showSavedIndicator={showSaved && lastSavedFieldRef.current === "role"}
                 displayContent={
                   <InlineEditTrigger onClick={() => startEdit("role", roleId)}>
-                    <FieldValue>{initial.roleName}</FieldValue>
+                    <FieldValue>{roleOptions.find((o) => o.value === roleId)?.label ?? initial.roleName ?? "—"}</FieldValue>
                   </InlineEditTrigger>
                 }
                 editContent={
@@ -440,7 +440,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                 showSavedIndicator={showSaved && lastSavedFieldRef.current === "team"}
                 displayContent={
                   <InlineEditTrigger onClick={() => startEdit("team", teamId ?? "")}>
-                    <FieldValue>{initial.teamName ?? "—"}</FieldValue>
+                    <FieldValue>{teamOptions.find((o) => o.value === (teamId ?? ""))?.label ?? initial.teamName ?? "—"}</FieldValue>
                   </InlineEditTrigger>
                 }
                 editContent={
@@ -624,7 +624,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                 showSavedIndicator={showSaved && lastSavedFieldRef.current === "calendar"}
                 displayContent={
                   <InlineEditTrigger onClick={() => startEdit("calendar", calendarId)}>
-                    <FieldValue>{initial.calendarName}</FieldValue>
+                    <FieldValue>{calendarOptions.find((o) => o.value === calendarId)?.label ?? initial.calendarName ?? "—"}</FieldValue>
                   </InlineEditTrigger>
                 }
                 editContent={
@@ -644,13 +644,6 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                 statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
               />
             </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Internal ID</FieldLabel>
-            <p className="mt-0.5">
-              <FieldValue>{initial.id.slice(0, 8)}…</FieldValue>
-            </p>
           </div>
 
           <div className="min-w-0">

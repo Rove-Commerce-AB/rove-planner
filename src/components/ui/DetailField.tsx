@@ -92,7 +92,14 @@ export function InlineEditFieldContainer({
     if (!isEditing || !onRequestClose) return;
     const handleMouseDown = (ev: MouseEvent) => {
       const el = containerRef.current;
-      if (el && !el.contains(ev.target as Node)) onRequestClose();
+      const target = ev.target as Node;
+      if (!el || el.contains(target)) return;
+      // Don’t close when click is inside a dropdown (e.g. Radix Select portal). Otherwise
+      // click-outside runs before onValueChange and we commit the old value and the new choice is lost.
+      const inDropdown =
+        target.nodeType === Node.ELEMENT_NODE &&
+        (target as Element).closest?.('[role="listbox"], [role="option"]');
+      if (!inDropdown) onRequestClose();
     };
     document.addEventListener("mousedown", handleMouseDown, true);
     return () => document.removeEventListener("mousedown", handleMouseDown, true);
