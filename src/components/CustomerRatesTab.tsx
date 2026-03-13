@@ -278,6 +278,7 @@ export function CustomerRatesTab(props: Props) {
                               step={1}
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
+                              onFocus={(e) => e.target.select()}
                               onBlur={() => commitEdit(rate)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") {

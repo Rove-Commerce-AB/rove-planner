@@ -306,6 +306,7 @@ export function EditAllocationRangeModal({
                 step={0.5}
                 value={hoursStr}
                 onChange={(e) => setHoursStr(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
               {firstAvailable > 0 && (
@@ -330,6 +331,7 @@ export function EditAllocationRangeModal({
                 step={5}
                 value={percentStr}
                 onChange={(e) => setPercentStr(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
               {firstAvailable > 0 && percentStr !== "" && !Number.isNaN(parseFloat(percentStr)) && (

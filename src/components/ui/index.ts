@@ -2,6 +2,7 @@ export { Button } from "./Button";
 export { IconButton } from "./IconButton";
 export { Input } from "./Input";
 export { Select } from "./Select";
+export { Combobox, type ComboboxOption } from "./Combobox";
 export { Switch } from "./Switch";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Dialog } from "./Dialog";

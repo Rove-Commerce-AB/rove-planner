@@ -346,6 +346,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                     type="text"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     onBlur={() => commitEdit()}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") commitEdit();
@@ -383,6 +384,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                     type="email"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     onBlur={() => commitEdit()}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") commitEdit();
@@ -561,6 +563,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                     type="date"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     onBlur={() => commitEdit()}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") commitEdit();
@@ -598,6 +601,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
                     type="date"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     onBlur={() => commitEdit()}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") commitEdit();

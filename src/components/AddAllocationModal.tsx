@@ -403,6 +403,7 @@ export function AddAllocationModal({
                 max={52}
                 value={fromWeek}
                 onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
+                onFocus={(e) => e.target.select()}
                 className={`mt-1.5 ${modalInputClass}`}
               />
             </div>
@@ -420,6 +421,7 @@ export function AddAllocationModal({
                 max={52}
                 value={toWeek}
                 onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
+                onFocus={(e) => e.target.select()}
                 className={`mt-1.5 ${modalInputClass}`}
               />
             </div>
@@ -456,6 +458,7 @@ export function AddAllocationModal({
                 step={0.5}
                 value={hoursPerWeek}
                 onChange={(e) => setHoursPerWeek(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 className={`mt-1.5 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
             ) : (
@@ -467,6 +470,7 @@ export function AddAllocationModal({
                 step={5}
                 value={percent}
                 onChange={(e) => setPercent(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 className={`mt-1.5 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
               />
             )}

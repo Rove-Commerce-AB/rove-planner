@@ -23,6 +23,49 @@ export function getCurrentYearWeek(): { year: number; week: number } {
   return { year, week };
 }
 
+/** Returns ISO (year, week) for the given date. */
+export function getYearWeekForDate(date: Date): { year: number; week: number } {
+  const isoDay = date.getDay() || 7; // Mon=1 .. Sun=7
+  const thursdayOffset = 4 - isoDay;
+  const thursday = new Date(date);
+  thursday.setDate(date.getDate() + thursdayOffset);
+  const year = thursday.getFullYear();
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = jan4.getDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(4 - jan4Day + 1);
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const week =
+    1 +
+    Math.floor((thursday.getTime() - week1Monday.getTime()) / msPerWeek);
+  return { year, week };
+}
+
+/** Returns all ISO (year, week) that have at least one day in the given calendar month (1–12). */
+export function getWeeksInMonth(
+  month: number,
+  year: number
+): { year: number; week: number }[] {
+  const first = new Date(year, month - 1, 1);
+  const last = new Date(year, month, 0);
+  const start = getYearWeekForDate(first);
+  const end = getYearWeekForDate(last);
+  const list: { year: number; week: number }[] = [];
+  let y = start.year;
+  let w = start.week;
+  const endY = end.year;
+  const endW = end.week;
+  while (y < endY || (y === endY && w <= endW)) {
+    list.push({ year: y, week: w });
+    w += 1;
+    if (w > isoWeeksInYear(y)) {
+      w = 1;
+      y += 1;
+    }
+  }
+  return list;
+}
+
 /** Returns ISO week Monday and Sunday as YYYY-MM-DD for the given year and week. */
 export function getISOWeekDateRange(
   year: number,

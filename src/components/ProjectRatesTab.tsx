@@ -23,12 +23,15 @@ type Props = {
   projectId: string;
   onError: (msg: string) => void;
   showDescription?: boolean;
+  /** When this value changes, rates are refetched (e.g. after adding a new rate). */
+  refreshTrigger?: number;
 };
 
 export function ProjectRatesTab({
   projectId,
   onError,
   showDescription = false,
+  refreshTrigger,
 }: Props) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [rates, setRates] = useState<ProjectRate[]>([]);
@@ -73,7 +76,7 @@ export function ProjectRatesTab({
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, refreshTrigger]);
 
   useEffect(() => {
     return () => {
@@ -212,6 +215,7 @@ export function ProjectRatesTab({
                             step={1}
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
+                            onFocus={(e) => e.target.select()}
                             onBlur={() => commitEdit(r)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {

@@ -219,6 +219,7 @@ export function EditAllocationModal({
               step={0.5}
               value={hours}
               onChange={(e) => setHours(e.target.value)}
+              onFocus={(e) => e.target.select()}
               className={`mt-1 w-24 rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary ${modalFocusClass}`}
             />
             <p className="mt-1 text-xs text-text-primary opacity-60">

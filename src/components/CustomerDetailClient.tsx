@@ -290,6 +290,7 @@ export function CustomerDetailClient({
               type="url"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
+              onFocus={(e) => e.target.select()}
               onBlur={() => commitEdit()}
               onKeyDown={(e) => {
                 if (e.key === "Enter") commitEdit();
@@ -366,6 +367,7 @@ export function CustomerDetailClient({
                         type="text"
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         onBlur={() => commitEdit()}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") commitEdit();
@@ -399,6 +401,7 @@ export function CustomerDetailClient({
                         type="url"
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         onBlur={() => commitEdit()}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") commitEdit();
@@ -501,6 +504,7 @@ export function CustomerDetailClient({
                           type="text"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
+                          onFocus={(e) => e.target.select()}
                           onBlur={(e) => {
                             const next = e.relatedTarget as Node | null;
                             if (next && colorEditWrapperRef.current?.contains(next)) return;

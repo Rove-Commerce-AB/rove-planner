@@ -188,6 +188,7 @@ export function CalendarAccordionItem({
                 type="text"
                 value={hoursPerWeek}
                 onChange={(e) => setHoursPerWeek(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 onBlur={handleSaveHours}
                 className="w-24 rounded-lg border border-panel px-3 py-2 text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
               />
@@ -250,6 +251,7 @@ export function CalendarAccordionItem({
                 type="date"
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 className="mt-1 rounded-md border border-panel px-3 py-2 text-sm"
               />
             </div>
@@ -265,6 +267,7 @@ export function CalendarAccordionItem({
                 type="text"
                 value={newHolidayName}
                 onChange={(e) => setNewHolidayName(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 placeholder="e.g. Midsummer"
                 className="mt-1 rounded-md border border-panel px-3 py-2 text-sm"
               />

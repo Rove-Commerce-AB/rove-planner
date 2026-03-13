@@ -122,6 +122,32 @@ export async function getCustomers(): Promise<Customer[]> {
   return data ?? [];
 }
 
+/** Returns customer id for the first customer with the given name (case-insensitive), or null. */
+export async function getCustomerIdByName(name: string): Promise<string | null> {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id")
+    .ilike("name", trimmed)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.id;
+}
+
+/** Customers by IDs (e.g. for time report: only customers the consultant is assigned to). */
+export async function getCustomersByIds(ids: string[]): Promise<Customer[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active")
+    .in("id", ids)
+    .order("name");
+  if (error) throw error;
+  return (data ?? []) as Customer[];
+}
+
 export async function createCustomer(
   input: CreateCustomerInput
 ): Promise<Customer> {

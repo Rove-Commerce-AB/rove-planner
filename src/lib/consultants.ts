@@ -124,25 +124,26 @@ export type ConsultantForEdit = {
   endDate: string | null;
 };
 
-/** Returns consultant id and name if a consultant has this email (for linking app user to consultant). */
+/** Returns consultant id, name and calendar_id if a consultant has this email (for linking app user to consultant). */
 export async function getConsultantByEmail(
   email: string
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; calendar_id: string } | null> {
   const normalized = email?.trim().toLowerCase();
   if (!normalized) return null;
   const { data, error } = await supabase
     .from("consultants")
-    .select("id,name")
+    .select("id,name,calendar_id")
     .eq("email", normalized)
     .maybeSingle();
   if (error || !data) return null;
-  return { id: data.id, name: data.name };
+  return { id: data.id, name: data.name, calendar_id: data.calendar_id };
 }
 
 /** Consultant linked to the currently logged-in user (by email), or null. */
 export async function getConsultantForCurrentUser(): Promise<{
   id: string;
   name: string;
+  calendar_id: string;
 } | null> {
   const user = await getCurrentAppUser();
   if (!user?.email) return null;

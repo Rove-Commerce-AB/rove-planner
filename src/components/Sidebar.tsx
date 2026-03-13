@@ -9,6 +9,7 @@ import {
   Users,
   Building2,
   CalendarCheck,
+  Clock,
   Settings,
   LogOut,
   PanelLeftClose,
@@ -179,13 +180,18 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
           ))}
         </div>
 
+        <div className="my-1.5 border-t border-border-subtle" />
+
+        <div className="space-y-0.5">
+          <NavLink href="/time-report" label="Time report" icon={Clock} pathname={pathname} collapsed={effectiveCollapsed} />
+        </div>
+
+        <div className="my-1.5 border-t border-border-subtle" />
+
         {isAdmin && (
-          <>
-            <div className="my-1.5 border-t border-border-subtle" />
-            <div className="space-y-0.5">
-              <NavLink href="/reports" label="Reports" icon={BarChart2} pathname={pathname} collapsed={effectiveCollapsed} />
-            </div>
-          </>
+          <div className="space-y-0.5">
+            <NavLink href="/reports" label="Reports" icon={BarChart2} pathname={pathname} collapsed={effectiveCollapsed} />
+          </div>
         )}
       </nav>
 

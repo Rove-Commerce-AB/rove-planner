@@ -91,9 +91,11 @@ export function Select({
           onBlur={onBlur}
           aria-invalid={Boolean(error)}
           aria-describedby={error && id ? `${id}-error` : undefined}
-          className={`inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()}
+          className={`inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()}
         >
-          <SelectPrimitive.Value placeholder={placeholder} />
+          <span className="min-w-0 shrink truncate">
+            <SelectPrimitive.Value placeholder={placeholder} />
+          </span>
           <SelectPrimitive.Icon asChild>
             <ChevronDown className={isFilter ? "h-3.5 w-3.5 shrink-0 opacity-70" : "h-4 w-4 shrink-0 opacity-60"} />
           </SelectPrimitive.Icon>

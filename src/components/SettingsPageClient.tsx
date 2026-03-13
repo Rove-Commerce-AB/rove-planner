@@ -373,6 +373,7 @@ export function SettingsPageClient({
                           type="text"
                           value={editingRoleValue}
                           onChange={(e) => setEditingRoleValue(e.target.value)}
+                          onFocus={(e) => e.target.select()}
                           onBlur={() => saveRoleInline(role.name)}
                           className={editInputListClass}
                           autoFocus
@@ -455,6 +456,7 @@ export function SettingsPageClient({
                           type="text"
                           value={editingTeamValue}
                           onChange={(e) => setEditingTeamValue(e.target.value)}
+                          onFocus={(e) => e.target.select()}
                           onBlur={() => saveTeamInline(team.name)}
                           className={editInputListClass}
                           autoFocus
@@ -574,9 +576,19 @@ export function SettingsPageClient({
                               <p className="text-sm text-text-primary">
                                 {fr.content}
                               </p>
-                              {fr.submitted_by_email && (
+                              {(fr.submitted_by_email || fr.created_at) && (
                                 <p className="mt-1 text-xs text-text-primary opacity-60">
-                                  Requested by: {fr.submitted_by_email}
+                                  Requested by{fr.submitted_by_email ? `: ${fr.submitted_by_email}` : ""}
+                                  {fr.created_at && (
+                                    <span>
+                                      {fr.submitted_by_email ? " · " : ": "}
+                                      {new Date(fr.created_at).toLocaleDateString(undefined, {
+                                        day: "numeric",
+                                        month: "short",
+                                        year: "numeric",
+                                      })}
+                                    </span>
+                                  )}
                                 </p>
                               )}
                             </div>

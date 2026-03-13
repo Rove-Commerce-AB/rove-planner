@@ -115,6 +115,7 @@ export function ProjectDetailClient({
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [ratesError, setRatesError] = useState<string | null>(null);
+  const [ratesRefreshKey, setRatesRefreshKey] = useState(0);
   const [addRateModalOpen, setAddRateModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState<string>("");
@@ -566,6 +567,7 @@ export function ProjectDetailClient({
                       type="text"
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => commitEdit()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitEdit();
@@ -659,6 +661,7 @@ export function ProjectDetailClient({
                       step={1}
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => commitEdit()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitEdit();
@@ -709,6 +712,7 @@ export function ProjectDetailClient({
                       step={1}
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => commitEdit()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitEdit();
@@ -748,6 +752,7 @@ export function ProjectDetailClient({
                       type="date"
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => commitEdit()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitEdit();
@@ -786,6 +791,7 @@ export function ProjectDetailClient({
                       type="date"
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => commitEdit()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitEdit();
@@ -895,6 +901,7 @@ export function ProjectDetailClient({
               projectId={initial.id}
               onError={setRatesError}
               showDescription={false}
+              refreshTrigger={ratesRefreshKey}
             />
           </div>
         </Panel>
@@ -961,7 +968,10 @@ export function ProjectDetailClient({
       <AddProjectRateModal
         isOpen={addRateModalOpen}
         onClose={() => setAddRateModalOpen(false)}
-        onSuccess={() => router.refresh()}
+        onSuccess={() => {
+          setRatesRefreshKey((k) => k + 1);
+          router.refresh();
+        }}
         projectId={initial.id}
       />
 
