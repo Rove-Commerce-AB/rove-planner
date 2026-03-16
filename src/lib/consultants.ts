@@ -35,6 +35,7 @@ export type CreateConsultantInput = {
   overhead_percentage?: number;
   start_date?: string | null;
   end_date?: string | null;
+  birth_date?: string | null;
 };
 
 export type UpdateConsultantInput = {
@@ -48,6 +49,7 @@ export type UpdateConsultantInput = {
   overhead_percentage?: number;
   start_date?: string | null;
   end_date?: string | null;
+  birth_date?: string | null;
 };
 
 export async function createConsultant(
@@ -66,6 +68,7 @@ export async function createConsultant(
       overhead_percentage: input.overhead_percentage ?? 0,
       start_date: input.start_date ?? null,
       end_date: input.end_date ?? null,
+      birth_date: input.birth_date ?? null,
     })
     .select("id,name")
     .single();
@@ -92,6 +95,7 @@ export async function updateConsultant(
     updates.overhead_percentage = input.overhead_percentage;
   if (input.start_date !== undefined) updates.start_date = input.start_date ?? null;
   if (input.end_date !== undefined) updates.end_date = input.end_date ?? null;
+  if (input.birth_date !== undefined) updates.birth_date = input.birth_date ?? null;
 
   const { error } = await supabase
     .from("consultants")
@@ -122,6 +126,7 @@ export type ConsultantForEdit = {
   overheadPercentage: number;
   startDate: string | null;
   endDate: string | null;
+  birthDate: string | null;
 };
 
 /** Returns consultant id, name and calendar_id if a consultant has this email (for linking app user to consultant). */
@@ -155,7 +160,7 @@ export async function getConsultantById(
 ): Promise<ConsultantForEdit | null> {
   const { data: c, error } = await supabase
     .from("consultants")
-    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date")
+    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date,birth_date")
     .eq("id", id)
     .single();
 
@@ -189,6 +194,7 @@ export async function getConsultantById(
     overheadPercentage: Math.round(overheadPct * 100),
     startDate: c.start_date ?? null,
     endDate: c.end_date ?? null,
+    birthDate: c.birth_date ?? null,
   };
 }
 

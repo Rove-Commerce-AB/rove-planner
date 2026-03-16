@@ -48,13 +48,15 @@ type EditField =
   | "team"
   | "startDate"
   | "endDate"
+  | "birthDate"
   | null;
 
 type Props = {
   consultant: ConsultantForEdit;
+  isAdmin?: boolean;
 };
 
-export function ConsultantDetailClient({ consultant: initial }: Props) {
+export function ConsultantDetailClient({ consultant: initial, isAdmin = false }: Props) {
   const router = useRouter();
   const { refreshConsultants } = useSidePanel();
   const [name, setName] = useState(initial.name);
@@ -66,6 +68,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
   const [overheadPercentage, setOverheadPercentage] = useState(initial.overheadPercentage);
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
+  const [birthDate, setBirthDate] = useState(initial.birthDate ?? "");
   const [isExternal, setIsExternal] = useState(initial.isExternal);
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
@@ -94,6 +97,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
     setOverheadPercentage(initial.overheadPercentage);
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
+    setBirthDate(initial.birthDate ?? "");
     setIsExternal(initial.isExternal);
   }, [initial]);
 
@@ -151,6 +155,9 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
       case "endDate":
         setEndDate(trimmed);
         break;
+      case "birthDate":
+        setBirthDate(trimmed);
+        break;
       default:
         break;
     }
@@ -193,6 +200,9 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
         case "endDate":
           await updateConsultant(initial.id, { end_date: trimmed || null });
           break;
+        case "birthDate":
+          await updateConsultant(initial.id, { birth_date: trimmed || null });
+          break;
         default:
           break;
       }
@@ -212,6 +222,7 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
         case "overheadPercentage": setOverheadPercentage(initial.overheadPercentage); break;
         case "startDate": setStartDate(initial.startDate ?? ""); break;
         case "endDate": setEndDate(initial.endDate ?? ""); break;
+        case "birthDate": setBirthDate(initial.birthDate ?? ""); break;
         default: break;
       }
     } finally {
@@ -618,6 +629,46 @@ export function ConsultantDetailClient({ consultant: initial }: Props) {
               />
             </div>
           </div>
+
+          {isAdmin && (
+            <div className="min-w-0">
+              <FieldLabel>Date of birth</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "birthDate"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "birthDate"}
+                  displayContent={
+                    <InlineEditTrigger
+                      className={birthDate ? "text-brand-signal" : "text-text-primary opacity-70"}
+                      onClick={() => startEdit("birthDate", birthDate)}
+                    >
+                      <FieldValue>{birthDate || "—"}</FieldValue>
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <input
+                      type="date"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={() => commitEdit()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      className={editInputClass}
+                      autoFocus
+                    />
+                  }
+                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="min-w-0">
             <FieldLabel>Calendar</FieldLabel>
