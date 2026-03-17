@@ -1409,17 +1409,17 @@ export function AllocationPageClient({
 
       {data && !embedMode && (
         <div className="mb-3 flex flex-wrap items-center gap-2 px-2">
-          {/* VY – hur tabellen visas (sannolikhet, vilka projektrader) */}
+          {/* View – how the table is displayed (probability, which project rows) */}
           <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Vy
+            View
           </span>
           <Select
             variant="filter"
             value={probabilityDisplay}
             onValueChange={(v) => setProbabilityDisplay(v as ProbabilityDisplay)}
             options={[
-              { value: "weighted", label: "Med sannolikhet" },
-              { value: "none", label: "Utan sannolikhet" },
+              { value: "weighted", label: "With probability" },
+              { value: "none", label: "Without probability" },
             ]}
             className="w-auto min-w-0"
             triggerClassName={`min-w-[130px] ${probabilityDisplay === "weighted" ? "bg-brand-lilac/25 text-text-primary" : ""}`}
@@ -1429,9 +1429,9 @@ export function AllocationPageClient({
             value={projectVisibility}
             onValueChange={(v) => setProjectVisibility(v as ProjectVisibility)}
             options={[
-              { value: "all", label: "Alla projekt" },
-              { value: "hideNon100", label: "Dölj ofullständiga" },
-              { value: "hide100", label: "Dölj 100 %" },
+              { value: "all", label: "All projects" },
+              { value: "hideNon100", label: "Hide incomplete" },
+              { value: "hide100", label: "Hide 100%" },
             ]}
             className="w-auto min-w-0"
             triggerClassName="min-w-[130px]"
@@ -1440,7 +1440,7 @@ export function AllocationPageClient({
             className="mx-1 h-4 w-px shrink-0 bg-[var(--color-border-subtle)]"
             aria-hidden
           />
-          {/* FILTER – vilka konsulter som visas (team, roll) */}
+          {/* Filter – which consultants are shown (team, role) */}
           <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
             Filter
           </span>
@@ -1450,7 +1450,7 @@ export function AllocationPageClient({
               value={teamFilterId ?? ""}
               onValueChange={(v) => setTeamFilterId(v ? v : null)}
               options={[
-                { value: "", label: "Alla team" },
+                { value: "", label: "All teams" },
                 ...data.teams.map((t) => ({ value: t.id, label: t.name })),
               ]}
               className="w-auto min-w-0"
@@ -1463,7 +1463,7 @@ export function AllocationPageClient({
               value={defaultRoleFilterId ?? ""}
               onValueChange={(v) => setDefaultRoleFilterId(v ? v : null)}
               options={[
-                { value: "", label: "Alla roller" },
+                { value: "", label: "All roles" },
                 ...data.roles.map((r) => ({ value: r.id, label: r.name })),
               ]}
               className="w-auto min-w-0"

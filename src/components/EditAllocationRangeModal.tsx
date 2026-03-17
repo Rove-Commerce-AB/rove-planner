@@ -93,7 +93,7 @@ export function EditAllocationRangeModal({
     if (inputMode === "hours") {
       const hours = hoursFromInput();
       if (hours < 0) {
-        setError("Ange ett giltigt antal timmar (≥ 0).");
+        setError("Enter a valid number of hours (≥ 0).");
         return;
       }
       setError(null);
@@ -135,7 +135,7 @@ export function EditAllocationRangeModal({
 
     const p = parseFloat(percentStr.replace(",", "."));
     if (Number.isNaN(p) || p < 0 || p > 100) {
-      setError("Ange en giltig procent (0–100).");
+      setError("Enter a valid percent (0–100).");
       return;
     }
     setError(null);

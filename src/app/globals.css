@@ -47,8 +47,12 @@ body {
   font-family: var(--font-primary);
 }
 
-/* Ensure form controls using border-form never get a harsh (browser) border color. */
-.border-form {
+/* Ensure form controls using border-form never get a harsh (browser) border color.
+   Use both .border-form and element selectors so we win over Tailwind utilities and browser defaults. */
+.border-form,
+input.border-form,
+select.border-form,
+textarea.border-form {
   border-color: var(--color-border-form) !important;
 }
 
@@ -63,6 +67,7 @@ body {
    from components/ui/inlineEditStyles and Input/Select for a consistent look. */
 .modal-form-discreet input:not(:focus),
 .modal-form-discreet select:not(:focus),
+.modal-form-discreet textarea:not(:focus),
 .modal-form-discreet button[type="button"]:not(.btn-primary):not(.btn-danger):not(:focus) {
   border-color: var(--color-border-form) !important;
 }

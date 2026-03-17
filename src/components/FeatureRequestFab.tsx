@@ -67,7 +67,8 @@ export function FeatureRequestFab() {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-lg border border-form bg-bg-default px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-muted"
+                className="rounded-lg border bg-bg-default px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-muted"
+                style={{ borderColor: "var(--color-border-form)" }}
               >
                 Cancel
               </button>
