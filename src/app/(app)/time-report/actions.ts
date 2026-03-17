@@ -23,7 +23,7 @@ export async function getActiveProjectsForCustomer(
   return active.map((p) => ({ value: p.id, label: p.name }));
 }
 
-export type JiraDevOpsOption = { value: string; label: string };
+export type JiraDevOpsOption = { value: string; label: string; url?: string | null };
 
 export async function getJiraDevOpsOptionsForProject(
   projectId: string
@@ -40,7 +40,7 @@ export async function getJiraDevOpsOptionsForProject(
   const options: JiraDevOpsOption[] = [];
   if (project.jira_project_key) {
     const jira = await getJiraIssuesByProjectKey(project.jira_project_key);
-    options.push(...jira.map((o) => ({ value: `jira:${o.value}`, label: o.label })));
+    options.push(...jira.map((o) => ({ value: `jira:${o.value}`, label: o.label, url: o.url ?? undefined })));
   }
   if (project.devops_project) {
     const devops = await getDevOpsWorkItemsByProject(project.devops_project);
@@ -95,6 +95,7 @@ export type TimeReportEntry = {
   projectId: string;
   roleId: string;
   jiraDevOpsValue: string;
+  task: string;
   hours: number[];
   comments: Record<number, string>;
 };
@@ -156,7 +157,7 @@ export async function getTimeReportEntries(
   const { data: rows, error } = await supabase
     .from("time_report_entries")
     .select(
-      "id, customer_id, project_id, role_id, jira_devops_key, entry_date, hours, comment, rate_snapshot, display_order"
+      "id, customer_id, project_id, role_id, jira_devops_key, task, entry_date, hours, comment, rate_snapshot, display_order"
     )
     .eq("consultant_id", consultantId)
     .in("entry_date", weekDates)
@@ -208,6 +209,7 @@ export async function getTimeReportEntries(
         projectId: first.project_id,
         roleId: first.role_id,
         jiraDevOpsValue: first.jira_devops_key ?? "",
+        task: first.task ?? "",
         hours,
         comments,
       };
@@ -256,6 +258,7 @@ export async function saveTimeReportEntries(
     project_id: string;
     role_id: string;
     jira_devops_key: string | null;
+    task: string | null;
     entry_date: string;
     hours: number;
     comment: string | null;
@@ -271,7 +274,7 @@ export async function saveTimeReportEntries(
         (entry.hours?.some((h) => (h ?? 0) > 0) ?? false) ||
         Object.values(entry.comments ?? {}).some((c) => (c ?? "").trim() !== "");
       if (hasContent && (!entry.projectId || !entry.roleId)) {
-        return { error: "Project and Task are required for all rows with hours or comments." };
+        return { error: "Project and Role are required for all rows with hours or comments." };
       }
       if (!entry.projectId || !entry.roleId) continue;
       const displayOrder = cgIndex * 1000 + eIndex;
@@ -291,6 +294,7 @@ export async function saveTimeReportEntries(
             project_id: entry.projectId,
             role_id: entry.roleId,
             jira_devops_key: entry.jiraDevOpsValue || null,
+            task: (entry.task ?? "").trim() || null,
             entry_date: weekDates[dayIndex],
             hours,
             comment: comment || null,
@@ -307,5 +311,92 @@ export async function saveTimeReportEntries(
     if (error) return { error: error.message };
   }
 
+  return {};
+}
+
+/** Copy one entry (hours + comments) to the target week. Used for "Copy to current week" from any week. */
+export async function copyEntryToWeek(
+  consultantId: string,
+  targetYear: number,
+  targetWeek: number,
+  customerId: string,
+  entry: {
+    projectId: string;
+    roleId: string;
+    jiraDevOpsValue: string;
+    task: string;
+    hours: number[];
+    comments: Record<number, string>;
+  }
+): Promise<{ error?: string }> {
+  const consultant = await getConsultantForCurrentUser();
+  if (!consultant || consultant.id !== consultantId) {
+    return { error: "Unauthorized" };
+  }
+  if (!entry.projectId || !entry.roleId) {
+    return { error: "Project and Role are required." };
+  }
+
+  const supabase = await createClient();
+  const weekDates = getWeekDates(targetYear, targetWeek);
+
+  const { data: existing } = await supabase
+    .from("time_report_entries")
+    .select("display_order")
+    .eq("consultant_id", consultantId)
+    .in("entry_date", weekDates);
+
+  const maxOrder =
+    existing?.length && existing.every((r) => r.display_order != null)
+      ? Math.max(...existing.map((r) => Number(r.display_order)))
+      : 0;
+  const displayOrder = maxOrder + 1000;
+
+  const rateSnapshot = await getEffectiveRateSnapshot(
+    entry.projectId,
+    customerId,
+    entry.roleId
+  );
+
+  const rows: {
+    consultant_id: string;
+    customer_id: string;
+    project_id: string;
+    role_id: string;
+    jira_devops_key: string | null;
+    task: string | null;
+    entry_date: string;
+    hours: number;
+    comment: string | null;
+    rate_snapshot: number | null;
+    display_order: number;
+  }[] = [];
+
+  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+    const hours = entry.hours[dayIndex] ?? 0;
+    const comment = entry.comments[dayIndex]?.trim() ?? "";
+    if (hours > 0 || comment !== "") {
+      rows.push({
+        consultant_id: consultantId,
+        customer_id: customerId,
+        project_id: entry.projectId,
+        role_id: entry.roleId,
+        jira_devops_key: entry.jiraDevOpsValue || null,
+        task: (entry.task ?? "").trim() || null,
+        entry_date: weekDates[dayIndex],
+        hours,
+        comment: comment || null,
+        rate_snapshot: rateSnapshot,
+        display_order: displayOrder,
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    return { error: "Entry has no hours or comments to copy." };
+  }
+
+  const { error } = await supabase.from("time_report_entries").insert(rows);
+  if (error) return { error: error.message };
   return {};
 }

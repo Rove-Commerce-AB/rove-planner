@@ -1,9 +1,7 @@
-import { redirect } from "next/navigation";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { getCustomersByIds } from "@/lib/customers";
 import { getCurrentYearWeek } from "@/lib/dateUtils";
-import { getCurrentAppUser } from "@/lib/appUsers";
 import { PageHeader } from "@/components/ui";
 import { TimeReportPageClient } from "./TimeReportPageClient";
 import { getHolidayDatesForWeek } from "./actions";
@@ -11,11 +9,6 @@ import { getHolidayDatesForWeek } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function TimeReportPage() {
-  const user = await getCurrentAppUser();
-  if (!user || user.role !== "admin") {
-    redirect("/access-denied");
-  }
-
   const consultant = await getConsultantForCurrentUser();
   const customerIds = consultant
     ? await getCustomerIdsForConsultant(consultant.id)

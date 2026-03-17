@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy } from "lucide-react";
-import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, type ProjectOption, type JiraDevOpsOption, type TaskOption } from "./actions";
+import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink } from "lucide-react";
+import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek, type ProjectOption, type JiraDevOpsOption, type TaskOption } from "./actions";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -103,6 +103,7 @@ type Entry = {
   projectId: string;
   roleId: string;
   jiraDevOpsValue: string;
+  task: string;
   hours: number[];
   comments: Record<number, string>;
 };
@@ -118,6 +119,7 @@ function newEntry(): Entry {
     projectId: "",
     roleId: "",
     jiraDevOpsValue: "",
+    task: "",
     hours: [0, 0, 0, 0, 0, 0, 0],
     comments: {},
   };
@@ -129,6 +131,7 @@ function cloneGroupsWithNewIds(groups: CustomerGroup[]): CustomerGroup[] {
     entries: g.entries.map((e) => ({
       ...e,
       id: crypto.randomUUID(),
+      task: e.task ?? "",
       hours: [...e.hours],
       comments: { ...e.comments },
     })),
@@ -267,13 +270,15 @@ export function TimeReportPageClient({
   const [taskCache, setTaskCache] = useState<Record<string, TaskOption[]>>({});
   const [jiraDevOpsCache, setJiraDevOpsCache] = useState<Record<string, JiraDevOpsOption[]>>({});
   const [editingCell, setEditingCell] = useState<{ entryId: string; dayIndex: number } | null>(null);
-  const [commentState, setCommentState] = useState<{
+  const [commentState, setCommentState] = useState<{ entryId: string } | null>(null);
+  const [commentTexts, setCommentTexts] = useState<Record<number, string>>({});
+  const [jiraDevOpsModal, setJiraDevOpsModal] = useState<{
+    customerId: string;
     entryId: string;
-    dayIndex: number;
   } | null>(null);
-  const [commentText, setCommentText] = useState("");
+  const [jiraDevOpsModalValue, setJiraDevOpsModalValue] = useState("");
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
-  const [copiedWeek, setCopiedWeek] = useState<{ year: number; week: number; groups: CustomerGroup[] } | null>(null);
+  const [copyToWeekState, setCopyToWeekState] = useState<"idle" | "copying" | "error">("idle");
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded">("idle");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -286,12 +291,6 @@ export function TimeReportPageClient({
     const { start } = getISOWeekDateRangeLocal(initialYear, initialWeek);
     return parseInt(start.slice(0, 4), 10);
   });
-  const [hasMounted, setHasMounted] = useState(false);
-
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
-
   useEffect(() => {
     if (!calendarId) return;
     getHolidayDatesForWeek(calendarId, year, week).then(setHolidayDates);
@@ -317,6 +316,30 @@ export function TimeReportPageClient({
       })
       .catch(() => setLoadState("loaded"));
   }, [consultant?.id, year, week]);
+
+  useEffect(() => {
+    if (!isDirty || !consultant) return;
+    setSaveState("saving");
+    setSaveError(null);
+    saveTimeReportEntries(consultant.id, year, week, customerGroups)
+      .then((result) => {
+        if (result.error) {
+          setSaveError(result.error);
+          setSaveState("error");
+          if (result.error.includes("Project and Role")) {
+            setShowValidationHighlights(true);
+          }
+        } else {
+          setSaveState("idle");
+          setIsDirty(false);
+          setShowValidationHighlights(false);
+        }
+      })
+      .catch(() => {
+        setSaveState("error");
+        setSaveError("Save failed");
+      });
+  }, [isDirty, customerGroups, year, week, consultant?.id]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -457,7 +480,7 @@ export function TimeReportPageClient({
     return [{ value: "", label: "—" }, ...list];
   };
 
-  const getJiraDevOpsOptions = (projectId: string): { value: string; label: string }[] => {
+  const getJiraDevOpsOptions = (projectId: string): { value: string; label: string; url?: string | null }[] => {
     if (!projectId) return [{ value: "", label: "—" }];
     const list = jiraDevOpsCache[projectId];
     if (list === undefined) return [{ value: "", label: "—" }];
@@ -492,49 +515,33 @@ export function TimeReportPageClient({
     if (c) loadProjectsForCustomer(customerId);
   };
 
-  const copyLastWeek = () => {
-    if (customerGroups.length === 0) return;
-    setCopiedWeek({
-      year,
-      week,
-      groups: cloneGroupsWithNewIds(customerGroups),
-    });
-  };
-
-  const pasteCopiedWeek = () => {
-    if (!copiedWeek) return;
-    const pasted = cloneGroupsWithNewIds(copiedWeek.groups);
-    setIsDirty(true);
-    setCustomerGroups(pasted);
-    pasted.forEach((g) => loadProjectsForCustomer(g.customerId));
-  };
-
-  const canPaste = copiedWeek != null && (year !== copiedWeek.year || week !== copiedWeek.week);
-
-  const handleSaveWeek = async () => {
-    if (!consultant) return;
-    setSaveError(null);
-    const invalid: Entry[] = [];
-    for (const group of customerGroups) {
-      for (const entry of group.entries) {
-        if (entryHasContent(entry) && (!entry.projectId || !entry.roleId)) {
-          invalid.push(entry);
-        }
+  const copyRowToCurrentWeek = async (customerId: string, entry: Entry) => {
+    if (!consultant || !entry.projectId || !entry.roleId) return;
+    setCopyToWeekState("copying");
+    const result = await copyEntryToWeek(
+      consultant.id,
+      initialYear,
+      initialWeek,
+      customerId,
+      {
+        projectId: entry.projectId,
+        roleId: entry.roleId,
+        jiraDevOpsValue: entry.jiraDevOpsValue,
+        task: entry.task ?? "",
+        hours: entry.hours,
+        comments: entry.comments,
       }
-    }
-    if (invalid.length > 0) {
-      setShowValidationHighlights(true);
+    );
+    if (result.error) {
+      setCopyToWeekState("error");
+      setSaveError(result.error);
       return;
     }
-    setShowValidationHighlights(false);
-    setSaveState("saving");
-    const result = await saveTimeReportEntries(consultant.id, year, week, customerGroups);
-    if (result.error) {
-      setSaveError(result.error);
-      setSaveState("error");
-    } else {
-      setSaveState("idle");
-      setIsDirty(false);
+    setCopyToWeekState("idle");
+    if (year === initialYear && week === initialWeek) {
+      getTimeReportEntries(consultant.id, year, week).then((groups) => {
+        setCustomerGroups(groups);
+      });
     }
   };
 
@@ -563,11 +570,18 @@ export function TimeReportPageClient({
     if (editingCell?.entryId === entryId) setEditingCell(null);
   };
 
-  const openComment = (entryId: string, dayIndex: number) => {
+  const entryHasComment = (entry: Entry): boolean =>
+    Object.values(entry.comments).some((c) => (c ?? "").trim() !== "");
+
+  const openComment = (entryId: string) => {
     const group = customerGroups.find((g) => g.entries.some((e) => e.id === entryId));
     const entry = group?.entries.find((e) => e.id === entryId);
-    setCommentText(entry?.comments[dayIndex] ?? "");
-    setCommentState({ entryId, dayIndex });
+    const texts: Record<number, string> = {};
+    for (let i = 0; i < 7; i++) {
+      texts[i] = entry?.comments[i]?.trim() ?? "";
+    }
+    setCommentTexts(entry ? texts : {});
+    setCommentState({ entryId });
   };
 
   const saveComment = () => {
@@ -577,6 +591,11 @@ export function TimeReportPageClient({
     )?.customerId;
     if (!customerId) return;
     setIsDirty(true);
+    const comments: Record<number, string> = {};
+    for (let i = 0; i < 7; i++) {
+      const t = (commentTexts[i] ?? "").trim();
+      if (t) comments[i] = t;
+    }
     setCustomerGroups((prev) =>
       prev.map((g) =>
         g.customerId !== customerId
@@ -584,15 +603,7 @@ export function TimeReportPageClient({
           : {
               ...g,
               entries: g.entries.map((e) =>
-                e.id !== commentState.entryId
-                  ? e
-                  : {
-                      ...e,
-                      comments: {
-                        ...e.comments,
-                        [commentState.dayIndex]: commentText,
-                      },
-                    }
+                e.id !== commentState.entryId ? e : { ...e, comments }
               ),
             }
       )
@@ -654,14 +665,14 @@ export function TimeReportPageClient({
               <ChevronRight className="h-5 w-5" />
             </IconButton>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {!hasMounted ? (
-              <span className="w-[4.5rem] rounded-md bg-bg-muted px-2 py-1 text-center text-xs font-medium text-text-secondary">
-                V {week}
-              </span>
-            ) : (
-              monthWeeks.map(({ year: wY, week: w }) => {
+          <div className="flex flex-col gap-1">
+            <span className="text-left text-xs font-medium text-text-secondary">
+              Current week
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {monthWeeks.map(({ year: wY, week: w }) => {
                 const isSelected = wY === year && w === week;
+                const isCurrentWeek = wY === initialYear && w === initialWeek;
                 return (
                   <button
                     key={`${wY}-${w}`}
@@ -674,51 +685,26 @@ export function TimeReportPageClient({
                       isSelected
                         ? "bg-brand-signal text-white"
                         : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary"
-                    }`}
-                    aria-label={`Vecka ${w}`}
+                    } ${!isSelected && isCurrentWeek ? "ring-2 ring-brand-signal ring-offset-1 ring-offset-bg-default" : ""}`}
+                    aria-label={`Vecka ${w}${isCurrentWeek ? " (current week)" : ""}`}
                     aria-pressed={isSelected}
+                    title={isCurrentWeek ? "Current week" : undefined}
                   >
                     V {w}
                   </button>
                 );
-              })
-            )}
+              })}
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSaveWeek}
-            disabled={saveState === "saving" || loadState === "loading"}
-            title="Save week to Supabase"
-          >
-            {saveState === "saving" ? "Saving…" : "Save week"}
-          </Button>
+          {saveState === "saving" && (
+            <span className="text-sm text-text-secondary">Saving…</span>
+          )}
           {saveState === "error" && saveError && (
             <span className="text-sm text-red-600" role="alert">
               {saveError}
             </span>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={copyLastWeek}
-            disabled={customerGroups.length === 0}
-            title="Copy current week (paste into another week)"
-          >
-            <Copy className="h-4 w-4 shrink-0" />
-            Copy last week
-          </Button>
-          {canPaste && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={pasteCopiedWeek}
-              title={`Paste week ${copiedWeek?.week}, ${copiedWeek?.year}`}
-            >
-              Paste
-            </Button>
           )}
           <Button
             variant="secondary"
@@ -775,42 +761,38 @@ export function TimeReportPageClient({
           <table className="w-full table-fixed border-collapse text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted">
-                <th className="w-[180px] min-w-[180px] max-w-[180px] px-2 py-2 text-left font-medium text-text-secondary">
+                <th className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-2 text-left font-medium text-text-secondary">
                   Project
                 </th>
                 <th className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-2 text-left font-medium text-text-secondary">
-                  Task
+                  Role
                 </th>
                 <th className="w-[200px] min-w-[200px] max-w-[200px] px-2 py-2 text-left font-medium text-text-secondary">
-                  Jira / DevOps
+                  Task
+                </th>
+                <th className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-2 text-center font-medium text-text-secondary" scope="col" title="Jira / DevOps">
+                  <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
                 {DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
                     className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-2 font-medium text-text-secondary last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
                   >
-                    <div className="flex h-full w-full items-center justify-center">
-                      <div className="flex items-center gap-0">
-                        <span className="invisible shrink-0" aria-hidden>
-                          <IconButton aria-label=" ">
-                            <MessageSquare className="h-3.5 w-3.5" />
-                          </IconButton>
-                        </span>
-                        <div className="shrink-0 text-left text-text-secondary">
-                          <div>{label}</div>
-                          <div className="text-xs text-text-muted">{dayDates[i]}</div>
-                        </div>
+                    <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
+                      <div>
+                        <div>{label}</div>
+                        <div className="text-xs text-text-muted">{dayDates[i]}</div>
                       </div>
                     </div>
                   </th>
                 ))}
-                <th className="w-20 px-1 py-2" aria-hidden />
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-2" aria-hidden />
               </tr>
             </thead>
             <tbody>
               {customerGroups.length > 0 && (
                 <tr className="border-b border-border-subtle bg-bg-muted font-medium">
-                  <td colSpan={3} className="px-2 py-1.5 text-left text-text-primary">
+                  <td colSpan={4} className="px-2 py-1.5 text-left text-text-primary">
                     Total
                   </td>
                   {totalHoursPerDay.map((h, i) => (
@@ -819,26 +801,13 @@ export function TimeReportPageClient({
                       className={`h-10 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                     >
                       <div className="flex h-full w-full items-center justify-center">
-                        <div className="flex items-center gap-0">
-                          <span className="invisible shrink-0" aria-hidden>
-                            <IconButton aria-label=" ">
-                              <MessageSquare className="h-3.5 w-3.5" />
-                            </IconButton>
-                          </span>
-                          <span className="shrink-0 text-xs tabular-nums text-text-primary">
-                            {h > 0 ? String(h) : ""}
-                          </span>
-                        </div>
+                        <span className="text-xs tabular-nums text-text-primary">
+                          {h > 0 ? String(h) : ""}
+                        </span>
                       </div>
                     </td>
                   ))}
-                  <td className="w-20 px-1 py-1.5 align-middle">
-                    <div className="flex h-full w-full items-center justify-center">
-                      <span className="text-xs font-medium tabular-nums text-text-primary">
-                        {weekTotalHours > 0 ? `Tot: ${weekTotalHours}` : ""}
-                      </span>
-                    </div>
-                  </td>
+                  <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5 align-middle" />
                 </tr>
               )}
               {customerGroups.map((group) => {
@@ -851,7 +820,7 @@ export function TimeReportPageClient({
                 return (
                   <Fragment key={group.customerId}>
                     <tr className="border-b border-border-subtle bg-bg-muted/70">
-                      <td colSpan={3} className="px-2 py-1.5">
+                      <td colSpan={4} className="px-2 py-1.5">
                         <div className="flex w-full items-center gap-2 font-medium text-text-primary">
                           <span
                             className="h-2 w-2 shrink-0 rounded-full"
@@ -870,14 +839,23 @@ export function TimeReportPageClient({
                           className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-1 last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         />
                       ))}
-                      <td className="w-20 px-1 py-1" />
+                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
+                        <div className="flex items-center justify-center">
+                          <IconButton
+                            aria-label="Add row"
+                            onClick={() => addRow(group.customerId)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </IconButton>
+                        </div>
+                      </td>
                     </tr>
                     {group.entries.map((entry) => (
                         <tr
                           key={entry.id}
                           className="border-b border-border-subtle bg-bg-default hover:bg-bg-subtle/50"
                         >
-                          <td className="w-[180px] min-w-[180px] max-w-[180px] px-2 py-1.5">
+                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-1.5">
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -920,23 +898,72 @@ export function TimeReportPageClient({
                             </div>
                           </td>
                           <td className="w-[200px] min-w-[200px] max-w-[200px] px-2 py-1.5">
-                            <div className="min-w-0 overflow-hidden">
-                              <Combobox
-                                value={entry.jiraDevOpsValue}
-                                onValueChange={(value) =>
-                                  updateEntryInGroup(group.customerId, entry.id, {
-                                    jiraDevOpsValue: value,
-                                  })
-                                }
-                                options={getJiraDevOpsOptions(entry.projectId)}
-                                placeholder="Type to search..."
+                            <input
+                              type="text"
+                              value={entry.task ?? ""}
+                              onChange={(e) =>
+                                updateEntryInGroup(group.customerId, entry.id, {
+                                  task: e.target.value,
+                                })
+                              }
+                              className="h-8 w-full min-w-0 rounded border border-form bg-bg-default px-2 py-1 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                            />
+                          </td>
+                          <td className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1.5 align-middle">
+                            {entry.jiraDevOpsValue ? (
+                              <div className="flex items-center gap-0.5 min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setJiraDevOpsModalValue(entry.jiraDevOpsValue);
+                                    setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
+                                    if (entry.projectId) loadJiraDevOpsForProject(entry.projectId);
+                                  }}
+                                  className="min-w-0 flex-1 truncate cursor-pointer rounded px-1 py-0.5 text-left text-xs text-brand-signal hover:bg-bg-muted"
+                                  title={`${entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")} – Change Jira/DevOps`}
+                                >
+                                  {entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")}
+                                </button>
+                                {entry.jiraDevOpsValue.startsWith("jira:") && (() => {
+                                  const opt = getJiraDevOpsOptions(entry.projectId).find((o) => o.value === entry.jiraDevOpsValue);
+                                  const url = opt?.url?.trim();
+                                  const key = entry.jiraDevOpsValue.replace(/^jira:/, "");
+                                  return url ? (
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="shrink-0 rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
+                                      aria-label="Open in Jira"
+                                      title="Open in Jira"
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5 stroke-[1.5]" />
+                                    </a>
+                                  ) : (
+                                    <span
+                                      className="shrink-0 rounded p-0.5 text-text-muted"
+                                      title={key ? `Jira ${key} – no URL in database` : undefined}
+                                      aria-hidden
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5 stroke-[1.5]" />
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              <IconButton
+                                aria-label="Add Jira/DevOps"
+                                onClick={() => {
+                                  setJiraDevOpsModalValue("");
+                                  setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
+                                  if (entry.projectId) loadJiraDevOpsForProject(entry.projectId);
+                                }}
                                 disabled={!entry.projectId}
-                                size="sm"
-                                variant="filter"
-                                inputClassName="h-8 w-full min-w-0 max-w-full truncate"
-                                emptyOptionsPlaceholder="No Jira/DevOps"
-                              />
-                            </div>
+                                title="Add Jira/DevOps"
+                              >
+                                <Link className="h-3.5 w-3.5" />
+                              </IconButton>
+                            )}
                           </td>
                           {entry.hours.map((h, dayIndex) => (
                             <td
@@ -961,29 +988,6 @@ export function TimeReportPageClient({
                                 }}
                                 className={`absolute inset-0 flex items-center justify-center rounded-sm transition-colors ${editingCell?.entryId === entry.id && editingCell?.dayIndex === dayIndex ? "cursor-default" : "cursor-pointer hover:bg-bg-muted/60"}`}
                               >
-                                <div className="flex items-center gap-0">
-                                  <IconButton
-                                  aria-label={
-                                    entry.comments[dayIndex]
-                                      ? `Comment for ${DAY_LABELS[dayIndex]} (has comment)`
-                                      : `Comment for ${DAY_LABELS[dayIndex]}`
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (h !== 0) openComment(entry.id, dayIndex);
-                                  }}
-                                  className={
-                                    h === 0
-                                      ? "invisible shrink-0 pointer-events-none"
-                                      : entry.comments[dayIndex]
-                                        ? "shrink-0 text-brand-signal"
-                                        : "shrink-0"
-                                  }
-                                >
-                                  <MessageSquare
-                                    className={`h-3.5 w-3.5 ${entry.comments[dayIndex] ? "fill-brand-signal stroke-brand-signal" : ""}`}
-                                  />
-                                </IconButton>
                                 <HourCell
                                   value={h}
                                   entryId={entry.id}
@@ -1004,20 +1008,32 @@ export function TimeReportPageClient({
                                   }}
                                   onBlur={() => setEditingCell(null)}
                                 />
-                                </div>
                               </div>
                             </td>
                           ))}
-                          <td className="w-20 px-1 py-1.5">
+                          <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5">
                             <div className="flex items-center justify-center gap-0.5">
                               <IconButton
-                                aria-label="Add row"
-                                onClick={() => addRow(group.customerId)}
+                                aria-label="Add internal comment"
+                                title="Add internal comment"
+                                onClick={() => openComment(entry.id)}
+                                className={entryHasComment(entry) ? "text-brand-signal" : ""}
                               >
-                                <Plus className="h-3.5 w-3.5" />
+                                <MessageSquare
+                                  className={`h-3.5 w-3.5 ${entryHasComment(entry) ? "fill-brand-signal stroke-brand-signal" : ""}`}
+                                />
                               </IconButton>
                               <IconButton
-                                aria-label="Delete row"
+                                aria-label="Copy row to current week"
+                                title="Copy row to current week"
+                                onClick={() => copyRowToCurrentWeek(group.customerId, entry)}
+                                disabled={!entry.projectId || !entry.roleId || !entryHasContent(entry) || copyToWeekState === "copying"}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Delete entire row"
+                                title="Delete entire row"
                                 onClick={() => removeEntry(group.customerId, entry.id)}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1027,7 +1043,7 @@ export function TimeReportPageClient({
                         </tr>
                       ))}
                     <tr className="border-b border-border-subtle bg-bg-muted/60 text-text-secondary">
-                        <td colSpan={3} className="px-2 py-1 text-left text-xs font-medium">
+                        <td colSpan={4} className="px-2 py-1 text-left text-xs font-medium">
                           Subtotal
                         </td>
                         {daily.map((h, i) => (
@@ -1036,20 +1052,13 @@ export function TimeReportPageClient({
                             className={`h-10 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                           >
                             <div className="flex h-full w-full items-center justify-center">
-                              <div className="flex items-center gap-0">
-                                <span className="invisible shrink-0" aria-hidden>
-                                  <IconButton aria-label=" ">
-                                    <MessageSquare className="h-3.5 w-3.5" />
-                                  </IconButton>
-                                </span>
-                                <span className="shrink-0 text-xs tabular-nums text-text-secondary">
-                                  {h > 0 ? String(h) : ""}
-                                </span>
-                              </div>
+                              <span className="text-xs tabular-nums text-text-secondary">
+                                {h > 0 ? String(h) : ""}
+                              </span>
                             </div>
                           </td>
                         ))}
-                        <td className="w-20 px-1 py-1 align-middle">
+                        <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
                           <div className="flex h-full w-full items-center justify-center">
                             <span className="text-xs font-medium tabular-nums text-text-secondary">
                               {total > 0 ? `Tot: ${total}` : ""}
@@ -1058,7 +1067,7 @@ export function TimeReportPageClient({
                         </td>
                       </tr>
                     <tr aria-hidden>
-                      <td colSpan={11} className="border-b border-border-default p-0" />
+                      <td colSpan={12} className="border-b border-border-default p-0" />
                     </tr>
                   </Fragment>
                 );
@@ -1073,20 +1082,31 @@ export function TimeReportPageClient({
         onOpenChange={(open) => {
           if (!open) setCommentState(null);
         }}
-        title={
-          commentState !== null
-            ? `Comment – ${DAY_LABELS[commentState.dayIndex]}`
-            : "Comment"
-        }
+        title="Comments per day"
       >
         <div className="flex flex-col gap-3 pt-2">
-          <textarea
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add a comment for this day..."
-            rows={3}
-            className="w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
-          />
+          <p className="text-sm text-text-secondary">
+            Add a comment for each day. Leave blank for no comment.
+          </p>
+          <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
+            {DAY_LABELS.map((label, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <label htmlFor={`comment-day-${i}`} className="text-xs font-medium text-text-secondary">
+                  {label} {dayDates[i]}
+                </label>
+                <textarea
+                  id={`comment-day-${i}`}
+                  value={commentTexts[i] ?? ""}
+                  onChange={(e) =>
+                    setCommentTexts((prev) => ({ ...prev, [i]: e.target.value }))
+                  }
+                  placeholder={`Comment for ${label}...`}
+                  rows={1}
+                  className="w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
+                />
+              </div>
+            ))}
+          </div>
           <div className="flex justify-end gap-2">
             <Button
               variant="secondary"
@@ -1100,6 +1120,56 @@ export function TimeReportPageClient({
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={jiraDevOpsModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setJiraDevOpsModal(null);
+        }}
+        title="Jira / DevOps"
+      >
+        {jiraDevOpsModal && (() => {
+          const entry = customerGroups
+            .find((g) => g.customerId === jiraDevOpsModal.customerId)
+            ?.entries.find((e) => e.id === jiraDevOpsModal.entryId);
+          if (!entry) return null;
+          return (
+            <div className="flex flex-col gap-3 pt-2">
+              <Combobox
+                value={jiraDevOpsModalValue}
+                onValueChange={(value) => setJiraDevOpsModalValue(value)}
+                options={getJiraDevOpsOptions(entry.projectId)}
+                placeholder="Type to search..."
+                size="sm"
+                variant="filter"
+                inputClassName="h-9 w-full"
+                emptyOptionsPlaceholder="No Jira/DevOps"
+                renderListInPortal={false}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setJiraDevOpsModal(null)}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    updateEntryInGroup(jiraDevOpsModal.customerId, jiraDevOpsModal.entryId, {
+                      jiraDevOpsValue: jiraDevOpsModalValue,
+                    });
+                    setJiraDevOpsModal(null);
+                  }}
+                >
+                  OK
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </Dialog>
     </div>
   );

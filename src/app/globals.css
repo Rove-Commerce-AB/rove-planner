@@ -47,6 +47,11 @@ body {
   font-family: var(--font-primary);
 }
 
+/* Ensure form controls using border-form never get a harsh (browser) border color. */
+.border-form {
+  border-color: var(--color-border-form) !important;
+}
+
 /* Table borders use same color as panel border (light gray) */
 .border-panel {
   border-color: var(--panel-border);

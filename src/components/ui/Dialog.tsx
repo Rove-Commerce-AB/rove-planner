@@ -22,7 +22,15 @@ export function Dialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <DialogPrimitive.Content
           className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-bg-default p-6 shadow-xl focus:outline-none"
-          onPointerDownOutside={() => onOpenChange?.(false)}
+          onPointerDownOutside={(e) => {
+            const target = e.target;
+            const el =
+              target instanceof Element
+                ? target
+                : (target as { parentElement?: Element | null } | null)?.parentElement ?? null;
+            if (el?.closest?.("[data-combobox-list]")) e.preventDefault();
+            else onOpenChange?.(false);
+          }}
           onEscapeKeyDown={() => onOpenChange?.(false)}
         >
           <DialogPrimitive.Title className="pr-10 text-lg font-semibold text-text-primary">

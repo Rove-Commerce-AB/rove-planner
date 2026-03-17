@@ -25,7 +25,7 @@
     --color-bg-muted: var(--color-gray-100);
     --color-border-default: #e5e1dc;          /* Soft gray – low contrast, never harsh */
     --color-border-subtle: #ebe8e4;           /* Very light – dividers, sidebar */
-    --color-border-form: #ebe8e4;             /* Form controls: inputs, selects, buttons – lighter, less prominent. Use for all interactive form elements so borders stay consistent and non-harsh. */
+    --color-border-form: #f2efec;             /* Form controls: inputs, selects, buttons – very light, less prominent. Use for all interactive form elements so borders stay consistent and non-harsh. */
     --color-tabs-border: #ebe9e8;            /* Tabs divider line – light, discrete */
     /* Allocation table – soft mid-gray, less prominent lines */
     --color-grid-border: #e5e1dc;

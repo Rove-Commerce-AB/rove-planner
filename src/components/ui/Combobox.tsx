@@ -44,6 +44,8 @@ type Props = {
   inputClassName?: string;
   /** Placeholder when options list is empty (e.g. "No Jira/DevOps") */
   emptyOptionsPlaceholder?: string;
+  /** When false, render dropdown list inline (use inside Dialog so clicks on list are not "outside") */
+  renderListInPortal?: boolean;
 };
 
 export function Combobox({
@@ -57,12 +59,20 @@ export function Combobox({
   className = "",
   inputClassName = "",
   emptyOptionsPlaceholder,
+  renderListInPortal = true,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
-  const [listStyle, setListStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [listStyle, setListStyle] = useState<{
+    top: number;
+    left: number;
+    minWidth: number;
+    isInline?: boolean;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const highlightedRef = useRef<HTMLLIElement | null>(null);
 
   const selectedOption = options.find((o) => o.value === value);
   const displayWhenClosed = selectedOption ? selectedOption.label : "";
@@ -84,11 +94,28 @@ export function Combobox({
           o.label.toLowerCase().includes(query)
         );
 
+  const listContent = options.length === 0 ? [] : filtered;
+  const showList = isOpen && !disabled;
+  const clampHighlight = (i: number) => Math.max(0, Math.min(i, listContent.length - 1));
+
+  useEffect(() => {
+    setHighlightedIndex((i) => clampHighlight(i));
+  }, [listContent.length]);
+
+  useEffect(() => {
+    highlightedRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [highlightedIndex]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
       if (containerRef.current?.contains(target)) return;
-      if ((e.target as Element).closest?.("[data-combobox-list]")) return;
+      const t = e.target;
+      const el =
+        t instanceof Element
+          ? t
+          : (t as { parentElement?: Element | null } | null)?.parentElement ?? null;
+      if (el?.closest?.("[data-combobox-list]")) return;
       setIsOpen(false);
       setInputValue(displayWhenClosed);
     }
@@ -108,6 +135,8 @@ export function Combobox({
     if (disabled) return;
     setIsOpen(true);
     setInputValue(selectedOption ? selectedOption.label : inputValue || "");
+    const idx = listContent.findIndex((o) => o.value === value);
+    setHighlightedIndex(idx >= 0 ? idx : 0);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,21 +155,49 @@ export function Combobox({
       setIsOpen(false);
       setInputValue(displayWhenClosed);
       (e.target as HTMLInputElement).blur();
+      return;
+    }
+    if (!showList) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((i) => clampHighlight(i + 1));
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((i) => clampHighlight(i - 1));
+      return;
+    }
+    if (e.key === "Enter" && listContent.length > 0) {
+      e.preventDefault();
+      const opt = listContent[highlightedIndex];
+      if (opt && opt.value !== "") {
+        handleSelect(opt);
+      }
+      return;
     }
   };
 
-  const showList = isOpen && !disabled;
-  const listContent = options.length === 0 ? [] : filtered;
-
   const updateListPosition = () => {
     const input = inputRef.current;
+    const container = containerRef.current;
     if (!input) return;
     const rect = input.getBoundingClientRect();
-    setListStyle({
-      top: rect.bottom + 4,
-      left: rect.left,
-      minWidth: rect.width,
-    });
+    if (!renderListInPortal && container) {
+      const cr = container.getBoundingClientRect();
+      setListStyle({
+        top: rect.bottom - cr.top + 4,
+        left: rect.left - cr.left,
+        minWidth: rect.width,
+        isInline: true,
+      });
+    } else {
+      setListStyle({
+        top: rect.bottom + 4,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    }
   };
 
   useEffect(() => {
@@ -173,49 +230,53 @@ export function Combobox({
       window.removeEventListener("resize", onScrollOrResize);
       scrollParent?.removeEventListener("scroll", onScrollOrResize);
     };
-  }, [showList]);
+  }, [showList, renderListInPortal]);
 
-  const dropdownList = showList && listStyle && typeof document !== "undefined" && (
-    createPortal(
-      <ul
-        id="combobox-list"
-        role="listbox"
-        data-combobox-list
-        className="max-h-60 overflow-auto rounded-lg border border-form bg-bg-default py-1 shadow-lg z-[9999]"
-        style={{
-          position: "fixed",
-          top: listStyle.top,
-          left: listStyle.left,
-          minWidth: listStyle.minWidth,
-        }}
-      >
-        {listContent.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-text-muted">
-            {options.length === 0
-              ? emptyOptionsPlaceholder ?? "No options"
-              : "No matches"}
+  const listElement = showList && listStyle && (
+    <ul
+      id="combobox-list"
+      role="listbox"
+      data-combobox-list
+      className="max-h-60 overflow-auto rounded-lg border border-form bg-bg-default py-1 shadow-lg z-[9999]"
+      style={{
+        position: listStyle.isInline ? "absolute" : "fixed",
+        top: listStyle.top,
+        left: listStyle.left,
+        minWidth: listStyle.minWidth,
+      }}
+    >
+      {listContent.length === 0 ? (
+        <li className="px-3 py-2 text-sm text-text-muted">
+          {options.length === 0
+            ? emptyOptionsPlaceholder ?? "No options"
+            : "No matches"}
+        </li>
+      ) : (
+        listContent.map((opt, idx) => (
+          <li
+            key={opt.value === "" ? "__empty__" : opt.value}
+            ref={idx === highlightedIndex ? (el) => { highlightedRef.current = el; } : undefined}
+            id={listContent.length ? `combobox-option-${idx}` : undefined}
+            role="option"
+            aria-selected={idx === highlightedIndex}
+            onClick={() => handleSelect(opt)}
+            className={`px-3 py-1.5 text-sm outline-none ${
+              opt.value === ""
+                ? "cursor-default text-text-muted"
+                : "cursor-pointer text-text-primary hover:bg-bg-muted"
+            } ${opt.value === value ? "bg-brand-lilac/30" : ""} ${idx === highlightedIndex ? "bg-bg-muted" : ""}`}
+          >
+            {renderLabelWithHighlight(opt.label, query)}
           </li>
-        ) : (
-          listContent.map((opt) => (
-            <li
-              key={opt.value === "" ? "__empty__" : opt.value}
-              role="option"
-              aria-selected={opt.value === value}
-              onClick={() => handleSelect(opt)}
-              className={`px-3 py-1.5 text-sm outline-none ${
-                opt.value === ""
-                  ? "cursor-default text-text-muted"
-                  : "cursor-pointer text-text-primary hover:bg-bg-muted"
-              } ${opt.value === value ? "bg-brand-lilac/30" : ""}`}
-            >
-              {renderLabelWithHighlight(opt.label, query)}
-            </li>
-          ))
-        )}
-      </ul>,
-      document.body
-    )
+        ))
+      )}
+    </ul>
   );
+
+  const dropdownList =
+    renderListInPortal && listElement && typeof document !== "undefined"
+      ? createPortal(listElement, document.body)
+      : listElement;
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
@@ -234,7 +295,7 @@ export function Combobox({
           aria-expanded={showList}
           aria-autocomplete="list"
           aria-controls={showList ? "combobox-list" : undefined}
-          id={showList ? "combobox-list" : undefined}
+          aria-activedescendant={showList && listContent.length > 0 ? `combobox-option-${highlightedIndex}` : undefined}
           className={`w-full pr-8 ${inputSize} ${inputShape} disabled:cursor-not-allowed disabled:opacity-50 ${inputClassName}`}
         />
         <span

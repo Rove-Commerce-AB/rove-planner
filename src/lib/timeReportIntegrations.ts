@@ -3,6 +3,7 @@ import { supabase } from "./supabaseClient";
 export type JiraIssueOption = {
   value: string;
   label: string;
+  url?: string | null;
 };
 
 export type DevOpsWorkItemOption = {
@@ -17,13 +18,14 @@ export async function getJiraIssuesByProjectKey(
   if (!projectKey.trim()) return [];
   const { data, error } = await supabase
     .from("jira_issues")
-    .select("jira_key, summary")
+    .select("jira_key, summary, url")
     .eq("project_key", projectKey.trim())
     .order("jira_key");
   if (error) return [];
-  return (data ?? []).map((row: { jira_key: string; summary: string | null }) => ({
+  return (data ?? []).map((row: { jira_key: string; summary: string | null; url?: string | null }) => ({
     value: row.jira_key,
     label: row.summary ? `${row.jira_key}: ${row.summary}` : row.jira_key,
+    url: row.url ?? null,
   }));
 }
 
