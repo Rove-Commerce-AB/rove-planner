@@ -468,7 +468,12 @@ export function ProjectDetailClient({
     try {
       await deleteProject(initial.id);
       setShowDeleteConfirm(false);
-      router.push("/projects");
+      const customerId = initial.customer_id;
+      if (customerId) {
+        router.push(`/customers/${customerId}`);
+      } else {
+        router.push("/customers");
+      }
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
