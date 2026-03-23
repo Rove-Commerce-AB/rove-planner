@@ -18,6 +18,10 @@ export type ProjectWithDetails = {
   type: ProjectType;
   customer_id: string;
   customerName: string;
+  /** Optional dedicated project manager (consultant). */
+  projectManagerId: string | null;
+  /** Display name for projectManagerId. */
+  projectManagerName: string | null;
   startDate: string | null;
   endDate: string | null;
   /** 1–100, default 100. null treated as 100. */

@@ -2,6 +2,7 @@ import { supabase } from "./supabaseClient";
 import { getCustomers } from "./customers";
 import { getCustomerIdsForConsultant } from "./customerConsultants";
 import { getAllocationsByProjectIds } from "./allocations";
+import { getConsultantNamesByIds } from "./consultants";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 
@@ -20,6 +21,7 @@ export type ProjectRecord = {
   name: string;
   is_active: boolean;
   type: ProjectType;
+  project_manager_id: string | null;
   start_date: string | null;
   end_date: string | null;
   /** 1–100, default 100. */
@@ -35,6 +37,7 @@ export type CreateProjectInput = {
   customer_id: string;
   is_active?: boolean;
   type?: ProjectType;
+  project_manager_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   probability?: number | null;
@@ -49,6 +52,7 @@ export type UpdateProjectInput = {
   customer_id?: string;
   is_active?: boolean;
   type?: ProjectType;
+  project_manager_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   probability?: number | null;
@@ -59,7 +63,7 @@ export type UpdateProjectInput = {
 };
 
 const PROJECT_SELECT =
-  "id,customer_id,name,is_active,type,start_date,end_date,probability,jira_project_key,devops_project,budget_hours,budget_money";
+  "id,customer_id,name,is_active,type,project_manager_id,start_date,end_date,probability,jira_project_key,devops_project,budget_hours,budget_money";
 
 export async function createProject(
   input: CreateProjectInput
@@ -72,6 +76,7 @@ export async function createProject(
       customer_id: input.customer_id,
       is_active: input.is_active ?? true,
       type: input.type ?? "customer",
+      project_manager_id: input.project_manager_id ?? null,
       start_date: input.start_date?.trim() || null,
       end_date: input.end_date?.trim() || null,
       probability: prob,
@@ -96,6 +101,8 @@ export async function updateProject(
   if (input.customer_id !== undefined) updates.customer_id = input.customer_id;
   if (input.is_active !== undefined) updates.is_active = input.is_active;
   if (input.type !== undefined) updates.type = input.type;
+  if (input.project_manager_id !== undefined)
+    updates.project_manager_id = input.project_manager_id ?? null;
   if (input.start_date !== undefined)
     updates.start_date = input.start_date?.trim() || null;
   if (input.end_date !== undefined)
@@ -179,10 +186,20 @@ export async function getProjectWithDetailsById(
   const customerMap = new Map(
     customers.map((c) => [
       c.id,
-      { name: c.name, color: c.color || DEFAULT_CUSTOMER_COLOR },
+      {
+        name: c.name,
+        color: c.color || DEFAULT_CUSTOMER_COLOR,
+      },
     ])
   );
   const cust = customerMap.get(p.customer_id);
+  const projectManagerId = p.project_manager_id ?? null;
+  const projectManagerNames = projectManagerId
+    ? await getConsultantNamesByIds([projectManagerId])
+    : new Map<string, string>();
+  const projectManagerName = projectManagerId
+    ? projectManagerNames.get(projectManagerId) ?? null
+    : null;
 
   const probability = p.probability != null ? p.probability : 100;
   return {
@@ -192,6 +209,8 @@ export async function getProjectWithDetailsById(
     type: projectType,
     customer_id: p.customer_id ?? "",
     customerName: cust?.name ?? "Unknown",
+    projectManagerId,
+    projectManagerName,
     startDate: p.start_date ?? null,
     endDate: p.end_date ?? null,
     probability,
@@ -228,9 +247,22 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
   const customerMap = new Map(
     customers.map((c) => [
       c.id,
-      { name: c.name, color: c.color || DEFAULT_CUSTOMER_COLOR },
+      {
+        name: c.name,
+        color: c.color || DEFAULT_CUSTOMER_COLOR,
+      },
     ])
   );
+
+  const projectManagerIds = [
+    ...new Set(projects.map((p) => p.project_manager_id).filter(Boolean)),
+  ] as string[];
+  let projectManagerNames = new Map<string, string>();
+  try {
+    projectManagerNames = await getConsultantNamesByIds(projectManagerIds);
+  } catch {
+    // optional field; ignore errors
+  }
 
   let allocations: Awaited<ReturnType<typeof getAllocationsByProjectIds>> = [];
   try {
@@ -279,6 +311,7 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       .filter(Boolean);
 
     const cust = customerMap.get(p.customer_id);
+    const projectManagerId = p.project_manager_id ?? null;
     const projectType = (p.type as ProjectType) ?? "customer";
     const probability = p.probability != null ? p.probability : 100;
     return {
@@ -288,6 +321,10 @@ export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
       type: projectType,
       customer_id: p.customer_id,
       customerName: cust?.name ?? "Unknown",
+      projectManagerId,
+      projectManagerName: projectManagerId
+        ? projectManagerNames.get(projectManagerId) ?? null
+        : null,
       startDate: p.start_date ?? null,
       endDate: p.end_date ?? null,
       probability,
