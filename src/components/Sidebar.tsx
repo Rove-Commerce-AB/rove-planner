@@ -53,8 +53,8 @@ function NavLink({
       title={collapsed ? label : undefined}
       className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
         isActive
-          ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
-          : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
+          ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/90"
+          : "border-l-2 border-transparent text-text-primary/75 hover:bg-nav-hover hover:text-text-primary/85"
       }`}
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
@@ -88,8 +88,8 @@ function NavPanelButton({
       title={collapsed ? label : undefined}
       className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-colors ${
         isActive
-          ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
-          : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
+          ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/90"
+          : "border-l-2 border-transparent text-text-primary/75 hover:bg-nav-hover hover:text-text-primary/85"
       }`}
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
@@ -228,8 +228,8 @@ export function Sidebar({
                 title={effectiveCollapsed ? "Settings" : undefined}
                 className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
                   pathname === "/settings"
-                    ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
-                    : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
+                    ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/90"
+                    : "border-l-2 border-transparent text-text-primary/75 hover:bg-nav-hover hover:text-text-primary/85"
                 }`}
               >
                 <Settings className="h-5 w-5 flex-shrink-0" />
@@ -243,7 +243,9 @@ export function Sidebar({
               type="button"
               onClick={handleSignOut}
               title={effectiveCollapsed ? "Log out" : undefined}
-              className={`mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-text-primary transition-colors hover:bg-nav-hover ${
+              className={`mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-nav-hover ${
+                "text-text-primary/75 hover:text-text-primary/85"
+              } ${
                 "justify-start"
               }`}
             >

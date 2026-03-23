@@ -128,3 +128,85 @@ body.allocation-project-row-dragging * {
   0%, 50% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* Semantic-like dropdown open animation (short, no jump). */
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ds-dropdown-content {
+  animation: dropdownIn 120ms ease-out;
+  will-change: transform, opacity;
+}
+
+/* Joined dropdown: visually merge trigger + menu into one control */
+.ds-dropdown-joined {
+  margin-top: -1px;
+}
+
+@keyframes weekStripInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes weekStripInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes weekStripOutToLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+
+@keyframes weekStripOutToRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+.animate-week-strip-in-from-left {
+  animation: weekStripInFromLeft 320ms ease-out;
+}
+
+.animate-week-strip-in-from-right {
+  animation: weekStripInFromRight 320ms ease-out;
+}
+
+.animate-week-strip-out-to-left {
+  animation: weekStripOutToLeft 280ms ease-in;
+}
+
+.animate-week-strip-out-to-right {
+  animation: weekStripOutToRight 280ms ease-in;
+}

@@ -27,14 +27,14 @@ export const editTriggerClass =
   `w-full min-w-0 ${INLINE_EDIT_VALUE_ROW_MIN_H} rounded-md border border-form px-2 py-1.5 text-sm leading-normal focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset`;
 
 export const inlineEditTriggerClass =
-  `flex w-full min-w-0 cursor-pointer items-center gap-2 ${INLINE_EDIT_VALUE_ROW_MIN_H} rounded-md border border-transparent px-0 py-1.5 text-left text-sm font-semibold leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset`;
+  `flex w-full min-w-0 cursor-pointer items-center gap-2 ${INLINE_EDIT_VALUE_ROW_MIN_H} rounded-md border border-transparent px-1 py-1.5 text-left text-sm font-semibold leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset`;
 
 export const inlineEditTriggerListClass =
-  "flex-1 min-h-[2rem] cursor-pointer rounded-md border border-transparent py-1 px-2 text-left text-sm font-medium leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:underline hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset";
+  "flex-1 min-h-[2rem] cursor-pointer rounded-md border border-transparent py-1 px-2 text-left text-sm font-medium leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset";
 
 /** Same as inlineEditTriggerListClass but without own background hover – use when the list row already has hover:bg-bg-muted/50 (e.g. Settings Roles/Teams). */
 export const inlineEditTriggerListClassRowHover =
-  "flex-1 min-h-[2rem] cursor-pointer rounded-md border border-transparent py-1 px-2 text-left text-sm font-medium leading-normal text-text-primary transition-colors hover:underline hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset";
+  "flex-1 min-h-[2rem] cursor-pointer rounded-md border border-transparent py-1 px-2 text-left text-sm font-medium leading-normal text-text-primary transition-colors hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset";
 
 /** Modal forms: discreet gray border in all states; focus shown by gray ring only (no orange). */
 export const modalFocusClass =

@@ -126,10 +126,13 @@ export function Combobox({
   }, [isOpen, displayWhenClosed]);
 
   const isFilter = variant === "filter";
-  const inputSize = isFilter ? "py-1 px-2.5 text-xs" : size === "sm" ? "py-1.5 px-3 text-sm" : "py-2 px-3 text-sm";
+  const inputSize = isFilter ? "py-1.5 px-3 text-xs" : size === "sm" ? "py-1.5 px-3 text-sm" : "py-2 px-3 text-sm";
   const inputShape = isFilter
-    ? "rounded-[14px] border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-form)] focus:ring-1 focus:ring-[var(--color-border-form)] focus:outline-none"
-    : "rounded-lg border border-form bg-bg-default text-text-primary placeholder-text-muted focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset focus:outline-none";
+    ? "rounded-lg border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)] focus:outline-none"
+    : "rounded-lg border border-form bg-bg-default text-text-primary placeholder-text-muted focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)] focus:outline-none";
+  const listBorderClass = isFilter
+    ? "border-[var(--color-border-subtle)]"
+    : "border-form";
 
   const handleFocus = () => {
     if (disabled) return;
@@ -186,14 +189,14 @@ export function Combobox({
     if (!renderListInPortal && container) {
       const cr = container.getBoundingClientRect();
       setListStyle({
-        top: rect.bottom - cr.top + 4,
+        top: rect.bottom - cr.top,
         left: rect.left - cr.left,
         minWidth: rect.width,
         isInline: true,
       });
     } else {
       setListStyle({
-        top: rect.bottom + 4,
+        top: rect.bottom,
         left: rect.left,
         minWidth: rect.width,
       });
@@ -237,12 +240,12 @@ export function Combobox({
       id="combobox-list"
       role="listbox"
       data-combobox-list
-      className="max-h-60 overflow-auto rounded-lg border border-form bg-bg-default py-1 shadow-lg z-[9999]"
+      className={`ds-dropdown-content ds-dropdown-joined max-h-60 overflow-auto rounded-b-xl rounded-t-none border border-t-0 bg-bg-default px-1 pb-1 pt-2 shadow-none z-[9999] ${listBorderClass}`}
       style={{
         position: listStyle.isInline ? "absolute" : "fixed",
         top: listStyle.top,
         left: listStyle.left,
-        minWidth: listStyle.minWidth,
+        width: listStyle.minWidth,
       }}
     >
       {listContent.length === 0 ? (
@@ -260,11 +263,11 @@ export function Combobox({
             role="option"
             aria-selected={idx === highlightedIndex}
             onClick={() => handleSelect(opt)}
-            className={`px-3 py-1.5 text-sm outline-none ${
+            className={`rounded-lg px-3 ${isFilter ? "py-1.5 text-xs" : "py-2 text-sm"} outline-none ${
               opt.value === ""
                 ? "cursor-default text-text-muted"
-                : "cursor-pointer text-text-primary hover:bg-bg-muted"
-            } ${opt.value === value ? "bg-brand-lilac/30" : ""} ${idx === highlightedIndex ? "bg-bg-muted" : ""}`}
+                : "cursor-pointer text-text-primary hover:bg-brand-blue/20"
+            } ${opt.value === value ? "bg-brand-blue/30 font-medium" : ""} ${idx === highlightedIndex ? "bg-brand-blue/20" : ""}`}
           >
             {renderLabelWithHighlight(opt.label, query)}
           </li>
@@ -296,13 +299,13 @@ export function Combobox({
           aria-autocomplete="list"
           aria-controls={showList ? "combobox-list" : undefined}
           aria-activedescendant={showList && listContent.length > 0 ? `combobox-option-${highlightedIndex}` : undefined}
-          className={`w-full pr-8 ${inputSize} ${inputShape} disabled:cursor-not-allowed disabled:opacity-50 ${inputClassName}`}
+          className={`w-full pr-8 ${showList ? "rounded-b-none" : ""} ${inputSize} ${inputShape} disabled:cursor-not-allowed disabled:opacity-50 ${inputClassName}`}
         />
         <span
           className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted"
           aria-hidden
         >
-          <ChevronDown className={isFilter ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          <ChevronDown className={`${isFilter ? "h-3.5 w-3.5" : "h-4 w-4"} transition-transform ${showList ? "rotate-180" : ""}`} />
         </span>
       </div>
       {dropdownList}

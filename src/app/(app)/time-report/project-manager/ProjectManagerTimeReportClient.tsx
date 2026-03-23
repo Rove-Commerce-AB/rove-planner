@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Circle, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { CheckCircle2, Circle, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Select,
   FieldValue,
@@ -677,17 +677,13 @@ export function ProjectManagerTimeReportClient({
                               type="button"
                               aria-label="Edit PM hours"
                               onClick={() => startInlineEdit(e, "pmHours")}
-                              className="group flex w-full min-w-0 cursor-pointer items-center justify-end gap-1 rounded-md border border-transparent px-2 py-1 text-right transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
+                              className="group flex w-full min-w-0 cursor-pointer items-center justify-end rounded-md border border-transparent px-2 py-1 text-right transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
                             >
                               <span className="min-w-0 flex-1 overflow-hidden truncate whitespace-nowrap text-right !text-[10px] font-semibold text-text-primary tabular-nums">
                                 {pmHoursValue != null
                                   ? pmHoursValue.toLocaleString("sv-SE", { maximumFractionDigits: 2 })
                                   : "—"}
                               </span>
-                              <Pencil
-                                className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-60 pointer-events-none"
-                                aria-hidden
-                              />
                             </button>
                           ) : (
                             <FieldValue className="!text-[10px] !text-right tabular-nums">

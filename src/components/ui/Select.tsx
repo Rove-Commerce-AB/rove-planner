@@ -59,15 +59,18 @@ export function Select({
   const isModal = variant === "modal";
   const triggerSize =
     isFilter
-      ? "py-1 px-2.5 text-xs"
+      ? "py-1.5 px-3 text-xs"
       : size === "sm"
         ? "py-1.5 px-3 text-sm"
         : "py-2 px-3 text-sm";
   const triggerShape = isFilter
-    ? "rounded-[14px] border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-form)] focus:ring-1 focus:ring-[var(--color-border-form)]"
+    ? "rounded-lg border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)]"
     : isModal
-      ? "rounded-lg border border-form bg-bg-default text-text-primary focus:border-form focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
-      : "rounded-lg border border-form bg-bg-default text-text-primary focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset";
+      ? "rounded-lg border border-form bg-bg-default text-text-primary focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)]"
+      : "rounded-lg border border-form bg-bg-default text-text-primary focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)]";
+  const contentBorderClass = isFilter
+    ? "border-[var(--color-border-subtle)]"
+    : "border-form";
 
   return (
     <div className={className}>
@@ -91,29 +94,31 @@ export function Select({
           onBlur={onBlur}
           aria-invalid={Boolean(error)}
           aria-describedby={error && id ? `${id}-error` : undefined}
-          className={`inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()}
+          className={`group inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)] ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()}
         >
           <span className="min-w-0 shrink truncate">
             <SelectPrimitive.Value placeholder={placeholder} />
           </span>
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className={isFilter ? "h-3.5 w-3.5 shrink-0 opacity-70" : "h-4 w-4 shrink-0 opacity-60"} />
+            <ChevronDown className={isFilter ? "h-3.5 w-3.5 shrink-0 opacity-70 transition-transform group-data-[state=open]:rotate-180" : "h-4 w-4 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"} />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content
-            className="z-[100] overflow-hidden rounded-lg border border-form bg-bg-default shadow-lg"
+            className={`ds-dropdown-content ds-dropdown-joined z-[100] w-[var(--radix-select-trigger-width)] overflow-hidden rounded-b-xl rounded-t-none border border-t-0 bg-bg-default shadow-none ${contentBorderClass}`}
             position="popper"
-            sideOffset={4}
+            side="bottom"
+            sideOffset={0}
+            align="start"
           >
             <SelectPrimitive.Viewport
-              className={`max-h-60 overflow-y-auto p-1 ${viewportClassName}`.trim()}
+              className={`max-h-60 overflow-y-auto px-1 pb-1 pt-2 ${viewportClassName}`.trim()}
             >
               {options.map((opt) => (
                 <SelectPrimitive.Item
                   key={opt.value === "" ? EMPTY : opt.value}
                   value={opt.value === "" ? EMPTY : opt.value}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-1.5 text-sm text-text-primary outline-none data-[highlighted]:bg-bg-muted data-[state=checked]:bg-brand-lilac/30 data-[state=checked]:text-text-primary data-[highlighted]:data-[state=checked]:bg-brand-lilac/40"
+                  className={`relative flex cursor-pointer select-none items-center rounded-lg px-3 ${isFilter ? "py-1.5 text-xs" : "py-2 text-sm"} text-text-primary outline-none transition-colors data-[highlighted]:bg-brand-blue/20 data-[state=checked]:bg-brand-blue/30 data-[state=checked]:font-medium data-[state=checked]:text-text-primary data-[highlighted]:data-[state=checked]:bg-brand-blue/35`}
                 >
                   <SelectPrimitive.ItemText>{opt.label}</SelectPrimitive.ItemText>
                 </SelectPrimitive.Item>
