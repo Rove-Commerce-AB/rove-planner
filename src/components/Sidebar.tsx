@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarCheck,
   Clock,
+  FolderKanban,
   Settings,
   LogOut,
   Home,
@@ -197,7 +198,7 @@ export function Sidebar({
             <NavLink
               href="/time-report/project-manager"
               label="My projects"
-              icon={Users}
+              icon={FolderKanban}
               pathname={pathname}
               collapsed={effectiveCollapsed}
             />

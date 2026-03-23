@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ChevronLeft, Percent, ExternalLink } from "lucide-react";
@@ -37,6 +37,8 @@ export type AddInitialParams = {
   weekFrom?: number;
   weekTo?: number;
   year: number;
+  projectId?: string;
+  projectLabel?: string;
 };
 
 export type AllocationCustomerProjectTabsProps = {
@@ -111,6 +113,91 @@ const weekNav = (p: AllocationCustomerProjectTabsProps) => (
 export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTabsProps) {
   const p = props;
   const { data, tab } = p;
+  const [customerDragState, setCustomerDragState] = useState<{
+    mode: "consultant" | "project";
+    customerId: string;
+    customerName: string;
+    projectId: string;
+    projectName: string;
+    consultantId?: string;
+    consultantName?: string;
+    roleId?: string | null;
+    weekIndexStart: number;
+    weekIndexEnd: number;
+    startWeek: number;
+    startYear: number;
+    startTotalHours?: number;
+    startAllocationId?: string | null;
+    startOtherAllocationIds?: string[];
+    startProjectId?: string;
+  } | null>(null);
+  const [customerDragMoved, setCustomerDragMoved] = useState(false);
+  const [preventNextConsultantCellClick, setPreventNextConsultantCellClick] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "customer" || customerDragState === null) return;
+    const onMouseUp = () => {
+      const drag = customerDragState;
+      const lo = Math.min(drag.weekIndexStart, drag.weekIndexEnd);
+      const hi = Math.max(drag.weekIndexStart, drag.weekIndexEnd);
+      const wFrom = data.weeks[lo];
+      const wTo = data.weeks[hi];
+      if (!wFrom || !wTo) {
+        setCustomerDragState(null);
+        setCustomerDragMoved(false);
+        return;
+      }
+
+      if (drag.mode === "consultant" && !customerDragMoved && lo === hi) {
+        p.setEditingCell({
+          customerId: drag.customerId,
+          consultantId: drag.consultantId ?? "",
+          roleId: drag.roleId ?? null,
+          weekIndex: lo,
+          week: drag.startWeek,
+          year: drag.startYear,
+          allocationId: drag.startAllocationId ?? null,
+          otherAllocationIds: drag.startOtherAllocationIds ?? [],
+          projectId: drag.startProjectId ?? drag.projectId,
+          currentHours: drag.startTotalHours ?? 0,
+        });
+        p.setEditingCellValue(String(drag.startTotalHours ?? 0));
+      } else if (drag.mode === "consultant") {
+        p.setAddInitialParams({
+          consultantId: drag.consultantId,
+          consultantName: drag.consultantName,
+          year: wFrom.year,
+          weekFrom: wFrom.week,
+          weekTo: wTo.week,
+          projectId: drag.projectId,
+          projectLabel: `${drag.customerName} - ${drag.projectName}`,
+        });
+        p.setAddModalOpen(true);
+        setPreventNextConsultantCellClick(true);
+      } else {
+        p.setAddInitialParams({
+          year: wFrom.year,
+          weekFrom: wFrom.week,
+          weekTo: wTo.week,
+          projectId: drag.projectId,
+          projectLabel: `${drag.customerName} - ${drag.projectName}`,
+        });
+        p.setAddModalOpen(true);
+      }
+
+      setCustomerDragState(null);
+      setCustomerDragMoved(false);
+    };
+
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "crosshair";
+    return () => {
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [tab, customerDragState, customerDragMoved, data.weeks, p]);
 
   if (tab === "customer") {
     return (
@@ -147,20 +234,44 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
             </tr>
           </thead>
           <tbody>
-            {(p.perCustomer as Array<{ customer: { id: string; name: string }; consultantRows: unknown[]; totalByWeek: Map<string, number> }>).map((row) => {
+            {(p.perCustomer as Array<{
+              customer: { id: string; name: string };
+              projectGroups: Array<{
+                project: { id: string; name: string };
+                consultantRows: Array<{
+                  consultantId: string;
+                  consultantName: string;
+                  roleId: string | null;
+                  roleName: string;
+                  weeks: {
+                    week: number;
+                    cells: {
+                      id: string;
+                      hours: number;
+                      displayHours: number;
+                      isHidden: boolean;
+                      projectId: string;
+                    }[];
+                  }[];
+                  unavailableByWeek: boolean[];
+                }>;
+                totalByWeek: Map<string, number>;
+              }>;
+              totalByWeek: Map<string, number>;
+            }>).map((row) => {
               const expanded = p.expandedCustomers.has(row.customer.id);
-              const hasConsultants = row.consultantRows.length > 0;
+              const hasProjects = row.projectGroups.length > 0;
               return (
                 <Fragment key={row.customer.id}>
-                  <tr className={`border-b border-grid-light-subtle last:border-form ${expanded && hasConsultants ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}>
+                  <tr className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}>
                     <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                       <div className="flex items-center justify-between gap-1 w-full">
                         <button
                           type="button"
-                          onClick={() => hasConsultants && p.toggleCustomer(row.customer.id)}
+                          onClick={() => hasProjects && p.toggleCustomer(row.customer.id)}
                           className="flex min-w-0 flex-1 items-center gap-1 text-left whitespace-nowrap"
                         >
-                          {hasConsultants ? (
+                          {hasProjects ? (
                             expanded ? (
                               <ChevronDown className="h-4 w-4 shrink-0" />
                             ) : (
@@ -197,19 +308,97 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                     })}
                   </tr>
                   {expanded &&
-                    (row.consultantRows as Array<{
-                      consultantId: string;
-                      consultantName: string;
-                      roleId: string | null;
-                      roleName: string;
-                      weeks: { week: number; cells: { id: string; hours: number; displayHours: number; isHidden: boolean; projectId: string }[] }[];
-                      unavailableByWeek: boolean[];
-                    }>).map((cr) => (
+                    row.projectGroups.map((pg) => (
+                      <Fragment key={pg.project.id}>
+                        <tr className="border-b border-grid-light-subtle bg-bg-muted/30">
+                          <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
+                            <span className="flex items-center gap-1 whitespace-nowrap font-medium text-text-primary">
+                              {pg.project.name}
+                            </span>
+                          </td>
+                          {data.weeks.map((w, i) => {
+                            const total = pg.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
+                            const hasBooking = total > 0;
+                            const prev = data.weeks[i - 1];
+                            const prevTotal =
+                              i > 0 && prev
+                                ? pg.totalByWeek.get(`${prev.year}-${prev.week}`) ?? 0
+                                : 0;
+                            const showLeftBorder =
+                              hasBooking && (i === 0 || prevTotal === 0);
+                            const isProjectDragRange =
+                              customerDragState?.mode === "project" &&
+                              customerDragState.customerId === row.customer.id &&
+                              customerDragState.projectId === pg.project.id &&
+                              i >=
+                                Math.min(
+                                  customerDragState.weekIndexStart,
+                                  customerDragState.weekIndexEnd
+                                ) &&
+                              i <=
+                                Math.max(
+                                  customerDragState.weekIndexStart,
+                                  customerDragState.weekIndexEnd
+                                );
+                            const dragMin =
+                              customerDragState?.mode === "project"
+                                ? Math.min(
+                                    customerDragState.weekIndexStart,
+                                    customerDragState.weekIndexEnd
+                                  )
+                                : -1;
+                            const dragMax =
+                              customerDragState?.mode === "project"
+                                ? Math.max(
+                                    customerDragState.weekIndexStart,
+                                    customerDragState.weekIndexEnd
+                                  )
+                                : -1;
+                            const isDragLeft = isProjectDragRange && i === dragMin;
+                            const isDragRight = isProjectDragRange && i === dragMax;
+                            return (
+                              <td
+                                key={`${w.year}-${w.week}`}
+                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} cursor-crosshair select-none px-1 py-1 text-center text-[9px] tabular-nums text-text-primary hover:bg-brand-blue/50 ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setCustomerDragState({
+                                    mode: "project",
+                                    customerId: row.customer.id,
+                                    customerName: row.customer.name,
+                                    projectId: pg.project.id,
+                                    projectName: pg.project.name,
+                                    weekIndexStart: i,
+                                    weekIndexEnd: i,
+                                    startWeek: w.week,
+                                    startYear: w.year,
+                                  });
+                                  setCustomerDragMoved(false);
+                                }}
+                                onMouseEnter={() => {
+                                  if (
+                                    customerDragState?.mode === "project" &&
+                                    customerDragState.customerId === row.customer.id &&
+                                    customerDragState.projectId === pg.project.id
+                                  ) {
+                                    setCustomerDragState((prev) =>
+                                      prev ? { ...prev, weekIndexEnd: i } : null
+                                    );
+                                    setCustomerDragMoved(true);
+                                  }
+                                }}
+                              >
+                                {hasBooking ? `${total}h` : null}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {pg.consultantRows.map((cr) => (
                       <tr
-                        key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
+                        key={`${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`}
                         className="border-b border-grid-light-subtle last:border-form"
                       >
-                        <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
+                        <td className="border-r border-grid-light-subtle px-2 py-1 pl-14 text-text-primary">
                           <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
                             {cr.consultantName}
                             {cr.roleName ? (
@@ -235,7 +424,47 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           return (
                             <td
                               key={`${weekInfo.year}-${weekInfo.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums cursor-crosshair select-none ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""} ${customerDragState?.mode === "consultant" && customerDragState.customerId === row.customer.id && customerDragState.projectId === pg.project.id && customerDragState.consultantId === cr.consultantId && i >= Math.min(customerDragState.weekIndexStart, customerDragState.weekIndexEnd) && i <= Math.max(customerDragState.weekIndexStart, customerDragState.weekIndexEnd) ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""}`}
+                              onMouseDown={(e) => {
+                                if (isEditing) return;
+                                e.preventDefault();
+                                setCustomerDragState({
+                                  mode: "consultant",
+                                  customerId: row.customer.id,
+                                  customerName: row.customer.name,
+                                  projectId: pg.project.id,
+                                  projectName: pg.project.name,
+                                  consultantId: cr.consultantId,
+                                  consultantName: cr.consultantName,
+                                  roleId: cr.roleId,
+                                  weekIndexStart: i,
+                                  weekIndexEnd: i,
+                                  startWeek: w.week,
+                                  startYear: weekInfo.year,
+                                  startTotalHours: totalHours,
+                                  startAllocationId: cells[0]?.id ?? null,
+                                  startOtherAllocationIds: cells.slice(1).map((c) => c.id),
+                                  startProjectId:
+                                    cells[0]?.projectId ??
+                                    pg.project.id ??
+                                    firstProjectForCustomer?.id ??
+                                    "",
+                                });
+                                setCustomerDragMoved(false);
+                              }}
+                              onMouseEnter={() => {
+                                if (
+                                  customerDragState?.mode === "consultant" &&
+                                  customerDragState.customerId === row.customer.id &&
+                                  customerDragState.projectId === pg.project.id &&
+                                  customerDragState.consultantId === cr.consultantId
+                                ) {
+                                  setCustomerDragState((prev) =>
+                                    prev ? { ...prev, weekIndexEnd: i } : null
+                                  );
+                                  setCustomerDragMoved(true);
+                                }
+                              }}
                             >
                               {isEditing ? (
                                 <div className="flex flex-col min-w-0">
@@ -263,6 +492,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    if (preventNextConsultantCellClick) {
+                                      setPreventNextConsultantCellClick(false);
+                                      return;
+                                    }
                                     p.setEditingCell({
                                       customerId: row.customer.id,
                                       consultantId: cr.consultantId,
@@ -272,7 +505,11 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                       year: weekInfo.year,
                                       allocationId: cells[0]?.id ?? null,
                                       otherAllocationIds: cells.slice(1).map((c) => c.id),
-                                      projectId: cells[0]?.projectId ?? firstProjectForCustomer?.id ?? "",
+                                      projectId:
+                                        cells[0]?.projectId ??
+                                        pg.project.id ??
+                                        firstProjectForCustomer?.id ??
+                                        "",
                                       currentHours: totalHours,
                                     });
                                     p.setEditingCellValue(String(totalHours || ""));
@@ -287,6 +524,8 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           );
                         })}
                       </tr>
+                        ))}
+                      </Fragment>
                     ))}
                 </Fragment>
               );
