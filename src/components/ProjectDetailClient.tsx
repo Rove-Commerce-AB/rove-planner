@@ -11,6 +11,7 @@ import {
   type IntegrationProjectOption,
 } from "@/lib/projects";
 import { getCustomers } from "@/lib/customers";
+import { getConsultantsList } from "@/lib/consultants";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPage";
@@ -63,6 +64,7 @@ const PROBABILITY_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 type EditField =
   | "name"
   | "customerId"
+  | "projectManagerId"
   | "integration"
   | "budgetHours"
   | "budgetMoney"
@@ -98,6 +100,12 @@ export function ProjectDetailClient({
   const router = useRouter();
   const [name, setName] = useState(initial.name);
   const [customerId, setCustomerId] = useState(initial.customer_id);
+  const [projectManagerId, setProjectManagerId] = useState<string>(
+    initial.projectManagerId ?? ""
+  );
+  const [projectManagerName, setProjectManagerName] = useState<string | null>(
+    initial.projectManagerName ?? null
+  );
   const [isActive, setIsActive] = useState(initial.isActive);
   const [type, setType] = useState<ProjectType>(initial.type);
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
@@ -110,6 +118,9 @@ export function ProjectDetailClient({
     initial.budgetMoney != null ? Number(initial.budgetMoney) : null
   );
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [projectManagerOptions, setProjectManagerOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -227,6 +238,8 @@ export function ProjectDetailClient({
   const syncFromInitial = useCallback(() => {
     setName(initial.name);
     setCustomerId(initial.customer_id);
+    setProjectManagerId(initial.projectManagerId ?? "");
+    setProjectManagerName(initial.projectManagerName ?? null);
     setIsActive(initial.isActive);
     setType(initial.type);
     setStartDate(initial.startDate ?? "");
@@ -245,6 +258,24 @@ export function ProjectDetailClient({
       .then((c) => setCustomers(c))
       .catch(() => setCustomers([]));
   }, []);
+
+  useEffect(() => {
+    getConsultantsList()
+      .then((rows) =>
+        setProjectManagerOptions(
+          rows.map((r) => ({ value: r.id, label: r.name }))
+        )
+      )
+      .catch(() => setProjectManagerOptions([]));
+  }, []);
+
+  useEffect(() => {
+    const label = projectManagerId
+      ? projectManagerOptions.find((o) => o.value === projectManagerId)?.label ??
+        null
+      : null;
+    setProjectManagerName(label);
+  }, [projectManagerId, projectManagerOptions]);
 
   useEffect(() => {
     getUniqueJiraAndDevopsProjects()
@@ -294,6 +325,15 @@ export function ProjectDetailClient({
     switch (field) {
       case "name": setName(trimmed); break;
       case "customerId": setCustomerId(trimmed); break;
+      case "projectManagerId": {
+        const id = trimmed === "" ? "" : trimmed;
+        setProjectManagerId(id);
+        const label = id
+          ? projectManagerOptions.find((o) => o.value === id)?.label ?? null
+          : null;
+        setProjectManagerName(label);
+        break;
+      }
       case "startDate": setStartDate(trimmed); break;
       case "endDate": setEndDate(trimmed); break;
       case "probability": setProbability(parseInt(trimmed, 10)); break;
@@ -322,6 +362,11 @@ export function ProjectDetailClient({
           break;
         case "customerId":
           await updateProject(initial.id, { customer_id: trimmed });
+          break;
+        case "projectManagerId":
+          await updateProject(initial.id, {
+            project_manager_id: trimmed === "" ? null : trimmed,
+          });
           break;
         case "startDate":
           await updateProject(initial.id, { start_date: trimmed || null });
@@ -371,6 +416,10 @@ export function ProjectDetailClient({
       switch (field) {
         case "name": setName(initial.name); break;
         case "customerId": setCustomerId(initial.customer_id); break;
+        case "projectManagerId":
+          setProjectManagerId(initial.projectManagerId ?? "");
+          setProjectManagerName(initial.projectManagerName ?? null);
+          break;
         case "startDate": setStartDate(initial.startDate ?? ""); break;
         case "endDate": setEndDate(initial.endDate ?? ""); break;
         case "probability": setProbability(initial.probability ?? 100); break;
@@ -630,6 +679,54 @@ export function ProjectDetailClient({
                     />
                   }
                   statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+                />
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <FieldLabel>Project manager</FieldLabel>
+              <div className="mt-0.5">
+                <InlineEditFieldContainer
+                  isEditing={editingField === "projectManagerId"}
+                  onRequestClose={commitEdit}
+                  showSavedIndicator={
+                    showSaved && lastSavedFieldRef.current === "projectManagerId"
+                  }
+                  displayContent={
+                    <InlineEditTrigger
+                      onClick={() =>
+                        startEdit("projectManagerId", projectManagerId ?? "")
+                      }
+                    >
+                      {projectManagerName ? (
+                        <FieldValue>{projectManagerName}</FieldValue>
+                      ) : (
+                        <span className="text-sm text-text-primary opacity-60">
+                          —
+                        </span>
+                      )}
+                    </InlineEditTrigger>
+                  }
+                  editContent={
+                    <Select
+                      value={editValue}
+                      onValueChange={(v) => {
+                        setEditValue(v);
+                        commitEdit(v);
+                      }}
+                      onBlur={() => commitEdit()}
+                      options={[
+                        { value: "", label: "—" },
+                        ...projectManagerOptions,
+                      ]}
+                      placeholder="Select"
+                      className="min-w-0 flex-1 w-full"
+                      triggerClassName={editTriggerClass}
+                    />
+                  }
+                  statusContent={
+                    <InlineEditStatus status={inlineEditStatus} message={error} />
+                  }
                 />
               </div>
             </div>

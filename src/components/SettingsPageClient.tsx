@@ -6,14 +6,14 @@ import { Plus, Trash2, Pencil, Check } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/roles";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
-import { removeAppUser, type AppUser } from "@/lib/appUsers";
+import { removeAppUser, updateAppUser, type AppUser } from "@/lib/appUsers";
 import {
   updateFeatureRequest,
   deleteFeatureRequest,
   setFeatureRequestImplemented,
   type FeatureRequest,
 } from "@/lib/featureRequests";
-import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, editInputListClass, inlineEditTriggerListClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
+import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, editInputListClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
 import { AddAppUserModal } from "./AddAppUserModal";
@@ -81,12 +81,21 @@ export function SettingsPageClient({
   const lastSavedFeatureRequestIdRef = useRef<string | null>(null);
   const [featureRequestToDelete, setFeatureRequestToDelete] = useState<FeatureRequest | null>(null);
   const [togglingImplementedId, setTogglingImplementedId] = useState<string | null>(null);
+  const [editingAppUserId, setEditingAppUserId] = useState<string | null>(null);
+  const [editingAppUserField, setEditingAppUserField] = useState<"name" | "email" | "role" | null>(null);
+  const [editingAppUserValue, setEditingAppUserValue] = useState("");
+  const [savingAppUser, setSavingAppUser] = useState(false);
+  const [showSavedAppUser, setShowSavedAppUser] = useState(false);
+  const [appUserInlineError, setAppUserInlineError] = useState<string | null>(null);
+  const savedAppUserTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedAppUserRef = useRef<{ id: string; field: "name" | "email" | "role" } | null>(null);
 
   useEffect(() => {
     return () => {
       if (savedRoleTimeoutRef.current) clearTimeout(savedRoleTimeoutRef.current);
       if (savedTeamTimeoutRef.current) clearTimeout(savedTeamTimeoutRef.current);
       if (savedFeatureRequestTimeoutRef.current) clearTimeout(savedFeatureRequestTimeoutRef.current);
+      if (savedAppUserTimeoutRef.current) clearTimeout(savedAppUserTimeoutRef.current);
     };
   }, []);
 
@@ -124,6 +133,73 @@ export function SettingsPageClient({
       router.refresh();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Could not remove user");
+    }
+  };
+
+  const startAppUserEdit = (u: AppUser, field: "name" | "email" | "role") => {
+    setAppUserInlineError(null);
+    setEditingAppUserId(u.id);
+    setEditingAppUserField(field);
+    if (field === "name") setEditingAppUserValue(u.name ?? "");
+    if (field === "email") setEditingAppUserValue(u.email);
+    if (field === "role") setEditingAppUserValue(u.role);
+  };
+
+  const cancelAppUserEdit = () => {
+    setEditingAppUserId(null);
+    setEditingAppUserField(null);
+    setEditingAppUserValue("");
+    setAppUserInlineError(null);
+  };
+
+  const saveAppUserInline = async (u: AppUser) => {
+    if (!editingAppUserId || !editingAppUserField || editingAppUserId !== u.id) return;
+
+    const field = editingAppUserField;
+    const raw = editingAppUserValue;
+    const trimmed = raw.trim();
+
+    // Skip no-op edits
+    if (
+      (field === "name" && (u.name ?? "") === trimmed) ||
+      (field === "email" && u.email === trimmed) ||
+      (field === "role" && u.role === trimmed)
+    ) {
+      cancelAppUserEdit();
+      return;
+    }
+
+    if (field === "email" && !trimmed) {
+      setAppUserInlineError("Email is required");
+      return;
+    }
+
+    setSavingAppUser(true);
+    setAppUserInlineError(null);
+    try {
+      if (field === "name") {
+        await updateAppUser({ id: u.id, name: trimmed || null });
+      } else if (field === "email") {
+        await updateAppUser({ id: u.id, email: trimmed });
+      } else {
+        await updateAppUser({ id: u.id, role: trimmed as "admin" | "member" });
+      }
+
+      lastSavedAppUserRef.current = { id: u.id, field };
+      setShowSavedAppUser(true);
+      if (savedAppUserTimeoutRef.current) clearTimeout(savedAppUserTimeoutRef.current);
+      savedAppUserTimeoutRef.current = setTimeout(() => {
+        savedAppUserTimeoutRef.current = null;
+        lastSavedAppUserRef.current = null;
+        setShowSavedAppUser(false);
+      }, SAVED_DURATION_MS);
+
+      cancelAppUserEdit();
+      router.refresh();
+    } catch (e) {
+      setAppUserInlineError(e instanceof Error ? e.message : "Failed to update user");
+    } finally {
+      setSavingAppUser(false);
     }
   };
 
@@ -313,34 +389,162 @@ export function SettingsPageClient({
               ACCESS / USERS
             </PanelSectionTitle>
             <div className="overflow-x-auto p-3 pt-0">
-              <ul className="space-y-0.5">
-                {initialAppUsers.map((u) => (
-                  <li
-                    key={u.id}
-                    className="flex h-[2.25rem] items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50"
-                  >
-                    <div className="min-w-0 flex-1 truncate">
-                      <span className="text-sm font-medium text-text-primary">{u.email}</span>
-                      {u.name && (
-                        <span className="ml-2 text-sm text-text-primary opacity-70">
-                          ({u.name})
-                        </span>
-                      )}
-                      <span className="ml-2 text-xs text-text-primary opacity-60">
-                        {u.role === "admin" ? "Admin" : "Member"}
-                      </span>
-                    </div>
-                    <IconButton
-                      variant="ghostDanger"
-                      onClick={() => setAppUserToDelete(u)}
-                      aria-label={`Remove ${u.email}`}
-                      className="shrink-0"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </IconButton>
-                  </li>
-                ))}
-              </ul>
+              <table className="w-full table-fixed border-collapse">
+                <colgroup>
+                  <col className="w-[38%]" />
+                  <col className="w-[38%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[6%]" />
+                </colgroup>
+                <thead>
+                  <tr className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                    <th className="px-2 py-1 text-left">Name</th>
+                    <th className="px-2 py-1 text-left">Email</th>
+                    <th className="px-2 py-1 text-left">Rights</th>
+                    <th className="px-2 py-1 text-right" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {initialAppUsers.map((u) => (
+                    <tr key={u.id} className="align-top transition-colors hover:bg-bg-muted/50">
+                      <td className="px-2 py-1">
+                        <div className="min-h-[2rem] flex items-center gap-2">
+                          {editingAppUserId === u.id && editingAppUserField === "name" ? (
+                            <input
+                              type="text"
+                              value={editingAppUserValue}
+                              onChange={(e) => setEditingAppUserValue(e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => saveAppUserInline(u)}
+                              className={editInputListClass}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveAppUserInline(u);
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelAppUserEdit();
+                                }
+                              }}
+                            />
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startAppUserEdit(u, "name")}
+                                className={inlineEditTriggerListClassRowHover}
+                              >
+                                {u.name || "—"}
+                              </button>
+                              {showSavedAppUser &&
+                                lastSavedAppUserRef.current?.id === u.id &&
+                                lastSavedAppUserRef.current?.field === "name" && <SavedCheckmark />}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1">
+                        <div className="min-h-[2rem] flex items-center gap-2">
+                          {editingAppUserId === u.id && editingAppUserField === "email" ? (
+                            <input
+                              type="email"
+                              value={editingAppUserValue}
+                              onChange={(e) => setEditingAppUserValue(e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => saveAppUserInline(u)}
+                              className={editInputListClass}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveAppUserInline(u);
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelAppUserEdit();
+                                }
+                              }}
+                            />
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startAppUserEdit(u, "email")}
+                                className={inlineEditTriggerListClassRowHover}
+                              >
+                                {u.email}
+                              </button>
+                              {showSavedAppUser &&
+                                lastSavedAppUserRef.current?.id === u.id &&
+                                lastSavedAppUserRef.current?.field === "email" && <SavedCheckmark />}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1">
+                        <div className="min-h-[2rem] flex items-center gap-2">
+                          {editingAppUserId === u.id && editingAppUserField === "role" ? (
+                            <select
+                              value={editingAppUserValue}
+                              onChange={(e) => setEditingAppUserValue(e.target.value)}
+                              onBlur={() => saveAppUserInline(u)}
+                              className={editInputListClass}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveAppUserInline(u);
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelAppUserEdit();
+                                }
+                              }}
+                            >
+                              <option value="member">Member</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startAppUserEdit(u, "role")}
+                                className={inlineEditTriggerListClassRowHover}
+                              >
+                                {u.role === "admin" ? "Admin" : "Member"}
+                              </button>
+                              {showSavedAppUser &&
+                                lastSavedAppUserRef.current?.id === u.id &&
+                                lastSavedAppUserRef.current?.field === "role" && <SavedCheckmark />}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1">
+                        <div className="flex min-h-[2rem] items-center justify-end gap-2">
+                          {editingAppUserId === u.id ? (
+                            <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
+                              <InlineEditStatus
+                                status={
+                                  savingAppUser
+                                    ? "saving"
+                                    : showSavedAppUser
+                                      ? "saved"
+                                      : appUserInlineError
+                                        ? "error"
+                                        : "idle"
+                                }
+                                message={appUserInlineError}
+                              />
+                            </div>
+                          ) : null}
+                          <IconButton
+                            variant="ghostDanger"
+                            onClick={() => setAppUserToDelete(u)}
+                            aria-label={`Remove ${u.email}`}
+                            className="shrink-0"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Panel>
         )}

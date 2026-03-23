@@ -83,3 +83,42 @@ export async function removeAppUser(id: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
 }
+
+export async function updateAppUser(args: {
+  id: string;
+  email?: string;
+  name?: string | null;
+  role?: "admin" | "member";
+}) {
+  const current = await getCurrentAppUser();
+  if (!current || current.role !== "admin") {
+    throw new Error("Unauthorized");
+  }
+
+  const updates: Record<string, unknown> = {};
+
+  if (args.email !== undefined) {
+    const email = args.email.trim().toLowerCase();
+    if (!email) throw new Error("Email is required");
+    updates.email = email;
+  }
+
+  if (args.name !== undefined) {
+    const name = (args.name ?? "").trim();
+    updates.name = name === "" ? null : name;
+  }
+
+  if (args.role !== undefined) {
+    if (args.role !== "admin" && args.role !== "member") {
+      throw new Error("Invalid role");
+    }
+    updates.role = args.role;
+  }
+
+  if (Object.keys(updates).length === 0) return;
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("app_users").update(updates).eq("id", args.id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+}

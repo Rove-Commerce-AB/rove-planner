@@ -266,6 +266,42 @@ export async function saveTimeReportEntries(
     display_order: number;
   }[] = [];
 
+  // Preload rates once per project/customer to avoid N+1 lookups per entry.
+  const projectIds = new Set<string>();
+  const customerIds = new Set<string>();
+  for (const group of customerGroups) {
+    customerIds.add(group.customerId);
+    for (const entry of group.entries) {
+      if (entry.projectId) projectIds.add(entry.projectId);
+    }
+  }
+  const [allProjectRates, allCustomerRates] = await Promise.all([
+    Promise.all(Array.from(projectIds).map(async (id) => [id, await getProjectRates(id)] as const)),
+    Promise.all(Array.from(customerIds).map(async (id) => [id, await getCustomerRates(id)] as const)),
+  ]);
+
+  const projectRoleRateMap = new Map<string, Map<string, number>>();
+  for (const [projectId, rates] of allProjectRates) {
+    const roleMap = new Map<string, number>();
+    for (const r of rates) roleMap.set(r.role_id, Number(r.rate_per_hour));
+    projectRoleRateMap.set(projectId, roleMap);
+  }
+
+  const customerRoleRateMap = new Map<string, Map<string, number>>();
+  for (const [customerId, rates] of allCustomerRates) {
+    const roleMap = new Map<string, number>();
+    for (const r of rates) roleMap.set(r.role_id, Number(r.rate_per_hour));
+    customerRoleRateMap.set(customerId, roleMap);
+  }
+
+  const resolveRateSnapshot = (projectId: string, customerId: string, roleId: string): number | null => {
+    const fromProject = projectRoleRateMap.get(projectId)?.get(roleId);
+    if (fromProject != null) return fromProject;
+    const fromCustomer = customerRoleRateMap.get(customerId)?.get(roleId);
+    if (fromCustomer != null) return fromCustomer;
+    return null;
+  };
+
   for (let cgIndex = 0; cgIndex < customerGroups.length; cgIndex++) {
     const group = customerGroups[cgIndex];
     for (let eIndex = 0; eIndex < group.entries.length; eIndex++) {
@@ -278,11 +314,7 @@ export async function saveTimeReportEntries(
       }
       if (!entry.projectId || !entry.roleId) continue;
       const displayOrder = cgIndex * 1000 + eIndex;
-      const rateSnapshot = await getEffectiveRateSnapshot(
-        entry.projectId,
-        group.customerId,
-        entry.roleId
-      );
+      const rateSnapshot = resolveRateSnapshot(entry.projectId, group.customerId, entry.roleId);
 
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
         const hours = entry.hours[dayIndex] ?? 0;

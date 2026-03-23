@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, Fragment } from "react";
+import { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink } from "lucide-react";
 import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek, type ProjectOption, type JiraDevOpsOption, type TaskOption } from "./actions";
@@ -269,6 +269,12 @@ export function TimeReportPageClient({
   const [projectCache, setProjectCache] = useState<Record<string, ProjectOption[]>>({});
   const [taskCache, setTaskCache] = useState<Record<string, TaskOption[]>>({});
   const [jiraDevOpsCache, setJiraDevOpsCache] = useState<Record<string, JiraDevOpsOption[]>>({});
+  const projectCacheRef = useRef<Record<string, ProjectOption[]>>({});
+  const taskCacheRef = useRef<Record<string, TaskOption[]>>({});
+  const jiraDevOpsCacheRef = useRef<Record<string, JiraDevOpsOption[]>>({});
+  const projectInFlightRef = useRef<Set<string>>(new Set());
+  const taskInFlightRef = useRef<Set<string>>(new Set());
+  const jiraInFlightRef = useRef<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<{ entryId: string; dayIndex: number } | null>(null);
   const [commentState, setCommentState] = useState<{ entryId: string } | null>(null);
   const [commentTexts, setCommentTexts] = useState<Record<number, string>>({});
@@ -283,6 +289,12 @@ export function TimeReportPageClient({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showValidationHighlights, setShowValidationHighlights] = useState(false);
+  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveRequestIdRef = useRef(0);
+  const weekDataCacheRef = useRef<Record<string, CustomerGroup[]>>({});
+  const weekLoadInFlightRef = useRef<Set<string>>(new Set());
+  const weekLoadRequestIdRef = useRef(0);
+  const dataWeekKeyRef = useRef<string>(`${initialYear}-${initialWeek}`);
   const [displayMonth, setDisplayMonth] = useState(() => {
     const { start } = getISOWeekDateRangeLocal(initialYear, initialWeek);
     return parseInt(start.slice(5, 7), 10);
@@ -292,54 +304,167 @@ export function TimeReportPageClient({
     return parseInt(start.slice(0, 4), 10);
   });
   useEffect(() => {
+    projectCacheRef.current = projectCache;
+  }, [projectCache]);
+
+  useEffect(() => {
+    taskCacheRef.current = taskCache;
+  }, [taskCache]);
+
+  useEffect(() => {
+    jiraDevOpsCacheRef.current = jiraDevOpsCache;
+  }, [jiraDevOpsCache]);
+
+  useEffect(() => {
+    if (!consultant) return;
+    if (loadState !== "loaded") return;
+    // Keep current week's cache in sync with local in-memory edits so week switches
+    // don't show stale data when returning to the same week.
+    const key = `${year}-${week}`;
+    if (dataWeekKeyRef.current !== key) return;
+    if (weekDataCacheRef.current[key] === undefined && !isDirty) return;
+    weekDataCacheRef.current[key] = customerGroups;
+  }, [consultant?.id, year, week, customerGroups, loadState, isDirty]);
+
+  useEffect(() => {
     if (!calendarId) return;
     getHolidayDatesForWeek(calendarId, year, week).then(setHolidayDates);
   }, [calendarId, year, week]);
 
   useEffect(() => {
     if (!consultant) return;
+    const key = `${year}-${week}`;
+
+    const hydrateCachesForGroups = (groups: CustomerGroup[]) => {
+      groups.forEach((g) => {
+        loadProjectsForCustomer(g.customerId);
+        g.entries.forEach((e) => {
+          if (e.projectId) {
+            loadTaskOptions(g.customerId, e.projectId);
+            loadJiraDevOpsForProject(e.projectId);
+          }
+        });
+      });
+    };
+
+    const prefetchWeek = (targetYear: number, targetWeek: number) => {
+      const targetKey = `${targetYear}-${targetWeek}`;
+      if (weekDataCacheRef.current[targetKey] !== undefined) return;
+      if (weekLoadInFlightRef.current.has(targetKey)) return;
+      weekLoadInFlightRef.current.add(targetKey);
+      getTimeReportEntries(consultant.id, targetYear, targetWeek)
+        .then((groups) => {
+          weekDataCacheRef.current[targetKey] = groups;
+          hydrateCachesForGroups(groups);
+        })
+        .finally(() => {
+          weekLoadInFlightRef.current.delete(targetKey);
+        });
+    };
+
+    const cached = weekDataCacheRef.current[key];
+    if (cached !== undefined) {
+      dataWeekKeyRef.current = key;
+      setCustomerGroups(cached);
+      setLoadState("loaded");
+      setIsDirty(false);
+      hydrateCachesForGroups(cached);
+      const prev = addWeeksToYearWeekLocal(year, week, -1);
+      const next = addWeeksToYearWeekLocal(year, week, 1);
+      prefetchWeek(prev.year, prev.week);
+      prefetchWeek(next.year, next.week);
+      // Recover from potentially stale/incorrect empty cache entries by revalidating.
+      if (cached.length === 0 && !weekLoadInFlightRef.current.has(key)) {
+        weekLoadInFlightRef.current.add(key);
+        getTimeReportEntries(consultant.id, year, week)
+          .then((groups) => {
+            dataWeekKeyRef.current = key;
+            weekDataCacheRef.current[key] = groups;
+            setCustomerGroups(groups);
+            setLoadState("loaded");
+            setIsDirty(false);
+            hydrateCachesForGroups(groups);
+          })
+          .finally(() => {
+            weekLoadInFlightRef.current.delete(key);
+          });
+      }
+      return;
+    }
+
     setLoadState("loading");
+    const requestId = ++weekLoadRequestIdRef.current;
+    weekLoadInFlightRef.current.add(key);
     getTimeReportEntries(consultant.id, year, week)
       .then((groups) => {
+        if (requestId !== weekLoadRequestIdRef.current) return;
+        dataWeekKeyRef.current = key;
+        weekDataCacheRef.current[key] = groups;
         setCustomerGroups(groups);
         setLoadState("loaded");
         setIsDirty(false);
-        groups.forEach((g) => {
-          loadProjectsForCustomer(g.customerId);
-          g.entries.forEach((e) => {
-            if (e.projectId) {
-              loadTaskOptions(g.customerId, e.projectId);
-              loadJiraDevOpsForProject(e.projectId);
-            }
-          });
-        });
+        hydrateCachesForGroups(groups);
+        const prev = addWeeksToYearWeekLocal(year, week, -1);
+        const next = addWeeksToYearWeekLocal(year, week, 1);
+        prefetchWeek(prev.year, prev.week);
+        prefetchWeek(next.year, next.week);
       })
-      .catch(() => setLoadState("loaded"));
+      .catch(() => {
+        if (requestId !== weekLoadRequestIdRef.current) return;
+        setLoadState("loaded");
+      })
+      .finally(() => {
+        weekLoadInFlightRef.current.delete(key);
+      });
   }, [consultant?.id, year, week]);
 
   useEffect(() => {
+    if (saveDebounceRef.current) {
+      clearTimeout(saveDebounceRef.current);
+      saveDebounceRef.current = null;
+    }
     if (!isDirty || !consultant) return;
-    setSaveState("saving");
-    setSaveError(null);
-    saveTimeReportEntries(consultant.id, year, week, customerGroups)
-      .then((result) => {
-        if (result.error) {
-          setSaveError(result.error);
-          setSaveState("error");
-          if (result.error.includes("Project and Role")) {
-            setShowValidationHighlights(true);
+
+    // Debounce autosave to avoid one request per keystroke.
+    saveDebounceRef.current = setTimeout(() => {
+      const requestId = ++saveRequestIdRef.current;
+      setSaveState("saving");
+      setSaveError(null);
+      saveTimeReportEntries(consultant.id, year, week, customerGroups)
+        .then((result) => {
+          if (requestId !== saveRequestIdRef.current) return;
+          if (result.error) {
+            setSaveError(result.error);
+            setSaveState("error");
+            if (result.error.includes("Project and Role")) {
+              setShowValidationHighlights(true);
+            }
+          } else {
+            setSaveState("idle");
+            setIsDirty(false);
+            setShowValidationHighlights(false);
           }
-        } else {
-          setSaveState("idle");
-          setIsDirty(false);
-          setShowValidationHighlights(false);
-        }
-      })
-      .catch(() => {
-        setSaveState("error");
-        setSaveError("Save failed");
-      });
+        })
+        .catch(() => {
+          if (requestId !== saveRequestIdRef.current) return;
+          setSaveState("error");
+          setSaveError("Save failed");
+        });
+    }, 700);
+
+    return () => {
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current);
+        saveDebounceRef.current = null;
+      }
+    };
   }, [isDirty, customerGroups, year, week, consultant?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -444,26 +569,44 @@ export function TimeReportPageClient({
   );
 
   const loadProjectsForCustomer = useCallback(async (customerId: string) => {
-    if (!customerId || projectCache[customerId] !== undefined) return;
-    const list = await getActiveProjectsForCustomer(customerId);
-    setProjectCache((prev) => ({ ...prev, [customerId]: list }));
-  }, [projectCache]);
+    if (!customerId) return;
+    if (projectCacheRef.current[customerId] !== undefined) return;
+    if (projectInFlightRef.current.has(customerId)) return;
+    projectInFlightRef.current.add(customerId);
+    try {
+      const list = await getActiveProjectsForCustomer(customerId);
+      setProjectCache((prev) => ({ ...prev, [customerId]: list }));
+    } finally {
+      projectInFlightRef.current.delete(customerId);
+    }
+  }, []);
 
-  const loadTaskOptions = useCallback(
-    async (customerId: string, projectId: string) => {
-      const key = taskCacheKey(customerId, projectId);
-      if (!customerId || taskCache[key] !== undefined) return;
+  const loadTaskOptions = useCallback(async (customerId: string, projectId: string) => {
+    const key = taskCacheKey(customerId, projectId);
+    if (!customerId) return;
+    if (taskCacheRef.current[key] !== undefined) return;
+    if (taskInFlightRef.current.has(key)) return;
+    taskInFlightRef.current.add(key);
+    try {
       const list = await getTaskOptionsForCustomerAndProject(customerId, projectId || undefined);
       setTaskCache((prev) => ({ ...prev, [key]: list }));
-    },
-    [taskCache]
-  );
+    } finally {
+      taskInFlightRef.current.delete(key);
+    }
+  }, []);
 
   const loadJiraDevOpsForProject = useCallback(async (projectId: string) => {
-    if (!projectId || jiraDevOpsCache[projectId] !== undefined) return;
-    const list = await getJiraDevOpsOptionsForProject(projectId);
-    setJiraDevOpsCache((prev) => ({ ...prev, [projectId]: list }));
-  }, [jiraDevOpsCache]);
+    if (!projectId) return;
+    if (jiraDevOpsCacheRef.current[projectId] !== undefined) return;
+    if (jiraInFlightRef.current.has(projectId)) return;
+    jiraInFlightRef.current.add(projectId);
+    try {
+      const list = await getJiraDevOpsOptionsForProject(projectId);
+      setJiraDevOpsCache((prev) => ({ ...prev, [projectId]: list }));
+    } finally {
+      jiraInFlightRef.current.delete(projectId);
+    }
+  }, []);
 
   const getProjectOptions = (customerId: string): { value: string; label: string }[] => {
     if (!customerId) return [{ value: "", label: "—" }];
@@ -746,7 +889,7 @@ export function TimeReportPageClient({
         </div>
       )}
 
-      {loadState === "loading" ? (
+      {loadState === "loading" && customerGroups.length === 0 ? (
         <div className="rounded-lg border border-border-subtle bg-bg-muted p-8 text-center">
           <p className="text-text-secondary">Loading time report…</p>
         </div>
@@ -757,7 +900,11 @@ export function TimeReportPageClient({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border-subtle">
+        <div className="space-y-2">
+          {loadState === "loading" ? (
+            <div className="text-xs text-text-secondary">Loading time report…</div>
+          ) : null}
+          <div className="overflow-x-auto rounded-lg border border-border-subtle">
           <table className="w-full table-fixed border-collapse text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted">
@@ -1074,6 +1221,7 @@ export function TimeReportPageClient({
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

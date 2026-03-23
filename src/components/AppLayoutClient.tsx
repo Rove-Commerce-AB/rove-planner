@@ -44,9 +44,11 @@ function PanelSlot({
 function LayoutContent({
   children,
   isAdmin,
+  canSeeTimeReportProjectManager,
 }: {
   children: React.ReactNode;
   isAdmin: boolean;
+  canSeeTimeReportProjectManager: boolean;
 }) {
   const pathname = usePathname();
   const { panel, closingPanel, openPanel, finishClosingPanel } = useSidePanel();
@@ -85,7 +87,10 @@ function LayoutContent({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar isAdmin={isAdmin} />
+      <Sidebar
+        isAdmin={isAdmin}
+        canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
+      />
       {showSlot && visiblePanel !== null && (
         <PanelSlot
           visiblePanel={visiblePanel}
@@ -107,13 +112,20 @@ function LayoutContent({
 export function AppLayoutClient({
   children,
   isAdmin = false,
+  canSeeTimeReportProjectManager = false,
 }: {
   children: React.ReactNode;
   isAdmin: boolean;
+  canSeeTimeReportProjectManager?: boolean;
 }) {
   return (
     <SidePanelProvider>
-      <LayoutContent isAdmin={isAdmin}>{children}</LayoutContent>
+      <LayoutContent
+        isAdmin={isAdmin}
+        canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
+      >
+        {children}
+      </LayoutContent>
     </SidePanelProvider>
   );
 }

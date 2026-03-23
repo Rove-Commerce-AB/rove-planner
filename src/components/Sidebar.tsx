@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
   BarChart2,
   Users,
   Building2,
@@ -12,16 +11,13 @@ import {
   Clock,
   Settings,
   LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Home,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useSidePanel } from "@/contexts/SidePanelContext";
 
-const STORAGE_KEY = "rove-sidebar-collapsed";
-
 const navGroup1 = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Dashboard", icon: Home },
 ] as const;
 
 const navGroup2 = [
@@ -46,8 +42,10 @@ function NavLink({
   pathname: string;
   collapsed: boolean;
 }) {
-  const isActive =
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const isActive = href === "/" ? pathname === "/" : pathname === href;
+  const labelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
+    collapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
+  }`;
   return (
     <Link
       href={href}
@@ -56,10 +54,12 @@ function NavLink({
         isActive
           ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
           : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
-      } ${collapsed ? "justify-center px-2" : ""}`}
+      }`}
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
-      {!collapsed && <span>{label}</span>}
+      <span className={labelSpanClass}>
+        {label}
+      </span>
     </Link>
   );
 }
@@ -77,6 +77,9 @@ function NavPanelButton({
 }) {
   const { panel: openPanel, togglePanel } = useSidePanel();
   const isActive = openPanel === panel;
+  const labelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
+    collapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
+  }`;
   return (
     <button
       type="button"
@@ -86,43 +89,33 @@ function NavPanelButton({
         isActive
           ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
           : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
-      } ${collapsed ? "justify-center px-2" : ""}`}
+      }`}
     >
       <Icon className="h-5 w-5 flex-shrink-0" />
-      {!collapsed && <span>{label}</span>}
+      <span className={labelSpanClass}>
+        {label}
+      </span>
     </button>
   );
 }
 
-type SidebarProps = { isAdmin?: boolean };
+type SidebarProps = {
+  isAdmin?: boolean;
+  canSeeTimeReportProjectManager?: boolean;
+};
 
-export function Sidebar({ isAdmin = false }: SidebarProps) {
+export function Sidebar({
+  isAdmin = false,
+  canSeeTimeReportProjectManager = false,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored !== null) setCollapsed(JSON.parse(stored));
-    } catch {
-      // ignore
-    }
   }, []);
-
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -131,104 +124,133 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
     router.refresh();
   }
 
-  // Use collapsed only after mount so server and first client render match (avoids hydration mismatch from localStorage).
-  const effectiveCollapsed = mounted ? collapsed : false;
+  // Collapse by default; expand while hovering.
+  // Start collapsed until mount to avoid a width mismatch on first render.
+  const effectiveCollapsed = mounted ? !isHovering : true;
+
+  const bottomLabelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
+    effectiveCollapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
+  }`;
 
   return (
     <aside
-      className={`flex h-screen flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default transition-[width] duration-200 ${
-        effectiveCollapsed ? "w-[4rem]" : "w-52"
-      }`}
+      className="flex h-screen w-[3.25rem] flex-shrink-0 flex-col bg-bg-default"
     >
       <div
-        className={`flex h-12 flex-shrink-0 items-center px-2 pt-3 ${effectiveCollapsed ? "justify-center" : "justify-end"}`}
+        className={`flex h-screen flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default transition-[width] duration-120 ease-out relative z-40 ${
+          effectiveCollapsed ? "w-[3.25rem]" : "w-52"
+        }`}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
       >
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex-shrink-0 rounded-md p-1.5 text-text-primary opacity-70 transition-colors hover:bg-nav-hover hover:opacity-100"
-        >
-          {effectiveCollapsed ? (
-            <PanelLeftOpen className="h-5 w-5" />
-          ) : (
-            <PanelLeftClose className="h-5 w-5" />
-          )}
-        </button>
-      </div>
-
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 pt-3">
-        <div className="space-y-0.5">
-          {navGroup1.map((item) => (
-            <NavLink key={item.href} pathname={pathname} collapsed={effectiveCollapsed} {...item} />
-          ))}
-        </div>
-
-        <div className="my-1.5 border-t border-border-subtle" />
-
-        <div className="space-y-0.5">
-          {navGroup2.map((item) => (
-            <NavLink key={item.href} pathname={pathname} collapsed={effectiveCollapsed} {...item} />
-          ))}
-        </div>
-
-        <div className="my-1.5 border-t border-border-subtle" />
-
-        <div className="space-y-0.5">
-          {navGroup3.map((item) => (
-            <NavPanelButton key={item.panel} collapsed={effectiveCollapsed} {...item} />
-          ))}
-        </div>
-
-        <div className="my-1.5 border-t border-border-subtle" />
-
-        <div className="space-y-0.5">
-          <NavLink href="/time-report" label="Time report" icon={Clock} pathname={pathname} collapsed={effectiveCollapsed} />
-        </div>
-
-        <div className="my-1.5 border-t border-border-subtle" />
-
-        {isAdmin && (
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5 pt-4 pb-1.5">
           <div className="space-y-0.5">
-            <NavLink href="/reports" label="Reports" icon={BarChart2} pathname={pathname} collapsed={effectiveCollapsed} />
+            {navGroup1.map((item) => (
+              <NavLink
+                key={item.href}
+                pathname={pathname}
+                collapsed={effectiveCollapsed}
+                {...item}
+              />
+            ))}
+          </div>
+
+          <div className="my-1.5 border-t border-border-subtle" />
+
+          <div className="space-y-0.5">
+            {navGroup2.map((item) => (
+              <NavLink
+                key={item.href}
+                pathname={pathname}
+                collapsed={effectiveCollapsed}
+                {...item}
+              />
+            ))}
+          </div>
+
+          <div className="my-1.5 border-t border-border-subtle" />
+
+          <div className="space-y-0.5">
+            {navGroup3.map((item) => (
+              <NavPanelButton
+                key={item.panel}
+                collapsed={effectiveCollapsed}
+                {...item}
+              />
+            ))}
+          </div>
+
+          <div className="my-1.5 border-t border-border-subtle" />
+
+          <div className="space-y-0.5">
+            <NavLink
+              href="/time-report"
+              label="Time report"
+              icon={Clock}
+              pathname={pathname}
+              collapsed={effectiveCollapsed}
+            />
+          </div>
+
+        {(isAdmin || canSeeTimeReportProjectManager) && (
+          <div className="space-y-0.5">
+            <NavLink
+              href="/time-report/project-manager"
+              label="My projects"
+              icon={Users}
+              pathname={pathname}
+              collapsed={effectiveCollapsed}
+            />
           </div>
         )}
-      </nav>
 
-      <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
-        <div className="space-y-0.5 p-1.5">
+          <div className="my-1.5 border-t border-border-subtle" />
+
           {isAdmin && (
-            <Link
-              href="/settings"
-              title={effectiveCollapsed ? "Settings" : undefined}
-              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
-                pathname === "/settings"
-                  ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
-                  : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
-              } ${effectiveCollapsed ? "justify-center px-2" : ""}`}
-            >
-              <Settings className="h-5 w-5 flex-shrink-0" />
-              {!effectiveCollapsed && <span>Settings</span>}
-            </Link>
+            <div className="space-y-0.5">
+              <NavLink
+                href="/reports"
+                label="Reports"
+                icon={BarChart2}
+                pathname={pathname}
+                collapsed={effectiveCollapsed}
+              />
+            </div>
           )}
-          {isAdmin && <div className="my-1.5 border-t border-border-subtle" aria-hidden />}
-          <button
-            type="button"
-            onClick={handleSignOut}
-            title={effectiveCollapsed ? "Log out" : undefined}
-            className={`mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-text-primary transition-colors hover:bg-nav-hover ${
-              effectiveCollapsed ? "justify-center px-2" : ""
-            }`}
-          >
-            <LogOut className="h-5 w-5 flex-shrink-0" />
-            {!effectiveCollapsed && <span>Log out</span>}
-          </button>
+        </nav>
+
+        <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
+          <div className="space-y-0.5 p-1.5">
+            {isAdmin && (
+              <Link
+                href="/settings"
+                title={effectiveCollapsed ? "Settings" : undefined}
+                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
+                  pathname === "/settings"
+                    ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary"
+                    : "border-l-2 border-transparent text-text-primary hover:bg-nav-hover"
+                }`}
+              >
+                <Settings className="h-5 w-5 flex-shrink-0" />
+                <span className={bottomLabelSpanClass}>Settings</span>
+              </Link>
+            )}
+            {isAdmin && (
+              <div className="my-1.5 border-t border-border-subtle" aria-hidden />
+            )}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              title={effectiveCollapsed ? "Log out" : undefined}
+              className={`mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-text-primary transition-colors hover:bg-nav-hover ${
+                "justify-start"
+              }`}
+            >
+              <LogOut className="h-5 w-5 flex-shrink-0" />
+              <span className={bottomLabelSpanClass}>Log out</span>
+            </button>
+          </div>
         </div>
-        {!effectiveCollapsed && (
-          <footer className="px-3 py-2 text-xs text-text-primary opacity-60">
-            © {new Date().getFullYear()} Rove Planner
-          </footer>
-        )}
       </div>
     </aside>
   );
