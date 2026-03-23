@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Pencil, Check } from "lucide-react";
+import { Plus, Trash2, Check } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/roles";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
@@ -13,7 +13,7 @@ import {
   setFeatureRequestImplemented,
   type FeatureRequest,
 } from "@/lib/featureRequests";
-import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, editInputListClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
+import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, Select, editInputListClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
 import { AddAppUserModal } from "./AddAppUserModal";
@@ -480,23 +480,17 @@ export function SettingsPageClient({
                       <td className="px-2 py-1">
                         <div className="min-h-[2rem] flex items-center gap-2">
                           {editingAppUserId === u.id && editingAppUserField === "role" ? (
-                            <select
+                            <Select
                               value={editingAppUserValue}
-                              onChange={(e) => setEditingAppUserValue(e.target.value)}
+                              onValueChange={(v) => setEditingAppUserValue(v)}
                               onBlur={() => saveAppUserInline(u)}
-                              className={editInputListClass}
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") saveAppUserInline(u);
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  cancelAppUserEdit();
-                                }
-                              }}
-                            >
-                              <option value="member">Member</option>
-                              <option value="admin">Admin</option>
-                            </select>
+                              options={[
+                                { value: "member", label: "Member" },
+                                { value: "admin", label: "Admin" },
+                              ]}
+                              className="min-w-0 flex-1 w-full"
+                              triggerClassName={editInputListClass}
+                            />
                           ) : (
                             <>
                               <button
@@ -838,11 +832,11 @@ export function SettingsPageClient({
                               setEditingFeatureRequestId(fr.id);
                               setEditingFeatureRequestValue(fr.content);
                             }}
-                            className="cursor-pointer rounded-sm p-1.5 text-text-primary opacity-60 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
+                            className="cursor-pointer rounded-sm px-2 py-1 text-xs font-medium text-text-primary opacity-70 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
                             aria-label="Edit"
                             title="Edit"
                           >
-                            <Pencil className="h-4 w-4" />
+                            Edit
                           </button>
                           <IconButton
                             variant="ghostDanger"

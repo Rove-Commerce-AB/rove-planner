@@ -19,6 +19,7 @@ import {
   Panel,
   PanelSectionTitle,
   SAVED_DURATION_MS,
+  Select,
   editInputClass,
 } from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
@@ -435,27 +436,24 @@ export function CustomerDetailClient({
                       </InlineEditTrigger>
                     }
                     editContent={
-                      <select
+                      <Select
                         value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onBlur={() => commitEdit()}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitEdit();
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            cancelEdit();
-                          }
+                        onValueChange={(v) => {
+                          setEditValue(v);
+                          commitEdit(v);
                         }}
-                        className={`min-w-0 flex-1 w-full ${editInputClass}`}
-                        autoFocus
-                      >
-                        <option value="">—</option>
-                        {allConsultants.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                        onBlur={() => commitEdit()}
+                        options={[
+                          { value: "", label: "—" },
+                          ...allConsultants.map((c) => ({
+                            value: c.id,
+                            label: c.name,
+                          })),
+                        ]}
+                        placeholder="—"
+                        className="min-w-0 flex-1 w-full"
+                        triggerClassName={editInputClass}
+                      />
                     }
                     statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
                   />

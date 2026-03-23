@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import { Pencil, Check, AlertCircle } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
 import {
   inlineEditTriggerClass,
   INLINE_EDIT_VALUE_ROW_MIN_H,
@@ -145,7 +145,7 @@ type Props = {
 export function FieldLabel({ children, className = "" }: Props) {
   return (
     <div
-      className={`text-xs font-medium uppercase tracking-wider text-text-primary opacity-70 ${className}`.trim()}
+      className={`pl-1 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70 ${className}`.trim()}
     >
       {children}
     </div>
@@ -187,11 +187,7 @@ export function InlineEditTrigger({
       onClick={onClick}
       className={`group ${inlineEditTriggerClass} ${className}`.trim()}
     >
-      <span className="min-w-0 flex-1 group-hover:underline">{children}</span>
-      <Pencil
-        className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-60"
-        aria-hidden
-      />
+      <span className="min-w-0 flex-1">{children}</span>
     </button>
   );
 }

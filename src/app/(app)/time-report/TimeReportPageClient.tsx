@@ -222,14 +222,14 @@ function HourCell({
           }
         }}
         autoFocus
-        className="h-7 w-9 rounded border border-form bg-bg-default px-0.5 text-right text-xs tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className="h-6 w-9 rounded border border-form bg-bg-default px-0.5 text-right text-xs tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
       />
     );
   }
 
   const display = value === 0 ? "" : String(value);
   return (
-    <span className="inline-flex h-7 shrink-0 items-center text-xs tabular-nums text-text-primary">
+    <span className="inline-flex h-6 shrink-0 items-center text-xs tabular-nums text-text-primary">
       {display}
     </span>
   );
@@ -294,6 +294,14 @@ export function TimeReportPageClient({
     const { start } = getISOWeekDateRangeLocal(initialYear, initialWeek);
     return parseInt(start.slice(0, 4), 10);
   });
+  const [weekStripAnimClass, setWeekStripAnimClass] = useState<
+    ""
+    | "animate-week-strip-out-to-left"
+    | "animate-week-strip-out-to-right"
+    | "animate-week-strip-in-from-left"
+    | "animate-week-strip-in-from-right"
+  >("");
+  const [isWeekStripTransitioning, setIsWeekStripTransitioning] = useState(false);
   useEffect(() => {
     if (!calendarId) return;
     getHolidayDatesForWeek(calendarId, year, week).then(setHolidayDates);
@@ -424,10 +432,10 @@ export function TimeReportPageClient({
     return isWeekend || isHoliday;
   };
 
-  const dayCellGrayClass = "bg-bg-muted/50";
-  const dayHeaderGrayClass = "bg-bg-muted/70 text-text-muted";
-  const todayColumnClass = "bg-brand-signal/5";
-  const todayHeaderClass = "bg-brand-signal/10";
+  const dayCellGrayClass = "bg-bg-muted/30";
+  const dayHeaderGrayClass = "bg-bg-muted/40 text-text-muted";
+  const todayColumnClass = "bg-brand-blue/10";
+  const todayHeaderClass = "bg-brand-blue/15";
 
   const goPrevWeek = () => {
     const next = addWeeksToYearWeekLocal(year, week, -1);
@@ -442,35 +450,55 @@ export function TimeReportPageClient({
   };
 
   const goPrevMonth = () => {
+    if (isWeekStripTransitioning) return;
+    setIsWeekStripTransitioning(true);
+    setWeekStripAnimClass("animate-week-strip-out-to-right");
     let newMonth = displayMonth - 1;
     let newYear = displayYear;
     if (newMonth < 1) {
       newMonth = 12;
       newYear -= 1;
     }
-    setDisplayMonth(newMonth);
-    setDisplayYear(newYear);
-    const weeks = getWeeksInMonthLocal(newMonth, newYear);
-    if (weeks.length > 0) {
-      setYear(weeks[0].year);
-      setWeek(weeks[0].week);
-    }
+    window.setTimeout(() => {
+      setDisplayMonth(newMonth);
+      setDisplayYear(newYear);
+      const weeks = getWeeksInMonthLocal(newMonth, newYear);
+      if (weeks.length > 0) {
+        setYear(weeks[0].year);
+        setWeek(weeks[0].week);
+      }
+      setWeekStripAnimClass("animate-week-strip-in-from-left");
+      window.setTimeout(() => {
+        setWeekStripAnimClass("");
+        setIsWeekStripTransitioning(false);
+      }, 320);
+    }, 280);
   };
 
   const goNextMonth = () => {
+    if (isWeekStripTransitioning) return;
+    setIsWeekStripTransitioning(true);
+    setWeekStripAnimClass("animate-week-strip-out-to-left");
     let newMonth = displayMonth + 1;
     let newYear = displayYear;
     if (newMonth > 12) {
       newMonth = 1;
       newYear += 1;
     }
-    setDisplayMonth(newMonth);
-    setDisplayYear(newYear);
-    const weeks = getWeeksInMonthLocal(newMonth, newYear);
-    if (weeks.length > 0) {
-      setYear(weeks[0].year);
-      setWeek(weeks[0].week);
-    }
+    window.setTimeout(() => {
+      setDisplayMonth(newMonth);
+      setDisplayYear(newYear);
+      const weeks = getWeeksInMonthLocal(newMonth, newYear);
+      if (weeks.length > 0) {
+        setYear(weeks[0].year);
+        setWeek(weeks[0].week);
+      }
+      setWeekStripAnimClass("animate-week-strip-in-from-right");
+      window.setTimeout(() => {
+        setWeekStripAnimClass("");
+        setIsWeekStripTransitioning(false);
+      }, 320);
+    }, 280);
   };
 
   const customerOptionsForSelect = [
@@ -692,60 +720,63 @@ export function TimeReportPageClient({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col items-center gap-1.5">
           <div className="flex items-center justify-center gap-2">
-            <IconButton
-              aria-label="Föregående månad"
-              onClick={goPrevMonth}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </IconButton>
-            <span className="min-w-[120px] text-center text-sm font-medium text-text-primary">
+            <span className="min-w-[120px] text-center text-xs font-medium text-text-primary">
               {monthLabel}
             </span>
-            <IconButton
-              aria-label="Nästa månad"
-              onClick={goNextMonth}
-            >
-              <ChevronRight className="h-5 w-5" />
-            </IconButton>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-left text-xs font-medium text-text-secondary">
-              Current week
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {monthWeeks.map(({ year: wY, week: w }) => {
-                const isSelected = wY === year && w === week;
-                const isCurrentWeek = wY === initialYear && w === initialWeek;
-                return (
-                  <button
-                    key={`${wY}-${w}`}
-                    type="button"
-                    onClick={() => {
-                      setYear(wY);
-                      setWeek(w);
-                    }}
-                    className={`w-[4.5rem] cursor-pointer shrink-0 rounded-md px-2 py-1 text-center text-xs font-medium transition-colors whitespace-nowrap ${
-                      isSelected
-                        ? "bg-brand-signal text-white"
-                        : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary"
-                    } ${!isSelected && isCurrentWeek ? "ring-2 ring-brand-signal ring-offset-1 ring-offset-bg-default" : ""}`}
-                    aria-label={`Vecka ${w}${isCurrentWeek ? " (current week)" : ""}`}
-                    aria-pressed={isSelected}
-                    title={isCurrentWeek ? "Current week" : undefined}
-                  >
-                    V {w}
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-1.5">
+              <IconButton
+                aria-label="Previous month"
+                onClick={goPrevMonth}
+                disabled={isWeekStripTransitioning}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </IconButton>
+              <div
+                className={`flex flex-wrap items-center gap-1.5 ${weekStripAnimClass}`}
+              >
+                {monthWeeks.map(({ year: wY, week: w }) => {
+                  const isSelected = wY === year && w === week;
+                  const isCurrentWeek = wY === initialYear && w === initialWeek;
+                  return (
+                    <button
+                      key={`${wY}-${w}`}
+                      type="button"
+                      onClick={() => {
+                        setYear(wY);
+                        setWeek(w);
+                      }}
+                      className={`w-[4rem] cursor-pointer shrink-0 rounded-md px-1.5 py-0.5 text-center text-[11px] font-medium transition-colors whitespace-nowrap ${
+                        isSelected
+                          ? "bg-brand-blue text-white"
+                          : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary"
+                      } ${!isSelected && isCurrentWeek ? "ring-2 ring-brand-blue ring-offset-1 ring-offset-bg-default" : ""}`}
+                      aria-label={`Vecka ${w}${isCurrentWeek ? " (current week)" : ""}`}
+                      aria-pressed={isSelected}
+                      title={isCurrentWeek ? "Current week" : undefined}
+                    >
+                      V {w}
+                    </button>
+                  );
+                })}
+              </div>
+              <IconButton
+                aria-label="Next month"
+                onClick={goNextMonth}
+                disabled={isWeekStripTransitioning}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </IconButton>
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {saveState === "saving" && (
-            <span className="text-sm text-text-secondary">Saving…</span>
+            <span className="text-xs text-text-secondary">Saving…</span>
           )}
           {saveState === "error" && saveError && (
-            <span className="text-sm text-red-600" role="alert">
+            <span className="text-xs text-red-600" role="alert">
               {saveError}
             </span>
           )}
@@ -761,10 +792,10 @@ export function TimeReportPageClient({
       </div>
 
       {addCustomerOpen && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-bg-muted p-2 pr-1">
-          <span className="text-sm text-text-secondary">Add customer:</span>
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-muted/60 p-1.5 pr-1">
+          <span className="text-xs text-text-secondary">Add customer:</span>
           {availableToAdd.length === 0 ? (
-            <span className="text-sm text-text-muted">
+            <span className="text-xs text-text-muted">
               All customers added
             </span>
           ) : (
@@ -790,37 +821,51 @@ export function TimeReportPageClient({
       )}
 
       {loadState === "loading" ? (
-        <div className="rounded-lg border border-border-subtle bg-bg-muted p-8 text-center">
-          <p className="text-text-secondary">Loading time report…</p>
+        <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-default">
+          <div className="h-0.5 w-full bg-brand-blue/70" />
+          <div className="p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs text-text-secondary">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-brand-blue/80" aria-hidden />
+              <span>Loading time report…</span>
+            </div>
+            <div className="space-y-2">
+              <div className="h-7 rounded-md bg-bg-muted/40" />
+              <div className="h-7 rounded-md bg-bg-muted/30" />
+              <div className="h-7 rounded-md bg-bg-muted/25" />
+            </div>
+          </div>
         </div>
       ) : customerGroups.length === 0 ? (
-        <div className="rounded-lg border border-border-subtle bg-bg-muted p-8 text-center">
-          <p className="text-text-secondary">
-            No customers added. Click &quot;Add customer&quot; to start reporting time.
-          </p>
+        <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-default">
+          <div className="h-0.5 w-full bg-brand-blue/70" />
+          <div className="p-4 text-center">
+            <p className="text-xs text-text-secondary">
+              No customers added. Click &quot;Add customer&quot; to start reporting time.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
           <div className="overflow-x-auto rounded-lg border border-border-subtle">
-          <table className="w-full table-fixed border-collapse text-sm">
+          <table className="w-full table-fixed border-collapse text-xs">
             <thead>
-              <tr className="border-b border-border-subtle bg-bg-muted">
-                <th className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-2 text-left font-medium text-text-secondary">
+              <tr className="border-b border-border-subtle bg-bg-muted/40">
+                <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
-                <th className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-2 text-left font-medium text-text-secondary">
+                <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Role
                 </th>
-                <th className="w-[200px] min-w-[200px] max-w-[200px] px-2 py-2 text-left font-medium text-text-secondary">
+                <th className="w-[200px] min-w-[200px] max-w-[200px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
-                <th className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-2 text-center font-medium text-text-secondary" scope="col" title="Jira / DevOps">
+                <th className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1.5 text-center font-medium text-text-secondary" scope="col" title="Jira / DevOps">
                   <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
                 {DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
-                    className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-2 font-medium text-text-secondary last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
                       <div>
@@ -830,19 +875,19 @@ export function TimeReportPageClient({
                     </div>
                   </th>
                 ))}
-                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-2" aria-hidden />
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5" aria-hidden />
               </tr>
             </thead>
             <tbody>
               {customerGroups.length > 0 && (
-                <tr className="border-b border-border-subtle bg-bg-muted font-medium">
-                  <td colSpan={4} className="px-2 py-1.5 text-left text-text-primary">
+                <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
+                  <td colSpan={4} className="px-1.5 py-1 text-left text-text-primary">
                     Total
                   </td>
                   {totalHoursPerDay.map((h, i) => (
                     <td
                       key={i}
-                      className={`h-10 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                      className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                     >
                       <div className="flex h-full w-full items-center justify-center">
                         <span className="text-xs tabular-nums text-text-primary">
@@ -851,7 +896,7 @@ export function TimeReportPageClient({
                       </div>
                     </td>
                   ))}
-                  <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5 align-middle" />
+                  <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle" />
                 </tr>
               )}
               {customerGroups.map((group) => {
@@ -863,8 +908,8 @@ export function TimeReportPageClient({
 
                 return (
                   <Fragment key={group.customerId}>
-                    <tr className="border-b border-border-subtle bg-bg-muted/70">
-                      <td colSpan={4} className="px-2 py-1.5">
+                    <tr className="border-b border-border-subtle bg-bg-muted/40">
+                      <td colSpan={4} className="px-1.5 py-1">
                         <div className="flex w-full items-center gap-2 font-medium text-text-primary">
                           <span
                             className="h-2 w-2 shrink-0 rounded-full"
@@ -880,10 +925,10 @@ export function TimeReportPageClient({
                       {DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
-                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-1 last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         />
                       ))}
-                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
+                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
                         <div className="flex items-center justify-center">
                           <IconButton
                             aria-label="Add row"
@@ -897,9 +942,9 @@ export function TimeReportPageClient({
                     {group.entries.map((entry) => (
                         <tr
                           key={entry.id}
-                          className="border-b border-border-subtle bg-bg-default hover:bg-bg-subtle/50"
+                          className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                         >
-                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-1.5">
+                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -919,11 +964,11 @@ export function TimeReportPageClient({
                                 size="sm"
                                 variant="filter"
                                 placeholder="—"
-                                triggerClassName="h-8 w-full min-w-0 max-w-full truncate"
+                                triggerClassName="h-7 w-full min-w-0 max-w-full truncate text-xs"
                               />
                             </div>
                           </td>
-                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-2 py-1.5">
+                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.roleId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -937,11 +982,11 @@ export function TimeReportPageClient({
                                 size="sm"
                                 variant="filter"
                                 placeholder="—"
-                                triggerClassName="h-8 w-full min-w-0 max-w-full truncate"
+                                triggerClassName="h-7 w-full min-w-0 max-w-full truncate text-xs"
                               />
                             </div>
                           </td>
-                          <td className="w-[200px] min-w-[200px] max-w-[200px] px-2 py-1.5">
+                          <td className="w-[200px] min-w-[200px] max-w-[200px] px-1.5 py-1">
                             <input
                               type="text"
                               value={entry.task ?? ""}
@@ -950,10 +995,10 @@ export function TimeReportPageClient({
                                   task: e.target.value,
                                 })
                               }
-                              className="h-8 w-full min-w-0 rounded border border-form bg-bg-default px-2 py-1 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
+                              className="h-7 w-full min-w-0 rounded border border-form bg-bg-default px-1.5 py-0.5 text-xs text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
                             />
                           </td>
-                          <td className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1.5 align-middle">
+                          <td className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1 align-middle">
                             {entry.jiraDevOpsValue ? (
                               <div className="flex items-center gap-0.5 min-w-0">
                                 <button
@@ -1012,7 +1057,7 @@ export function TimeReportPageClient({
                           {entry.hours.map((h, dayIndex) => (
                             <td
                               key={dayIndex}
-                              className={`relative h-10 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 align-middle last:border-r-0 ${dayIndex === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(dayIndex) ? dayCellGrayClass : ""} ${isTodayColumn(dayIndex) ? todayColumnClass : ""}`}
+                              className={`relative h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 align-middle last:border-r-0 ${dayIndex === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(dayIndex) ? dayCellGrayClass : ""} ${isTodayColumn(dayIndex) ? todayColumnClass : ""}`}
                             >
                               <div
                                 role="button"
@@ -1055,7 +1100,7 @@ export function TimeReportPageClient({
                               </div>
                             </td>
                           ))}
-                          <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5">
+                          <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1">
                             <div className="flex items-center justify-center gap-0.5">
                               <IconButton
                                 aria-label="Add internal comment"
@@ -1086,14 +1131,14 @@ export function TimeReportPageClient({
                           </td>
                         </tr>
                       ))}
-                    <tr className="border-b border-border-subtle bg-bg-muted/60 text-text-secondary">
-                        <td colSpan={4} className="px-2 py-1 text-left text-xs font-medium">
+                    <tr className="border-b border-border-subtle bg-bg-muted/30 text-text-secondary">
+                        <td colSpan={4} className="px-1.5 py-1 text-left text-xs font-medium">
                           Subtotal
                         </td>
                         {daily.map((h, i) => (
                           <td
                             key={i}
-                            className={`h-10 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                            className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                           >
                             <div className="flex h-full w-full items-center justify-center">
                               <span className="text-xs tabular-nums text-text-secondary">

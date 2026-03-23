@@ -29,7 +29,6 @@ export default async function TimeReportPage() {
       <div className="mx-auto max-w-[1200px]">
         <PageHeader
           title="Time report"
-          description="Report hours per week by customer, project, and task"
           className="mb-6"
         />
         <TimeReportPageClient

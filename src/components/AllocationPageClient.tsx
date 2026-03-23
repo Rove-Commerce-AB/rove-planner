@@ -1455,7 +1455,7 @@ export function AllocationPageClient({
               { value: "none", label: "Without probability" },
             ]}
             className="w-auto min-w-0"
-            triggerClassName={`min-w-[130px] ${probabilityDisplay === "weighted" ? "bg-brand-lilac/25 text-text-primary" : ""}`}
+            triggerClassName={`min-w-[180px] ${probabilityDisplay === "weighted" ? "bg-brand-blue/25 text-text-primary" : ""}`}
           />
           <Select
             variant="filter"
@@ -1467,7 +1467,7 @@ export function AllocationPageClient({
               { value: "hide100", label: "Only show planned" },
             ]}
             className="w-auto min-w-0"
-            triggerClassName="min-w-[130px]"
+            triggerClassName="min-w-[180px]"
           />
           <span
             className="mx-1 h-4 w-px shrink-0 bg-[var(--color-border-subtle)]"
@@ -1487,7 +1487,7 @@ export function AllocationPageClient({
                 ...data.teams.map((t) => ({ value: t.id, label: t.name })),
               ]}
               className="w-auto min-w-0"
-              triggerClassName="min-w-[100px]"
+              triggerClassName="min-w-[160px]"
             />
           )}
           {activeTab !== "history" && data.roles.length > 0 && (
@@ -1500,7 +1500,7 @@ export function AllocationPageClient({
                 ...data.roles.map((r) => ({ value: r.id, label: r.name })),
               ]}
               className="w-auto min-w-0"
-              triggerClassName="min-w-[100px]"
+              triggerClassName="min-w-[160px]"
             />
           )}
           {activeTab === "project" && (
