@@ -19,6 +19,7 @@ import {
   Panel,
   PanelSectionTitle,
   SAVED_DURATION_MS,
+  editTriggerClass,
   Select,
   editInputClass,
 } from "@/components/ui";
@@ -452,7 +453,7 @@ export function CustomerDetailClient({
                         ]}
                         placeholder="—"
                         className="min-w-0 flex-1 w-full"
-                        triggerClassName={editInputClass}
+                        triggerClassName={editTriggerClass}
                       />
                     }
                     statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}

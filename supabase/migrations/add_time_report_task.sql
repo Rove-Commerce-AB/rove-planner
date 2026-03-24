@@ -1,5 +1,5 @@
--- Free-text task description per time report row (same for all 7 days of a grid row).
+-- Free-text description per time report row (same for all 7 days of a grid row).
 ALTER TABLE time_report_entries
-  ADD COLUMN IF NOT EXISTS task text;
+  ADD COLUMN IF NOT EXISTS description text;
 
-COMMENT ON COLUMN time_report_entries.task IS 'Manual task description (what was done). One per grid row.';
+COMMENT ON COLUMN time_report_entries.description IS 'Manual description (what was done). One per grid row.';

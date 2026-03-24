@@ -13,7 +13,7 @@ import {
   setFeatureRequestImplemented,
   type FeatureRequest,
 } from "@/lib/featureRequests";
-import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, Select, editInputListClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
+import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, Select, editInputListClass, editTriggerClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
 import { AddAppUserModal } from "./AddAppUserModal";
@@ -489,7 +489,7 @@ export function SettingsPageClient({
                                 { value: "admin", label: "Admin" },
                               ]}
                               className="min-w-0 flex-1 w-full"
-                              triggerClassName={editInputListClass}
+                              triggerClassName={editTriggerClass}
                             />
                           ) : (
                             <>

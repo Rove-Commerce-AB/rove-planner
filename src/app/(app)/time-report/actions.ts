@@ -157,7 +157,7 @@ export async function getTimeReportEntries(
   const { data: rows, error } = await supabase
     .from("time_report_entries")
     .select(
-      "id, customer_id, project_id, role_id, jira_devops_key, task, entry_date, hours, comment, rate_snapshot, display_order"
+      "id, customer_id, project_id, role_id, jira_devops_key, description, entry_date, hours, comment, rate_snapshot, display_order"
     )
     .eq("consultant_id", consultantId)
     .in("entry_date", weekDates)
@@ -209,7 +209,7 @@ export async function getTimeReportEntries(
         projectId: first.project_id,
         roleId: first.role_id,
         jiraDevOpsValue: first.jira_devops_key ?? "",
-        task: first.task ?? "",
+        task: first.description ?? "",
         hours,
         comments,
       };
@@ -258,7 +258,7 @@ export async function saveTimeReportEntries(
     project_id: string;
     role_id: string;
     jira_devops_key: string | null;
-    task: string | null;
+    description: string | null;
     entry_date: string;
     hours: number;
     comment: string | null;
@@ -326,7 +326,7 @@ export async function saveTimeReportEntries(
             project_id: entry.projectId,
             role_id: entry.roleId,
             jira_devops_key: entry.jiraDevOpsValue || null,
-            task: (entry.task ?? "").trim() || null,
+            description: (entry.task ?? "").trim() || null,
             entry_date: weekDates[dayIndex],
             hours,
             comment: comment || null,
@@ -396,7 +396,7 @@ export async function copyEntryToWeek(
     project_id: string;
     role_id: string;
     jira_devops_key: string | null;
-    task: string | null;
+    description: string | null;
     entry_date: string;
     hours: number;
     comment: string | null;
@@ -414,7 +414,7 @@ export async function copyEntryToWeek(
         project_id: entry.projectId,
         role_id: entry.roleId,
         jira_devops_key: entry.jiraDevOpsValue || null,
-        task: (entry.task ?? "").trim() || null,
+        description: (entry.task ?? "").trim() || null,
         entry_date: weekDates[dayIndex],
         hours,
         comment: comment || null,
