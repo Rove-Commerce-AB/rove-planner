@@ -484,6 +484,7 @@ export function SettingsPageClient({
                               value={editingAppUserValue}
                               onValueChange={(v) => setEditingAppUserValue(v)}
                               onBlur={() => saveAppUserInline(u)}
+                              variant="inlineEdit"
                               options={[
                                 { value: "member", label: "Member" },
                                 { value: "admin", label: "Admin" },

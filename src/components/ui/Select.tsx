@@ -19,8 +19,8 @@ type Props = {
   disabled?: boolean;
   /** Compact size for inline/filter use */
   size?: "sm" | "md";
-  /** Filter variant: small, discrete, pill-style for toolbar filters. Modal: discreet gray border, focus ring only. */
-  variant?: "default" | "filter" | "modal";
+  /** Filter variant: small, discrete, pill-style for toolbar filters. Modal: discreet gray border, focus ring only. InlineEdit = detail-page inline selects; omits default padding/rounding so triggerClassName matches InlineEditTrigger height (no panel jump). */
+  variant?: "default" | "filter" | "modal" | "inlineEdit";
   className?: string;
   /** Extra classes for the trigger (e.g. h-10 for consistent height) */
   triggerClassName?: string;
@@ -57,13 +57,17 @@ export function Select({
 
   const isFilter = variant === "filter";
   const isModal = variant === "modal";
-  const triggerSize =
-    isFilter
+  const isInlineEdit = variant === "inlineEdit";
+  const triggerSize = isInlineEdit
+    ? ""
+    : isFilter
       ? "py-1.5 px-3 text-xs"
       : size === "sm"
         ? "py-1.5 px-3 text-sm"
         : "py-2 px-3 text-sm";
-  const triggerShape = isFilter
+  const triggerShape = isInlineEdit
+    ? ""
+    : isFilter
     ? "rounded-lg border border-[var(--color-border-subtle)] bg-white text-[var(--color-text-primary)] placeholder:opacity-70 focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)]"
     : isModal
       ? "rounded-lg border border-form bg-bg-default text-text-primary focus:border-[var(--color-border-default)] focus:ring-1 focus:ring-[var(--color-border-default)]"
@@ -71,6 +75,9 @@ export function Select({
   const contentBorderClass = isFilter
     ? "border-[var(--color-border-subtle)]"
     : "border-form";
+  /** Match InlineEditFieldContainer value row: fixed h-8 so open state matches display trigger (avoids stacking extra py from default select). */
+  const inlineEditTriggerBase =
+    "group inline-flex h-8 w-full min-w-0 box-border shrink-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)]";
 
   return (
     <div className={className}>
@@ -94,13 +101,25 @@ export function Select({
           onBlur={onBlur}
           aria-invalid={Boolean(error)}
           aria-describedby={error && id ? `${id}-error` : undefined}
-          className={`group inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)] ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()}
+          className={
+            isInlineEdit
+              ? `${inlineEditTriggerBase} ${triggerClassName}`.trim()
+              : `group inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)] ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()
+          }
         >
           <span className="min-w-0 shrink truncate">
             <SelectPrimitive.Value placeholder={placeholder} />
           </span>
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className={isFilter ? "h-3.5 w-3.5 shrink-0 opacity-70 transition-transform group-data-[state=open]:rotate-180" : "h-4 w-4 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"} />
+            <ChevronDown
+              className={
+                isFilter
+                  ? "h-3.5 w-3.5 shrink-0 opacity-70 transition-transform group-data-[state=open]:rotate-180"
+                  : isInlineEdit
+                    ? "h-3.5 w-3.5 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
+                    : "h-4 w-4 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
+              }
+            />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
