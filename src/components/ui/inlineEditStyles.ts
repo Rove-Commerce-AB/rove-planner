@@ -22,12 +22,13 @@ export const editInputClass =
 export const editInputListClass =
   "min-w-0 flex-1 min-h-[2rem] rounded-md border border-form px-2 py-1 text-sm leading-normal bg-bg-default text-text-primary transition-colors placeholder:text-text-muted focus:outline-none focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset";
 
-/** For Select trigger in edit state: same box as input (min-height, padding, radius, border). */
+/** For Select trigger in edit state: paired with Select variant="inlineEdit" (outer h-8); no extra vertical padding so height matches InlineEditTrigger. */
 export const editTriggerClass =
-  `w-full min-w-0 ${INLINE_EDIT_VALUE_ROW_MIN_H} rounded-md border border-form px-1 py-1.5 text-sm leading-normal focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset`;
+  `w-full min-w-0 rounded-md border border-form bg-bg-default px-2 py-0 text-sm leading-normal text-text-primary focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset`;
 
+/** Display trigger: min-h-8 matches inline-edit Select trigger; py-0 avoids growing past that for single-line values. */
 export const inlineEditTriggerClass =
-  `flex w-full min-w-0 cursor-pointer items-center gap-2 ${INLINE_EDIT_VALUE_ROW_MIN_H} rounded-md border border-transparent px-1 py-1.5 text-left text-sm font-semibold leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset`;
+  `flex w-full min-w-0 cursor-pointer items-center gap-2 min-h-8 box-border rounded-md border border-transparent px-1 py-0 text-left text-sm font-semibold leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset`;
 
 export const inlineEditTriggerListClass =
   "flex-1 min-h-[2rem] cursor-pointer rounded-md border border-transparent py-1 px-2 text-left text-sm font-medium leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset";

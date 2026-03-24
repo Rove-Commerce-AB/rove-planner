@@ -677,6 +677,7 @@ export function ProjectDetailClient({
                         commitEdit(v);
                       }}
                       onBlur={() => commitEdit()}
+                      variant="inlineEdit"
                       options={integrationOptions}
                       placeholder="Select project"
                       className="min-w-0 flex-1 w-full"
@@ -720,6 +721,7 @@ export function ProjectDetailClient({
                         commitEdit(v);
                       }}
                       onBlur={() => commitEdit()}
+                      variant="inlineEdit"
                       options={[
                         { value: "", label: "—" },
                         ...projectManagerOptions,
@@ -947,6 +949,7 @@ export function ProjectDetailClient({
                         commitEdit(v);
                       }}
                       onBlur={() => commitEdit()}
+                      variant="inlineEdit"
                       options={PROBABILITY_OPTIONS.map((n) => ({
                         value: String(n),
                         label: `${n}%`,

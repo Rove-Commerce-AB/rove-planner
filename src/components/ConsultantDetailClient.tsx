@@ -433,6 +433,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
                       commitEdit(v);
                     }}
                     onBlur={() => commitEdit()}
+                    variant="inlineEdit"
                     options={roleOptions}
                     placeholder="Select role"
                     className="min-w-0 flex-1 w-full"
@@ -464,6 +465,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
                       commitEdit(v);
                     }}
                     onBlur={() => commitEdit()}
+                    variant="inlineEdit"
                     options={teamOptions}
                     placeholder="No team"
                     className="min-w-0 flex-1 w-full"
@@ -499,6 +501,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
                       commitEdit(v);
                     }}
                     onBlur={() => commitEdit()}
+                    variant="inlineEdit"
                     options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
                       value: String(p),
                       label: `${p}%`,
@@ -540,6 +543,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
                       commitEdit(v);
                     }}
                     onBlur={() => commitEdit()}
+                    variant="inlineEdit"
                     options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
                       value: String(p),
                       label: `${p}%`,
@@ -690,6 +694,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
                       commitEdit(v);
                     }}
                     onBlur={() => commitEdit()}
+                    variant="inlineEdit"
                     options={calendarOptions}
                     placeholder="Select calendar"
                     className="min-w-0 flex-1 w-full"

@@ -444,6 +444,7 @@ export function CustomerDetailClient({
                           commitEdit(v);
                         }}
                         onBlur={() => commitEdit()}
+                        variant="inlineEdit"
                         options={[
                           { value: "", label: "—" },
                           ...allConsultants.map((c) => ({
