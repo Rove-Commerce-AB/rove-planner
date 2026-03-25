@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Check } from "lucide-react";
-import { getRoles, deleteRole, updateRole } from "@/lib/roles";
-import { getTeams, deleteTeam, updateTeam } from "@/lib/teams";
-import { getCalendarsWithHolidayCount } from "@/lib/calendars";
+import { Plus, Trash2 } from "lucide-react";
+import { getRoles, deleteRole, updateRole } from "@/lib/rolesClient";
+import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
+import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
 import { removeAppUser, updateAppUser, type AppUser } from "@/lib/appUsers";
 import {
   updateFeatureRequest,
@@ -20,7 +20,8 @@ import { AddAppUserModal } from "./AddAppUserModal";
 import { AddRoleModal } from "./AddRoleModal";
 import { AddTeamModal } from "./AddTeamModal";
 import { AddCalendarModal } from "./AddCalendarModal";
-import { CalendarAccordionItem } from "./CalendarAccordionItem";
+import { SettingsCalendarsSection } from "./settings/SettingsCalendarsSection";
+import { SettingsFeatureRequestsSection } from "./settings/SettingsFeatureRequestsSection";
 
 type CurrentAppUser = { email: string; role: string; name: string | null } | null;
 
@@ -710,151 +711,29 @@ export function SettingsPageClient({
           </div>
         </Panel>
 
-        <Panel>
-          <PanelSectionTitle
-            action={
-              <IconButton
-                aria-label="Add calendar"
-                onClick={() => setAddCalendarOpen(true)}
-                className="text-text-muted hover:text-text-primary"
-              >
-                <Plus className="h-4 w-4" />
-              </IconButton>
-            }
-          >
-            CALENDARS
-          </PanelSectionTitle>
-          <div className="overflow-x-auto p-3 pt-0">
-            <div className="space-y-0.5">
-              {initialCalendars.map((calendar) => (
-                <CalendarAccordionItem
-                  key={calendar.id}
-                  calendar={calendar}
-                  onDelete={handleSuccess}
-                  onUpdate={handleSuccess}
-                />
-              ))}
-            </div>
-          </div>
-        </Panel>
+        <SettingsCalendarsSection
+          calendars={initialCalendars}
+          onRefresh={handleSuccess}
+          onAddClick={() => setAddCalendarOpen(true)}
+        />
 
-        <Panel>
-          <PanelSectionTitle>FEATURE REQUESTS</PanelSectionTitle>
-          <div className="overflow-x-auto p-3 pt-0">
-            <ul className="space-y-0.5">
-              {initialFeatureRequests.length === 0 ? (
-                <li className="rounded-md px-2 py-3 text-center text-sm text-text-primary opacity-60">
-                  No feature requests yet.
-                </li>
-              ) : (
-                initialFeatureRequests.map((fr) => (
-                  <li
-                    key={fr.id}
-                    className={`flex items-start gap-4 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-muted/50 ${fr.is_implemented ? "bg-green-100/80 dark:bg-green-900/20" : ""}`}
-                  >
-                    <div className="min-w-0 flex-1 flex flex-col">
-                      <div className="flex min-h-[2rem] flex-col">
-                        {editingFeatureRequestId === fr.id ? (
-                          <textarea
-                            value={editingFeatureRequestValue}
-                            onChange={(e) => setEditingFeatureRequestValue(e.target.value)}
-                            onBlur={() => saveFeatureRequestInline(fr.content)}
-                            rows={2}
-                            className={editInputListClass}
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Escape") {
-                                e.preventDefault();
-                                cancelFeatureRequestEdit(fr.content);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <div className="flex items-start gap-2 min-w-0 flex-1">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm text-text-primary">
-                                {fr.content}
-                              </p>
-                              {(fr.submitted_by_email || fr.created_at) && (
-                                <p className="mt-1 text-xs text-text-primary opacity-60">
-                                  Requested by{fr.submitted_by_email ? `: ${fr.submitted_by_email}` : ""}
-                                  {fr.created_at && (
-                                    <span>
-                                      {fr.submitted_by_email ? " · " : ": "}
-                                      {new Date(fr.created_at).toLocaleDateString(undefined, {
-                                        day: "numeric",
-                                        month: "short",
-                                        year: "numeric",
-                                      })}
-                                    </span>
-                                  )}
-                                </p>
-                              )}
-                            </div>
-                            {showSavedFeatureRequest && lastSavedFeatureRequestIdRef.current === fr.id && <SavedCheckmark />}
-                          </div>
-                        )}
-                      </div>
-                      <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
-                        {editingFeatureRequestId === fr.id ? (
-                          <InlineEditStatus
-                            status={
-                              savingFeatureRequest
-                                ? "saving"
-                                : showSavedFeatureRequest
-                                  ? "saved"
-                                  : featureRequestError
-                                    ? "error"
-                                    : "idle"
-                            }
-                            message={featureRequestError}
-                          />
-                        ) : (
-                          <div className={INLINE_EDIT_STATUS_ROW_MIN_H} aria-hidden />
-                        )}
-                      </div>
-                    </div>
-                    {editingFeatureRequestId !== fr.id && (
-                      <div className="flex flex-shrink-0 gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleImplemented(fr)}
-                            disabled={togglingImplementedId === fr.id}
-                            className={`cursor-pointer rounded-sm p-1.5 transition-colors disabled:opacity-50 ${fr.is_implemented ? "text-green-600 opacity-100" : "text-text-primary opacity-60 hover:opacity-100"} hover:bg-bg-muted/50`}
-                            aria-label={fr.is_implemented ? "Mark as not implemented" : "Mark as implemented"}
-                            title={fr.is_implemented ? "Mark as not implemented" : "Implemented"}
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFeatureRequestError(null);
-                              setEditingFeatureRequestId(fr.id);
-                              setEditingFeatureRequestValue(fr.content);
-                            }}
-                            className="cursor-pointer rounded-sm px-2 py-1 text-xs font-medium text-text-primary opacity-70 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
-                            aria-label="Edit"
-                            title="Edit"
-                          >
-                            Edit
-                          </button>
-                          <IconButton
-                            variant="ghostDanger"
-                            onClick={() => setFeatureRequestToDelete(fr)}
-                            aria-label="Delete"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </IconButton>
-                      </div>
-                    )}
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-        </Panel>
+        <SettingsFeatureRequestsSection
+          featureRequests={initialFeatureRequests}
+          editingFeatureRequestId={editingFeatureRequestId}
+          setEditingFeatureRequestId={setEditingFeatureRequestId}
+          editingFeatureRequestValue={editingFeatureRequestValue}
+          setEditingFeatureRequestValue={setEditingFeatureRequestValue}
+          saveFeatureRequestInline={saveFeatureRequestInline}
+          cancelFeatureRequestEdit={cancelFeatureRequestEdit}
+          showSavedFeatureRequest={showSavedFeatureRequest}
+          lastSavedFeatureRequestIdRef={lastSavedFeatureRequestIdRef}
+          savingFeatureRequest={savingFeatureRequest}
+          featureRequestError={featureRequestError}
+          togglingImplementedId={togglingImplementedId}
+          handleToggleImplemented={handleToggleImplemented}
+          setFeatureRequestError={setFeatureRequestError}
+          setFeatureRequestToDelete={setFeatureRequestToDelete}
+        />
       </div>
 
       <AddAppUserModal

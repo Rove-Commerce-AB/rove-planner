@@ -1,3 +1,19 @@
+export type {
+  OccupancyDataPoint,
+  OccupancyReportResult,
+  OccupancyWeek,
+  RoleOccupancyRow,
+} from "./occupancyReport";
+export type { ProjectManagerEntry } from "./projectManagerTimeReport";
+export type {
+  JiraDevOpsOption,
+  ProjectOption,
+  TaskOption,
+  TimeReportCustomerGroup,
+  TimeReportEntry,
+  TimeReportEntryCopyPayload,
+} from "./timeReport";
+
 export type Project = {
   id: string;
   name: string;

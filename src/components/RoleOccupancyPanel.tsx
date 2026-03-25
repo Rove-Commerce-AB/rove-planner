@@ -1,6 +1,6 @@
 "use client";
 
-import type { RoleOccupancyRow } from "@/lib/occupancyReport";
+import type { RoleOccupancyRow } from "@/types/occupancyReport";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import { Panel, PanelSectionTitle } from "@/components/ui";
 

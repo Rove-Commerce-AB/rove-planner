@@ -3,6 +3,8 @@ import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { createClient } from "@/lib/supabase/server";
 
+/** Auth and app_users gatekeeping run in src/proxy.ts (Supabase session + redirects). */
+
 export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

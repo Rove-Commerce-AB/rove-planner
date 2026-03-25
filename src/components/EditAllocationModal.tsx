@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { X, Trash2 } from "lucide-react";
-import { getRoles } from "@/lib/roles";
-import { updateAllocation } from "@/lib/allocations";
+import { getRoles } from "@/lib/rolesClient";
+import { updateAllocation } from "@/lib/allocationsClient";
 import {
   revalidateAllocationPage,
   logAllocationHistoryUpdate,

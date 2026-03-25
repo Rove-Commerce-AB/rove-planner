@@ -7,7 +7,6 @@ import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Plus, Trash2 } from "lucide-react";
 import {
   Badge,
-  Button,
   ConfirmModal,
   DetailPageHeader,
   FieldLabel,
@@ -27,11 +26,13 @@ import { CustomerRatesTab } from "./CustomerRatesTab";
 import { AddProjectModal } from "./AddProjectModal";
 import { AddCustomerConsultantModal } from "./AddCustomerConsultantModal";
 import { AddCustomerRateModal } from "./AddCustomerRateModal";
-import { removeConsultantFromCustomer } from "@/lib/customerConsultants";
+import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerWithDetails } from "@/types";
-import type { CustomerConsultant } from "@/lib/customerConsultants";
+import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import { useSidePanel } from "@/contexts/SidePanelContext";
+import { CustomerDetailProjectsPanel } from "./customer-detail/CustomerDetailProjectsPanel";
+import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 
 const tableBorder = "border-panel";
 
@@ -491,14 +492,14 @@ export function CustomerDetailClient({
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           className="sr-only"
-                          aria-label="Välj färg"
+                          aria-label="Choose color"
                         />
                         <button
                           type="button"
                           onClick={() => colorInputRef.current?.click()}
                           className="h-10 w-14 shrink-0 cursor-pointer rounded border border-form p-0 transition-colors hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset"
                           style={{ backgroundColor: editValue }}
-                          title="Öppna färgväljare"
+                          title="Open color picker"
                         />
                         <input
                           type="text"
@@ -542,67 +543,12 @@ export function CustomerDetailClient({
             </div>
           </Panel>
 
-          {/* PROJECTS */}
-          <Panel>
-            <PanelSectionTitle
-              action={
-                <IconButton
-                  aria-label="Add project"
-                  onClick={() => setAddProjectModalOpen(true)}
-                  className="text-text-muted hover:text-text-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                </IconButton>
-              }
-            >
-              PROJECTS
-            </PanelSectionTitle>
-            <div className="overflow-x-auto p-3 pt-0">
-              {initialCustomer.projects.length === 0 ? (
-                <p className="py-4 text-center text-sm text-text-primary opacity-60">
-                  No projects for this customer.
-                </p>
-              ) : (
-                <>
-                  <ul className="space-y-0.5">
-                    {[...(showInactiveProjects ? initialCustomer.projects : initialCustomer.projects.filter((p) => p.isActive))]
-                      .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
-                      .map((p) => (
-                        <li
-                          key={p.id}
-                          className={`flex h-[2.25rem] cursor-pointer items-center gap-4 rounded-md px-2 transition-colors hover:bg-bg-muted/50 ${!p.isActive ? "opacity-60" : ""}`}
-                          onClick={() => router.push(`/projects/${p.id}`)}
-                        >
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-                            {p.name}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
-                  {!showInactiveProjects && initialCustomer.projects.some((p) => !p.isActive) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowInactiveProjects(true)}
-                      className="mt-2 w-full rounded-md py-2 text-center text-sm font-medium text-text-primary opacity-70 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
-                      aria-label="Show inactive projects"
-                    >
-                      Show inactive ({initialCustomer.projects.filter((p) => !p.isActive).length})
-                    </button>
-                  )}
-                  {showInactiveProjects && initialCustomer.projects.some((p) => !p.isActive) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowInactiveProjects(false)}
-                      className="mt-2 w-full rounded-md py-2 text-center text-sm font-medium text-text-primary opacity-70 transition-colors hover:bg-bg-muted/50 hover:opacity-100"
-                      aria-label="Hide inactive projects"
-                    >
-                      Hide inactive
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </Panel>
+          <CustomerDetailProjectsPanel
+            projects={initialCustomer.projects}
+            showInactiveProjects={showInactiveProjects}
+            setShowInactiveProjects={setShowInactiveProjects}
+            onAddProject={() => setAddProjectModalOpen(true)}
+          />
 
           {/* CONSULTANTS + RATES/TASKS */}
           <div className="mt-0 flex flex-col gap-5">
@@ -679,16 +625,11 @@ export function CustomerDetailClient({
             </Panel>
           </div>
 
-          <div className="pt-4">
-            <Button
-              variant="ghost"
-              className="text-danger hover:bg-danger/10 hover:text-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={submitting || deleting}
-            >
-              Delete customer
-            </Button>
-          </div>
+          <DetailPageDeleteFooter
+            onRequestDelete={() => setShowDeleteConfirm(true)}
+            disabled={submitting || deleting}
+            label="Delete customer"
+          />
         </div>
       </div>
 

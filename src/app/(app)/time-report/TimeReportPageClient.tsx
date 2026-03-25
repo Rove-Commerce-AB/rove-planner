@@ -3,146 +3,27 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink } from "lucide-react";
-import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek, type ProjectOption, type JiraDevOpsOption, type TaskOption } from "./actions";
+import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek } from "./actions";
+import type { ProjectOption, JiraDevOpsOption, TaskOption } from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
+import {
+  getISOWeekDateRangeLocal,
+  addWeeksToYearWeekLocal,
+  getWeeksInMonthLocal,
+  getWeekDates,
+} from "@/lib/timeReportBrowserWeek";
+import { TIME_REPORT_DAY_LABELS, TIME_REPORT_MONTH_NAMES } from "./timeReportShared";
+import {
+  type TimeReportEntry as Entry,
+  type TimeReportCustomerGroup as CustomerGroup,
+  newTimeReportEntry as newEntry,
+  timeReportEntryHasContent as entryHasContent,
+  timeReportTaskCacheKey as taskCacheKey,
+  timeReportGroupTotalHours as groupTotalHours,
+  timeReportDayTotals as dayTotals,
+} from "./timeReportEntryModel";
+import { TimeReportHourCell } from "./TimeReportHourCell";
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** Local date helpers so this client component never imports dateUtils (avoids SSR bundle issues). */
-function getISOWeekDateRangeLocal(year: number, week: number): { start: string; end: string } {
-  const jan4 = new Date(year, 0, 4);
-  const dayOfWeek = jan4.getDay() || 7;
-  const yearStartMonday = new Date(jan4);
-  yearStartMonday.setDate(jan4.getDate() - dayOfWeek + 1);
-  const weekStart = new Date(yearStartMonday);
-  weekStart.setDate(yearStartMonday.getDate() + (week - 1) * 7);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  const toYMD = (d: Date) =>
-    d.getFullYear() +
-    "-" +
-    String(d.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(d.getDate()).padStart(2, "0");
-  return { start: toYMD(weekStart), end: toYMD(weekEnd) };
-}
-function getYearWeekForDateLocal(date: Date): { year: number; week: number } {
-  const isoDay = date.getDay() || 7;
-  const thursdayOffset = 4 - isoDay;
-  const thursday = new Date(date);
-  thursday.setDate(date.getDate() + thursdayOffset);
-  const year = thursday.getFullYear();
-  const jan4 = new Date(year, 0, 4);
-  const jan4Day = jan4.getDay() || 7;
-  const week1Monday = new Date(jan4);
-  week1Monday.setDate(4 - jan4Day + 1);
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const week =
-    1 + Math.floor((thursday.getTime() - week1Monday.getTime()) / msPerWeek);
-  return { year, week };
-}
-function isoWeeksInYearLocal(year: number): number {
-  const dec28 = new Date(year, 11, 28);
-  const isoDay = dec28.getDay() || 7;
-  const thursdayOffset = 4 - isoDay;
-  const thursday = new Date(dec28);
-  thursday.setDate(dec28.getDate() + thursdayOffset);
-  const isoYear = thursday.getFullYear();
-  const jan4 = new Date(isoYear, 0, 4);
-  const jan4Day = jan4.getDay() || 7;
-  const week1Monday = new Date(jan4);
-  week1Monday.setDate(jan4.getDate() - jan4Day + 1);
-  return (
-    1 +
-    Math.floor(
-      (thursday.getTime() - week1Monday.getTime()) / (7 * 24 * 60 * 60 * 1000)
-    )
-  );
-}
-function addWeeksToYearWeekLocal(
-  year: number,
-  week: number,
-  delta: number
-): { year: number; week: number } {
-  let w = week + delta;
-  let y = year;
-  while (w > isoWeeksInYearLocal(y)) {
-    w -= isoWeeksInYearLocal(y);
-    y += 1;
-  }
-  while (w < 1) {
-    y -= 1;
-    w += isoWeeksInYearLocal(y);
-  }
-  return { year: y, week: w };
-}
-function getWeeksInMonthLocal(month: number, year: number): { year: number; week: number }[] {
-  const first = new Date(year, month - 1, 1);
-  const last = new Date(year, month, 0);
-  const start = getYearWeekForDateLocal(first);
-  const end = getYearWeekForDateLocal(last);
-  const list: { year: number; week: number }[] = [];
-  let y = start.year;
-  let w = start.week;
-  const endY = end.year;
-  const endW = end.week;
-  while (y < endY || (y === endY && w <= endW)) {
-    list.push({ year: y, week: w });
-    w += 1;
-    if (w > isoWeeksInYearLocal(y)) {
-      w = 1;
-      y += 1;
-    }
-  }
-  return list;
-}
-
-type Entry = {
-  id: string;
-  projectId: string;
-  roleId: string;
-  jiraDevOpsValue: string;
-  task: string;
-  hours: number[];
-  comments: Record<number, string>;
-};
-
-type CustomerGroup = {
-  customerId: string;
-  entries: Entry[];
-};
-
-function newEntry(): Entry {
-  return {
-    id: crypto.randomUUID(),
-    projectId: "",
-    roleId: "",
-    jiraDevOpsValue: "",
-    task: "",
-    hours: [0, 0, 0, 0, 0, 0, 0],
-    comments: {},
-  };
-}
-
-function cloneGroupsWithNewIds(groups: CustomerGroup[]): CustomerGroup[] {
-  return groups.map((g) => ({
-    customerId: g.customerId,
-    entries: g.entries.map((e) => ({
-      ...e,
-      id: crypto.randomUUID(),
-      task: e.task ?? "",
-      hours: [...e.hours],
-      comments: { ...e.comments },
-    })),
-  }));
-}
-
-function entryHasContent(entry: Entry): boolean {
-  const hasHours = entry.hours.some((h) => (h ?? 0) > 0);
-  const hasComment = Object.values(entry.comments).some((c) => (c ?? "").trim() !== "");
-  return hasHours || hasComment;
-}
 
 type CustomerOption = { id: string; name: string; color?: string | null };
 
@@ -154,103 +35,6 @@ type Props = {
   calendarId: string | null;
   initialHolidayDates: string[];
 };
-
-function taskCacheKey(customerId: string, projectId: string) {
-  return `${customerId}-${projectId || ""}`;
-}
-
-function groupTotalHours(entries: Entry[]): number {
-  return entries.reduce(
-    (sum, e) => sum + e.hours.reduce((s, h) => s + h, 0),
-    0
-  );
-}
-
-function dayTotals(entries: Entry[]): number[] {
-  const out = [0, 0, 0, 0, 0, 0, 0];
-  for (const e of entries) {
-    e.hours.forEach((h, i) => { out[i] += h; });
-  }
-  return out;
-}
-
-/** Inline-edit cell for one day: display value or input on edit. */
-function HourCell({
-  value,
-  isEditing,
-  onStartEdit,
-  onCommit,
-  onBlur,
-}: {
-  value: number;
-  entryId: string;
-  dayIndex: number;
-  isEditing: boolean;
-  onStartEdit: () => void;
-  onCommit: (v: number) => void;
-  onBlur: () => void;
-}) {
-  const [localValue, setLocalValue] = useState(String(value || ""));
-
-  useEffect(() => {
-    if (isEditing) setLocalValue(value === 0 ? "" : String(value));
-  }, [isEditing, value]);
-
-  const handleCommit = () => {
-    const num = localValue === "" ? 0 : Math.max(0, Math.min(24, parseFloat(localValue) || 0));
-    onCommit(num);
-    setLocalValue(num === 0 ? "" : String(num));
-    onBlur();
-  };
-
-  if (isEditing) {
-    return (
-      <input
-        type="number"
-        min={0}
-        max={24}
-        step={0.5}
-        value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        onBlur={handleCommit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") handleCommit();
-          if (e.key === "Escape") {
-            setLocalValue(value === 0 ? "" : String(value));
-            onBlur();
-          }
-        }}
-        autoFocus
-        className="h-6 w-9 rounded border border-form bg-bg-default px-0.5 text-right text-xs tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-      />
-    );
-  }
-
-  const display = value === 0 ? "" : String(value);
-  return (
-    <span className="inline-flex h-6 shrink-0 items-center text-xs tabular-nums text-text-primary">
-      {display}
-    </span>
-  );
-}
-
-/** YYYY-MM-DD for Mon..Sun of the given ISO week. */
-function getWeekDates(year: number, week: number): string[] {
-  const { start } = getISOWeekDateRangeLocal(year, week);
-  const monday = new Date(start + "T12:00:00");
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return (
-      d.getFullYear() +
-      "-" +
-      String(d.getMonth() + 1).padStart(2, "0") +
-      "-" +
-      String(d.getDate()).padStart(2, "0")
-    );
-  });
-}
 
 export function TimeReportPageClient({
   consultant,
@@ -412,7 +196,7 @@ export function TimeReportPageClient({
       if (linkPath === currentPath) return;
       e.preventDefault();
       e.stopPropagation();
-      if (window.confirm("Du har osparade ändringar. Vill du lämna sidan?")) {
+      if (window.confirm("You have unsaved changes. Leave this page?")) {
         const path = href.startsWith("/") ? href : new URL(href, window.location.origin).pathname;
         router.push(path);
       }
@@ -695,7 +479,7 @@ export function TimeReportPageClient({
     0
   );
 
-  const monthLabel = `${MONTH_NAMES[displayMonth - 1]} ${displayYear}`;
+  const monthLabel = `${TIME_REPORT_MONTH_NAMES[displayMonth - 1]} ${displayYear}`;
   const monthWeeks = getWeeksInMonthLocal(displayMonth, displayYear);
 
   const totalHoursPerDay = customerGroups.reduce<number[]>(
@@ -709,7 +493,7 @@ export function TimeReportPageClient({
 
   if (!consultant) {
     return (
-      <div className="rounded-lg border border-border-subtle bg-bg-muted p-6 text-center text-text-secondary">
+      <div className="rounded-lg bg-bg-muted p-6 text-center text-text-secondary">
         Link your user to a consultant to report time.
       </div>
     );
@@ -792,7 +576,7 @@ export function TimeReportPageClient({
       </div>
 
       {addCustomerOpen && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-muted/60 p-1.5 pr-1">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-bg-muted/60 p-1.5 pr-1">
           <span className="text-xs text-text-secondary">Add customer:</span>
           {availableToAdd.length === 0 ? (
             <span className="text-xs text-text-muted">
@@ -821,7 +605,7 @@ export function TimeReportPageClient({
       )}
 
       {loadState === "loading" ? (
-        <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-default">
+        <div className="overflow-hidden rounded-lg bg-bg-default">
           <div className="h-0.5 w-full bg-brand-blue/70" />
           <div className="p-4">
             <div className="mb-3 flex items-center gap-2 text-xs text-text-secondary">
@@ -836,7 +620,7 @@ export function TimeReportPageClient({
           </div>
         </div>
       ) : customerGroups.length === 0 ? (
-        <div className="overflow-hidden rounded-lg border border-border-subtle bg-bg-default">
+        <div className="overflow-hidden rounded-lg bg-bg-default">
           <div className="h-0.5 w-full bg-brand-blue/70" />
           <div className="p-4 text-center">
             <p className="text-xs text-text-secondary">
@@ -846,7 +630,7 @@ export function TimeReportPageClient({
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="overflow-x-auto rounded-lg border border-border-subtle">
+          <div className="overflow-x-auto rounded-lg">
           <table className="w-full table-fixed border-collapse text-xs">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
@@ -862,7 +646,7 @@ export function TimeReportPageClient({
                 <th className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1.5 text-center font-medium text-text-secondary" scope="col" title="Jira / DevOps">
                   <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
-                {DAY_LABELS.map((label, i) => (
+                {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
                     className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
@@ -899,7 +683,7 @@ export function TimeReportPageClient({
                   <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle" />
                 </tr>
               )}
-              {customerGroups.map((group) => {
+              {customerGroups.map((group, groupIndex) => {
                 const customer = customers.find((c) => c.id === group.customerId);
                 const name = customer?.name ?? "—";
                 const color = customer?.color ?? "#3b82f6";
@@ -908,6 +692,11 @@ export function TimeReportPageClient({
 
                 return (
                   <Fragment key={group.customerId}>
+                    {groupIndex === 0 && (
+                      <tr aria-hidden>
+                        <td colSpan={12} className="h-2 p-0" />
+                      </tr>
+                    )}
                     <tr className="border-b border-border-subtle bg-bg-muted/40">
                       <td colSpan={4} className="px-1.5 py-1">
                         <div className="flex w-full items-center gap-2 font-medium text-text-primary">
@@ -922,21 +711,22 @@ export function TimeReportPageClient({
                           </span>
                         </div>
                       </td>
-                      {DAY_LABELS.map((_, i) => (
+                      {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
                           className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         />
                       ))}
                       <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
-                        <div className="flex items-center justify-center">
-                          <IconButton
-                            aria-label="Add row"
-                            onClick={() => addRow(group.customerId)}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </IconButton>
-                        </div>
+                        <button
+                          type="button"
+                          aria-label="Add row"
+                          title="Add row"
+                          onClick={() => addRow(group.customerId)}
+                          className="flex h-full w-full cursor-pointer items-center justify-center rounded-sm p-1.5 transition-colors hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                     </tr>
                     {group.entries.map((entry) => (
@@ -1008,7 +798,11 @@ export function TimeReportPageClient({
                                     setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
                                     if (entry.projectId) loadJiraDevOpsForProject(entry.projectId);
                                   }}
-                                  className="min-w-0 flex-1 truncate cursor-pointer rounded px-1 py-0.5 text-left text-xs text-brand-signal hover:bg-bg-muted"
+                                  className={`min-w-0 flex-1 truncate cursor-pointer rounded px-1 py-0.5 text-left text-xs ${
+                                    entry.jiraDevOpsValue.startsWith("jira:")
+                                      ? "text-text-primary"
+                                      : "text-brand-signal"
+                                  } hover:bg-bg-muted`}
                                   title={`${entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")} – Change Jira/DevOps`}
                                 >
                                   {entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")}
@@ -1077,7 +871,7 @@ export function TimeReportPageClient({
                                 }}
                                 className={`absolute inset-0 flex items-center justify-center rounded-sm transition-colors ${editingCell?.entryId === entry.id && editingCell?.dayIndex === dayIndex ? "cursor-default" : "cursor-pointer hover:bg-bg-muted/60"}`}
                               >
-                                <HourCell
+                                <TimeReportHourCell
                                   value={h}
                                   entryId={entry.id}
                                   dayIndex={dayIndex}
@@ -1156,7 +950,7 @@ export function TimeReportPageClient({
                         </td>
                       </tr>
                     <tr aria-hidden>
-                      <td colSpan={12} className="border-b border-border-default p-0" />
+                      <td colSpan={12} className="h-2 p-0" />
                     </tr>
                   </Fragment>
                 );
@@ -1179,7 +973,7 @@ export function TimeReportPageClient({
             Add a comment for each day. Leave blank for no comment.
           </p>
           <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
-            {DAY_LABELS.map((label, i) => (
+            {TIME_REPORT_DAY_LABELS.map((label, i) => (
               <div key={i} className="flex flex-col gap-1">
                 <label htmlFor={`comment-day-${i}`} className="text-xs font-medium text-text-secondary">
                   {label} {dayDates[i]}

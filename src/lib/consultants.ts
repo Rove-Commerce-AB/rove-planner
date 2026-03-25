@@ -1,413 +1,98 @@
-import { supabase } from "./supabaseClient";
+import "server-only";
+
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentAppUser } from "./appUsers";
-import { getCachedConsultantsRaw } from "./allocationPage";
-import { getRoles } from "./roles";
-import { getCalendars } from "./calendars";
-import { getTeams } from "./teams";
+import { addConsultantToCustomer } from "./customerConsultants";
+import { getCustomerIdByName } from "./customers";
+import * as q from "./consultantsQueries";
 
-export type ConsultantListItem = {
-  id: string;
-  name: string;
-  initials: string;
-  teamId: string | null;
-  teamName: string | null;
-  isExternal: boolean;
-  isActive: boolean;
-};
-import { getAllocationsForWeek } from "./allocations";
-import { getProjectsByIds } from "./projects";
-import { DEFAULT_HOURS_PER_WEEK } from "./constants";
-import type { ConsultantWithDetails } from "@/types";
-import { getISOWeekDateRange } from "./dateUtils";
-import {
-  getCalendarHolidays,
-  countWeekdayHolidaysInRange,
-} from "./calendarHolidays";
+export type {
+  ConsultantListItem,
+  CreateConsultantInput,
+  UpdateConsultantInput,
+  ConsultantForEdit,
+} from "./consultantsQueries";
 
-export type CreateConsultantInput = {
-  name: string;
-  email?: string | null;
-  role_id: string;
-  calendar_id: string;
-  team_id?: string | null;
-  is_external?: boolean;
-  work_percentage?: number;
-  overhead_percentage?: number;
-  start_date?: string | null;
-  end_date?: string | null;
-  birth_date?: string | null;
-};
-
-export type UpdateConsultantInput = {
-  name?: string;
-  email?: string | null;
-  role_id?: string;
-  calendar_id?: string;
-  team_id?: string | null;
-  is_external?: boolean;
-  work_percentage?: number;
-  overhead_percentage?: number;
-  start_date?: string | null;
-  end_date?: string | null;
-  birth_date?: string | null;
-};
-
-export async function createConsultant(
-  input: CreateConsultantInput
-): Promise<{ id: string; name: string }> {
-  const { data, error } = await supabase
-    .from("consultants")
-    .insert({
-      name: input.name.trim(),
-      email: input.email?.trim() || null,
-      role_id: input.role_id,
-      calendar_id: input.calendar_id,
-      team_id: input.team_id ?? null,
-      is_external: input.is_external ?? false,
-      work_percentage: input.work_percentage ?? 100,
-      overhead_percentage: input.overhead_percentage ?? 0,
-      start_date: input.start_date ?? null,
-      end_date: input.end_date ?? null,
-      birth_date: input.birth_date ?? null,
-    })
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-export async function updateConsultant(
-  id: string,
-  input: UpdateConsultantInput
-): Promise<void> {
-  const updates: Record<string, unknown> = {};
-  if (input.name !== undefined) updates.name = input.name.trim();
-  if (input.email !== undefined)
-    updates.email = input.email?.trim() || null;
-  if (input.role_id !== undefined) updates.role_id = input.role_id;
-  if (input.calendar_id !== undefined) updates.calendar_id = input.calendar_id;
-  if (input.team_id !== undefined) updates.team_id = input.team_id ?? null;
-  if (input.is_external !== undefined) updates.is_external = input.is_external;
-  if (input.work_percentage !== undefined)
-    updates.work_percentage = input.work_percentage;
-  if (input.overhead_percentage !== undefined)
-    updates.overhead_percentage = input.overhead_percentage;
-  if (input.start_date !== undefined) updates.start_date = input.start_date ?? null;
-  if (input.end_date !== undefined) updates.end_date = input.end_date ?? null;
-  if (input.birth_date !== undefined) updates.birth_date = input.birth_date ?? null;
-
-  const { error } = await supabase
-    .from("consultants")
-    .update(updates)
-    .eq("id", id);
-
-  if (error) throw error;
-}
-
-export async function deleteConsultant(id: string): Promise<void> {
-  const { error } = await supabase.from("consultants").delete().eq("id", id);
-
-  if (error) throw error;
-}
-
-export type ConsultantForEdit = {
-  id: string;
-  name: string;
-  email: string | null;
-  role_id: string;
-  roleName: string;
-  calendar_id: string;
-  calendarName: string;
-  team_id: string | null;
-  teamName: string | null;
-  isExternal: boolean;
-  workPercentage: number;
-  overheadPercentage: number;
-  startDate: string | null;
-  endDate: string | null;
-  birthDate: string | null;
-};
-
-/** Returns consultant id, name and calendar_id if a consultant has this email (for linking app user to consultant). */
-export async function getConsultantByEmail(
-  email: string
-): Promise<{ id: string; name: string; calendar_id: string } | null> {
-  const normalized = email?.trim().toLowerCase();
-  if (!normalized) return null;
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name,calendar_id")
-    .eq("email", normalized)
-    .maybeSingle();
-  if (error || !data) return null;
-  return { id: data.id, name: data.name, calendar_id: data.calendar_id };
-}
-
-/** Consultant linked to the currently logged-in user (by email), or null. */
-export async function getConsultantForCurrentUser(): Promise<{
-  id: string;
-  name: string;
-  calendar_id: string;
-} | null> {
-  const user = await getCurrentAppUser();
-  if (!user?.email) return null;
-  return getConsultantByEmail(user.email);
-}
-
-export async function getConsultantById(
-  id: string
-): Promise<ConsultantForEdit | null> {
-  const { data: c, error } = await supabase
-    .from("consultants")
-    .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date,birth_date")
-    .eq("id", id)
-    .single();
-
-  if (error || !c) return null;
-
-  const [roles, calendars, teams] = await Promise.all([
-    getRoles(),
-    getCalendars(),
-    getTeams(),
-  ]);
-  const roleMap = new Map(roles.map((r) => [r.id, r.name]));
-  const teamMap = new Map(teams.map((t) => [t.id, t.name]));
-  const calendarMap = new Map(calendars.map((cal) => [cal.id, cal.name]));
-  const calendar = calendars.find((cal) => cal.id === c.calendar_id);
-  const workPct =
-    Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
-  const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
-
-  return {
-    id: c.id,
-    name: c.name,
-    email: c.email,
-    role_id: c.role_id,
-    roleName: roleMap.get(c.role_id) ?? "Unknown",
-    calendar_id: c.calendar_id,
-    calendarName: calendarMap.get(c.calendar_id) ?? "Unknown",
-    team_id: c.team_id ?? null,
-    teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
-    isExternal: c.is_external ?? false,
-    workPercentage: Math.round(workPct * 100),
-    overheadPercentage: Math.round(overheadPct * 100),
-    startDate: c.start_date ?? null,
-    endDate: c.end_date ?? null,
-    birthDate: c.birth_date ?? null,
-  };
-}
-
-/** Consultants with default role_id for pre-filling allocation role. */
-export async function getConsultantsWithDefaultRole(): Promise<
-  { id: string; name: string; role_id: string | null }[]
-> {
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name,role_id")
-    .order("name");
-
-  if (error) throw error;
-  return (data ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    role_id: c.role_id ?? null,
-  }));
-}
-
-/** For side panel list: consultants with team and active state (end_date in past = inactive). */
-export async function getConsultantsList(): Promise<ConsultantListItem[]> {
-  const { data: rows, error } = await supabase
-    .from("consultants")
-    .select("id,name,team_id,is_external,end_date")
-    .order("name");
-
-  if (error) throw error;
-  if (!rows?.length) return [];
-
-  const teams = await getTeams();
-  const teamMap = new Map(teams.map((t) => [t.id, t.name]));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const getInitialsFromName = (name: string) =>
-    name
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-
-  return rows.map((r) => {
-    const endDate = r.end_date ? new Date(r.end_date) : null;
-    const isActive = !endDate || endDate >= today;
-    return {
-      id: r.id,
-      name: r.name,
-      initials: getInitialsFromName(r.name),
-      teamId: r.team_id ?? null,
-      teamName: r.team_id ? teamMap.get(r.team_id) ?? null : null,
-      isExternal: r.is_external ?? false,
-      isActive,
-    };
-  });
-}
-
-/** Id → name for given consultant ids (e.g. for account manager display). */
-export async function getConsultantNamesByIds(
-  ids: string[]
-): Promise<Map<string, string>> {
-  const unique = [...new Set(ids)].filter(Boolean);
-  if (unique.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name")
-    .in("id", unique);
-  if (error) throw error;
-  const map = new Map<string, string>();
-  for (const row of data ?? []) {
-    map.set(row.id, row.name ?? "");
-  }
-  return map;
-}
+const ROVE_CUSTOMER_NAME = "Rove";
 
 /**
- * Available hours for project allocation in a given week: capacity (calendar × work %,
- * minus weekday holidays) × (1 − overhead %). E.g. 32h capacity, 25% overhead → 24h.
+ * Internal consultants are linked to the Rove customer when it exists.
+ * Returns the Rove customer id when a link was created (caller may revalidate paths).
  */
+export async function linkNewInternalConsultantToRoveCustomer(
+  consultantId: string,
+  input: q.CreateConsultantInput
+): Promise<string | null> {
+  const isInternal = !(input.is_external ?? false);
+  if (!isInternal) return null;
+  const roveCustomerId = await getCustomerIdByName(ROVE_CUSTOMER_NAME);
+  if (!roveCustomerId) return null;
+  await addConsultantToCustomer(roveCustomerId, consultantId);
+  return roveCustomerId;
+}
+
+export async function createConsultant(input: q.CreateConsultantInput) {
+  const supabase = await createClient();
+  return q.createConsultantQuery(supabase, input);
+}
+
+export async function updateConsultant(id: string, input: q.UpdateConsultantInput) {
+  const supabase = await createClient();
+  return q.updateConsultantQuery(supabase, id, input);
+}
+
+export async function deleteConsultant(id: string) {
+  const supabase = await createClient();
+  return q.deleteConsultantQuery(supabase, id);
+}
+
+export async function getConsultantByEmail(email: string) {
+  const supabase = await createClient();
+  return q.fetchConsultantByEmail(supabase, email);
+}
+
+export async function getConsultantForCurrentUser() {
+  const user = await getCurrentAppUser();
+  if (!user?.email) return null;
+  const supabase = await createClient();
+  return q.fetchConsultantByEmail(supabase, user.email);
+}
+
+export async function getConsultantById(id: string) {
+  const supabase = await createClient();
+  return q.fetchConsultantById(supabase, id);
+}
+
+export async function getConsultantsWithDefaultRole() {
+  const supabase = await createClient();
+  return q.fetchConsultantsWithDefaultRole(supabase);
+}
+
+export async function getConsultantsList() {
+  const supabase = await createClient();
+  return q.fetchConsultantsList(supabase);
+}
+
+export async function getConsultantNamesByIds(ids: string[]) {
+  const supabase = await createClient();
+  return q.fetchConsultantNamesByIds(supabase, ids);
+}
+
 export async function getAvailableHoursForConsultantWeek(
   consultantId: string,
   year: number,
   week: number
-): Promise<number> {
-  const { data: c, error: cErr } = await supabase
-    .from("consultants")
-    .select("calendar_id,work_percentage,overhead_percentage")
-    .eq("id", consultantId)
-    .single();
-
-  if (cErr || !c) return 0;
-
-  const { data: cal, error: calErr } = await supabase
-    .from("calendars")
-    .select("hours_per_week")
-    .eq("id", c.calendar_id)
-    .single();
-
-  const hoursPerWeek =
-    calErr || !cal
-      ? DEFAULT_HOURS_PER_WEEK
-      : Number(cal.hours_per_week) || DEFAULT_HOURS_PER_WEEK;
-  const workPct =
-    Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
-  const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
-  const { start, end } = getISOWeekDateRange(year, week);
-  const holidays = await getCalendarHolidays(c.calendar_id);
-  const weekdayHolidays = countWeekdayHolidaysInRange(holidays, start, end);
-  const workingDays = Math.max(0, 5 - weekdayHolidays);
-  const capacityHours = (hoursPerWeek * (workingDays / 5)) * workPct;
-  return capacityHours * (1 - overheadPct);
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-export async function getConsultantsWithDetails(
-  year: number,
-  week: number
-): Promise<ConsultantWithDetails[]> {
-  const consultants = await getCachedConsultantsRaw();
-
-  if (consultants.length === 0) return [];
-
-  let roles: Awaited<ReturnType<typeof getRoles>> = [];
-  let calendars: Awaited<ReturnType<typeof getCalendars>> = [];
-  let teams: Awaited<ReturnType<typeof getTeams>> = [];
-  let allocations: Awaited<ReturnType<typeof getAllocationsForWeek>> = [];
-
-  try {
-    [roles, calendars, teams, allocations] = await Promise.all([
-      getRoles(),
-      getCalendars(),
-      getTeams(),
-      getAllocationsForWeek(
-        consultants.map((c) => c.id),
-        year,
-        week
-      ),
-    ]);
-  } catch {
-    // Roles, calendars or allocations tables may not exist yet
-  }
-
-  const roleMap = new Map(roles.map((r) => [r.id, r.name]));
-  const teamMap = new Map(teams.map((t) => [t.id, t.name]));
-  const calendarMap = new Map(
-    calendars.map((c) => [c.id, { name: c.name, hoursPerWeek: c.hours_per_week }])
+) {
+  const supabase = await createClient();
+  return q.fetchAvailableHoursForConsultantWeek(
+    supabase,
+    consultantId,
+    year,
+    week
   );
+}
 
-  let projectMap = new Map<string, string>();
-  try {
-    const projectIds = [...new Set(allocations.map((a) => a.project_id))];
-    const projects = await getProjectsByIds(projectIds);
-    projectMap = new Map(projects.map((p) => [p.id, p.name]));
-  } catch {
-    // Projects table may not exist
-  }
-
-  const allocationsByConsultant = new Map<
-    string,
-    { projectName: string; hours: number }[]
-  >();
-  for (const a of allocations) {
-    if (a.consultant_id == null) continue; // "To plan" – skip for consultant list
-    const list = allocationsByConsultant.get(a.consultant_id) ?? [];
-    list.push({
-      projectName: projectMap.get(a.project_id) ?? "Unknown",
-      hours: a.hours,
-    });
-    allocationsByConsultant.set(a.consultant_id, list);
-  }
-
-  return consultants.map((c) => {
-    const calendar = calendarMap.get(c.calendar_id);
-    const calendarHours = calendar?.hoursPerWeek ?? DEFAULT_HOURS_PER_WEEK;
-    const workPct = Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
-    const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
-    const capacityHoursPerWeek = calendarHours * workPct;
-    const hoursPerWeek = capacityHoursPerWeek * (1 - overheadPct);
-    const weekAllocations = allocationsByConsultant.get(c.id) ?? [];
-    const totalHours = weekAllocations.reduce((sum, a) => sum + a.hours, 0);
-    const percent =
-      hoursPerWeek > 0 ? Math.round((totalHours / hoursPerWeek) * 100) : 0;
-
-    return {
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      role_id: c.role_id,
-      roleName: roleMap.get(c.role_id) ?? "Unknown",
-      calendar_id: c.calendar_id,
-      calendarName: calendar?.name ?? "Unknown",
-      team_id: c.team_id ?? null,
-      teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
-      isExternal: c.is_external ?? false,
-      workPercentage: Math.round(workPct * 100),
-      overheadPercentage: Math.round(overheadPct * 100),
-      capacityHoursPerWeek,
-      hoursPerWeek,
-      initials: getInitials(c.name),
-      weekYear: year,
-      weekNumber: week,
-      totalHoursAllocated: totalHours,
-      allocationPercent: percent,
-      projectAllocations: weekAllocations,
-    };
-  });
+export async function getConsultantsWithDetails(year: number, week: number) {
+  const supabase = await createClient();
+  return q.fetchConsultantsWithDetails(supabase, year, week);
 }

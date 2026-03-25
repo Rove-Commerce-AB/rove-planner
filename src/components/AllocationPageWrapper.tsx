@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getAllocationData } from "@/app/(app)/allocation/actions";
-import type { AllocationPageData } from "@/lib/allocationPage";
+import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { AllocationPageClient } from "./AllocationPageClient";
 
 type Props = {

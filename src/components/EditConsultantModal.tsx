@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { updateConsultant, deleteConsultant } from "@/lib/consultants";
+import { updateConsultant, deleteConsultant } from "@/lib/consultantsClient";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
-import { getRoles } from "@/lib/roles";
-import { getCalendars } from "@/lib/calendars";
-import { getTeams } from "@/lib/teams";
+import { getRoles } from "@/lib/rolesClient";
+import { getCalendars } from "@/lib/calendarsClient";
+import { getTeams } from "@/lib/teamsClient";
 import type { ConsultantWithDetails } from "@/types";
 
 const WORK_PERCENTAGE_OPTIONS = Array.from(

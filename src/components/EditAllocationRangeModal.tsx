@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { createAllocation, updateAllocation } from "@/lib/allocations";
+import { createAllocation, updateAllocation } from "@/lib/allocationsClient";
 import {
   revalidateAllocationPage,
   logAllocationHistoryCreate,
@@ -11,7 +11,7 @@ import {
 } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, modalFocusClass } from "@/components/ui";
-import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
+import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 
 export type EditAllocationRangeWeek = {
   year: number;
@@ -192,10 +192,10 @@ export function EditAllocationRangeModal({
 
   const weekRangeLabel =
     weeks.length === 1
-      ? `v${weeks[0].week}, ${weeks[0].year}`
+      ? `W${weeks[0].week}, ${weeks[0].year}`
       : weeks[0].year !== weeks[weeks.length - 1].year
-        ? `v${weeks[0].week} ${weeks[0].year} – v${weeks[weeks.length - 1].week} ${weeks[weeks.length - 1].year}`
-        : `v${weeks[0].week}–v${weeks[weeks.length - 1].week}, ${weeks[0].year}`;
+        ? `W${weeks[0].week} ${weeks[0].year} – W${weeks[weeks.length - 1].week} ${weeks[weeks.length - 1].year}`
+        : `W${weeks[0].week}–W${weeks[weeks.length - 1].week}, ${weeks[0].year}`;
 
   return (
     <div

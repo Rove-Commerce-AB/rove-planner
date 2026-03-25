@@ -1,45 +1,26 @@
-import { supabase } from "./supabaseClient";
+import "server-only";
 
-export type Team = {
-  id: string;
-  name: string;
-};
+import { createClient } from "@/lib/supabase/server";
+import * as q from "./teamsQueries";
 
-export async function getTeams(): Promise<Team[]> {
-  const { data, error } = await supabase
-    .from("teams")
-    .select("id,name")
-    .order("name");
+export type { Team } from "./teamsQueries";
 
-  if (error) throw error;
-  return data ?? [];
+export async function getTeams() {
+  const supabase = await createClient();
+  return q.fetchTeams(supabase);
 }
 
-export async function createTeam(name: string): Promise<Team> {
-  const { data, error } = await supabase
-    .from("teams")
-    .insert({ name: name.trim() })
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+export async function createTeam(name: string) {
+  const supabase = await createClient();
+  return q.createTeamQuery(supabase, name);
 }
 
-export async function updateTeam(id: string, name: string): Promise<Team> {
-  const { data, error } = await supabase
-    .from("teams")
-    .update({ name: name.trim() })
-    .eq("id", id)
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+export async function updateTeam(id: string, name: string) {
+  const supabase = await createClient();
+  return q.updateTeamQuery(supabase, id, name);
 }
 
-export async function deleteTeam(id: string): Promise<void> {
-  const { error } = await supabase.from("teams").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteTeam(id: string) {
+  const supabase = await createClient();
+  return q.deleteTeamQuery(supabase, id);
 }

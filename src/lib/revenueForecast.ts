@@ -1,23 +1,21 @@
+import "server-only";
+
 import { unstable_cache } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
 import { getWorkingDaysByMonthInWeek, isoWeeksInYear } from "./dateUtils";
-import { getAllocationsForWeeks } from "./allocations";
-import { getCalendarHolidaysByCalendarIds } from "./calendarHolidays";
-import { getCustomerRatesByCustomerIds } from "./customerRates";
-import { supabase } from "./supabaseClient";
+import { getAllocationsForWeeks } from "./allocationsQueries";
+import { fetchCalendarHolidaysByCalendarIds } from "./calendarHolidaysQueries";
+import { fetchCustomerRatesByCustomerIds } from "./customerRatesQueries";
 
-export type RevenueForecastByCustomer = {
-  customerId: string;
-  customerName: string;
-  revenue: number;
-};
+import type {
+  RevenueForecastByCustomer,
+  RevenueForecastMonth,
+} from "./revenueForecastTypes";
 
-export type RevenueForecastMonth = {
-  year: number;
-  month: number;
-  revenue: number;
-  currency: string;
-  byCustomer: RevenueForecastByCustomer[];
-};
+export type {
+  RevenueForecastByCustomer,
+  RevenueForecastMonth,
+} from "./revenueForecastTypes";
 
 const REVENUE_FORECAST_CACHE_REVALIDATE = 120;
 
@@ -54,10 +52,11 @@ export async function getRevenueForecast(
   yearTo: number,
   weekTo: number
 ): Promise<RevenueForecastMonth[]> {
+  const supabase = await createClient();
   return unstable_cache(
     async () => {
       const weeks = getWeeksInRange(yearFrom, weekFrom, yearTo, weekTo);
-      const allocations = await getAllocationsForWeeks(weeks);
+      const allocations = await getAllocationsForWeeks(supabase, weeks);
       if (allocations.length === 0) {
         return [];
       }
@@ -111,7 +110,10 @@ export async function getRevenueForecast(
   const customerNames = new Map(
     (customersData ?? []).map((c) => [c.id, c.name ?? c.id])
   );
-  const allRates = await getCustomerRatesByCustomerIds(customerIds);
+  const allRates = await fetchCustomerRatesByCustomerIds(
+    supabase,
+    customerIds
+  );
   const ratesByCustomer = new Map<string, { role_id: string; rate_per_hour: number; currency: string }[]>();
   for (const cid of customerIds) {
     ratesByCustomer.set(
@@ -131,7 +133,10 @@ export async function getRevenueForecast(
       (consultantsData.data ?? []).map((c) => c.calendar_id).filter(Boolean)
     ),
   ] as string[];
-  const holidaysByCalendarRaw = await getCalendarHolidaysByCalendarIds(calendarIds);
+  const holidaysByCalendarRaw = await fetchCalendarHolidaysByCalendarIds(
+    supabase,
+    calendarIds
+  );
   const holidaysByCalendar = new Map<string, Set<string>>();
   for (const calId of calendarIds) {
     const holidays = holidaysByCalendarRaw.get(calId) ?? [];

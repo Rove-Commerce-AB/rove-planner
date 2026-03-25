@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Dialog, Select, Button, modalSelectTriggerClass } from "@/components/ui";
-import { getConsultantsWithDefaultRole } from "@/lib/consultants";
-import { addConsultantToCustomer } from "@/lib/customerConsultants";
-import type { CustomerConsultant } from "@/lib/customerConsultants";
+import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
+import { addConsultantToCustomer } from "@/lib/customerConsultantsClient";
+import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
 
 type Props = {
   isOpen: boolean;

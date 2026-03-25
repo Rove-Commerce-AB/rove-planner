@@ -92,6 +92,23 @@ export function getISOWeekDateRange(
   return { start: toYMD(weekStart), end: toYMD(weekEnd) };
 }
 
+/** Returns [Monday, Tuesday, ..., Sunday] as YYYY-MM-DD for the given ISO week. */
+export function getISOWeekDateStrings(year: number, week: number): string[] {
+  const { start } = getISOWeekDateRange(year, week);
+  const monday = new Date(start + "T12:00:00");
+  const toYMD = (d: Date) =>
+    d.getFullYear() +
+    "-" +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(d.getDate()).padStart(2, "0");
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return toYMD(d);
+  });
+}
+
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"

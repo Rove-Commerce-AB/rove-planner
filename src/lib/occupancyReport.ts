@@ -1,5 +1,7 @@
-import { supabase } from "./supabaseClient";
-import { getCachedConsultantsRaw } from "./allocationPage";
+import "server-only";
+
+import { getCachedConsultantsRaw } from "./consultantsCache";
+import { createClient } from "@/lib/supabase/server";
 import { getProjectsWithCustomer } from "./projects";
 import { getAllocationsForWeeks } from "./allocations";
 import {
@@ -8,7 +10,20 @@ import {
 } from "./calendarHolidays";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import { getISOWeekDateRange } from "./dateUtils";
+import type {
+  OccupancyDataPoint,
+  OccupancyReportResult,
+  OccupancyWeek,
+  RoleOccupancyRow,
+} from "@/types/occupancyReport";
 import type { ProjectType } from "@/types";
+
+export type {
+  OccupancyDataPoint,
+  OccupancyReportResult,
+  OccupancyWeek,
+  RoleOccupancyRow,
+} from "@/types/occupancyReport";
 
 const HOURS_PER_HOLIDAY = 8;
 
@@ -17,37 +32,10 @@ const MONTH_NAMES = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-export type OccupancyWeek = {
-  year: number;
-  week: number;
-  label: string;
-};
-
-export type OccupancyDataPoint = {
-  capacity: number;
-  /** Overhead hours (capacity before overhead × overhead %) per week, summed across consultants */
-  overheadHours: number;
-  hoursRaw: number;
-  hoursWeighted: number;
-  /** Customer projects with 100% probability (raw hours, exkl. sannolikhet) */
-  customer100Hours: number;
-  /** Leads: customer projects with under 100% probability; raw hours only, exkl. sannolikhet (project % not applied) */
-  leadsHours: number;
-  internalHours: number;
-  absenceHours: number;
-  occupancyExkl: number;
-  occupancyInkl: number;
-};
-
-export type OccupancyReportResult = {
-  weeks: OccupancyWeek[];
-  points: OccupancyDataPoint[];
-};
-
 function weekLabel(year: number, week: number): string {
   const { start } = getISOWeekDateRange(year, week);
   const month = parseInt(start.slice(5, 7), 10);
-  return `v${week} ${MONTH_NAMES[month - 1]}`;
+  return `W${week} ${MONTH_NAMES[month - 1]}`;
 }
 
 /**
@@ -72,7 +60,10 @@ export async function getOccupancyReportData(
   const [consultantsRaw, allocations, calendarsRes] = await Promise.all([
     getCachedConsultantsRaw(),
     getAllocationsForWeeks(weeks),
-    supabase.from("calendars").select("id,hours_per_week"),
+    (async () => {
+      const supabase = await createClient();
+      return supabase.from("calendars").select("id,hours_per_week");
+    })(),
   ]);
   const calendarsData = calendarsRes.data ?? [];
   const projectIds = [...new Set(allocations.map((a) => a.project_id))];
@@ -199,13 +190,6 @@ export async function getOccupancyReportData(
 
   return { weeks: weeksWithLabel, points };
 }
-
-export type RoleOccupancyRow = {
-  roleId: string;
-  roleName: string;
-  weeks: OccupancyWeek[];
-  points: OccupancyDataPoint[];
-};
 
 /**
  * Fetches occupancy per role for the given weeks (e.g. next 10 weeks).

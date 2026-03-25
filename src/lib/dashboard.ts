@@ -1,8 +1,10 @@
 import { unstable_cache } from "next/cache";
 import type { DashboardData } from "@/types";
 import type { Project } from "@/types";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentYearWeek, addWeeksToYearWeek } from "./dateUtils";
-import { getProjectsWithDetails, getProjectsWithCustomerNames } from "./projects";
+import { fetchProjectsWithDetails } from "./projectsQueries";
+import { getProjectsWithCustomerNames } from "./projects";
 import { getConsultantForCurrentUser } from "./consultants";
 import { getAllocationsForWeeks } from "./allocations";
 import { getRoles } from "./roles";
@@ -83,10 +85,11 @@ export async function getPersonalDashboardData(): Promise<PersonalDashboardData>
  * Fetches dashboard data: current week/year and active projects (real data).
  */
 export async function getDashboardData(): Promise<DashboardData> {
+  const supabase = await createClient();
   return unstable_cache(
     async () => {
       const { week: currentWeek, year: currentYear } = getCurrentYearWeek();
-      const withDetails = await getProjectsWithDetails();
+      const withDetails = await fetchProjectsWithDetails(supabase);
       const activeProjects: Project[] = withDetails
         .filter((p) => p.isActive && p.type !== "absence")
         .map((p) => ({

@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { updateConsultant, deleteConsultant } from "@/lib/consultants";
-import type { ConsultantForEdit } from "@/lib/consultants";
+import { updateConsultant, deleteConsultant } from "@/lib/consultantsClient";
+import type { ConsultantForEdit } from "@/lib/consultantsClient";
 import {
-  Button,
   ConfirmModal,
   DetailPageHeader,
   FieldLabel,
@@ -20,10 +19,11 @@ import {
   editInputClass,
   editTriggerClass,
 } from "@/components/ui";
-import { getRoles } from "@/lib/roles";
-import { getCalendars } from "@/lib/calendars";
-import { getTeams } from "@/lib/teams";
+import { getRoles } from "@/lib/rolesClient";
+import { getCalendars } from "@/lib/calendarsClient";
+import { getTeams } from "@/lib/teamsClient";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
+import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 import { useSidePanel } from "@/contexts/SidePanelContext";
 
 const WORK_PERCENTAGE_OPTIONS = Array.from(
@@ -722,16 +722,11 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
         </div>
       </Panel>
 
-      <div className="pt-4">
-        <Button
-          variant="ghost"
-          className="text-danger hover:bg-danger/10 hover:text-danger"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={submitting || deleting}
-        >
-          Delete consultant
-        </Button>
-      </div>
+      <DetailPageDeleteFooter
+        onRequestDelete={() => setShowDeleteConfirm(true)}
+        disabled={submitting || deleting}
+        label="Delete consultant"
+      />
 
       <ConfirmModal
         isOpen={showDeleteConfirm}

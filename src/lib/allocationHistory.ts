@@ -1,6 +1,6 @@
 /**
  * Allocation history: read-side logic for the audit log.
- * Types live in @/types. Write-side (log, deleteWithHistory) in allocation/actions.ts.
+ * Types live in @/types. Write-side (log, deleteWithHistory) in lib/allocationWrite.ts; server actions re-export.
  */
 
 import { createClient } from "@/lib/supabase/server";

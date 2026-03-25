@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { updateCalendar, deleteCalendar } from "@/lib/calendars";
+import { updateCalendar, deleteCalendar } from "@/lib/calendarsClient";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, ConfirmModal } from "@/components/ui";
 import {
   getCalendarHolidays,
   createCalendarHoliday,
   deleteCalendarHoliday,
-} from "@/lib/calendarHolidays";
+} from "@/lib/calendarHolidaysClient";
 
 type CalendarWithCount = {
   id: string;

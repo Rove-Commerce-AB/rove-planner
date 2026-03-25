@@ -6,10 +6,10 @@ import {
   updateProject,
   deleteProject,
   getProjectWithDetailsById,
-} from "@/lib/projects";
+} from "@/lib/projectsClient";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
-import { getCustomers } from "@/lib/customers";
+import { getCustomers } from "@/lib/customersClient";
 import type { ProjectWithDetails } from "@/types";
 
 type Props = {

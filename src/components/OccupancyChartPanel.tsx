@@ -14,13 +14,13 @@ import {
 } from "recharts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addWeeksToYearWeek } from "@/lib/dateUtils";
-import type { Role } from "@/lib/roles";
-import type { Team } from "@/lib/teams";
+import type { Role } from "@/lib/rolesQueries";
+import type { Team } from "@/lib/teamsQueries";
 import type {
   OccupancyReportResult,
   OccupancyDataPoint,
   OccupancyWeek,
-} from "@/lib/occupancyReport";
+} from "@/types/occupancyReport";
 import { getOccupancyReportDataAction } from "@/app/(app)/reports/actions";
 import { Panel, PanelSectionTitle, Select } from "@/components/ui";
 
