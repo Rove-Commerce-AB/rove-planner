@@ -82,7 +82,7 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
                     {entry.changed_by_email}
                   </td>
                   <td className="px-4 py-2.5 text-text-primary opacity-80">
-                    {new Date(entry.changed_at).toLocaleString()}
+                    {new Date(entry.changed_at).toLocaleString("en-US")}
                   </td>
                 </tr>
               ))}

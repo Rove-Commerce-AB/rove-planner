@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ChevronLeft, Percent, ExternalLink } from "lucide-react";
-import type { AllocationPageData } from "@/lib/allocationPage";
+import type { AllocationPageData } from "@/lib/allocationPageTypes";
 
 export type EditingCellCustomerProject = {
   customerId: string;

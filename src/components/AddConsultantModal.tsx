@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
-import { getRoles } from "@/lib/roles";
+import { getRoles } from "@/lib/rolesClient";
 import { useEscToClose } from "@/lib/useEscToClose";
-import { getCalendars } from "@/lib/calendars";
+import { getCalendars } from "@/lib/calendarsClient";
 import { Button, modalInputClass } from "@/components/ui";
 
 type Props = {

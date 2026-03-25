@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import { createCalendar } from "@/lib/calendars";
+import { createCalendar } from "@/lib/calendarsClient";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, modalInputClass, modalFocusClass } from "@/components/ui";
 

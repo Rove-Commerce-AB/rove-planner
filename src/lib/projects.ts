@@ -1,506 +1,74 @@
-import { supabase } from "./supabaseClient";
-import { getCustomers } from "./customers";
-import { getCustomerIdsForConsultant } from "./customerConsultants";
-import { getAllocationsByProjectIds } from "./allocations";
-import { getConsultantNamesByIds } from "./consultants";
-import { DEFAULT_CUSTOMER_COLOR } from "./constants";
-import type { ProjectWithDetails, ProjectType } from "@/types";
+import "server-only";
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+import { createClient } from "@/lib/supabase/server";
+import * as q from "./projectsQueries";
+
+export type {
+  ProjectRecord,
+  CreateProjectInput,
+  UpdateProjectInput,
+  IntegrationProjectOption,
+  ProjectWithCustomer,
+} from "./projectsQueries";
+
+export async function createProject(input: q.CreateProjectInput) {
+  const supabase = await createClient();
+  return q.createProjectQuery(supabase, input);
 }
 
-export type ProjectRecord = {
-  id: string;
-  customer_id: string;
-  name: string;
-  is_active: boolean;
-  type: ProjectType;
-  project_manager_id: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  /** 1–100, default 100. */
-  probability: number | null;
-  jira_project_key: string | null;
-  devops_project: string | null;
-  budget_hours: number | null;
-  budget_money: number | null;
-};
-
-export type CreateProjectInput = {
-  name: string;
-  customer_id: string;
-  is_active?: boolean;
-  type?: ProjectType;
-  project_manager_id?: string | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  probability?: number | null;
-  jira_project_key?: string | null;
-  devops_project?: string | null;
-  budget_hours?: number | null;
-  budget_money?: number | null;
-};
-
-export type UpdateProjectInput = {
-  name?: string;
-  customer_id?: string;
-  is_active?: boolean;
-  type?: ProjectType;
-  project_manager_id?: string | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  probability?: number | null;
-  jira_project_key?: string | null;
-  devops_project?: string | null;
-  budget_hours?: number | null;
-  budget_money?: number | null;
-};
-
-const PROJECT_SELECT =
-  "id,customer_id,name,is_active,type,project_manager_id,start_date,end_date,probability,jira_project_key,devops_project,budget_hours,budget_money";
-
-export async function createProject(
-  input: CreateProjectInput
-): Promise<ProjectRecord> {
-  const prob = input.probability ?? 100;
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({
-      name: input.name.trim(),
-      customer_id: input.customer_id,
-      is_active: input.is_active ?? true,
-      type: input.type ?? "customer",
-      project_manager_id: input.project_manager_id ?? null,
-      start_date: input.start_date?.trim() || null,
-      end_date: input.end_date?.trim() || null,
-      probability: prob,
-      jira_project_key: input.jira_project_key?.trim() || null,
-      devops_project: input.devops_project?.trim() || null,
-      budget_hours: input.budget_hours ?? null,
-      budget_money: input.budget_money ?? null,
-    })
-    .select(PROJECT_SELECT)
-    .single();
-
-  if (error) throw error;
-  return data;
+export async function updateProject(id: string, input: q.UpdateProjectInput) {
+  const supabase = await createClient();
+  return q.updateProjectQuery(supabase, id, input);
 }
 
-export async function updateProject(
-  id: string,
-  input: UpdateProjectInput
-): Promise<void> {
-  const updates: Record<string, unknown> = {};
-  if (input.name !== undefined) updates.name = input.name.trim();
-  if (input.customer_id !== undefined) updates.customer_id = input.customer_id;
-  if (input.is_active !== undefined) updates.is_active = input.is_active;
-  if (input.type !== undefined) updates.type = input.type;
-  if (input.project_manager_id !== undefined)
-    updates.project_manager_id = input.project_manager_id ?? null;
-  if (input.start_date !== undefined)
-    updates.start_date = input.start_date?.trim() || null;
-  if (input.end_date !== undefined)
-    updates.end_date = input.end_date?.trim() || null;
-  if (input.probability !== undefined) updates.probability = input.probability;
-  if (input.jira_project_key !== undefined)
-    updates.jira_project_key = input.jira_project_key?.trim() || null;
-  if (input.devops_project !== undefined)
-    updates.devops_project = input.devops_project?.trim() || null;
-  if (input.budget_hours !== undefined) updates.budget_hours = input.budget_hours ?? null;
-  if (input.budget_money !== undefined) updates.budget_money = input.budget_money ?? null;
-
-  const { data, error } = await supabase
-    .from("projects")
-    .update(updates)
-    .eq("id", id)
-    .select(PROJECT_SELECT)
-    .single();
-
-  if (error) throw error;
-  if (!data) throw new Error("Update returned no data");
+export async function deleteProject(id: string) {
+  const supabase = await createClient();
+  return q.deleteProjectQuery(supabase, id);
 }
 
-export async function deleteProject(id: string): Promise<void> {
-  const { error } = await supabase.from("projects").delete().eq("id", id);
-
-  if (error) throw error;
+export async function getUniqueJiraAndDevopsProjects() {
+  const supabase = await createClient();
+  return q.fetchUniqueJiraAndDevopsProjects(supabase);
 }
 
-/** Options for the Jira/DevOps project dropdown: value is "" | "jira:KEY" | "devops:ProjectName", label for display. */
-export type IntegrationProjectOption = { value: string; label: string };
-
-/** Fetch unique Jira project keys and DevOps project names for the project integration dropdown. Uses DB RPCs so we get distinct values without pulling all issue rows. */
-export async function getUniqueJiraAndDevopsProjects(): Promise<IntegrationProjectOption[]> {
-  const [jiraRes, devopsRes] = await Promise.all([
-    supabase.rpc("get_distinct_jira_projects"),
-    supabase.rpc("get_distinct_devops_projects"),
-  ]);
-
-  const jiraOptions: IntegrationProjectOption[] = (jiraRes.data ?? []).map(
-    (row: { project_key: string; project_name: string | null }) => {
-      const key = row.project_key?.trim() ?? "";
-      const name = (row.project_name ?? key).trim();
-      return {
-        value: `jira:${key}`,
-        label: `Jira: ${key}${name && name !== key ? ` (${name})` : ""}`,
-      };
-    }
-  );
-
-  const devopsOptions: IntegrationProjectOption[] = (devopsRes.data ?? []).map(
-    (row: { project: string }) => {
-      const p = (row.project ?? "").trim();
-      return { value: `devops:${p}`, label: `DevOps: ${p}` };
-    }
-  );
-
-  return [
-    { value: "", label: "—" },
-    ...jiraOptions,
-    ...devopsOptions,
-  ];
+export async function getProjectWithDetailsById(id: string) {
+  const supabase = await createClient();
+  return q.fetchProjectWithDetailsById(supabase, id);
 }
 
-export async function getProjectWithDetailsById(
-  id: string
-): Promise<ProjectWithDetails | null> {
-  const [project, customers] = await Promise.all([
-    supabase
-      .from("projects")
-      .select(PROJECT_SELECT)
-      .eq("id", id)
-      .single(),
-    getCustomers(),
-  ]);
-
-  if (project.error || !project.data) return null;
-  const p = project.data;
-  const projectType = (p.type as ProjectType) ?? "customer";
-
-  const customerMap = new Map(
-    customers.map((c) => [
-      c.id,
-      {
-        name: c.name,
-        color: c.color || DEFAULT_CUSTOMER_COLOR,
-      },
-    ])
-  );
-  const cust = customerMap.get(p.customer_id);
-  const projectManagerId = p.project_manager_id ?? null;
-  const projectManagerNames = projectManagerId
-    ? await getConsultantNamesByIds([projectManagerId])
-    : new Map<string, string>();
-  const projectManagerName = projectManagerId
-    ? projectManagerNames.get(projectManagerId) ?? null
-    : null;
-
-  const probability = p.probability != null ? p.probability : 100;
-  return {
-    id: p.id,
-    name: p.name,
-    isActive: p.is_active,
-    type: projectType,
-    customer_id: p.customer_id ?? "",
-    customerName: cust?.name ?? "Unknown",
-    projectManagerId,
-    projectManagerName,
-    startDate: p.start_date ?? null,
-    endDate: p.end_date ?? null,
-    probability,
-    jiraProjectKey: p.jira_project_key ?? null,
-    devopsProject: p.devops_project ?? null,
-    budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
-    budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
-    consultantCount: 0,
-    totalHoursAllocated: 0,
-    consultantInitials: [],
-    color: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
-  };
+export async function getProjects() {
+  const supabase = await createClient();
+  return q.fetchProjects(supabase);
 }
 
-export async function getProjects(): Promise<ProjectRecord[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .order("is_active", { ascending: false })
-    .order("name");
-
-  if (error) throw error;
-  return data ?? [];
+export async function getProjectsWithDetails() {
+  const supabase = await createClient();
+  return q.fetchProjectsWithDetails(supabase);
 }
 
-export async function getProjectsWithDetails(): Promise<ProjectWithDetails[]> {
-  const [projects, customers] = await Promise.all([
-    getProjects(),
-    getCustomers(),
-  ]);
-
-  if (projects.length === 0) return [];
-
-  const customerMap = new Map(
-    customers.map((c) => [
-      c.id,
-      {
-        name: c.name,
-        color: c.color || DEFAULT_CUSTOMER_COLOR,
-      },
-    ])
-  );
-
-  const projectManagerIds = [
-    ...new Set(projects.map((p) => p.project_manager_id).filter(Boolean)),
-  ] as string[];
-  let projectManagerNames = new Map<string, string>();
-  try {
-    projectManagerNames = await getConsultantNamesByIds(projectManagerIds);
-  } catch {
-    // optional field; ignore errors
-  }
-
-  let allocations: Awaited<ReturnType<typeof getAllocationsByProjectIds>> = [];
-  try {
-    allocations = await getAllocationsByProjectIds(projects.map((p) => p.id));
-  } catch {
-    // Allocations table may not exist yet
-  }
-
-  const consultantIds = [
-    ...new Set(allocations.map((a) => a.consultant_id).filter((id): id is string => id != null)),
-  ];
-  let consultants: { id: string; name: string }[] = [];
-  try {
-    const { data } = await supabase
-      .from("consultants")
-      .select("id,name")
-      .in("id", consultantIds);
-    consultants = data ?? [];
-  } catch {
-    // Consultants table may not exist
-  }
-  const consultantMap = new Map(
-    consultants.map((c) => [c.id, getInitials(c.name)])
-  );
-  const byProject = new Map<
-    string,
-    { totalHours: number; consultantIds: Set<string | null> }
-  >();
-  for (const a of allocations) {
-    const existing = byProject.get(a.project_id) ?? {
-      totalHours: 0,
-      consultantIds: new Set<string | null>(),
-    };
-    existing.totalHours += a.hours;
-    existing.consultantIds.add(a.consultant_id);
-    byProject.set(a.project_id, existing);
-  }
-
-  return projects.map((p, i) => {
-    const stats = byProject.get(p.id);
-    const consultantIdsList = stats
-      ? Array.from(stats.consultantIds)
-      : [];
-    const initials = consultantIdsList
-      .map((id) => (id == null ? "TP" : consultantMap.get(id) ?? "?"))
-      .filter(Boolean);
-
-    const cust = customerMap.get(p.customer_id);
-    const projectManagerId = p.project_manager_id ?? null;
-    const projectType = (p.type as ProjectType) ?? "customer";
-    const probability = p.probability != null ? p.probability : 100;
-    return {
-      id: p.id,
-      name: p.name,
-      isActive: p.is_active,
-      type: projectType,
-      customer_id: p.customer_id,
-      customerName: cust?.name ?? "Unknown",
-      projectManagerId,
-      projectManagerName: projectManagerId
-        ? projectManagerNames.get(projectManagerId) ?? null
-        : null,
-      startDate: p.start_date ?? null,
-      endDate: p.end_date ?? null,
-      probability,
-      jiraProjectKey: p.jira_project_key ?? null,
-      devopsProject: p.devops_project ?? null,
-      budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
-      budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
-      consultantCount: consultantIdsList.length,
-      totalHoursAllocated: stats?.totalHours ?? 0,
-      consultantInitials: initials,
-      color: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
-    };
-  });
+export async function getProjectsByCustomerIds(customerIds: string[]) {
+  const supabase = await createClient();
+  return q.fetchProjectsByCustomerIds(supabase, customerIds);
 }
 
-export async function getProjectsByCustomerIds(
-  customerIds: string[]
-): Promise<ProjectRecord[]> {
-  if (customerIds.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .in("customer_id", customerIds);
-
-  if (error) throw error;
-  return data ?? [];
+export async function getProjectsByIds(ids: string[]) {
+  const supabase = await createClient();
+  return q.fetchProjectsByIds(supabase, ids);
 }
 
-export async function getProjectsByIds(
-  ids: string[]
-): Promise<{ id: string; name: string }[]> {
-  if (ids.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from("projects")
-    .select("id,name")
-    .in("id", ids);
-
-  if (error) throw error;
-  return data ?? [];
+export async function getProjectsWithCustomerNames(ids: string[]) {
+  const supabase = await createClient();
+  return q.fetchProjectsWithCustomerNames(supabase, ids);
 }
 
-/** Id, project name and customer name for given project ids (e.g. for personal dashboard). */
-export async function getProjectsWithCustomerNames(
-  ids: string[]
-): Promise<{ id: string; name: string; customerName: string }[]> {
-  if (ids.length === 0) return [];
-  const { data: projects, error: projErr } = await supabase
-    .from("projects")
-    .select("id,name,customer_id")
-    .in("id", ids);
-  if (projErr || !projects?.length) return [];
-  const customerIds = [...new Set(projects.map((p) => p.customer_id).filter(Boolean))];
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("id,name")
-    .in("id", customerIds);
-  const customerMap = new Map((customers ?? []).map((c) => [c.id, c.name]));
-  return projects.map((p) => ({
-    id: p.id,
-    name: p.name ?? "Unknown",
-    customerName: customerMap.get(p.customer_id) ?? "Unknown",
-  }));
+export async function getProjectsWithCustomer(ids: string[] = []) {
+  const supabase = await createClient();
+  return q.fetchProjectsWithCustomer(supabase, ids);
 }
 
-export type ProjectWithCustomer = {
-  id: string;
-  name: string;
-  customer_id: string;
-  customerName: string;
-  customerColor: string;
-  type: ProjectType;
-  isActive: boolean;
-  customerIsActive: boolean;
-  /** 1–100, default 100. null treated as 100. */
-  probability: number | null;
-};
-
-export async function getProjectsWithCustomer(
-  ids: string[] = []
-): Promise<ProjectWithCustomer[]> {
-  const { data: projects, error: projErr } = await supabase
-    .from("projects")
-    .select("id,name,customer_id,type,is_active,probability")
-    .order("name");
-
-  if (projErr) throw projErr;
-  const list = projects ?? [];
-
-  const filtered = ids.length > 0 ? list.filter((p) => ids.includes(p.id)) : list;
-  if (filtered.length === 0) return [];
-
-  const customerIds = [...new Set(filtered.map((p) => p.customer_id))];
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("id,name,color,is_active")
-    .in("id", customerIds);
-  const customerMap = new Map(
-    (customers ?? []).map((c) => [
-      c.id,
-      {
-        name: c.name,
-        color: c.color || DEFAULT_CUSTOMER_COLOR,
-        is_active: c.is_active ?? true,
-      },
-    ])
-  );
-
-  return filtered.map((p) => {
-    const cust = customerMap.get(p.customer_id);
-    const probability = p.probability != null ? p.probability : 100;
-    return {
-      id: p.id,
-      name: p.name,
-      customer_id: p.customer_id,
-      customerName: cust?.name ?? "Unknown",
-      customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
-      type: (p.type ?? "customer") as ProjectType,
-      isActive: p.is_active ?? true,
-      customerIsActive: cust?.is_active ?? true,
-      probability,
-    };
-  });
-}
-
-/**
- * Projects to show in Add Allocation modal.
- * - If consultantId is null/empty: all projects (with vertical scroll in UI).
- * - If consultantId is set: only projects belonging to customers that have this consultant assigned.
- */
 export async function getProjectsAvailableForConsultant(
   consultantId: string | null
-): Promise<ProjectWithCustomer[]> {
-  if (!consultantId) return getProjectsWithCustomer();
-
-  const customerIds = await getCustomerIdsForConsultant(consultantId);
-  if (customerIds.length === 0) return [];
-
-  const { data: projects, error: projErr } = await supabase
-    .from("projects")
-    .select("id,name,customer_id,type,is_active,probability")
-    .in("customer_id", customerIds)
-    .order("name");
-
-  if (projErr || !projects?.length) return [];
-
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("id,name,color,is_active")
-    .in("id", [...new Set(projects.map((p) => p.customer_id))]);
-
-  const customerMap = new Map(
-    (customers ?? []).map((c) => [
-      c.id,
-      {
-        name: c.name,
-        color: c.color || DEFAULT_CUSTOMER_COLOR,
-        is_active: c.is_active ?? true,
-      },
-    ])
-  );
-
-  return projects.map((p) => {
-    const cust = customerMap.get(p.customer_id);
-    const probability = p.probability != null ? p.probability : 100;
-    return {
-      id: p.id,
-      name: p.name,
-      customer_id: p.customer_id,
-      customerName: cust?.name ?? "Unknown",
-      customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
-      type: (p.type ?? "customer") as ProjectType,
-      isActive: p.is_active ?? true,
-      customerIsActive: cust?.is_active ?? true,
-      probability,
-    };
-  });
+) {
+  const supabase = await createClient();
+  return q.fetchProjectsAvailableForConsultant(supabase, consultantId);
 }

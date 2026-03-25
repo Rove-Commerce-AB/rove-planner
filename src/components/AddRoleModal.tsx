@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createRole } from "@/lib/roles";
+import { createRole } from "@/lib/rolesClient";
 import { Button, Dialog, Input } from "@/components/ui";
 
 type Props = {

@@ -17,24 +17,10 @@ import {
   pmSetInvoicingStatusBulk,
   pmUpdateTimeEntry,
   getProjectManagerTimeEntries,
-  type ProjectManagerEntry,
 } from "./actions";
+import type { ProjectManagerEntry } from "@/types";
 import { getMonthLabel } from "@/lib/dateUtils";
-
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+import { TIME_REPORT_MONTH_NAMES } from "../timeReportShared";
 
 type Customer = { id: string; name: string };
 type Project = {
@@ -421,7 +407,7 @@ export function ProjectManagerTimeReportClient({
                     aria-pressed={isSelected}
                     title={isCurrentMonth ? "Current month" : undefined}
                   >
-                    {MONTH_NAMES[m - 1]}
+                    {TIME_REPORT_MONTH_NAMES[m - 1]}
                   </button>
                 );
               })}
@@ -647,7 +633,7 @@ export function ProjectManagerTimeReportClient({
                           )}
                         </td>
                         <td className="border border-border-subtle px-2 py-2 !text-[10px] text-right text-text-primary font-semibold tabular-nums">
-                          {reportedHours.toLocaleString("sv-SE", { maximumFractionDigits: 2 })}
+                          {reportedHours.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                         </td>
                         <td className="border border-border-subtle px-2 py-2 !text-[10px] text-right align-top">
                           {editingEntryId === e.id && editingField === "pmHours" ? (
@@ -681,14 +667,14 @@ export function ProjectManagerTimeReportClient({
                             >
                               <span className="min-w-0 flex-1 overflow-hidden truncate whitespace-nowrap text-right !text-[10px] font-semibold text-text-primary tabular-nums">
                                 {pmHoursValue != null
-                                  ? pmHoursValue.toLocaleString("sv-SE", { maximumFractionDigits: 2 })
+                                  ? pmHoursValue.toLocaleString("en-US", { maximumFractionDigits: 2 })
                                   : "—"}
                               </span>
                             </button>
                           ) : (
                             <FieldValue className="!text-[10px] !text-right tabular-nums">
                               {pmHoursValue != null
-                                ? pmHoursValue.toLocaleString("sv-SE", { maximumFractionDigits: 2 })
+                                ? pmHoursValue.toLocaleString("en-US", { maximumFractionDigits: 2 })
                                 : "—"}
                             </FieldValue>
                           )}

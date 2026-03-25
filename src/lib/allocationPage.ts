@@ -1,53 +1,56 @@
+import "server-only";
+
 import { unstable_cache } from "next/cache";
 
-import { getProjectsWithCustomer } from "./projects";
-import { getConsultantsByCustomerId } from "./customerConsultants";
-import { getRoles } from "./roles";
-import { getTeams } from "./teams";
-import { supabase } from "./supabaseClient";
+import type {
+  AllocationConsultant,
+  AllocationCustomer,
+  AllocationPageData,
+  AllocationProject,
+} from "./allocationPageTypes";
+import { TO_PLAN_CONSULTANT_ID } from "./allocationPageTypes";
 import {
   getAllocationsForWeeks,
   getAllocationsForProjectWithWeeks,
-  type AllocationRecord,
 } from "./allocations";
 import {
-  getCalendarHolidays,
   countWeekdayHolidaysInRange,
-} from "./calendarHolidays";
+  type CalendarHoliday,
+} from "./calendarHolidaysUtils";
+import { fetchCalendarHolidays } from "./calendarHolidaysQueries";
+import * as rolesQueries from "./rolesQueries";
+import * as teamsQueries from "./teamsQueries";
+import { getCachedConsultantsRaw } from "./consultantsCache";
+import { getConsultantsByCustomerId } from "./customerConsultants";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import { getISOWeekDateRange, isoWeeksInYear } from "./dateUtils";
+import { getProjectsWithCustomer } from "./projects";
+import { getRoles } from "./roles";
+import { createClient } from "@/lib/supabase/server";
+import { getTeams } from "./teams";
 
 const CACHE_REVALIDATE = 60;
 
-const getCachedRoles = () =>
-  unstable_cache(getRoles, ["allocation-roles"], {
-    revalidate: CACHE_REVALIDATE,
-  })();
-
-const getCachedTeams = () =>
-  unstable_cache(getTeams, ["allocation-teams"], {
-    revalidate: CACHE_REVALIDATE,
-  })();
-
-// Projects (with customer color) fetched without cache so allocation rows
-// always reflect the latest customer color.
-
-/** Shared with consultants page so both use the same consultant list. */
-export async function getCachedConsultantsRaw() {
+async function getCachedRoles() {
+  const supabase = await createClient();
   return unstable_cache(
-    async () => {
-      const { data } = await supabase
-        .from("consultants")
-        .select("id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date")
-        .order("name");
-      return data ?? [];
-    },
-    ["allocation-consultants"],
-    { revalidate: CACHE_REVALIDATE, tags: ["allocation-consultants"] }
+    async () => rolesQueries.fetchRoles(supabase),
+    ["allocation-roles"],
+    { revalidate: CACHE_REVALIDATE }
+  )();
+}
+
+async function getCachedTeams() {
+  const supabase = await createClient();
+  return unstable_cache(
+    async () => teamsQueries.fetchTeams(supabase),
+    ["allocation-teams"],
+    { revalidate: CACHE_REVALIDATE }
   )();
 }
 
 async function getCachedCalendars() {
+  const supabase = await createClient();
   return unstable_cache(
     async () => {
       const { data } = await supabase
@@ -60,9 +63,10 @@ async function getCachedCalendars() {
   )();
 }
 
-function getCachedCalendarHolidays(calendarId: string) {
+async function getCachedCalendarHolidays(calendarId: string) {
+  const supabase = await createClient();
   return unstable_cache(
-    () => getCalendarHolidays(calendarId),
+    async () => fetchCalendarHolidays(supabase, calendarId),
     ["allocation-holidays", calendarId],
     { revalidate: CACHE_REVALIDATE }
   )();
@@ -70,69 +74,14 @@ function getCachedCalendarHolidays(calendarId: string) {
 
 const HOURS_PER_HOLIDAY = 8;
 
-/** Virtual consultant id for unassigned allocations ("To plan"). Must match client. */
-export const TO_PLAN_CONSULTANT_ID = "__to_plan__";
-
-// Minimal consultant for allocation page
-export type AllocationConsultant = {
-  id: string;
-  name: string;
-  initials: string;
-  hoursPerWeek: number;
-  defaultRoleName: string;
-  /** Consultant's default role (used for "Default role" filter). */
-  defaultRoleId: string | null;
-  teamId: string | null;
-  teamName: string | null;
-  isExternal: boolean;
-  /** Available for project allocation per week: capacity (minus holidays × work%) × (1 − overhead%). */
-  availableHoursByWeek: number[];
-  /** True for each week where consultant is outside start_date/end_date (cell shown gray; bookings still allowed). */
-  unavailableByWeek: boolean[];
-};
-
-// Project with customer for allocation page
-export type AllocationProject = {
-  id: string;
-  name: string;
-  customer_id: string;
-  customerName: string;
-  customerColor: string;
-  isActive?: boolean;
-  customerIsActive?: boolean;
-  /** 1–100, default 100. null treated as 100. */
-  probability: number | null;
-};
-
-// Customer for per-customer view
-export type AllocationCustomer = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-// Single allocation with display info
-export type AllocationCell = {
-  id: string;
-  hours: number;
-  roleName: string;
-  roleId: string | null;
-};
-
-export type AllocationPageData = {
-  consultants: AllocationConsultant[];
-  projects: AllocationProject[];
-  customers: AllocationCustomer[];
-  roles: { id: string; name: string }[];
-  teams: { id: string; name: string }[];
-  allocations: AllocationRecord[];
-  year: number;
-  weekFrom: number;
-  weekTo: number;
-  weeks: { year: number; week: number }[];
-  /** When set (e.g. project detail), total hours per consultant on the single project, all time. */
-  consultantTotalHours?: Record<string, number>;
-};
+export type {
+  AllocationCell,
+  AllocationConsultant,
+  AllocationCustomer,
+  AllocationPageData,
+  AllocationProject,
+} from "./allocationPageTypes";
+export { TO_PLAN_CONSULTANT_ID } from "./allocationPageTypes";
 
 function getInitials(name: string): string {
   return name
@@ -173,17 +122,17 @@ export async function getAllocationPageData(
   let projects: AllocationProject[] = [];
   let roles: { id: string; name: string }[] = [];
   let teams: { id: string; name: string }[] = [];
-  let allocations: AllocationRecord[] = [];
+  let allocations: AllocationPageData["allocations"] = [];
 
   try {
     const [consultantsRaw, rolesData, teamsData, allocationsData, calendarsData] =
       await Promise.all([
-            getCachedConsultantsRaw(),
-            getCachedRoles(),
-            getCachedTeams(),
-            getAllocationsForWeeks(weeks),
-            getCachedCalendars(),
-          ]);
+        getCachedConsultantsRaw(),
+        getCachedRoles(),
+        getCachedTeams(),
+        getAllocationsForWeeks(weeks),
+        getCachedCalendars(),
+      ]);
 
     roles = rolesData;
     teams = teamsData;
@@ -196,8 +145,10 @@ export async function getAllocationPageData(
       calendarMap.set(c.id, Number(c.hours_per_week));
     }
 
-    const calendarIds = [...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean))];
-    const holidaysByCalendar = new Map<string, Awaited<ReturnType<typeof getCalendarHolidays>>>();
+    const calendarIds = [
+      ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
+    ];
+    const holidaysByCalendar = new Map<string, CalendarHoliday[]>();
     await Promise.all(
       calendarIds.map(async (calId) => {
         try {
@@ -212,8 +163,10 @@ export async function getAllocationPageData(
     consultants = consultantsRaw.map((c) => {
       const calendarHours =
         calendarMap.get(c.calendar_id) ?? DEFAULT_HOURS_PER_WEEK;
-      const workPct = Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
-      const overheadPct = Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
+      const workPct =
+        Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
+      const overheadPct =
+        Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
       const hoursPerWeek = calendarHours * workPct;
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
       const startDate = (c as { start_date?: string | null }).start_date ?? null;
@@ -229,7 +182,10 @@ export async function getAllocationPageData(
         return capacityHours * (1 - overheadPct);
       });
       const unavailableByWeek = weeks.map((w) => {
-        const { start: weekStart, end: weekEnd } = getISOWeekDateRange(w.year, w.week);
+        const { start: weekStart, end: weekEnd } = getISOWeekDateRange(
+          w.year,
+          w.week
+        );
         if (startDate && weekEnd < startDate) return true;
         if (endDate && weekEnd > endDate) return true;
         return false;
@@ -249,9 +205,11 @@ export async function getAllocationPageData(
       };
     });
 
-    if (consultantsRaw.length > 0) {
-      projects = await getProjectsWithCustomer();
-    }
+    // Always load projects when building the allocation grid: the UI maps
+    // allocations to projects via projectMap — if this stays empty while
+    // allocations exist (e.g. consultants list empty due to RLS/cache), all
+    // allocation rows would be dropped in the client.
+    projects = await getProjectsWithCustomer();
 
     const toPlanConsultant: AllocationConsultant = {
       id: TO_PLAN_CONSULTANT_ID,
@@ -268,16 +226,15 @@ export async function getAllocationPageData(
     };
     consultants = [toPlanConsultant, ...consultants];
   } catch (e) {
-    // Tables may not exist
+    if (process.env.NODE_ENV === "development") {
+      console.error("[getAllocationPageData]", e);
+    }
   }
 
   const projectIdsWithAllocations = new Set(
     allocations.map((a) => a.project_id)
   );
-  const customerMap = new Map<
-    string,
-    { name: string; color: string }
-  >();
+  const customerMap = new Map<string, { name: string; color: string }>();
   for (const p of projects) {
     if (projectIdsWithAllocations.has(p.id)) {
       customerMap.set(p.customer_id, {
@@ -286,9 +243,9 @@ export async function getAllocationPageData(
       });
     }
   }
-  const customers: AllocationCustomer[] = Array.from(customerMap.entries()).map(
-    ([id, { name, color }]) => ({ id, name, color })
-  );
+  const customers: AllocationCustomer[] = Array.from(
+    customerMap.entries()
+  ).map(([id, { name, color }]) => ({ id, name, color }));
 
   return {
     consultants,
@@ -311,6 +268,7 @@ async function getConsultantsRawByIds(
   ids: string[]
 ): Promise<Awaited<ReturnType<typeof getCachedConsultantsRaw>>> {
   if (ids.length === 0) return [];
+  const supabase = await createClient();
   const { data } = await supabase
     .from("consultants")
     .select(CONSULTANTS_SELECT)
@@ -345,7 +303,8 @@ export async function getAllocationPageDataForProject(
   const allocations = allocationsData.filter((a) => a.project_id === projectId);
   const projects = projectsAll.filter((p) => p.id === projectId);
 
-  const allProjectAllocations = await getAllocationsForProjectWithWeeks(projectId);
+  const allProjectAllocations =
+    await getAllocationsForProjectWithWeeks(projectId);
   const consultantTotalHours: Record<string, number> = {};
   const seenSlot = new Set<string>();
   for (const a of allProjectAllocations) {
@@ -353,7 +312,8 @@ export async function getAllocationPageDataForProject(
     if (seenSlot.has(slotKey)) continue;
     seenSlot.add(slotKey);
     const consultantKey = a.consultant_id ?? TO_PLAN_CONSULTANT_ID;
-    consultantTotalHours[consultantKey] = (consultantTotalHours[consultantKey] ?? 0) + a.hours;
+    consultantTotalHours[consultantKey] =
+      (consultantTotalHours[consultantKey] ?? 0) + a.hours;
   }
 
   const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
@@ -367,10 +327,7 @@ export async function getAllocationPageDataForProject(
   const calendarIds = [
     ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
   ];
-  const holidaysByCalendar = new Map<
-    string,
-    Awaited<ReturnType<typeof getCalendarHolidays>>
-  >();
+  const holidaysByCalendar = new Map<string, CalendarHoliday[]>();
   await Promise.all(
     calendarIds.map(async (calId) => {
       try {

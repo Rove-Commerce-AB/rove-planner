@@ -9,12 +9,13 @@ import {
   deleteProject,
   getUniqueJiraAndDevopsProjects,
   type IntegrationProjectOption,
-} from "@/lib/projects";
-import { getCustomers } from "@/lib/customers";
-import { getConsultantsList } from "@/lib/consultants";
+} from "@/lib/projectsClient";
+import { getCustomers } from "@/lib/customersClient";
+import { getConsultantsList } from "@/lib/consultantsClient";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
 import type { ProjectWithDetails, ProjectType } from "@/types";
-import type { AllocationPageData } from "@/lib/allocationPage";
+import type { AllocationPageData } from "@/lib/allocationPageTypes";
+import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 import {
   Badge,
   Button,
@@ -1059,16 +1060,12 @@ export function ProjectDetailClient({
       </Panel>
       </div>
 
-      <div className="mx-auto w-full max-w-3xl pt-4">
-        <Button
-          variant="ghost"
-          className="text-danger hover:bg-danger/10 hover:text-danger"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={submitting || deleting}
-        >
-          Delete project
-        </Button>
-      </div>
+      <DetailPageDeleteFooter
+        className="mx-auto w-full max-w-3xl pt-4"
+        onRequestDelete={() => setShowDeleteConfirm(true)}
+        disabled={submitting || deleting}
+        label="Delete project"
+      />
 
       <AddProjectRateModal
         isOpen={addRateModalOpen}

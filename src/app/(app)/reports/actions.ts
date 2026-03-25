@@ -1,7 +1,7 @@
 "use server";
 
 import { getOccupancyReportData } from "@/lib/occupancyReport";
-import type { OccupancyReportResult } from "@/lib/occupancyReport";
+import type { OccupancyReportResult } from "@/types/occupancyReport";
 
 export async function getOccupancyReportDataAction(
   weeks: { year: number; week: number }[],

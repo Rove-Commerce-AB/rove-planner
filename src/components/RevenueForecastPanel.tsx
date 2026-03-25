@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { RevenueForecastMonth } from "@/lib/revenueForecast";
+import type { RevenueForecastMonth } from "@/lib/revenueForecastTypes";
 import { getMonthLabel } from "@/lib/dateUtils";
 import { Panel, PanelSectionTitle } from "@/components/ui";
 
@@ -13,7 +13,7 @@ type Props = {
 
 function formatRevenue(value: number, currency: string): string {
   return (
-    new Intl.NumberFormat("sv-SE", {
+    new Intl.NumberFormat("en-US", {
       style: "decimal",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,

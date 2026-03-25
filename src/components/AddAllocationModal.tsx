@@ -2,19 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { Dialog, Select, Button, modalInputClass, modalSelectTriggerClass, modalFocusClass } from "@/components/ui";
-import { getConsultantsWithDefaultRole } from "@/lib/consultants";
+import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
 import {
   getProjectsWithCustomer,
   getProjectsAvailableForConsultant,
-} from "@/lib/projects";
-import { getRolesWithRateForAllocation } from "@/lib/projectRates";
-import { createAllocationsForWeekRange } from "@/lib/allocations";
+} from "@/lib/projectsClient";
+import { getRolesWithRateForAllocation } from "@/lib/projectRatesClient";
+import { createAllocationsForWeekRange } from "@/lib/allocationsClient";
 import {
   createAllocationsByPercent,
   revalidateAllocationPage,
   logBulkAllocationHistory,
 } from "@/app/(app)/allocation/actions";
-import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPage";
+import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 
 type Props = {
   isOpen: boolean;

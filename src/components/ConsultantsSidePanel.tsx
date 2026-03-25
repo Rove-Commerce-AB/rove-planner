@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Plus, X, Globe } from "lucide-react";
 import { getConsultantsListAction } from "@/app/(app)/consultants/actions";
 import { useSidePanel } from "@/contexts/SidePanelContext";
-import type { ConsultantListItem } from "@/lib/consultants";
+import type { ConsultantListItem } from "@/lib/consultantsQueries";
 import { AddConsultantModal } from "./AddConsultantModal";
 
 const PANEL_WIDTH = "16.8rem"; /* ~20% wider than 14rem */

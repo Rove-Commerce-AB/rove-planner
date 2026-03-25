@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getRoles } from "@/lib/roles";
-import { getProjectRates, createProjectRate } from "@/lib/projectRates";
+import { getRoles } from "@/lib/rolesClient";
+import { getProjectRates, createProjectRate } from "@/lib/projectRatesClient";
 import { Button, Dialog, Input, Select } from "@/components/ui";
-import type { Role } from "@/lib/roles";
+import type { Role } from "@/lib/rolesQueries";
 
 type Props = {
   isOpen: boolean;

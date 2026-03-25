@@ -12,16 +12,16 @@ import {
   SAVED_DURATION_MS,
 } from "@/components/ui";
 import { editInputClass, inlineEditTriggerClass } from "@/components/ui";
-import { getRoles } from "@/lib/roles";
+import { getRoles } from "@/lib/rolesClient";
 import {
   getCustomerRates,
   createCustomerRate,
   updateCustomerRate,
   deleteCustomerRate,
-} from "@/lib/customerRates";
+} from "@/lib/customerRatesClient";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
-import type { Role } from "@/lib/roles";
-import type { CustomerRate } from "@/lib/customerRates";
+import type { Role } from "@/lib/rolesQueries";
+import type { CustomerRate } from "@/lib/customerRatesQueries";
 
 type Props =
   | {

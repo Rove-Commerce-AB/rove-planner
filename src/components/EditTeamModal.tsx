@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { updateTeam } from "@/lib/teams";
+import { updateTeam } from "@/lib/teamsClient";
 import { Button, Dialog, Input } from "@/components/ui";
 
 type Props = {

@@ -9,15 +9,15 @@ import {
   SAVED_DURATION_MS,
 } from "@/components/ui";
 import { editInputClass, inlineEditTriggerClass } from "@/components/ui";
-import { getRoles } from "@/lib/roles";
+import { getRoles } from "@/lib/rolesClient";
 import {
   getProjectRates,
   updateProjectRate,
   deleteProjectRate,
-} from "@/lib/projectRates";
+} from "@/lib/projectRatesClient";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
-import type { Role } from "@/lib/roles";
-import type { ProjectRate } from "@/lib/projectRates";
+import type { Role } from "@/lib/rolesQueries";
+import type { ProjectRate } from "@/lib/projectRatesQueries";
 
 type Props = {
   projectId: string;

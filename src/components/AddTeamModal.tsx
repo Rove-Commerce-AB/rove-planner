@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createTeam } from "@/lib/teams";
+import { createTeam } from "@/lib/teamsClient";
 import { Button, Dialog, Input } from "@/components/ui";
 
 type Props = {

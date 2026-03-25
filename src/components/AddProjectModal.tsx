@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, Select, Button, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
-import { createProject } from "@/lib/projects";
-import { getCustomers } from "@/lib/customers";
+import { createProject } from "@/lib/projectsClient";
+import { getCustomers } from "@/lib/customersClient";
 
 type Props = {
   isOpen: boolean;
