@@ -10,9 +10,10 @@ export default async function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentAppUser();
   const isAdmin = user?.role === "admin";
+  const isSubcontractor = user?.role === "subcontractor";
   let canSeeTimeReportProjectManager = false;
   try {
-    if (!isAdmin) {
+    if (!isAdmin && !isSubcontractor) {
       const consultant = await getConsultantForCurrentUser();
       if (consultant?.id) {
         const supabase = await createClient();
@@ -35,6 +36,7 @@ export default async function AppLayout({
     <AppLayoutClient
       isAdmin={isAdmin}
       canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
+      isSubcontractor={isSubcontractor}
     >
       {children}
     </AppLayoutClient>

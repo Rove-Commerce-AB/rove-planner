@@ -7,10 +7,12 @@ import {
   linkNewInternalConsultantToRoveCustomer,
   type CreateConsultantInput,
 } from "@/lib/consultants";
+import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
 export async function createConsultantAndRevalidate(
   input: CreateConsultantInput
 ): Promise<{ id: string; name: string }> {
+  await assertNotSubcontractorForWrite();
   const result = await createConsultant(input);
 
   const roveCustomerId = await linkNewInternalConsultantToRoveCustomer(

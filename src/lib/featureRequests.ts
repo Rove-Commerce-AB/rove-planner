@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
 export type FeatureRequest = {
   id: string;
@@ -29,6 +30,7 @@ export async function setFeatureRequestImplemented(
   id: string,
   is_implemented: boolean
 ): Promise<void> {
+  await assertNotSubcontractorForWrite();
   const supabase = await createClient();
   const { error } = await supabase
     .from("feature_requests")
@@ -58,6 +60,7 @@ export async function updateFeatureRequest(
   id: string,
   content: string
 ): Promise<void> {
+  await assertNotSubcontractorForWrite();
   const trimmed = content?.trim();
   if (!trimmed) throw new Error("Content is required");
 
@@ -72,6 +75,7 @@ export async function updateFeatureRequest(
 }
 
 export async function deleteFeatureRequest(id: string): Promise<void> {
+  await assertNotSubcontractorForWrite();
   const supabase = await createClient();
   const { error } = await supabase.from("feature_requests").delete().eq("id", id);
 

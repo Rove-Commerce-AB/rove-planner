@@ -5,6 +5,7 @@ import { getAllocationPageDataForProject } from "@/lib/allocationPage";
 import { getProjectRates } from "@/lib/projectRates";
 import { getCustomerRates } from "@/lib/customerRates";
 import { ProjectDetailClient } from "@/components/ProjectDetailClient";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
 const PLANNING_WEEKS = 30;
 /** Weeks to show to the left of current week (default view: past, then current, then future). */
@@ -16,6 +17,8 @@ type Props = {
 };
 
 export default async function ProjectPage({ params, searchParams }: Props) {
+  await redirectSubcontractorToAccessDenied();
+
   const { id } = await params;
   const project = await getProjectWithDetailsById(id);
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { addAppUser } from "@/lib/appUsers";
+import type { AppUserRole } from "@/lib/appUsers";
 import { Button, Dialog, Input } from "@/components/ui";
 
 type Props = {
@@ -13,7 +14,7 @@ type Props = {
 export function AddAppUserModal({ isOpen, onClose, onSuccess }: Props) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<"member" | "admin">("member");
+  const [role, setRole] = useState<AppUserRole>("member");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -91,10 +92,11 @@ export function AddAppUserModal({ isOpen, onClose, onSuccess }: Props) {
           <select
             id="add-user-role"
             value={role}
-            onChange={(e) => setRole(e.target.value as "member" | "admin")}
+            onChange={(e) => setRole(e.target.value as AppUserRole)}
             className="mt-1 h-10 w-full rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
           >
             <option value="member">Member</option>
+            <option value="subcontractor">Subcontractor</option>
             <option value="admin">Admin</option>
           </select>
         </div>

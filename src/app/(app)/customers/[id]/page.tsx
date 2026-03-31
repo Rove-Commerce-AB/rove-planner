@@ -3,12 +3,15 @@ import { getCustomerById } from "@/lib/customers";
 import { getConsultantsByCustomerId } from "@/lib/customerConsultants";
 import { getConsultantsWithDefaultRole } from "@/lib/consultants";
 import { CustomerDetailClient } from "@/components/CustomerDetailClient";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
 type Props = {
   params: Promise<{ id: string }>;
 };
 
 export default async function CustomerPage({ params }: Props) {
+  await redirectSubcontractorToAccessDenied();
+
   const { id } = await params;
   const [customer, consultants, allConsultants] = await Promise.all([
     getCustomerById(id),
