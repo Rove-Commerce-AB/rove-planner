@@ -8,6 +8,7 @@ import {
   getCalendarHolidaysByCalendarIds,
   countWeekdayHolidaysInRange,
 } from "./calendarHolidays";
+import type { CalendarHoliday } from "./calendarHolidays";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import { getISOWeekDateRange } from "./dateUtils";
 import type {
@@ -31,7 +32,7 @@ type AllocationRaw = Awaited<ReturnType<typeof getAllocationsForWeeks>>[number];
 type OccupancyBaseData = {
   consultantsRaw: (ConsultantRaw & { calendarHours: number })[];
   allocations: AllocationRaw[];
-  holidaysByCalendar: Map<string, { holiday_date: string }[]>;
+  holidaysByCalendar: Map<string, CalendarHoliday[]>;
   projectMap: Map<string, { type: ProjectType; probability: number }>;
 };
 
