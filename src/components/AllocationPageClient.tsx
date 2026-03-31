@@ -606,6 +606,7 @@ export function AllocationPageClient({
     );
   }
 
+  const allocationBuildStart = performance.now();
   const projectProbabilityMap =
     data && filteredData
       ? getProjectProbabilityMap(filteredData.projects)
@@ -721,6 +722,10 @@ export function AllocationPageClient({
     });
     grandTotalMoney = weekTotalsMoney.reduce((a, b) => a + b, 0);
   }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H1',location:'AllocationPageClient.tsx:724',message:'allocation view build timing',data:{ms:Math.round((performance.now()-allocationBuildStart)*100)/100,weeks:data.weeks.length,consultants:data.consultants.length,allocations:data.allocations.length,perConsultantRows:perConsultant.length,perCustomerRows:perCustomer.length,perProjectRows:perProject.length,activeTab,embedMode:Boolean(embedMode)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   return (
     <>
