@@ -171,7 +171,7 @@ export function ProjectManagerTimeReportClient({
             .localeCompare([b.jiraKey ?? "", b.jiraTitle ?? ""].join(" "));
           break;
         case "internalComment":
-          res = (a.comment ?? "").localeCompare(b.comment ?? "");
+          res = (a.internalComment ?? "").localeCompare(b.internalComment ?? "");
           break;
         case "pmComment":
           res = (a.pmEditedComment ?? "").localeCompare(b.pmEditedComment ?? "");
@@ -606,7 +606,7 @@ export function ProjectManagerTimeReportClient({
                     const reportedHours = e.hours;
                     const pmHoursValue = e.pmEditedHours ?? null;
                     const pmComment = e.pmEditedComment ?? "";
-                    const internalComment = e.comment ?? "";
+                    const internalComment = e.internalComment ?? "";
 
                     return (
                       <tr key={e.id} className="align-top">

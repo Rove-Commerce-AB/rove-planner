@@ -40,7 +40,7 @@ export async function getProjectManagerTimeEntries(args: {
   const { data: rows, error } = await supabase
     .from("time_report_entries")
     .select(
-      "id, entry_date, consultant_id, customer_id, project_id, role_id, jira_devops_key, description, hours, comment, pm_edited_hours, pm_edited_comment, invoiced_at"
+      "id, entry_date, consultant_id, customer_id, project_id, role_id, jira_devops_key, description, hours, internal_comment, pm_edited_hours, pm_edited_comment, invoiced_at"
     )
     .eq("project_id", args.projectId)
     .gte("entry_date", monthRange.start)
@@ -102,7 +102,7 @@ export async function getProjectManagerTimeEntries(args: {
         ? jiraMap.get(r.jira_devops_key.slice(5)) ?? null
         : null,
     hours: Number(r.hours ?? 0),
-    comment: r.comment ?? null,
+    internalComment: r.internal_comment ?? null,
     pmEditedHours: r.pm_edited_hours != null ? Number(r.pm_edited_hours) : null,
     pmEditedComment: r.pm_edited_comment ?? null,
     invoicedAt: r.invoiced_at ? String(r.invoiced_at) : null,

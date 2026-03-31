@@ -181,7 +181,7 @@ export async function getTimeReportEntries(
   const { data: rows, error } = await supabase
     .from("time_report_entries")
     .select(
-      "id, customer_id, project_id, role_id, jira_devops_key, description, entry_date, hours, comment, rate_snapshot, display_order"
+      "id, customer_id, project_id, role_id, jira_devops_key, description, entry_date, hours, internal_comment, rate_snapshot, display_order"
     )
     .eq("consultant_id", consultantId)
     .in("entry_date", weekDates)
@@ -223,7 +223,7 @@ export async function getTimeReportEntries(
         const dayIndex = weekDates.indexOf(row.entry_date);
         if (dayIndex >= 0) {
           hours[dayIndex] = Number(row.hours ?? 0);
-          if (row.comment) comments[dayIndex] = row.comment;
+          if (row.internal_comment) comments[dayIndex] = row.internal_comment;
         }
       }
       const first = dayRows[0];
@@ -281,7 +281,7 @@ export async function saveTimeReportEntries(
     description: string | null;
     entry_date: string;
     hours: number;
-    comment: string | null;
+    internal_comment: string | null;
     rate_snapshot: number | null;
     display_order: number;
   }[] = [];
@@ -358,7 +358,7 @@ export async function saveTimeReportEntries(
             description: (entry.task ?? "").trim() || null,
             entry_date: weekDates[dayIndex],
             hours,
-            comment: comment || null,
+            internal_comment: comment || null,
             rate_snapshot: rateSnapshot,
             display_order: displayOrder,
           });
@@ -427,7 +427,7 @@ export async function copyEntryToWeek(
     description: string | null;
     entry_date: string;
     hours: number;
-    comment: string | null;
+    internal_comment: string | null;
     rate_snapshot: number | null;
     display_order: number;
   }[] = [];
@@ -445,7 +445,7 @@ export async function copyEntryToWeek(
         description: (entry.task ?? "").trim() || null,
         entry_date: weekDates[dayIndex],
         hours,
-        comment: comment || null,
+        internal_comment: comment || null,
         rate_snapshot: rateSnapshot,
         display_order: displayOrder,
       });
