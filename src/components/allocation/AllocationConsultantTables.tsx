@@ -134,6 +134,7 @@ export type AllocationConsultantTablesProps = {
 };
 
 export function AllocationConsultantTables(props: AllocationConsultantTablesProps) {
+  const allocationTableRenderStart = performance.now();
 
   const {
     expandableConsultantIds,
@@ -185,6 +186,10 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     weekTotalsMoney,
     grandTotalMoney,
   } = props;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H2',location:'AllocationConsultantTables.tsx:189',message:'allocation table render timing',data:{ms:Math.round((performance.now()-allocationTableRenderStart)*100)/100,weeks:data.weeks.length,internalRows:perConsultantInternal.length,externalRows:perConsultantExternal.length,displayRows:perConsultantDisplay.length,expanded:expandedConsultants.size,embedMode:Boolean(embedMode)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   return (
             <>

@@ -90,7 +90,7 @@ textarea.border-form {
 .allocation-tables thead {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 10;
   background: var(--color-allocation-thead);
   isolation: isolate;
 }
@@ -100,7 +100,7 @@ textarea.border-form {
 .allocation-tables thead th {
   background: var(--color-allocation-thead);
   position: relative;
-  z-index: 101;
+  z-index: 11;
   /* Ensure the background fully covers behind borders when sticky overlays body cells. */
   background-clip: border-box;
   /* Border-collapse + sticky can leave "borders behind" depending on which element owns the border.

@@ -133,6 +133,7 @@ export function TimeReportPageClient({
 
     // Debounce autosave to avoid one request per keystroke.
     saveDebounceRef.current = setTimeout(() => {
+      const saveStart = performance.now();
       const requestId = ++saveRequestIdRef.current;
       setSaveState("saving");
       setSaveError(null);
@@ -150,11 +151,17 @@ export function TimeReportPageClient({
             setIsDirty(false);
             setShowValidationHighlights(false);
           }
+          // #region agent log
+          fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H3',location:'TimeReportPageClient.tsx:153',message:'time report autosave result',data:{ms:Math.round((performance.now()-saveStart)*100)/100,week,year,groups:customerGroups.length,error:result.error??null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         })
         .catch(() => {
           if (requestId !== saveRequestIdRef.current) return;
           setSaveState("error");
           setSaveError("Save failed");
+          // #region agent log
+          fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H3',location:'TimeReportPageClient.tsx:160',message:'time report autosave exception',data:{ms:Math.round((performance.now()-saveStart)*100)/100,week,year,groups:customerGroups.length},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         });
     }, 700);
 
@@ -490,6 +497,10 @@ export function TimeReportPageClient({
     },
     [0, 0, 0, 0, 0, 0, 0]
   );
+
+  // #region agent log
+  fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H4',location:'TimeReportPageClient.tsx:494',message:'time report render summary',data:{customerGroups:customerGroups.length,totalEntries:customerGroups.reduce((n,g)=>n+g.entries.length,0),weekTotalHours,loadState,saveState},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   if (!consultant) {
     return (
