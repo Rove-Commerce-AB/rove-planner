@@ -661,9 +661,11 @@ export function AllocationPageClient({
       getOptimisticDisplayHours,
     ]
   );
+  const shouldComputeCustomerView = !embedMode && activeTab === "customer";
+  const shouldComputeProjectView = !embedMode && activeTab === "project";
   const perCustomer = useMemo(
     () =>
-      filteredData && data
+      shouldComputeCustomerView && filteredData && data
         ? buildPerCustomerView(
             filteredData,
             effectiveProbabilityDisplay,
@@ -671,11 +673,18 @@ export function AllocationPageClient({
             projectProbabilityMap
           )
         : [],
-    [filteredData, data, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap]
+    [
+      shouldComputeCustomerView,
+      filteredData,
+      data,
+      effectiveProbabilityDisplay,
+      projectVisibility,
+      projectProbabilityMap,
+    ]
   );
   const perProject = useMemo(
     () =>
-      data && filteredData
+      shouldComputeProjectView && data && filteredData
         ? buildPerProjectView(
             filteredData,
             effectiveProbabilityDisplay,
@@ -683,7 +692,14 @@ export function AllocationPageClient({
             projectProbabilityMap
           )
         : [],
-    [data, filteredData, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap]
+    [
+      shouldComputeProjectView,
+      data,
+      filteredData,
+      effectiveProbabilityDisplay,
+      projectVisibility,
+      projectProbabilityMap,
+    ]
   );
   const perProjectFiltered = useMemo(
     () =>
@@ -804,15 +820,24 @@ export function AllocationPageClient({
           consultants: data.consultants.length,
           allocations: data.allocations.length,
           perConsultantRows: perConsultant.length,
-          perCustomerRows: perCustomer.length,
-          perProjectRows: perProject.length,
+          perCustomerRows: shouldComputeCustomerView ? perCustomer.length : 0,
+          perProjectRows: shouldComputeProjectView ? perProject.length : 0,
           activeTab,
           embedMode: Boolean(embedMode),
         },
         timestamp: Date.now(),
       }),
     }).catch(() => {});
-  }, [data, perConsultant.length, perCustomer.length, perProject.length, activeTab, embedMode]);
+  }, [
+    data,
+    perConsultant.length,
+    perCustomer.length,
+    perProject.length,
+    shouldComputeCustomerView,
+    shouldComputeProjectView,
+    activeTab,
+    embedMode,
+  ]);
 
   return (
     <>
@@ -833,9 +858,9 @@ export function AllocationPageClient({
           className="mb-4"
         >
           <TabsList className="w-full">
-            <TabsTrigger value="consultant">Per consultant</TabsTrigger>
-            <TabsTrigger value="customer">Per customer</TabsTrigger>
-            <TabsTrigger value="project">Per project</TabsTrigger>
+            <TabsTrigger value="consultant">Consultant</TabsTrigger>
+            <TabsTrigger value="customer">Customer</TabsTrigger>
+            <TabsTrigger value="project">Project</TabsTrigger>
             <TabsTrigger value="history" className="ml-auto">
               Allocation history
             </TabsTrigger>
@@ -844,7 +869,7 @@ export function AllocationPageClient({
       ) : (
         <div className="mb-4 flex w-full gap-2 border-b border-[var(--color-tabs-border)] px-1 py-2" aria-hidden="true">
           <span className="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70">
-            Per consultant
+            Consultant
           </span>
           <span className="ml-auto px-4 py-2 text-sm text-text-primary opacity-70">
             Allocation history

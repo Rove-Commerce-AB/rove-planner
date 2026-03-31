@@ -7,7 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/rolesClient";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
 import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
-import { removeAppUser, updateAppUser, type AppUser } from "@/lib/appUsers";
+import { removeAppUser, updateAppUser, type AppUser, type AppUserRole } from "@/lib/appUsers";
 import {
   updateFeatureRequest,
   deleteFeatureRequest,
@@ -56,6 +56,7 @@ export function SettingsPageClient({
 }: Props) {
   const router = useRouter();
   const isAdmin = currentAppUser?.role === "admin";
+  const [mounted, setMounted] = useState(false);
   const [addRoleOpen, setAddRoleOpen] = useState(false);
   const [appUserToDelete, setAppUserToDelete] = useState<AppUser | null>(null);
   const [addAppUserModalOpen, setAddAppUserModalOpen] = useState(false);
@@ -100,6 +101,10 @@ export function SettingsPageClient({
   const [appUserInlineError, setAppUserInlineError] = useState<string | null>(null);
   const savedAppUserTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedAppUserRef = useRef<{ id: string; field: "name" | "email" | "role" } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -193,7 +198,7 @@ export function SettingsPageClient({
       } else if (field === "email") {
         await updateAppUser({ id: u.id, email: trimmed });
       } else {
-        await updateAppUser({ id: u.id, role: trimmed as "admin" | "member" });
+        await updateAppUser({ id: u.id, role: trimmed as AppUserRole });
       }
 
       lastSavedAppUserRef.current = { id: u.id, field };
@@ -498,6 +503,7 @@ export function SettingsPageClient({
                               variant="inlineEdit"
                               options={[
                                 { value: "member", label: "Member" },
+                                { value: "subcontractor", label: "Subcontractor" },
                                 { value: "admin", label: "Admin" },
                               ]}
                               className="min-w-0 flex-1 w-full"
@@ -510,7 +516,11 @@ export function SettingsPageClient({
                                 onClick={() => startAppUserEdit(u, "role")}
                                 className={inlineEditTriggerListClassRowHover}
                               >
-                                {u.role === "admin" ? "Admin" : "Member"}
+                                {u.role === "admin"
+                                  ? "Admin"
+                                  : u.role === "subcontractor"
+                                    ? "Subcontractor"
+                                    : "Member"}
                               </button>
                               {showSavedAppUser &&
                                 lastSavedAppUserRef.current?.id === u.id &&
@@ -721,11 +731,17 @@ export function SettingsPageClient({
           </div>
         </Panel>
 
-        <SettingsCalendarsSection
-          calendars={initialCalendars}
-          onRefresh={handleSuccess}
-          onAddClick={() => setAddCalendarOpen(true)}
-        />
+        {mounted ? (
+          <SettingsCalendarsSection
+            calendars={initialCalendars}
+            onRefresh={handleSuccess}
+            onAddClick={() => setAddCalendarOpen(true)}
+          />
+        ) : (
+          <Panel>
+            <PanelSectionTitle>CALENDARS</PanelSectionTitle>
+          </Panel>
+        )}
 
         <SettingsFeatureRequestsSection
           featureRequests={initialFeatureRequests}

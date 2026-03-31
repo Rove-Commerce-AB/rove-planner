@@ -1,7 +1,10 @@
 import { getProjectsWithDetails } from "@/lib/projects";
 import { ProjectsPageClient } from "@/components/ProjectsPageClient";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
 export default async function ProjectsPage() {
+  await redirectSubcontractorToAccessDenied();
+
   let projects: Awaited<ReturnType<typeof getProjectsWithDetails>> = [];
   let error: string | null = null;
 

@@ -7,16 +7,30 @@ import { revalidatePath } from "next/cache";
 export type AppUser = {
   id: string;
   email: string;
-  role: string;
+  role: AppUserRole;
   name: string | null;
   created_at: string;
 };
 
+export type AppUserRole = "admin" | "member" | "subcontractor";
+type DbAppUserRole = AppUserRole | "underkonsult";
+
 export type CurrentAppUser = {
   email: string;
-  role: string;
+  role: AppUserRole;
   name: string | null;
 } | null;
+
+function normalizeRoleFromDb(role: string): AppUserRole {
+  if (role === "underkonsult") return "subcontractor";
+  if (role === "admin" || role === "member" || role === "subcontractor") return role;
+  return "member";
+}
+
+function isRoleConstraintError(message: string | undefined): boolean {
+  if (!message) return false;
+  return message.includes("app_users_role_check");
+}
 
 export async function getCurrentAppUser(): Promise<CurrentAppUser> {
   const supabase = await createClient();
@@ -31,7 +45,9 @@ export async function getCurrentAppUser(): Promise<CurrentAppUser> {
     .eq("email", user.email)
     .maybeSingle();
 
-  return row ? { email: row.email, role: row.role, name: row.name } : null;
+  return row
+    ? { email: row.email, role: normalizeRoleFromDb(row.role), name: row.name }
+    : null;
 }
 
 export async function getAppUsersForAdmin(): Promise<AppUser[]> {
@@ -45,7 +61,8 @@ export async function getAppUsersForAdmin(): Promise<AppUser[]> {
     .order("email");
 
   if (error) return [];
-  return (data ?? []) as AppUser[];
+  const rows = (data ?? []) as (AppUser & { role: DbAppUserRole })[];
+  return rows.map((row) => ({ ...row, role: normalizeRoleFromDb(row.role) }));
 }
 
 export async function addAppUser(formData: FormData) {
@@ -56,7 +73,11 @@ export async function addAppUser(formData: FormData) {
 
   const email = (formData.get("email") as string)?.trim();
   const name = (formData.get("name") as string)?.trim() || null;
-  const role = ((formData.get("role") as string) || "member") as "admin" | "member";
+  const role = ((formData.get("role") as string) || "member") as AppUserRole;
+  if (role !== "admin" && role !== "member" && role !== "subcontractor") {
+    throw new Error("Invalid role");
+  }
+
 
   if (!email) throw new Error("Email is required");
 
@@ -67,7 +88,16 @@ export async function addAppUser(formData: FormData) {
     role,
   });
 
-  if (error) throw new Error(error.message);
+  if (error && role === "subcontractor" && isRoleConstraintError(error.message)) {
+    const legacyInsert = await admin.from("app_users").insert({
+      email: email.toLowerCase(),
+      name: name || null,
+      role: "underkonsult",
+    });
+    if (legacyInsert.error) throw new Error(legacyInsert.error.message);
+  } else if (error) {
+    throw new Error(error.message);
+  }
   revalidatePath("/settings");
 }
 
@@ -88,7 +118,7 @@ export async function updateAppUser(args: {
   id: string;
   email?: string;
   name?: string | null;
-  role?: "admin" | "member";
+  role?: AppUserRole;
 }) {
   const current = await getCurrentAppUser();
   if (!current || current.role !== "admin") {
@@ -109,7 +139,7 @@ export async function updateAppUser(args: {
   }
 
   if (args.role !== undefined) {
-    if (args.role !== "admin" && args.role !== "member") {
+    if (args.role !== "admin" && args.role !== "member" && args.role !== "subcontractor") {
       throw new Error("Invalid role");
     }
     updates.role = args.role;
@@ -118,7 +148,16 @@ export async function updateAppUser(args: {
   if (Object.keys(updates).length === 0) return;
 
   const admin = createAdminClient();
-  const { error } = await admin.from("app_users").update(updates).eq("id", args.id);
+  let errorResult = await admin.from("app_users").update(updates).eq("id", args.id);
+  if (
+    errorResult.error &&
+    args.role === "subcontractor" &&
+    isRoleConstraintError(errorResult.error.message)
+  ) {
+    const fallbackUpdates = { ...updates, role: "underkonsult" as const };
+    errorResult = await admin.from("app_users").update(fallbackUpdates).eq("id", args.id);
+  }
+  const { error } = errorResult;
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
 }

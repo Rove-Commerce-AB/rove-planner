@@ -11,6 +11,8 @@ import * as roles from "./rolesQueries";
 import * as teams from "./teamsQueries";
 import type { ConsultantWithDetails } from "@/types";
 
+const ROVE_CUSTOMER_NAME = "Rove";
+
 export type ConsultantListItem = {
   id: string;
   name: string;
@@ -104,6 +106,24 @@ export async function updateConsultantQuery(
     .eq("id", id);
 
   if (error) throw error;
+
+  // When a consultant becomes external, they should not stay linked to Rove.
+  if (input.is_external === true) {
+    const { data: roveCustomer } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("name", ROVE_CUSTOMER_NAME)
+      .maybeSingle();
+
+    if (roveCustomer?.id) {
+      const { error: unlinkError } = await supabase
+        .from("customer_consultants")
+        .delete()
+        .eq("customer_id", roveCustomer.id)
+        .eq("consultant_id", id);
+      if (unlinkError) throw unlinkError;
+    }
+  }
 }
 
 export async function deleteConsultantQuery(

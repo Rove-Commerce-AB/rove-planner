@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { getConsultantByEmail } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { createClient } from "@/lib/supabase/server";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 import { ProjectManagerTimeReportClient } from "./ProjectManagerTimeReportClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectManagerTimeReportPage() {
+  await redirectSubcontractorToAccessDenied();
   const [appUser, supabase] = await Promise.all([
     getCurrentAppUser(),
     createClient(),

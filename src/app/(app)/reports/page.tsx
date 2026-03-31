@@ -10,6 +10,7 @@ import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { OccupancyChartPanel } from "@/components/OccupancyChartPanel";
 import { RoleOccupancyPanel } from "@/components/RoleOccupancyPanel";
 import { PageHeader } from "@/components/ui";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ const OCCUPANCY_WEEKS_BACK = 2;
 const OCCUPANCY_WEEKS_AHEAD = 25;
 
 export default async function ReportsPage() {
+  await redirectSubcontractorToAccessDenied();
+
   const user = await getCurrentAppUser();
   if (!user || user.role !== "admin") {
     redirect("/access-denied");

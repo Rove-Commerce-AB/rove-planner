@@ -103,12 +103,16 @@ function NavPanelButton({
 type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
+  isSubcontractor?: boolean;
 };
 
 export function Sidebar({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
+  isSubcontractor = false,
 }: SidebarProps) {
+  const showRestrictedNavigation = !isSubcontractor;
+
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -156,30 +160,34 @@ export function Sidebar({
             ))}
           </div>
 
-          <div className="my-1.5 border-t border-border-subtle" />
+          {showRestrictedNavigation && (
+            <>
+              <div className="my-1.5 border-t border-border-subtle" />
 
-          <div className="space-y-0.5">
-            {navGroup2.map((item) => (
-              <NavLink
-                key={item.href}
-                pathname={pathname}
-                collapsed={effectiveCollapsed}
-                {...item}
-              />
-            ))}
-          </div>
+              <div className="space-y-0.5">
+                {navGroup2.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    pathname={pathname}
+                    collapsed={effectiveCollapsed}
+                    {...item}
+                  />
+                ))}
+              </div>
 
-          <div className="my-1.5 border-t border-border-subtle" />
+              <div className="my-1.5 border-t border-border-subtle" />
 
-          <div className="space-y-0.5">
-            {navGroup3.map((item) => (
-              <NavPanelButton
-                key={item.panel}
-                collapsed={effectiveCollapsed}
-                {...item}
-              />
-            ))}
-          </div>
+              <div className="space-y-0.5">
+                {navGroup3.map((item) => (
+                  <NavPanelButton
+                    key={item.panel}
+                    collapsed={effectiveCollapsed}
+                    {...item}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="my-1.5 border-t border-border-subtle" />
 
@@ -193,7 +201,7 @@ export function Sidebar({
             />
           </div>
 
-        {(isAdmin || canSeeTimeReportProjectManager) && (
+        {!isSubcontractor && (isAdmin || canSeeTimeReportProjectManager) && (
           <div className="space-y-0.5">
             <NavLink
               href="/time-report/project-manager"

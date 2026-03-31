@@ -11,6 +11,7 @@ import { getProjectRates, getRolesWithRateForAllocation } from "@/lib/projectRat
 import { getCalendarHolidays } from "@/lib/calendarHolidays";
 import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
+import { getCurrentAppUser } from "@/lib/appUsers";
 import type {
   JiraDevOpsOption,
   ProjectOption,
@@ -20,12 +21,56 @@ import type {
   TimeReportEntryCopyPayload,
 } from "@/types";
 
+async function getTimeReportAccessContext() {
+  const [appUser, consultant, supabase] = await Promise.all([
+    getCurrentAppUser(),
+    getConsultantForCurrentUser(),
+    createClient(),
+  ]);
+  if (!consultant?.id) {
+    return {
+      appUser,
+      consultant: null,
+      supabase,
+      allowedCustomerIds: new Set<string>(),
+      bookedProjectIds: new Set<string>(),
+    };
+  }
+
+  const { data: customerLinks } = await supabase
+    .from("customer_consultants")
+    .select("customer_id")
+    .eq("consultant_id", consultant.id);
+  const allowedCustomerIds = new Set((customerLinks ?? []).map((r) => r.customer_id));
+
+  const { data: allocations } = await supabase
+    .from("allocations")
+    .select("project_id")
+    .eq("consultant_id", consultant.id);
+  const bookedProjectIds = new Set((allocations ?? []).map((r) => r.project_id));
+
+  return { appUser, consultant, supabase, allowedCustomerIds, bookedProjectIds };
+}
+
+function isSubcontractorRole(role: string | undefined): boolean {
+  return role === "subcontractor";
+}
+
 export async function getActiveProjectsForCustomer(
   customerId: string
 ): Promise<ProjectOption[]> {
   if (!customerId) return [];
+  const ctx = await getTimeReportAccessContext();
+  if (!ctx.consultant) return [];
+  if (!ctx.allowedCustomerIds.has(customerId)) return [];
+
   const projects = await getProjectsByCustomerIds([customerId]);
   const active = projects.filter((p) => p.is_active);
+  if (isSubcontractorRole(ctx.appUser?.role)) {
+    return active
+      .filter((p) => ctx.bookedProjectIds.has(p.id))
+      .map((p) => ({ value: p.id, label: p.name }));
+  }
   return active.map((p) => ({ value: p.id, label: p.name }));
 }
 
@@ -33,7 +78,12 @@ export async function getJiraDevOpsOptionsForProject(
   projectId: string
 ): Promise<JiraDevOpsOption[]> {
   if (!projectId) return [];
-  const supabase = await createClient();
+  const ctx = await getTimeReportAccessContext();
+  if (!ctx.consultant) return [];
+  if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(projectId)) {
+    return [];
+  }
+  const supabase = ctx.supabase;
   const { data: project, error } = await supabase
     .from("projects")
     .select("jira_project_key, devops_project")
@@ -64,6 +114,13 @@ export async function getTaskOptionsForCustomerAndProject(
   projectId?: string
 ): Promise<TaskOption[]> {
   if (!customerId) return [];
+  const ctx = await getTimeReportAccessContext();
+  if (!ctx.consultant) return [];
+  if (!ctx.allowedCustomerIds.has(customerId)) return [];
+  if (isSubcontractorRole(ctx.appUser?.role) && projectId && !ctx.bookedProjectIds.has(projectId)) {
+    return [];
+  }
+
   if (projectId) {
     const roles = await getRolesWithRateForAllocation(projectId, customerId);
     return roles.map((r) => ({ value: r.id, label: r.name }));
@@ -197,12 +254,14 @@ export async function saveTimeReportEntries(
   week: number,
   customerGroups: TimeReportCustomerGroup[]
 ): Promise<{ error?: string }> {
-  const consultant = await getConsultantForCurrentUser();
+  const ctx = await getTimeReportAccessContext();
+  const consultant = ctx.consultant;
   if (!consultant || consultant.id !== consultantId) {
     return { error: "Unauthorized" };
   }
 
-  const supabase = await createClient();
+  const isSubcontractor = isSubcontractorRole(ctx.appUser?.role);
+  const supabase = ctx.supabase;
   const weekDates = getISOWeekDateStrings(year, week);
 
   const { error: deleteError } = await supabase
@@ -230,8 +289,14 @@ export async function saveTimeReportEntries(
   const projectIds = new Set<string>();
   const customerIds = new Set<string>();
   for (const group of customerGroups) {
+    if (!ctx.allowedCustomerIds.has(group.customerId)) {
+      return { error: "Unauthorized customer." };
+    }
     customerIds.add(group.customerId);
     for (const entry of group.entries) {
+      if (isSubcontractor && entry.projectId && !ctx.bookedProjectIds.has(entry.projectId)) {
+        return { error: "Unauthorized project for subcontractor." };
+      }
       if (entry.projectId) projectIds.add(entry.projectId);
     }
   }
@@ -317,15 +382,22 @@ export async function copyEntryToWeek(
   customerId: string,
   entry: TimeReportEntryCopyPayload
 ): Promise<{ error?: string }> {
-  const consultant = await getConsultantForCurrentUser();
+  const ctx = await getTimeReportAccessContext();
+  const consultant = ctx.consultant;
   if (!consultant || consultant.id !== consultantId) {
     return { error: "Unauthorized" };
+  }
+  if (!ctx.allowedCustomerIds.has(customerId)) {
+    return { error: "Unauthorized customer." };
+  }
+  if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(entry.projectId)) {
+    return { error: "Unauthorized project for subcontractor." };
   }
   if (!entry.projectId || !entry.roleId) {
     return { error: "Project and Role are required." };
   }
 
-  const supabase = await createClient();
+  const supabase = ctx.supabase;
   const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
 
   const { data: existing } = await supabase

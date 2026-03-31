@@ -5,8 +5,11 @@ import { getCalendarsWithHolidayCount } from "@/lib/calendars";
 import { getCurrentAppUser, getAppUsersForAdmin } from "@/lib/appUsers";
 import { getFeatureRequests } from "@/lib/featureRequests";
 import { SettingsPageClient } from "@/components/SettingsPageClient";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
 export default async function SettingsPage() {
+  await redirectSubcontractorToAccessDenied();
+
   const user = await getCurrentAppUser();
   if (!user || user.role !== "admin") {
     redirect("/access-denied");

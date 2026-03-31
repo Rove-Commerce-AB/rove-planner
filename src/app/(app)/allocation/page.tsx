@@ -4,6 +4,7 @@ import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getAllocationPageData } from "@/lib/allocationPage";
 import { AllocationPageWrapper } from "@/components/AllocationPageWrapper";
 import { AllocationViewportAdapter } from "@/components/AllocationViewportAdapter";
+import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
 const FALLBACK_WEEKS = 12;
 
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export default async function AllocationPage({ searchParams }: Props) {
+  await redirectSubcontractorToAccessDenied();
+
   const params = await searchParams;
   const { year: currentYear, week: currentWeek } = getCurrentYearWeek();
 

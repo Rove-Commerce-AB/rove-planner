@@ -3,16 +3,18 @@
 import { revalidateTag } from "next/cache";
 import { getAvailableHoursForConsultantWeek } from "@/lib/consultants";
 import { createAllocationsForWeekRangeWithGetter } from "@/lib/allocations";
+import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 import {
-  logBulkAllocationHistory,
-  logAllocationHistory,
-  logAllocationHistoryCreate,
-  logAllocationHistoryUpdate,
-  getBookingAllocationsForRow,
-  deleteAllocationWithHistory,
-  deleteAllocationsWithHistory,
+  logBulkAllocationHistory as logBulkAllocationHistoryRaw,
+  logAllocationHistory as logAllocationHistoryRaw,
+  logAllocationHistoryCreate as logAllocationHistoryCreateRaw,
+  logAllocationHistoryUpdate as logAllocationHistoryUpdateRaw,
+  getBookingAllocationsForRow as getBookingAllocationsForRowRaw,
+  deleteAllocationWithHistory as deleteAllocationWithHistoryRaw,
+  deleteAllocationsWithHistory as deleteAllocationsWithHistoryRaw,
 } from "@/lib/allocationWrite";
 import type { AllocationHistoryEntry } from "@/types";
+import type { AllocationHistoryDetails } from "@/types";
 import {
   getAllocationPageData,
   getAllocationPageDataForProject,
@@ -20,25 +22,66 @@ import {
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 
 export async function revalidateAllocationPage(): Promise<void> {
+  await assertNotSubcontractorForWrite();
   revalidateTag("allocation-page", "max");
 }
 
 export async function getAllocationHistory(
   limit = 100
 ): Promise<AllocationHistoryEntry[]> {
+  await assertNotSubcontractorForWrite();
   const { fetchAllocationHistory } = await import("@/lib/allocationHistory");
   return fetchAllocationHistory(limit);
 }
 
-export {
-  logAllocationHistory,
-  logAllocationHistoryCreate,
-  logAllocationHistoryUpdate,
-  logBulkAllocationHistory,
-  getBookingAllocationsForRow,
-  deleteAllocationWithHistory,
-  deleteAllocationsWithHistory,
-};
+export async function logAllocationHistory(
+  allocationId: string | null,
+  action: "create" | "update" | "delete" | "bulk",
+  details?: AllocationHistoryDetails
+): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return logAllocationHistoryRaw(allocationId, action, details);
+}
+
+export async function logAllocationHistoryCreate(allocationId: string): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return logAllocationHistoryCreateRaw(allocationId);
+}
+
+export async function logAllocationHistoryUpdate(
+  allocationId: string,
+  hoursAfter: number
+): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return logAllocationHistoryUpdateRaw(allocationId, hoursAfter);
+}
+
+export async function logBulkAllocationHistory(
+  allocationIds: string[],
+  totalHours: number
+): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return logBulkAllocationHistoryRaw(allocationIds, totalHours);
+}
+
+export async function getBookingAllocationsForRow(
+  consultantId: string | null,
+  projectId: string,
+  roleId: string | null
+): Promise<{ id: string; year: number; week: number }[]> {
+  await assertNotSubcontractorForWrite();
+  return getBookingAllocationsForRowRaw(consultantId, projectId, roleId);
+}
+
+export async function deleteAllocationWithHistory(allocationId: string): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return deleteAllocationWithHistoryRaw(allocationId);
+}
+
+export async function deleteAllocationsWithHistory(allocationIds: string[]): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return deleteAllocationsWithHistoryRaw(allocationIds);
+}
 
 export async function createAllocationsByPercent(
   consultantId: string | null,
@@ -49,6 +92,7 @@ export async function createAllocationsByPercent(
   weekTo: number,
   percent: number
 ): Promise<void> {
+  await assertNotSubcontractorForWrite();
   const pct = Math.max(0, Math.min(100, percent)) / 100;
   const records = await createAllocationsForWeekRangeWithGetter(
     consultantId,
@@ -70,7 +114,7 @@ export async function createAllocationsByPercent(
   );
   revalidateTag("allocation-page", "max");
   if (records.length > 0) {
-    void logBulkAllocationHistory(
+    void logBulkAllocationHistoryRaw(
       records.map((r) => r.id),
       records.reduce((s, r) => s + r.hours, 0)
     );
