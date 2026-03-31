@@ -423,18 +423,21 @@ export async function fetchProjectsWithCustomer(
   supabase: SupabaseClient,
   ids: string[] = []
 ): Promise<ProjectWithCustomer[]> {
-  const { data: projects, error: projErr } = await supabase
+  let projectsQuery = supabase
     .from("projects")
     .select("id,name,customer_id,type,is_active,probability")
     .order("name");
+  if (ids.length > 0) {
+    projectsQuery = projectsQuery.in("id", ids);
+  }
+  const { data: projects, error: projErr } = await projectsQuery;
 
   if (projErr) throw projErr;
   const list = projects ?? [];
 
-  const filtered = ids.length > 0 ? list.filter((p) => ids.includes(p.id)) : list;
-  if (filtered.length === 0) return [];
+  if (list.length === 0) return [];
 
-  const customerIds = [...new Set(filtered.map((p) => p.customer_id))];
+  const customerIds = [...new Set(list.map((p) => p.customer_id))];
   const { data: customersData } = await supabase
     .from("customers")
     .select("id,name,color,is_active")
@@ -450,7 +453,7 @@ export async function fetchProjectsWithCustomer(
     ])
   );
 
-  return filtered.map((p) => {
+  return list.map((p) => {
     const cust = customerMap.get(p.customer_id);
     const probability = p.probability != null ? p.probability : 100;
     return {

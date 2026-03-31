@@ -1,5 +1,3 @@
-"use client";
-
 import { PageHeader } from "@/components/ui";
 
 type Props = {

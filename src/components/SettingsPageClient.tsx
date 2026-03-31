@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -16,12 +17,21 @@ import {
 import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, Select, editInputListClass, editTriggerClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
-import { AddAppUserModal } from "./AddAppUserModal";
-import { AddRoleModal } from "./AddRoleModal";
-import { AddTeamModal } from "./AddTeamModal";
-import { AddCalendarModal } from "./AddCalendarModal";
 import { SettingsCalendarsSection } from "./settings/SettingsCalendarsSection";
 import { SettingsFeatureRequestsSection } from "./settings/SettingsFeatureRequestsSection";
+
+const AddAppUserModal = dynamic(() =>
+  import("./AddAppUserModal").then((mod) => mod.AddAppUserModal)
+);
+const AddRoleModal = dynamic(() =>
+  import("./AddRoleModal").then((mod) => mod.AddRoleModal)
+);
+const AddTeamModal = dynamic(() =>
+  import("./AddTeamModal").then((mod) => mod.AddTeamModal)
+);
+const AddCalendarModal = dynamic(() =>
+  import("./AddCalendarModal").then((mod) => mod.AddCalendarModal)
+);
 
 type CurrentAppUser = { email: string; role: string; name: string | null } | null;
 

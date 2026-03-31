@@ -297,11 +297,11 @@ export async function getAllocationPageDataForProject(
       getCachedTeams(),
       getAllocationsForWeeks(weeks),
       getCachedCalendars(),
-      getProjectsWithCustomer(),
+      getProjectsWithCustomer([projectId]),
     ]);
 
   const allocations = allocationsData.filter((a) => a.project_id === projectId);
-  const projects = projectsAll.filter((p) => p.id === projectId);
+  const projects = projectsAll;
 
   const allProjectAllocations =
     await getAllocationsForProjectWithWeeks(projectId);

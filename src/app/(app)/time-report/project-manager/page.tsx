@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getConsultantForCurrentUser } from "@/lib/consultants";
+import { getConsultantByEmail } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectManagerTimeReportClient } from "./ProjectManagerTimeReportClient";
@@ -7,13 +7,15 @@ import { ProjectManagerTimeReportClient } from "./ProjectManagerTimeReportClient
 export const dynamic = "force-dynamic";
 
 export default async function ProjectManagerTimeReportPage() {
-  const appUser = await getCurrentAppUser();
+  const [appUser, supabase] = await Promise.all([
+    getCurrentAppUser(),
+    createClient(),
+  ]);
   const isAdmin = appUser?.role === "admin";
-
-  const consultant = await getConsultantForCurrentUser();
+  const consultant = appUser?.email
+    ? await getConsultantByEmail(appUser.email)
+    : null;
   if (!consultant?.id) notFound();
-
-  const supabase = await createClient();
 
   const projectsQuery = supabase
     .from("projects")

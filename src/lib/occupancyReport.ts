@@ -26,6 +26,14 @@ export type {
 } from "@/types/occupancyReport";
 
 const HOURS_PER_HOLIDAY = 8;
+type ConsultantRaw = Awaited<ReturnType<typeof getCachedConsultantsRaw>>[number];
+type AllocationRaw = Awaited<ReturnType<typeof getAllocationsForWeeks>>[number];
+type OccupancyBaseData = {
+  consultantsRaw: (ConsultantRaw & { calendarHours: number })[];
+  allocations: AllocationRaw[];
+  holidaysByCalendar: Map<string, { holiday_date: string }[]>;
+  projectMap: Map<string, { type: ProjectType; probability: number }>;
+};
 
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -38,25 +46,9 @@ function weekLabel(year: number, week: number): string {
   return `W${week} ${MONTH_NAMES[month - 1]}`;
 }
 
-/**
- * Fetches occupancy report data for the given weeks, optionally filtered by role and/or team.
- * Capacity and allocations are limited to consultants matching the filters when set.
- */
-export async function getOccupancyReportData(
-  weeks: { year: number; week: number }[],
-  roleId: string | null | undefined,
-  teamId?: string | null
-): Promise<OccupancyReportResult> {
-  const weeksWithLabel: OccupancyWeek[] = weeks.map((w) => ({
-    year: w.year,
-    week: w.week,
-    label: weekLabel(w.year, w.week),
-  }));
-
-  if (weeks.length === 0) {
-    return { weeks: weeksWithLabel, points: [] };
-  }
-
+async function getOccupancyBaseData(
+  weeks: { year: number; week: number }[]
+): Promise<OccupancyBaseData> {
   const [consultantsRaw, allocations, calendarsRes] = await Promise.all([
     getCachedConsultantsRaw(),
     getAllocationsForWeeks(weeks),
@@ -66,45 +58,64 @@ export async function getOccupancyReportData(
     })(),
   ]);
   const calendarsData = calendarsRes.data ?? [];
-  const projectIds = [...new Set(allocations.map((a) => a.project_id))];
-
   const calendarMap = new Map<string, number>();
   for (const c of calendarsData as { id: string; hours_per_week?: number }[]) {
     calendarMap.set(c.id, Number(c.hours_per_week) || DEFAULT_HOURS_PER_WEEK);
   }
 
-  const consultantIds = consultantsRaw
-    .filter((c) => !(c as { is_external?: boolean }).is_external)
-    .filter((c) => (roleId == null || c.role_id === roleId))
-    .filter((c) => (teamId == null || teamId === "" || (c as { team_id?: string | null }).team_id === teamId))
-    .map((c) => c.id);
-  const consultantIdSet = new Set(consultantIds);
+  const projectIds = [...new Set(allocations.map((a) => a.project_id))];
+  const projects =
+    projectIds.length > 0
+      ? await getProjectsWithCustomer(projectIds)
+      : [];
+  const projectMap = new Map(
+    projects.map((p) => [p.id, { type: p.type, probability: p.probability ?? 100 }])
+  );
 
   const calendarIds = [
     ...new Set(
       consultantsRaw
         .filter((c) => !(c as { is_external?: boolean }).is_external)
-        .filter((c) => consultantIdSet.has(c.id))
         .map((c) => c.calendar_id)
         .filter(Boolean)
     ),
   ];
   const holidaysByCalendar = await getCalendarHolidaysByCalendarIds(calendarIds);
 
-  const availableHoursByWeekByConsultant = new Map<
-    string,
-    number[]
-  >();
+  return {
+    consultantsRaw: consultantsRaw.map((c) => ({
+      ...c,
+      calendarHours: calendarMap.get(c.calendar_id) ?? DEFAULT_HOURS_PER_WEEK,
+    })),
+    allocations,
+    holidaysByCalendar,
+    projectMap,
+  };
+}
+
+function buildOccupancyPointsForFilter(
+  weeks: { year: number; week: number }[],
+  baseData: OccupancyBaseData,
+  roleId: string | null | undefined,
+  teamId?: string | null
+): OccupancyDataPoint[] {
+  const consultantIds = baseData.consultantsRaw
+    .filter((c) => !(c as { is_external?: boolean }).is_external)
+    .filter((c) => (roleId == null || c.role_id === roleId))
+    .filter((c) => (teamId == null || teamId === "" || (c as { team_id?: string | null }).team_id === teamId))
+    .map((c) => c.id);
+  const consultantIdSet = new Set(consultantIds);
+
+  const availableHoursByWeekByConsultant = new Map<string, number[]>();
   const overheadHoursByWeek = weeks.map(() => 0);
-  for (const c of consultantsRaw) {
+  for (const c of baseData.consultantsRaw) {
     if (!consultantIdSet.has(c.id)) continue;
-    const calendarHours =
-      calendarMap.get(c.calendar_id) ?? DEFAULT_HOURS_PER_WEEK;
+    const calendarHours = c.calendarHours;
     const workPct =
       Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
     const overheadPct =
       Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
-    const holidays = holidaysByCalendar.get(c.calendar_id) ?? [];
+    const holidays = baseData.holidaysByCalendar.get(c.calendar_id) ?? [];
     const availableHoursByWeek = weeks.map((w, i) => {
       const { start, end } = getISOWeekDateRange(w.year, w.week);
       const holidayCount = countWeekdayHolidaysInRange(holidays, start, end);
@@ -119,14 +130,6 @@ export async function getOccupancyReportData(
     });
     availableHoursByWeekByConsultant.set(c.id, availableHoursByWeek);
   }
-
-  const projects =
-    projectIds.length > 0
-      ? await getProjectsWithCustomer(projectIds)
-      : [];
-  const projectMap = new Map(
-    projects.map((p) => [p.id, { type: p.type, probability: p.probability ?? 100 }])
-  );
 
   const weekIndexByKey = new Map<string, number>();
   weeks.forEach((w, i) => {
@@ -147,13 +150,13 @@ export async function getOccupancyReportData(
   const internalByWeek = weeks.map(() => 0);
   const absenceByWeek = weeks.map(() => 0);
 
-  for (const a of allocations) {
+  for (const a of baseData.allocations) {
     if (a.consultant_id == null || !consultantIdSet.has(a.consultant_id))
       continue;
     const key = `${a.year}-${a.week}`;
     const idx = weekIndexByKey.get(key);
     if (idx == null) continue;
-    const proj = projectMap.get(a.project_id);
+    const proj = baseData.projectMap.get(a.project_id);
     const type: ProjectType = proj?.type ?? "customer";
     const prob = proj?.probability ?? 100;
     const hours = Number(a.hours);
@@ -162,14 +165,13 @@ export async function getOccupancyReportData(
     hoursRawByWeek[idx] += hours;
     hoursWeightedByWeek[idx] += weighted;
     if (type === "customer") {
-      // Both Customer projects and Leads use raw hours (exkl. sannolikhet); project % is not applied
       if (prob === 100) customer100ByWeek[idx] += hours;
       else leadsByWeek[idx] += hours;
     } else if (type === "internal") internalByWeek[idx] += hours;
     else absenceByWeek[idx] += hours;
   }
 
-  const points: OccupancyDataPoint[] = weeks.map((_, i) => {
+  return weeks.map((_, i) => {
     const cap = capacityByWeek[i] ?? 0;
     const overheadH = overheadHoursByWeek[i] ?? 0;
     const raw = hoursRawByWeek[i] ?? 0;
@@ -187,7 +189,28 @@ export async function getOccupancyReportData(
       occupancyInkl: cap > 0 ? Math.round((weighted / cap) * 100) : 0,
     };
   });
+}
 
+/**
+ * Fetches occupancy report data for the given weeks, optionally filtered by role and/or team.
+ * Capacity and allocations are limited to consultants matching the filters when set.
+ */
+export async function getOccupancyReportData(
+  weeks: { year: number; week: number }[],
+  roleId: string | null | undefined,
+  teamId?: string | null
+): Promise<OccupancyReportResult> {
+  const weeksWithLabel: OccupancyWeek[] = weeks.map((w) => ({
+    year: w.year,
+    week: w.week,
+    label: weekLabel(w.year, w.week),
+  }));
+
+  if (weeks.length === 0) {
+    return { weeks: weeksWithLabel, points: [] };
+  }
+  const baseData = await getOccupancyBaseData(weeks);
+  const points = buildOccupancyPointsForFilter(weeks, baseData, roleId, teamId);
   return { weeks: weeksWithLabel, points };
 }
 
@@ -199,15 +222,31 @@ export async function getOccupancyByRoleReport(
   weeks: { year: number; week: number }[],
   roles: { id: string; name: string }[]
 ): Promise<RoleOccupancyRow[]> {
-  const allData = await getOccupancyReportData(weeks, undefined);
-  const roleResults = await Promise.all(
-    roles.map(async (r) => {
-      const result = await getOccupancyReportData(weeks, r.id);
-      return { roleId: r.id, roleName: r.name, weeks: result.weeks, points: result.points };
-    })
-  );
+  const weeksWithLabel: OccupancyWeek[] = weeks.map((w) => ({
+    year: w.year,
+    week: w.week,
+    label: weekLabel(w.year, w.week),
+  }));
+  if (weeks.length === 0) {
+    return [
+      { roleId: "", roleName: "All roles", weeks: weeksWithLabel, points: [] },
+      ...roles.map((r) => ({ roleId: r.id, roleName: r.name, weeks: weeksWithLabel, points: [] })),
+    ];
+  }
+  const baseData = await getOccupancyBaseData(weeks);
+  const roleResults = roles.map((r) => ({
+    roleId: r.id,
+    roleName: r.name,
+    weeks: weeksWithLabel,
+    points: buildOccupancyPointsForFilter(weeks, baseData, r.id),
+  }));
   return [
-    { roleId: "", roleName: "All roles", weeks: allData.weeks, points: allData.points },
+    {
+      roleId: "",
+      roleName: "All roles",
+      weeks: weeksWithLabel,
+      points: buildOccupancyPointsForFilter(weeks, baseData, undefined),
+    },
     ...roleResults,
   ];
 }

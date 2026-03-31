@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { Building2, Calendar, Users } from "lucide-react";
 import type { ProjectWithDetails } from "@/types";

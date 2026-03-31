@@ -30,6 +30,10 @@ type Project = {
   customerName: string;
 };
 
+const HOURS_NUMBER_FORMATTER = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
+
 export function ProjectManagerTimeReportClient({
   isAdmin,
   consultantId,
@@ -633,7 +637,7 @@ export function ProjectManagerTimeReportClient({
                           )}
                         </td>
                         <td className="border border-border-subtle px-2 py-2 !text-[10px] text-right text-text-primary font-semibold tabular-nums">
-                          {reportedHours.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                          {HOURS_NUMBER_FORMATTER.format(reportedHours)}
                         </td>
                         <td className="border border-border-subtle px-2 py-2 !text-[10px] text-right align-top">
                           {editingEntryId === e.id && editingField === "pmHours" ? (
@@ -667,14 +671,14 @@ export function ProjectManagerTimeReportClient({
                             >
                               <span className="min-w-0 flex-1 overflow-hidden truncate whitespace-nowrap text-right !text-[10px] font-semibold text-text-primary tabular-nums">
                                 {pmHoursValue != null
-                                  ? pmHoursValue.toLocaleString("en-US", { maximumFractionDigits: 2 })
+                                  ? HOURS_NUMBER_FORMATTER.format(pmHoursValue)
                                   : "—"}
                               </span>
                             </button>
                           ) : (
                             <FieldValue className="!text-[10px] !text-right tabular-nums">
                               {pmHoursValue != null
-                                ? pmHoursValue.toLocaleString("en-US", { maximumFractionDigits: 2 })
+                                ? HOURS_NUMBER_FORMATTER.format(pmHoursValue)
                                 : "—"}
                             </FieldValue>
                           )}

@@ -2,6 +2,8 @@
 
 import {
   Fragment,
+  useEffect,
+  useMemo,
   type Dispatch,
   type SetStateAction,
   type MutableRefObject,
@@ -26,6 +28,7 @@ import { buildPerConsultantView } from "@/lib/allocationPageView";
 import { getBookingAllocationsForRow } from "@/app/(app)/allocation/actions";
 
 type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
+const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 
 type RouterCompat = Pick<ReturnType<typeof useRouter>, "push" | "prefetch">;
 
@@ -134,8 +137,6 @@ export type AllocationConsultantTablesProps = {
 };
 
 export function AllocationConsultantTables(props: AllocationConsultantTablesProps) {
-  const allocationTableRenderStart = performance.now();
-
   const {
     expandableConsultantIds,
     setExpandedConsultants,
@@ -187,9 +188,44 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     grandTotalMoney,
   } = props;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H2',location:'AllocationConsultantTables.tsx:189',message:'allocation table render timing',data:{ms:Math.round((performance.now()-allocationTableRenderStart)*100)/100,weeks:data.weeks.length,internalRows:perConsultantInternal.length,externalRows:perConsultantExternal.length,displayRows:perConsultantDisplay.length,expanded:expandedConsultants.size,embedMode:Boolean(embedMode)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+  const consultantGrandTotalHours = useMemo(
+    () => Object.values(data.consultantTotalHours ?? {}).reduce((a, b) => a + b, 0),
+    [data.consultantTotalHours]
+  );
+
+  useEffect(() => {
+    if (!ENABLE_PERF_DEBUG) return;
+    fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "97edeb",
+      },
+      body: JSON.stringify({
+        sessionId: "97edeb",
+        runId: "perf-scan-1",
+        hypothesisId: "H2",
+        location: "AllocationConsultantTables.tsx",
+        message: "allocation table render summary",
+        data: {
+          weeks: data.weeks.length,
+          internalRows: perConsultantInternal.length,
+          externalRows: perConsultantExternal.length,
+          displayRows: perConsultantDisplay.length,
+          expanded: expandedConsultants.size,
+          embedMode: Boolean(embedMode),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [
+    data.weeks.length,
+    perConsultantInternal.length,
+    perConsultantExternal.length,
+    perConsultantDisplay.length,
+    expandedConsultants.size,
+    embedMode,
+  ]);
 
   return (
             <>
@@ -444,6 +480,8 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                     </tr>
                     {expanded &&
                       row.projectRows.map((pr) => {
+                        const projectRoleId =
+                          pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
                         const allocationsWithBooking: DeleteBookingItem[] = [];
                         pr.weeks.forEach((w, i) => {
                           if (w.cell?.id && w.cell.hours > 0 && data.weeks[i]) {
@@ -507,11 +545,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           </td>
                           {pr.weeks.map((w, i) => {
                             const weekKey = data.weeks[i];
-                            const roleId =
-                              w.cell?.roleId ??
-                              pr.weeks.find((wk) => wk.cell?.roleId)?.cell
-                                ?.roleId ??
-                              null;
+                            const roleId = w.cell?.roleId ?? projectRoleId;
                             const cellKey = allocationCellKey(
                               row.consultant.id,
                               pr.projectId,
@@ -529,10 +563,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 ? allocationCellKey(
                                     row.consultant.id,
                                     pr.projectId,
-                                    prevWeek.cell?.roleId ??
-                                      pr.weeks.find((x) => x.cell?.roleId)?.cell
-                                        ?.roleId ??
-                                      null,
+                                    prevWeek.cell?.roleId ?? projectRoleId,
                                     data.weeks[i - 1].year,
                                     prevWeek.week
                                   )
@@ -645,26 +676,23 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           );
                           })}
                           {embedMode && (() => {
-                            const prRowTotal = pr.weeks.reduce((s, w, i) => {
+                            let prRowTotal = 0;
+                            pr.weeks.forEach((w, i) => {
                               const weekKey = data.weeks[i];
-                              const roleId =
-                                w.cell?.roleId ??
-                                pr.weeks.find((x) => x.cell?.roleId)?.cell?.roleId ??
-                                null;
-                              const cellKey = weekKey
-                                ? allocationCellKey(
-                                    row.consultant.id,
-                                    pr.projectId,
-                                    roleId,
-                                    weekKey.year,
-                                    w.week
-                                  )
-                                : "";
+                              if (!weekKey) return;
+                              const roleId = w.cell?.roleId ?? projectRoleId;
+                              const cellKey = allocationCellKey(
+                                row.consultant.id,
+                                pr.projectId,
+                                roleId,
+                                weekKey.year,
+                                w.week
+                              );
                               const opt = optimisticCellHours[cellKey];
                               const hours =
                                 opt != null ? opt : (w.cell?.displayHours ?? 0);
-                              return s + hours;
-                            }, 0);
+                              prRowTotal += hours;
+                            });
                             return (
                               <td className="border-l border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary align-middle [border-left-color:var(--color-grid-border-subtle)]">
                                 {prRowTotal > 0 ? `${prRowTotal}` : "\u00A0"}
@@ -684,14 +712,12 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                   disabled={loadingDeleteBooking}
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    const roleId =
-                                      pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
                                     setLoadingDeleteBooking(true);
                                     try {
                                       const list = await getBookingAllocationsForRow(
                                         row.consultant.id === TO_PLAN_CONSULTANT_ID ? null : row.consultant.id,
                                         pr.projectId,
-                                        roleId
+                                        projectRoleId
                                       );
                                       setDeleteBookingDialog({
                                         consultantId: row.consultant.id,
@@ -745,8 +771,8 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       </td>
                       {data.consultantTotalHours != null && (
                         <td className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] font-medium tabular-nums text-text-primary">
-                          {Object.values(data.consultantTotalHours).reduce((a, b) => a + b, 0) > 0
-                            ? `${Object.values(data.consultantTotalHours).reduce((a, b) => a + b, 0)}`
+                          {consultantGrandTotalHours > 0
+                            ? `${consultantGrandTotalHours}`
                             : "\u00A0"}
                           {embedMode?.budgetHours != null && (
                             <>
@@ -962,6 +988,8 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                     </tr>
                     {expanded &&
                       row.projectRows.map((pr) => {
+                        const projectRoleId =
+                          pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
                         const allocationsWithBooking: DeleteBookingItem[] = [];
                         pr.weeks.forEach((w, i) => {
                           if (w.cell?.id && w.cell.hours > 0 && data.weeks[i]) {
@@ -1017,11 +1045,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           </td>
                           {pr.weeks.map((w, i) => {
                             const weekKey = data.weeks[i];
-                            const roleId =
-                              w.cell?.roleId ??
-                              pr.weeks.find((wk) => wk.cell?.roleId)?.cell
-                                ?.roleId ??
-                              null;
+                            const roleId = w.cell?.roleId ?? projectRoleId;
                             const cellKey = allocationCellKey(
                               row.consultant.id,
                               pr.projectId,
@@ -1039,10 +1063,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 ? allocationCellKey(
                                     row.consultant.id,
                                     pr.projectId,
-                                    prevWeek.cell?.roleId ??
-                                      pr.weeks.find((x) => x.cell?.roleId)?.cell
-                                        ?.roleId ??
-                                      null,
+                                    prevWeek.cell?.roleId ?? projectRoleId,
                                     data.weeks[i - 1].year,
                                     prevWeek.week
                                   )
@@ -1161,14 +1182,12 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 disabled={loadingDeleteBooking}
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  const roleId =
-                                    pr.weeks.find((wk) => wk.cell?.roleId)?.cell?.roleId ?? null;
                                   setLoadingDeleteBooking(true);
                                   try {
                                     const list = await getBookingAllocationsForRow(
                                       row.consultant.id === TO_PLAN_CONSULTANT_ID ? null : row.consultant.id,
                                       pr.projectId,
-                                      roleId
+                                      projectRoleId
                                     );
                                     setDeleteBookingDialog({
                                       consultantId: row.consultant.id,

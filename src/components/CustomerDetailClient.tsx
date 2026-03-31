@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
@@ -23,9 +24,6 @@ import {
   editInputClass,
 } from "@/components/ui";
 import { CustomerRatesTab } from "./CustomerRatesTab";
-import { AddProjectModal } from "./AddProjectModal";
-import { AddCustomerConsultantModal } from "./AddCustomerConsultantModal";
-import { AddCustomerRateModal } from "./AddCustomerRateModal";
 import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerWithDetails } from "@/types";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
@@ -33,6 +31,16 @@ import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import { useSidePanel } from "@/contexts/SidePanelContext";
 import { CustomerDetailProjectsPanel } from "./customer-detail/CustomerDetailProjectsPanel";
 import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
+
+const AddProjectModal = dynamic(() =>
+  import("./AddProjectModal").then((mod) => mod.AddProjectModal)
+);
+const AddCustomerConsultantModal = dynamic(() =>
+  import("./AddCustomerConsultantModal").then((mod) => mod.AddCustomerConsultantModal)
+);
+const AddCustomerRateModal = dynamic(() =>
+  import("./AddCustomerRateModal").then((mod) => mod.AddCustomerRateModal)
+);
 
 const tableBorder = "border-panel";
 
