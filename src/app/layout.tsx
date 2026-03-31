@@ -10,6 +10,9 @@ const instrumentSans = Instrument_Sans({
 export const metadata: Metadata = {
   title: "Rove Planner",
   description: "Resource planning and allocation",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

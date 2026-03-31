@@ -11,7 +11,7 @@ export type ProjectManagerEntry = {
   jiraKey: string | null;
   jiraTitle: string | null;
   hours: number;
-  comment: string | null;
+  internalComment: string | null;
   pmEditedHours: number | null;
   pmEditedComment: string | null;
   invoicedAt: string | null;
