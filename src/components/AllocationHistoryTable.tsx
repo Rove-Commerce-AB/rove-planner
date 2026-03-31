@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import type { AllocationHistoryEntry } from "@/types";
 
 type Props = {
@@ -7,7 +8,18 @@ type Props = {
   loading: boolean;
 };
 
+const HISTORY_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US");
+
 export function AllocationHistoryTable({ entries, loading }: Props) {
+  const entriesWithFormattedDate = useMemo(
+    () =>
+      entries.map((entry) => ({
+        ...entry,
+        changedAtLabel: HISTORY_DATE_TIME_FORMATTER.format(new Date(entry.changed_at)),
+      })),
+    [entries]
+  );
+
   return (
     <div className="rounded border border-form bg-panel px-4 py-4">
       <h3 className="mb-3 text-sm font-medium text-text-primary">
@@ -34,7 +46,7 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
+              {entriesWithFormattedDate.map((entry) => (
                 <tr
                   key={entry.id}
                   className="border-b border-form/60 last:border-0"
@@ -82,7 +94,7 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
                     {entry.changed_by_email}
                   </td>
                   <td className="px-4 py-2.5 text-text-primary opacity-80">
-                    {new Date(entry.changed_at).toLocaleString("en-US")}
+                    {entry.changedAtLabel}
                   </td>
                 </tr>
               ))}

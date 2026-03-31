@@ -1,12 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { revalidateProjects } from "@/app/(app)/projects/actions";
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { ProjectsPageHeader } from "./ProjectsPageHeader";
 import { EmptyState, Panel } from "@/components/ui";
-import { AddProjectModal } from "./AddProjectModal";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 
@@ -14,6 +14,10 @@ type SortKey = "name" | "customer" | "status" | "dates" | "consultants" | "hours
 type SortDir = "asc" | "desc";
 
 const tableBorder = "border-panel";
+
+const AddProjectModal = dynamic(() =>
+  import("./AddProjectModal").then((mod) => mod.AddProjectModal)
+);
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";

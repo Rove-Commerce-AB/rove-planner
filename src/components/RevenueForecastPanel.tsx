@@ -11,16 +11,14 @@ type Props = {
   currentYear: number;
 };
 
+const REVENUE_NUMBER_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "decimal",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
 function formatRevenue(value: number, currency: string): string {
-  return (
-    new Intl.NumberFormat("en-US", {
-      style: "decimal",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value) +
-    " " +
-    currency
-  );
+  return `${REVENUE_NUMBER_FORMATTER.format(value)} ${currency}`;
 }
 
 function monthKey(year: number, month: number): string {

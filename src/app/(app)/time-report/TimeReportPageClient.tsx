@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, Fragment } from "react";
+import { useState, useCallback, useEffect, useRef, Fragment, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink } from "lucide-react";
 import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek } from "./actions";
@@ -24,6 +24,7 @@ import {
 } from "./timeReportEntryModel";
 import { TimeReportHourCell } from "./TimeReportHourCell";
 
+const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 
 type CustomerOption = { id: string; name: string; color?: string | null };
 
@@ -35,6 +36,59 @@ type Props = {
   calendarId: string | null;
   initialHolidayDates: string[];
 };
+
+type EditableHourTdProps = {
+  dayIndex: number;
+  entryId: string;
+  value: number;
+  isEditing: boolean;
+  isGray: boolean;
+  isToday: boolean;
+  onStartEdit: () => void;
+  onCommit: (value: number) => void;
+  onBlur: () => void;
+};
+
+const EditableHourTd = memo(function EditableHourTd({
+  dayIndex,
+  entryId,
+  value,
+  isEditing,
+  isGray,
+  isToday,
+  onStartEdit,
+  onCommit,
+  onBlur,
+}: EditableHourTdProps) {
+  return (
+    <td
+      className={`relative h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 align-middle last:border-r-0 ${dayIndex === 0 ? "border-l border-border-subtle" : ""} ${isGray ? "bg-bg-muted/30" : ""} ${isToday ? "bg-brand-blue/10" : ""}`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => (isEditing ? undefined : onStartEdit())}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!isEditing) onStartEdit();
+          }
+        }}
+        className={`absolute inset-0 flex items-center justify-center rounded-sm transition-colors ${isEditing ? "cursor-default" : "cursor-pointer hover:bg-bg-muted/60"}`}
+      >
+        <TimeReportHourCell
+          value={value}
+          entryId={entryId}
+          dayIndex={dayIndex}
+          isEditing={isEditing}
+          onStartEdit={onStartEdit}
+          onCommit={onCommit}
+          onBlur={onBlur}
+        />
+      </div>
+    </td>
+  );
+});
 
 export function TimeReportPageClient({
   consultant,
@@ -70,6 +124,11 @@ export function TimeReportPageClient({
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRequestIdRef = useRef(0);
   const weekLoadRequestIdRef = useRef(0);
+  const customerGroupsRef = useRef(customerGroups);
+  const isDirtyRef = useRef(isDirty);
+  const yearRef = useRef(year);
+  const weekRef = useRef(week);
+  const consultantRef = useRef(consultant);
   const [displayMonth, setDisplayMonth] = useState(() => {
     const { start } = getISOWeekDateRangeLocal(initialYear, initialWeek);
     return parseInt(start.slice(5, 7), 10);
@@ -86,6 +145,21 @@ export function TimeReportPageClient({
     | "animate-week-strip-in-from-right"
   >("");
   const [isWeekStripTransitioning, setIsWeekStripTransitioning] = useState(false);
+  useEffect(() => {
+    customerGroupsRef.current = customerGroups;
+  }, [customerGroups]);
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+  useEffect(() => {
+    yearRef.current = year;
+  }, [year]);
+  useEffect(() => {
+    weekRef.current = week;
+  }, [week]);
+  useEffect(() => {
+    consultantRef.current = consultant;
+  }, [consultant]);
   useEffect(() => {
     if (!calendarId) return;
     getHolidayDatesForWeek(calendarId, year, week).then(setHolidayDates);
@@ -212,36 +286,102 @@ export function TimeReportPageClient({
     return () => document.removeEventListener("click", handleClick, true);
   }, [isDirty, router]);
 
-  const weekDates = getWeekDates(year, week);
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const isTodayColumn = (dayIndex: number) => weekDates[dayIndex] === todayStr;
+  const flushSave = useCallback(async (): Promise<boolean> => {
+    if (saveDebounceRef.current) {
+      clearTimeout(saveDebounceRef.current);
+      saveDebounceRef.current = null;
+    }
 
-  const isDayGrayed = (dayIndex: number) => {
-    const isWeekend = dayIndex === 5 || dayIndex === 6;
-    const isHoliday = holidayDates.includes(weekDates[dayIndex]);
-    return isWeekend || isHoliday;
-  };
+    if (typeof document !== "undefined") {
+      const activeElement = document.activeElement as HTMLElement | null;
+      if (activeElement && typeof activeElement.blur === "function") {
+        activeElement.blur();
+      }
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+
+    const activeConsultant = consultantRef.current;
+    if (!isDirtyRef.current || !activeConsultant) return true;
+
+    const requestId = ++saveRequestIdRef.current;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const result = await saveTimeReportEntries(
+        activeConsultant.id,
+        yearRef.current,
+        weekRef.current,
+        customerGroupsRef.current
+      );
+      if (requestId !== saveRequestIdRef.current) return false;
+      if (result.error) {
+        setSaveError(result.error);
+        setSaveState("error");
+        if (result.error.includes("Project and Role")) {
+          setShowValidationHighlights(true);
+        }
+        return false;
+      }
+      setSaveState("idle");
+      setIsDirty(false);
+      isDirtyRef.current = false;
+      setShowValidationHighlights(false);
+      return true;
+    } catch {
+      if (requestId !== saveRequestIdRef.current) return false;
+      setSaveState("error");
+      setSaveError("Save failed");
+      return false;
+    }
+  }, []);
+
+  const weekDates = useMemo(() => getWeekDates(year, week), [year, week]);
+  const todayStr = useMemo(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+      today.getDate()
+    ).padStart(2, "0")}`;
+  }, []);
+  const isTodayColumn = useCallback(
+    (dayIndex: number) => weekDates[dayIndex] === todayStr,
+    [weekDates, todayStr]
+  );
+
+  const holidayDateSet = useMemo(() => new Set(holidayDates), [holidayDates]);
+  const isDayGrayed = useCallback(
+    (dayIndex: number) => {
+      const isWeekend = dayIndex === 5 || dayIndex === 6;
+      const isHoliday = holidayDateSet.has(weekDates[dayIndex]);
+      return isWeekend || isHoliday;
+    },
+    [holidayDateSet, weekDates]
+  );
 
   const dayCellGrayClass = "bg-bg-muted/30";
   const dayHeaderGrayClass = "bg-bg-muted/40 text-text-muted";
   const todayColumnClass = "bg-brand-blue/10";
   const todayHeaderClass = "bg-brand-blue/15";
 
-  const goPrevWeek = () => {
+  const goPrevWeek = async () => {
+    const ok = await flushSave();
+    if (!ok) return;
     const next = addWeeksToYearWeekLocal(year, week, -1);
     setYear(next.year);
     setWeek(next.week);
   };
 
-  const goNextWeek = () => {
+  const goNextWeek = async () => {
+    const ok = await flushSave();
+    if (!ok) return;
     const next = addWeeksToYearWeekLocal(year, week, 1);
     setYear(next.year);
     setWeek(next.week);
   };
 
-  const goPrevMonth = () => {
+  const goPrevMonth = async () => {
     if (isWeekStripTransitioning) return;
+    const ok = await flushSave();
+    if (!ok) return;
     setIsWeekStripTransitioning(true);
     setWeekStripAnimClass("animate-week-strip-out-to-right");
     let newMonth = displayMonth - 1;
@@ -266,8 +406,10 @@ export function TimeReportPageClient({
     }, 280);
   };
 
-  const goNextMonth = () => {
+  const goNextMonth = async () => {
     if (isWeekStripTransitioning) return;
+    const ok = await flushSave();
+    if (!ok) return;
     setIsWeekStripTransitioning(true);
     setWeekStripAnimClass("animate-week-strip-out-to-left");
     let newMonth = displayMonth + 1;
@@ -292,6 +434,17 @@ export function TimeReportPageClient({
     }, 280);
   };
 
+  const jumpToWeek = useCallback(
+    async (nextYear: number, nextWeek: number) => {
+      if (nextYear === year && nextWeek === week) return;
+      const ok = await flushSave();
+      if (!ok) return;
+      setYear(nextYear);
+      setWeek(nextWeek);
+    },
+    [flushSave, week, year]
+  );
+
   const customerOptionsForSelect = [
     { value: "", label: "—" },
     ...customers.map((c) => ({ value: c.id, label: c.name })),
@@ -300,6 +453,31 @@ export function TimeReportPageClient({
   const availableToAdd = customers.filter(
     (c) => !customerGroups.some((g) => g.customerId === c.id)
   );
+  const customerById = useMemo(
+    () => new Map(customers.map((c) => [c.id, c])),
+    [customers]
+  );
+  const entryById = useMemo(() => {
+    const map = new Map<string, Entry>();
+    customerGroups.forEach((g) => {
+      g.entries.forEach((e) => map.set(e.id, e));
+    });
+    return map;
+  }, [customerGroups]);
+  const customerIdByEntryId = useMemo(() => {
+    const map = new Map<string, string>();
+    customerGroups.forEach((g) => {
+      g.entries.forEach((e) => map.set(e.id, g.customerId));
+    });
+    return map;
+  }, [customerGroups]);
+  const jiraOptionByProjectAndValue = useMemo(() => {
+    const map = new Map<string, JiraDevOpsOption>();
+    Object.entries(jiraDevOpsCache).forEach(([projectId, options]) => {
+      options.forEach((option) => map.set(`${projectId}|${option.value}`, option));
+    });
+    return map;
+  }, [jiraDevOpsCache]);
 
   const loadProjectsForCustomer = useCallback(async (customerId: string) => {
     if (!customerId) return;
@@ -373,7 +551,7 @@ export function TimeReportPageClient({
       { customerId, entries: [newEntry()] },
     ]);
     setAddCustomerOpen(false);
-    const c = customers.find((x) => x.id === customerId);
+    const c = customerById.get(customerId);
     if (c) loadProjectsForCustomer(customerId);
   };
 
@@ -436,8 +614,7 @@ export function TimeReportPageClient({
     Object.values(entry.comments).some((c) => (c ?? "").trim() !== "");
 
   const openComment = (entryId: string) => {
-    const group = customerGroups.find((g) => g.entries.some((e) => e.id === entryId));
-    const entry = group?.entries.find((e) => e.id === entryId);
+    const entry = entryById.get(entryId);
     const texts: Record<number, string> = {};
     for (let i = 0; i < 7; i++) {
       texts[i] = entry?.comments[i]?.trim() ?? "";
@@ -448,9 +625,7 @@ export function TimeReportPageClient({
 
   const saveComment = () => {
     if (!commentState) return;
-    const customerId = customerGroups.find((g) =>
-      g.entries.some((e) => e.id === commentState.entryId)
-    )?.customerId;
+    const customerId = customerIdByEntryId.get(commentState.entryId);
     if (!customerId) return;
     setIsDirty(true);
     const comments: Record<number, string> = {};
@@ -481,26 +656,64 @@ export function TimeReportPageClient({
     return d.getDate();
   });
 
-  const weekTotalHours = customerGroups.reduce(
-    (sum, g) => sum + groupTotalHours(g.entries),
-    0
+  const weekTotalHours = useMemo(
+    () => customerGroups.reduce((sum, g) => sum + groupTotalHours(g.entries), 0),
+    [customerGroups]
   );
 
-  const monthLabel = `${TIME_REPORT_MONTH_NAMES[displayMonth - 1]} ${displayYear}`;
-  const monthWeeks = getWeeksInMonthLocal(displayMonth, displayYear);
-
-  const totalHoursPerDay = customerGroups.reduce<number[]>(
-    (acc, g) => {
-      const daily = dayTotals(g.entries);
-      daily.forEach((h, i) => { acc[i] = (acc[i] ?? 0) + h; });
-      return acc;
-    },
-    [0, 0, 0, 0, 0, 0, 0]
+  const monthLabel = useMemo(
+    () => `${TIME_REPORT_MONTH_NAMES[displayMonth - 1]} ${displayYear}`,
+    [displayMonth, displayYear]
+  );
+  const monthWeeks = useMemo(
+    () => getWeeksInMonthLocal(displayMonth, displayYear),
+    [displayMonth, displayYear]
   );
 
-  // #region agent log
-  fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H4',location:'TimeReportPageClient.tsx:494',message:'time report render summary',data:{customerGroups:customerGroups.length,totalEntries:customerGroups.reduce((n,g)=>n+g.entries.length,0),weekTotalHours,loadState,saveState},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+  const totalHoursPerDay = useMemo(
+    () =>
+      customerGroups.reduce<number[]>(
+        (acc, g) => {
+          const daily = dayTotals(g.entries);
+          daily.forEach((h, i) => {
+            acc[i] = (acc[i] ?? 0) + h;
+          });
+          return acc;
+        },
+        [0, 0, 0, 0, 0, 0, 0]
+      ),
+    [customerGroups]
+  );
+  const totalEntries = useMemo(
+    () => customerGroups.reduce((n, g) => n + g.entries.length, 0),
+    [customerGroups]
+  );
+
+  useEffect(() => {
+    if (!ENABLE_PERF_DEBUG) return;
+    fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "97edeb",
+      },
+      body: JSON.stringify({
+        sessionId: "97edeb",
+        runId: "perf-scan-1",
+        hypothesisId: "H4",
+        location: "TimeReportPageClient.tsx",
+        message: "time report render summary",
+        data: {
+          customerGroups: customerGroups.length,
+          totalEntries,
+          weekTotalHours,
+          loadState,
+          saveState,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [customerGroups.length, totalEntries, weekTotalHours, loadState, saveState]);
 
   if (!consultant) {
     return (
@@ -538,10 +751,7 @@ export function TimeReportPageClient({
                     <button
                       key={`${wY}-${w}`}
                       type="button"
-                      onClick={() => {
-                        setYear(wY);
-                        setWeek(w);
-                      }}
+                      onClick={() => void jumpToWeek(wY, w)}
                       className={`w-[4rem] cursor-pointer shrink-0 rounded-md px-1.5 py-0.5 text-center text-[11px] font-medium transition-colors whitespace-nowrap ${
                         isSelected
                           ? "bg-brand-blue text-white"
@@ -676,9 +886,7 @@ export function TimeReportPageClient({
             <tbody>
               {customerGroups.length > 0 && (
                 <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
-                  <td colSpan={4} className="px-1.5 py-1 text-left text-text-primary">
-                    Total
-                  </td>
+                  <td colSpan={4} className="px-1.5 py-1 text-left text-text-primary" />
                   {totalHoursPerDay.map((h, i) => (
                     <td
                       key={i}
@@ -695,7 +903,7 @@ export function TimeReportPageClient({
                 </tr>
               )}
               {customerGroups.map((group, groupIndex) => {
-                const customer = customers.find((c) => c.id === group.customerId);
+                const customer = customerById.get(group.customerId);
                 const name = customer?.name ?? "—";
                 const color = customer?.color ?? "#3b82f6";
                 const total = groupTotalHours(group.entries);
@@ -819,7 +1027,9 @@ export function TimeReportPageClient({
                                   {entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")}
                                 </button>
                                 {entry.jiraDevOpsValue.startsWith("jira:") && (() => {
-                                  const opt = getJiraDevOpsOptions(entry.projectId).find((o) => o.value === entry.jiraDevOpsValue);
+                                  const opt = jiraOptionByProjectAndValue.get(
+                                    `${entry.projectId}|${entry.jiraDevOpsValue}`
+                                  );
                                   const url = opt?.url?.trim();
                                   const key = entry.jiraDevOpsValue.replace(/^jira:/, "");
                                   return url ? (
@@ -860,50 +1070,29 @@ export function TimeReportPageClient({
                             )}
                           </td>
                           {entry.hours.map((h, dayIndex) => (
-                            <td
+                            <EditableHourTd
                               key={dayIndex}
-                              className={`relative h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 align-middle last:border-r-0 ${dayIndex === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(dayIndex) ? dayCellGrayClass : ""} ${isTodayColumn(dayIndex) ? todayColumnClass : ""}`}
-                            >
-                              <div
-                                role="button"
-                                tabIndex={0}
-                                onClick={() =>
-                                  editingCell?.entryId === entry.id && editingCell?.dayIndex === dayIndex
-                                    ? undefined
-                                    : setEditingCell({ entryId: entry.id, dayIndex })
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    if (!(editingCell?.entryId === entry.id && editingCell?.dayIndex === dayIndex)) {
-                                      setEditingCell({ entryId: entry.id, dayIndex });
-                                    }
-                                  }
-                                }}
-                                className={`absolute inset-0 flex items-center justify-center rounded-sm transition-colors ${editingCell?.entryId === entry.id && editingCell?.dayIndex === dayIndex ? "cursor-default" : "cursor-pointer hover:bg-bg-muted/60"}`}
-                              >
-                                <TimeReportHourCell
-                                  value={h}
-                                  entryId={entry.id}
-                                  dayIndex={dayIndex}
-                                  isEditing={
-                                    editingCell?.entryId === entry.id &&
-                                    editingCell?.dayIndex === dayIndex
-                                  }
-                                  onStartEdit={() =>
-                                    setEditingCell({ entryId: entry.id, dayIndex })
-                                  }
-                                  onCommit={(v) => {
-                                    const next = [...entry.hours];
-                                    next[dayIndex] = v;
-                                    updateEntryInGroup(group.customerId, entry.id, {
-                                      hours: next,
-                                    });
-                                  }}
-                                  onBlur={() => setEditingCell(null)}
-                                />
-                              </div>
-                            </td>
+                              dayIndex={dayIndex}
+                              entryId={entry.id}
+                              value={h}
+                              isEditing={
+                                editingCell?.entryId === entry.id &&
+                                editingCell?.dayIndex === dayIndex
+                              }
+                              isGray={isDayGrayed(dayIndex)}
+                              isToday={isTodayColumn(dayIndex)}
+                              onStartEdit={() =>
+                                setEditingCell({ entryId: entry.id, dayIndex })
+                              }
+                              onCommit={(v) => {
+                                const next = [...entry.hours];
+                                next[dayIndex] = v;
+                                updateEntryInGroup(group.customerId, entry.id, {
+                                  hours: next,
+                                });
+                              }}
+                              onBlur={() => setEditingCell(null)}
+                            />
                           ))}
                           <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1">
                             <div className="flex items-center justify-center gap-0.5">
@@ -937,9 +1126,7 @@ export function TimeReportPageClient({
                         </tr>
                       ))}
                     <tr className="border-b border-border-subtle bg-bg-muted/30 text-text-secondary">
-                        <td colSpan={4} className="px-1.5 py-1 text-left text-xs font-medium">
-                          Subtotal
-                        </td>
+                        <td colSpan={4} className="px-1.5 py-1 text-left text-xs font-medium" />
                         {daily.map((h, i) => (
                           <td
                             key={i}
@@ -955,7 +1142,7 @@ export function TimeReportPageClient({
                         <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
                           <div className="flex h-full w-full items-center justify-center">
                             <span className="text-xs font-medium tabular-nums text-text-secondary">
-                              {total > 0 ? `Tot: ${total}` : ""}
+                              {total > 0 ? String(total) : ""}
                             </span>
                           </div>
                         </td>
@@ -1025,9 +1212,7 @@ export function TimeReportPageClient({
         title="Jira / DevOps"
       >
         {jiraDevOpsModal && (() => {
-          const entry = customerGroups
-            .find((g) => g.customerId === jiraDevOpsModal.customerId)
-            ?.entries.find((e) => e.id === jiraDevOpsModal.entryId);
+          const entry = entryById.get(jiraDevOpsModal.entryId);
           if (!entry) return null;
           return (
             <div className="flex flex-col gap-3 pt-2">

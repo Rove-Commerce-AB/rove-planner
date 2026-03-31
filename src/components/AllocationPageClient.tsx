@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Fragment, useEffect, useCallback, useRef } from "react";
+import { useState, Fragment, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
@@ -70,6 +70,8 @@ const AllocationCustomerProjectTabs = dynamic(
     })),
   { ssr: false }
 );
+
+const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 
 type Props = {
   data: AllocationPageData | null;
@@ -435,31 +437,31 @@ export function AllocationPageClient({
     ]
   );
 
-  const toggleConsultant = (id: string) => {
+  const toggleConsultant = useCallback((id: string) => {
     setExpandedConsultants((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleCustomer = (id: string) => {
+  const toggleCustomer = useCallback((id: string) => {
     setExpandedCustomers((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
-  const toggleProject = (id: string) => {
+  }, []);
+  const toggleProject = useCallback((id: string) => {
     setExpandedProjects((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
   type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
   const internalRowsRef = useRef<PerConsultantRow[]>([]);
@@ -573,17 +575,20 @@ export function AllocationPageClient({
   const isCurrentWeekHeader = (w: { year: number; week: number }) =>
     mounted && w.year === currentYearNum && w.week === currentWeekNum;
 
-  const renderWeekHeaderCells = (tableKey: string, borderClass = "border-grid-subtle") =>
-    (data?.weeks ?? []).map((w) => (
-      <th
-        key={`${tableKey}-${w.year}-${w.week}`}
-        className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
-          isCurrentWeekHeader(w) ? "current-week-header bg-brand-signal/20 border-l border-r" : ""
-        }`}
-      >
-        v{w.week}
-      </th>
-    ));
+  const renderWeekHeaderCells = useCallback(
+    (tableKey: string, borderClass = "border-grid-subtle") =>
+      (data?.weeks ?? []).map((w) => (
+        <th
+          key={`${tableKey}-${w.year}-${w.week}`}
+          className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
+            isCurrentWeekHeader(w) ? "current-week-header bg-brand-signal/20 border-l border-r" : ""
+          }`}
+        >
+          v{w.week}
+        </th>
+      )),
+    [data?.weeks, isCurrentWeekHeader]
+  );
 
   if (error) {
     return (
@@ -606,93 +611,144 @@ export function AllocationPageClient({
     );
   }
 
-  const allocationBuildStart = performance.now();
-  const projectProbabilityMap =
-    data && filteredData
-      ? getProjectProbabilityMap(filteredData.projects)
-      : new Map<string, number>();
+  const projectProbabilityMap = useMemo(
+    () =>
+      data && filteredData
+        ? getProjectProbabilityMap(filteredData.projects)
+        : new Map<string, number>(),
+    [data, filteredData]
+  );
   /** On project detail (embed) we always show raw hours and ignore probability. */
   const effectiveProbabilityDisplay = embedMode ? "none" : probabilityDisplay;
-  const perConsultant =
-    filteredData && data
-      ? buildPerConsultantView(
-          filteredData,
-          effectiveProbabilityDisplay,
-          projectVisibility,
-          projectProbabilityMap,
-          (consultantId, projectId, roleId, year, week) => {
-            const key = allocationCellKey(
-              consultantId,
-              projectId,
-              roleId,
-              year,
-              week
-            );
-            const raw = optimisticCellHours[key];
-            if (raw == null) return undefined;
-            const { displayHours } = getDisplayHours(
-              raw,
-              projectId,
-              effectiveProbabilityDisplay,
-              projectVisibility,
-              projectProbabilityMap
-            );
-            return displayHours;
-          }
-        )
-      : [];
-  const perCustomer =
-    filteredData && data
-      ? buildPerCustomerView(filteredData, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap)
-      : [];
-  const perProject =
-    data && filteredData
-      ? buildPerProjectView(filteredData, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap)
-      : [];
-  const perProjectFiltered =
-    showProjectsWithoutBooking
-      ? perProject
-      : perProject.filter((r) => r.consultantRows.length > 0);
-  const perConsultantInternal = perConsultant.filter((r) => !r.consultant.isExternal);
+  const getOptimisticDisplayHours = useCallback(
+    (consultantId: string, projectId: string, roleId: string | null, yearValue: number, weekValue: number) => {
+      const key = allocationCellKey(consultantId, projectId, roleId, yearValue, weekValue);
+      const raw = optimisticCellHours[key];
+      if (raw == null) return undefined;
+      const { displayHours } = getDisplayHours(
+        raw,
+        projectId,
+        effectiveProbabilityDisplay,
+        projectVisibility,
+        projectProbabilityMap
+      );
+      return displayHours;
+    },
+    [
+      optimisticCellHours,
+      effectiveProbabilityDisplay,
+      projectVisibility,
+      projectProbabilityMap,
+    ]
+  );
+  const perConsultant = useMemo(
+    () =>
+      filteredData && data
+        ? buildPerConsultantView(
+            filteredData,
+            effectiveProbabilityDisplay,
+            projectVisibility,
+            projectProbabilityMap,
+            getOptimisticDisplayHours
+          )
+        : [],
+    [
+      filteredData,
+      data,
+      effectiveProbabilityDisplay,
+      projectVisibility,
+      projectProbabilityMap,
+      getOptimisticDisplayHours,
+    ]
+  );
+  const perCustomer = useMemo(
+    () =>
+      filteredData && data
+        ? buildPerCustomerView(
+            filteredData,
+            effectiveProbabilityDisplay,
+            projectVisibility,
+            projectProbabilityMap
+          )
+        : [],
+    [filteredData, data, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap]
+  );
+  const perProject = useMemo(
+    () =>
+      data && filteredData
+        ? buildPerProjectView(
+            filteredData,
+            effectiveProbabilityDisplay,
+            projectVisibility,
+            projectProbabilityMap
+          )
+        : [],
+    [data, filteredData, effectiveProbabilityDisplay, projectVisibility, projectProbabilityMap]
+  );
+  const perProjectFiltered = useMemo(
+    () =>
+      showProjectsWithoutBooking
+        ? perProject
+        : perProject.filter((r) => r.consultantRows.length > 0),
+    [showProjectsWithoutBooking, perProject]
+  );
+  const perConsultantInternal = useMemo(
+    () => perConsultant.filter((r) => !r.consultant.isExternal),
+    [perConsultant]
+  );
   internalRowsRef.current = perConsultant;
-  const perConsultantExternal = perConsultant.filter((r) => r.consultant.isExternal);
-  const expandableConsultantIds = new Set(
-    perConsultant.filter((r) => r.projectRows.length > 0).map((r) => r.consultant.id)
+  const perConsultantExternal = useMemo(
+    () => perConsultant.filter((r) => r.consultant.isExternal),
+    [perConsultant]
+  );
+  const expandableConsultantIds = useMemo(
+    () =>
+      new Set(
+        perConsultant.filter((r) => r.projectRows.length > 0).map((r) => r.consultant.id)
+      ),
+    [perConsultant]
   );
   const currentWeek = currentWeekProp;
   const currentYear = currentYearProp;
-  const monthSpans = getMonthSpansForWeeks(data.weeks);
+  const monthSpans = useMemo(() => getMonthSpansForWeeks(data.weeks), [data.weeks]);
   const isCurrentWeek = (w: { year: number; week: number }) =>
     mounted && w.year === currentYear && w.week === currentWeek;
 
   const showConsultantView = !!embedMode || activeTab === "consultant";
 
   /** Consultants to show in embed mode (To plan row hidden on project detail only). */
-  const perConsultantDisplay = perConsultant.filter(
-    (r) => r.consultant.id !== TO_PLAN_CONSULTANT_ID
+  const perConsultantDisplay = useMemo(
+    () => perConsultant.filter((r) => r.consultant.id !== TO_PLAN_CONSULTANT_ID),
+    [perConsultant]
   );
-  const perConsultantInternalDisplay = perConsultantInternal.filter(
-    (r) => r.consultant.id !== TO_PLAN_CONSULTANT_ID
+  const perConsultantInternalDisplay = useMemo(
+    () => perConsultantInternal.filter((r) => r.consultant.id !== TO_PLAN_CONSULTANT_ID),
+    [perConsultantInternal]
   );
   /** Week totals (hours) for footer; only used in embed mode. */
-  const weekTotalsHours =
-    data.weeks.length > 0
-      ? data.weeks.map((_, i) =>
-          (embedMode ? perConsultantDisplay : perConsultantInternalDisplay).reduce(
-            (sum, row) => sum + (row.percentDetailsByWeek?.[i]?.total ?? 0),
-            0
+  const weekTotalsHours = useMemo(
+    () =>
+      data.weeks.length > 0
+        ? data.weeks.map((_, i) =>
+            (embedMode ? perConsultantDisplay : perConsultantInternalDisplay).reduce(
+              (sum, row) => sum + (row.percentDetailsByWeek?.[i]?.total ?? 0),
+              0
+            )
           )
-        )
-      : [];
-  const grandTotalHours = weekTotalsHours.reduce((a, b) => a + b, 0);
+        : [],
+    [data.weeks, embedMode, perConsultantDisplay, perConsultantInternalDisplay]
+  );
+  const grandTotalHours = useMemo(
+    () => weekTotalsHours.reduce((a, b) => a + b, 0),
+    [weekTotalsHours]
+  );
 
   /** Week revenue (SEK) when embedMode has rates; computed from displayed project rows × rate per role. */
-  let weekTotalsMoney: number[] | null = null;
-  let grandTotalMoney = 0;
-  if (embedMode?.rates && data) {
+  const weekTotalsMoney = useMemo(() => {
+    if (!embedMode?.rates || !data) return null;
     const rates = embedMode.rates;
     const rowsForMoney = embedMode ? perConsultantDisplay : perConsultantInternalDisplay;
-    weekTotalsMoney = data.weeks.map((_, weekIndex) => {
+    return data.weeks.map((_, weekIndex) => {
       let sum = 0;
       for (const row of rowsForMoney) {
         for (const pr of row.projectRows) {
@@ -712,7 +768,7 @@ export function AllocationPageClient({
           );
           const hours =
             optimisticCellHours[cellKey] != null
-              ? optimisticCellHours[cellKey]!
+              ? optimisticCellHours[cellKey]
               : (w.cell?.displayHours ?? 0);
           const rate = rates[roleId ?? ""] ?? 0;
           sum += hours * rate;
@@ -720,12 +776,43 @@ export function AllocationPageClient({
       }
       return sum;
     });
-    grandTotalMoney = weekTotalsMoney.reduce((a, b) => a + b, 0);
-  }
+  }, [embedMode, data, perConsultantDisplay, perConsultantInternalDisplay, optimisticCellHours]);
+  const grandTotalMoney = useMemo(
+    () => (weekTotalsMoney ? weekTotalsMoney.reduce((a, b) => a + b, 0) : 0),
+    [weekTotalsMoney]
+  );
 
-  // #region agent log
-  fetch('http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'97edeb'},body:JSON.stringify({sessionId:'97edeb',runId:'perf-scan-1',hypothesisId:'H1',location:'AllocationPageClient.tsx:724',message:'allocation view build timing',data:{ms:Math.round((performance.now()-allocationBuildStart)*100)/100,weeks:data.weeks.length,consultants:data.consultants.length,allocations:data.allocations.length,perConsultantRows:perConsultant.length,perCustomerRows:perCustomer.length,perProjectRows:perProject.length,activeTab,embedMode:Boolean(embedMode)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+  useEffect(() => {
+    if (!ENABLE_PERF_DEBUG || !data) return;
+    const start = performance.now();
+    const ms = Math.round((performance.now() - start) * 100) / 100;
+    fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "97edeb",
+      },
+      body: JSON.stringify({
+        sessionId: "97edeb",
+        runId: "perf-scan-1",
+        hypothesisId: "H1",
+        location: "AllocationPageClient.tsx",
+        message: "allocation view build timing",
+        data: {
+          ms,
+          weeks: data.weeks.length,
+          consultants: data.consultants.length,
+          allocations: data.allocations.length,
+          perConsultantRows: perConsultant.length,
+          perCustomerRows: perCustomer.length,
+          perProjectRows: perProject.length,
+          activeTab,
+          embedMode: Boolean(embedMode),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [data, perConsultant.length, perCustomer.length, perProject.length, activeTab, embedMode]);
 
   return (
     <>

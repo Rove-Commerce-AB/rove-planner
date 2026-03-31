@@ -10,19 +10,20 @@ export const dynamic = "force-dynamic";
 
 export default async function TimeReportPage() {
   const consultant = await getConsultantForCurrentUser();
-  const customerIds = consultant
-    ? await getCustomerIdsForConsultant(consultant.id)
-    : [];
-  const customers = await getCustomersByIds(customerIds);
   const { year: initialYear, week: initialWeek } = getCurrentYearWeek();
-  const initialHolidayDates =
-    consultant?.calendar_id != null
-      ? await getHolidayDatesForWeek(
-          consultant.calendar_id,
-          initialYear,
-          initialWeek
-        )
-      : [];
+  const [customerIds, initialHolidayDates] = consultant
+    ? await Promise.all([
+        getCustomerIdsForConsultant(consultant.id),
+        consultant.calendar_id != null
+          ? getHolidayDatesForWeek(
+              consultant.calendar_id,
+              initialYear,
+              initialWeek
+            )
+          : Promise.resolve([] as string[]),
+      ])
+    : [[], [] as string[]];
+  const customers = await getCustomersByIds(customerIds);
 
   return (
     <div className="p-6">
