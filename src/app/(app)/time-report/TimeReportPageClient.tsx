@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef, Fragment, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink } from "lucide-react";
-import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek } from "./actions";
+import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink, Loader2 } from "lucide-react";
+import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek, batchHydrateTimeReport } from "./actions";
 import type { ProjectOption, JiraDevOpsOption, TaskOption } from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
 import {
@@ -25,6 +25,27 @@ import {
 import { TimeReportHourCell } from "./TimeReportHourCell";
 
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
+
+function collectTimeReportHydratePayload(groups: CustomerGroup[]): {
+  customerIds: string[];
+  taskOptionPairs: Array<{ customerId: string; projectId: string }>;
+} {
+  const customerIds = [...new Set(groups.map((g) => g.customerId))];
+  const pairSeen = new Set<string>();
+  const taskOptionPairs: Array<{ customerId: string; projectId: string }> = [];
+  for (const g of groups) {
+    for (const e of g.entries) {
+      const k = `${g.customerId}|${e.projectId || ""}`;
+      if (pairSeen.has(k)) continue;
+      pairSeen.add(k);
+      taskOptionPairs.push({
+        customerId: g.customerId,
+        projectId: e.projectId || "",
+      });
+    }
+  }
+  return { customerIds, taskOptionPairs };
+}
 
 type CustomerOption = { id: string; name: string; color?: string | null };
 
@@ -113,6 +134,8 @@ export function TimeReportPageClient({
   const projectLoadInflightRef = useRef<Set<string>>(new Set());
   const taskLoadInflightRef = useRef<Set<string>>(new Set());
   const [jiraDevOpsCache, setJiraDevOpsCache] = useState<Record<string, JiraDevOpsOption[]>>({});
+  const [jiraOptionsLoading, setJiraOptionsLoading] = useState<Record<string, boolean>>({});
+  const jiraLoadInflightRef = useRef<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<{ entryId: string; dayIndex: number } | null>(null);
   const [commentState, setCommentState] = useState<{ entryId: string } | null>(null);
   const [commentTexts, setCommentTexts] = useState<Record<number, string>>({});
@@ -166,6 +189,41 @@ export function TimeReportPageClient({
   useEffect(() => {
     consultantRef.current = consultant;
   }, [consultant]);
+
+  const runBatchHydrate = useCallback(async (groups: CustomerGroup[]) => {
+    const { customerIds, taskOptionPairs } = collectTimeReportHydratePayload(groups);
+    if (customerIds.length === 0 && taskOptionPairs.length === 0) return;
+
+    for (const cid of customerIds) {
+      setProjectOptionsLoading((s) => ({ ...s, [cid]: true }));
+    }
+    for (const p of taskOptionPairs) {
+      const key = taskCacheKey(p.customerId, p.projectId);
+      setTaskOptionsLoading((s) => ({ ...s, [key]: true }));
+    }
+    try {
+      const result = await batchHydrateTimeReport(customerIds, taskOptionPairs);
+      setProjectCache((prev) => ({ ...prev, ...result.projectsByCustomerId }));
+      setTaskCache((prev) => ({ ...prev, ...result.tasksByCacheKey }));
+    } finally {
+      for (const cid of customerIds) {
+        setProjectOptionsLoading((s) => {
+          const next = { ...s };
+          delete next[cid];
+          return next;
+        });
+      }
+      for (const p of taskOptionPairs) {
+        const key = taskCacheKey(p.customerId, p.projectId);
+        setTaskOptionsLoading((s) => {
+          const next = { ...s };
+          delete next[key];
+          return next;
+        });
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!calendarId) return;
     getHolidayDatesForWeek(calendarId, year, week).then(setHolidayDates);
@@ -173,18 +231,6 @@ export function TimeReportPageClient({
 
   useEffect(() => {
     if (!consultant) return;
-
-    const hydrateCachesForGroups = (groups: CustomerGroup[]) => {
-      groups.forEach((g) => {
-        loadProjectsForCustomer(g.customerId);
-        g.entries.forEach((e) => {
-          if (e.projectId) {
-            loadTaskOptions(g.customerId, e.projectId);
-            loadJiraDevOpsForProject(e.projectId);
-          }
-        });
-      });
-    };
 
     setLoadState("loading");
     // Clear old week view immediately to avoid showing stale rows during week switch.
@@ -196,13 +242,13 @@ export function TimeReportPageClient({
         setCustomerGroups(groups);
         setLoadState("loaded");
         setIsDirty(false);
-        hydrateCachesForGroups(groups);
+        void runBatchHydrate(groups);
       })
       .catch(() => {
         if (requestId !== weekLoadRequestIdRef.current) return;
         setLoadState("loaded");
       });
-  }, [consultant?.id, year, week]);
+  }, [consultant?.id, year, week, runBatchHydrate]);
 
   useEffect(() => {
     if (saveDebounceRef.current) {
@@ -529,10 +575,22 @@ export function TimeReportPageClient({
   const loadJiraDevOpsForProject = useCallback(async (projectId: string) => {
     if (!projectId) return;
     if (jiraDevOpsCache[projectId] !== undefined) return;
-    const list = await getJiraDevOpsOptionsForProject(projectId);
-    setJiraDevOpsCache((prev) =>
-      prev[projectId] !== undefined ? prev : { ...prev, [projectId]: list }
-    );
+    if (jiraLoadInflightRef.current.has(projectId)) return;
+    jiraLoadInflightRef.current.add(projectId);
+    setJiraOptionsLoading((s) => ({ ...s, [projectId]: true }));
+    try {
+      const list = await getJiraDevOpsOptionsForProject(projectId);
+      setJiraDevOpsCache((prev) =>
+        prev[projectId] !== undefined ? prev : { ...prev, [projectId]: list }
+      );
+    } finally {
+      jiraLoadInflightRef.current.delete(projectId);
+      setJiraOptionsLoading((s) => {
+        const next = { ...s };
+        delete next[projectId];
+        return next;
+      });
+    }
   }, [jiraDevOpsCache]);
 
   const getProjectOptions = (customerId: string): { value: string; label: string }[] => {
@@ -611,6 +669,7 @@ export function TimeReportPageClient({
     if (year === initialYear && week === initialWeek) {
       getTimeReportEntries(consultant.id, year, week).then((groups) => {
         setCustomerGroups(groups);
+        void runBatchHydrate(groups);
       });
     }
   };
@@ -996,7 +1055,6 @@ export function TimeReportPageClient({
                                     jiraDevOpsValue: "",
                                     roleId: "",
                                   });
-                                  if (value) loadJiraDevOpsForProject(value);
                                   loadTaskOptions(group.customerId, value);
                                 }}
                                 options={getProjectOptions(group.customerId)}
@@ -1250,19 +1308,33 @@ export function TimeReportPageClient({
         {jiraDevOpsModal && (() => {
           const entry = entryById.get(jiraDevOpsModal.entryId);
           if (!entry) return null;
+          const jiraBusy = Boolean(
+            entry.projectId && jiraOptionsLoading[entry.projectId]
+          );
           return (
             <div className="flex flex-col gap-3 pt-2">
-              <Combobox
-                value={jiraDevOpsModalValue}
-                onValueChange={(value) => setJiraDevOpsModalValue(value)}
-                options={getJiraDevOpsOptions(entry.projectId)}
-                placeholder="Type to search..."
-                size="sm"
-                variant="filter"
-                inputClassName="h-9 w-full"
-                emptyOptionsPlaceholder="No Jira/DevOps"
-                renderListInPortal={false}
-              />
+              {jiraBusy ? (
+                <div
+                  className="flex items-center gap-2 py-6 text-sm text-text-secondary"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  Laddar Jira/DevOps…
+                </div>
+              ) : (
+                <Combobox
+                  value={jiraDevOpsModalValue}
+                  onValueChange={(value) => setJiraDevOpsModalValue(value)}
+                  options={getJiraDevOpsOptions(entry.projectId)}
+                  placeholder="Type to search..."
+                  size="sm"
+                  variant="filter"
+                  inputClassName="h-9 w-full"
+                  emptyOptionsPlaceholder="No Jira/DevOps"
+                  renderListInPortal={false}
+                />
+              )}
               <div className="flex justify-end gap-2">
                 <Button
                   variant="secondary"
@@ -1273,6 +1345,7 @@ export function TimeReportPageClient({
                 </Button>
                 <Button
                   size="sm"
+                  disabled={jiraBusy}
                   onClick={() => {
                     updateEntryInGroup(jiraDevOpsModal.customerId, jiraDevOpsModal.entryId, {
                       jiraDevOpsValue: jiraDevOpsModalValue,

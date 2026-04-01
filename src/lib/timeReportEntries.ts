@@ -138,6 +138,105 @@ export async function getTaskOptionsForCustomerAndProject(
   return roles.map((r) => ({ value: r.id, label: r.name }));
 }
 
+export type TimeReportBatchHydrateResult = {
+  projectsByCustomerId: Record<string, ProjectOption[]>;
+  tasksByCacheKey: Record<string, TaskOption[]>;
+};
+
+/** Aligns with `taskCacheKey` in `timeReportEntryModel.ts`. */
+function timeReportTaskCacheKeyServer(customerId: string, projectId: string) {
+  return `${customerId}-${projectId || ""}`;
+}
+
+/**
+ * Single server round-trip for project and role/task dropdown data after loading a week.
+ * @param customerIds Customers to load project lists for (e.g. all groups in the week).
+ * @param taskOptionPairs Unique (customerId, projectId) pairs; use projectId "" when no project is selected.
+ */
+export async function batchHydrateTimeReport(
+  customerIds: string[],
+  taskOptionPairs: Array<{ customerId: string; projectId: string }>
+): Promise<TimeReportBatchHydrateResult> {
+  const ctx = await getTimeReportAccessContext();
+  if (!ctx.consultant) {
+    return { projectsByCustomerId: {}, tasksByCacheKey: {} };
+  }
+
+  const uniqueCustomers = [
+    ...new Set(customerIds.filter((id) => id && ctx.allowedCustomerIds.has(id))),
+  ];
+
+  const projectsByCustomerId: Record<string, ProjectOption[]> = {};
+  for (const cid of uniqueCustomers) {
+    projectsByCustomerId[cid] = [];
+  }
+
+  if (uniqueCustomers.length > 0) {
+    const projects = await getProjectsByCustomerIds(uniqueCustomers);
+    for (const cid of uniqueCustomers) {
+      const active = projects.filter((p) => p.customer_id === cid && p.is_active);
+      const filtered = isSubcontractorRole(ctx.appUser?.role)
+        ? active.filter((p) => ctx.bookedProjectIds.has(p.id))
+        : active;
+      projectsByCustomerId[cid] = filtered.map((p) => ({
+        value: p.id,
+        label: p.name,
+      }));
+    }
+  }
+
+  const pairSeen = new Set<string>();
+  const uniquePairs: Array<{ customerId: string; projectId: string }> = [];
+  for (const pair of taskOptionPairs) {
+    if (!pair.customerId || !ctx.allowedCustomerIds.has(pair.customerId)) continue;
+    if (
+      isSubcontractorRole(ctx.appUser?.role) &&
+      pair.projectId &&
+      !ctx.bookedProjectIds.has(pair.projectId)
+    ) {
+      continue;
+    }
+    const normProjectId = pair.projectId || "";
+    const k = `${pair.customerId}|${normProjectId}`;
+    if (pairSeen.has(k)) continue;
+    pairSeen.add(k);
+    uniquePairs.push({ customerId: pair.customerId, projectId: normProjectId });
+  }
+
+  const supabase = ctx.supabase;
+  const taskEntries = await Promise.all(
+    uniquePairs.map(async ({ customerId, projectId }) => {
+      const key = timeReportTaskCacheKeyServer(customerId, projectId);
+      if (projectId) {
+        const roles = await getRolesWithRateForAllocation(projectId, customerId);
+        return [key, roles.map((r) => ({ value: r.id, label: r.name }))] as const;
+      }
+      const rates = await getCustomerRates(customerId);
+      const roleIds = [...new Set(rates.map((r) => r.role_id))];
+      if (roleIds.length === 0) {
+        return [key, [] as TaskOption[]] as const;
+      }
+      const { data: roles, error } = await supabase
+        .from("roles")
+        .select("id,name")
+        .in("id", roleIds)
+        .order("name");
+      const options =
+        error || !roles
+          ? []
+          : roles.map((r) => ({ value: r.id, label: r.name }));
+      return [key, options] as const;
+    })
+  );
+
+  const tasksByCacheKey: Record<string, TaskOption[]> = {};
+  for (const [key, options] of taskEntries) {
+    tasksByCacheKey[key] = options;
+  }
+
+  return { projectsByCustomerId, tasksByCacheKey };
+}
+
 export async function getHolidayDatesForWeek(
   calendarId: string | null,
   year: number,
