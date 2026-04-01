@@ -1,7 +1,7 @@
 "use client";
 
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 
 export type SelectOption = {
   value: string;
@@ -28,6 +28,8 @@ type Props = {
   viewportClassName?: string;
   /** Called when the trigger loses focus (e.g. click outside) */
   onBlur?: React.FocusEventHandler<HTMLButtonElement>;
+  /** Show a small spinner on the trigger (e.g. while options are loading) */
+  isLoading?: boolean;
 };
 
 export function Select({
@@ -45,6 +47,7 @@ export function Select({
   triggerClassName = "",
   viewportClassName = "",
   onBlur,
+  isLoading = false,
 }: Props) {
   const EMPTY = "__empty__";
   const hasEmptyOption = options.some((o) => o.value === "");
@@ -99,6 +102,7 @@ export function Select({
         <SelectPrimitive.Trigger
           id={id}
           onBlur={onBlur}
+          aria-busy={isLoading}
           aria-invalid={Boolean(error)}
           aria-describedby={error && id ? `${id}-error` : undefined}
           className={
@@ -111,15 +115,28 @@ export function Select({
             <SelectPrimitive.Value placeholder={placeholder} />
           </span>
           <SelectPrimitive.Icon asChild>
-            <ChevronDown
-              className={
-                isFilter
-                  ? "h-3.5 w-3.5 shrink-0 opacity-70 transition-transform group-data-[state=open]:rotate-180"
-                  : isInlineEdit
-                    ? "h-3.5 w-3.5 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
-                    : "h-4 w-4 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
-              }
-            />
+            {isLoading ? (
+              <Loader2
+                className={
+                  isFilter
+                    ? "h-3.5 w-3.5 shrink-0 animate-spin text-text-muted"
+                    : isInlineEdit
+                      ? "h-3.5 w-3.5 shrink-0 animate-spin text-text-muted"
+                      : "h-4 w-4 shrink-0 animate-spin text-text-muted"
+                }
+                aria-hidden
+              />
+            ) : (
+              <ChevronDown
+                className={
+                  isFilter
+                    ? "h-3.5 w-3.5 shrink-0 opacity-70 transition-transform group-data-[state=open]:rotate-180"
+                    : isInlineEdit
+                      ? "h-3.5 w-3.5 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
+                      : "h-4 w-4 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
+                }
+              />
+            )}
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>

@@ -192,8 +192,10 @@ export async function getTimeReportEntries(
   if (!rows || rows.length === 0) return [];
 
   type Row = (typeof rows)[0];
+  // Include display_order so multiple grid rows with the same customer + project + role + jira
+  // stay separate (save assigns a distinct display_order per row; without it, reload merges them).
   const groupKey = (r: Row) =>
-    `${r.customer_id}|${r.project_id}|${r.role_id}|${r.jira_devops_key ?? ""}`;
+    `${r.customer_id}|${r.project_id}|${r.role_id}|${r.jira_devops_key ?? ""}|${Number(r.display_order ?? 0)}`;
   const byGroup = new Map<string, Row[]>();
   for (const r of rows) {
     const key = groupKey(r);
