@@ -106,6 +106,12 @@ export function TimeReportPageClient({
   const router = useRouter();
   const [projectCache, setProjectCache] = useState<Record<string, ProjectOption[]>>({});
   const [taskCache, setTaskCache] = useState<Record<string, TaskOption[]>>({});
+  const [projectOptionsLoading, setProjectOptionsLoading] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [taskOptionsLoading, setTaskOptionsLoading] = useState<Record<string, boolean>>({});
+  const projectLoadInflightRef = useRef<Set<string>>(new Set());
+  const taskLoadInflightRef = useRef<Set<string>>(new Set());
   const [jiraDevOpsCache, setJiraDevOpsCache] = useState<Record<string, JiraDevOpsOption[]>>({});
   const [editingCell, setEditingCell] = useState<{ entryId: string; dayIndex: number } | null>(null);
   const [commentState, setCommentState] = useState<{ entryId: string } | null>(null);
@@ -482,18 +488,42 @@ export function TimeReportPageClient({
   const loadProjectsForCustomer = useCallback(async (customerId: string) => {
     if (!customerId) return;
     if (projectCache[customerId] !== undefined) return;
-    const list = await getActiveProjectsForCustomer(customerId);
-    setProjectCache((prev) =>
-      prev[customerId] !== undefined ? prev : { ...prev, [customerId]: list }
-    );
+    if (projectLoadInflightRef.current.has(customerId)) return;
+    projectLoadInflightRef.current.add(customerId);
+    setProjectOptionsLoading((s) => ({ ...s, [customerId]: true }));
+    try {
+      const list = await getActiveProjectsForCustomer(customerId);
+      setProjectCache((prev) =>
+        prev[customerId] !== undefined ? prev : { ...prev, [customerId]: list }
+      );
+    } finally {
+      projectLoadInflightRef.current.delete(customerId);
+      setProjectOptionsLoading((s) => {
+        const next = { ...s };
+        delete next[customerId];
+        return next;
+      });
+    }
   }, [projectCache]);
 
   const loadTaskOptions = useCallback(async (customerId: string, projectId: string) => {
     const key = taskCacheKey(customerId, projectId);
     if (!customerId) return;
     if (taskCache[key] !== undefined) return;
-    const list = await getTaskOptionsForCustomerAndProject(customerId, projectId || undefined);
-    setTaskCache((prev) => (prev[key] !== undefined ? prev : { ...prev, [key]: list }));
+    if (taskLoadInflightRef.current.has(key)) return;
+    taskLoadInflightRef.current.add(key);
+    setTaskOptionsLoading((s) => ({ ...s, [key]: true }));
+    try {
+      const list = await getTaskOptionsForCustomerAndProject(customerId, projectId || undefined);
+      setTaskCache((prev) => (prev[key] !== undefined ? prev : { ...prev, [key]: list }));
+    } finally {
+      taskLoadInflightRef.current.delete(key);
+      setTaskOptionsLoading((s) => {
+        const next = { ...s };
+        delete next[key];
+        return next;
+      });
+    }
   }, [taskCache]);
 
   const loadJiraDevOpsForProject = useCallback(async (projectId: string) => {
@@ -974,6 +1004,7 @@ export function TimeReportPageClient({
                                 variant="filter"
                                 placeholder="—"
                                 triggerClassName="h-7 w-full min-w-0 max-w-full truncate text-xs"
+                                isLoading={Boolean(projectOptionsLoading[group.customerId])}
                               />
                             </div>
                           </td>
@@ -992,6 +1023,11 @@ export function TimeReportPageClient({
                                 variant="filter"
                                 placeholder="—"
                                 triggerClassName="h-7 w-full min-w-0 max-w-full truncate text-xs"
+                                isLoading={Boolean(
+                                  taskOptionsLoading[
+                                    taskCacheKey(group.customerId, entry.projectId)
+                                  ]
+                                )}
                               />
                             </div>
                           </td>
