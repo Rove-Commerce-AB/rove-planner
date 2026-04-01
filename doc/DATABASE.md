@@ -1,232 +1,314 @@
-# Database Schema – ResursPlanner
+# Database schema
 
-This document is the source of truth for the database schema.
-When generating SQL, queries, types, or UI logic, follow this strictly.
+This document mirrors the **Supabase / PostgreSQL** schema (DDL excerpt). Use it when generating SQL, queries, types, or UI logic.  
 Terminology: we use **customer** (never client).
+
+> Additional indexes, unique constraints, and RLS policies may exist in migrations and are not repeated here unless noted.
+
+---
+
+## app_users
+
+Authenticated application users (linked to auth by email).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| email | text | NOT NULL, UNIQUE |
+| role | text | NOT NULL, default `member`; check: `admin`, `member`, `subcontractor` |
+| name | text | nullable |
+| created_at | timestamptz | NOT NULL, default now() |
+| updated_at | timestamptz | NOT NULL, default now() |
+
+Application code may map legacy DB values (e.g. `underkonsult`) to `subcontractor`.
 
 ---
 
 ## customers
-Represents a customer/company.
 
-Columns:
-- id (uuid, pk)
-- name (text)
-- contact_name (text, nullable)
-- contact_email (text, nullable)
-- account_manager_id (uuid, nullable, fk → consultants.id)  # Account manager for this customer
-- color (text, default '#3b82f6')  # hex color for allocation and card
-- logo_url (text, nullable)        # URL to customer logo
-- is_active (boolean, default true)  # false = inactive/archived customer
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Customer / company.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| name | text | NOT NULL |
+| contact_name | text | nullable |
+| contact_email | text | nullable |
+| color | text | default `#3b82f6` |
+| logo_url | text | nullable |
+| is_active | boolean | NOT NULL, default true |
+| account_manager_id | uuid | nullable, FK → `consultants.id` |
+| url | text | nullable (e.g. website for favicon / links) |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## roles
-Roles used for consultants and (optionally) allocation overrides. Also used for customer-specific rates.
 
-Columns:
-- id (uuid, pk)
-- name (text, unique)
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Roles for consultants, allocation overrides, and rate tables.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| name | text | NOT NULL, UNIQUE |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## calendars
-Defines working hours per week and a set of holidays per country/region.
 
-Columns:
-- id (uuid, pk)
-- name (text)           e.g. "Sverige"
-- country_code (text)   e.g. "SE", "NO"
-- hours_per_week (numeric)
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Working-hours context and holiday calendar identifier (holidays in `calendar_holidays`).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| name | text | NOT NULL |
+| country_code | text | NOT NULL; length 2–3 |
+| hours_per_week | numeric | NOT NULL, default 40, ≥ 0 |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## teams
-Team for grouping consultants (e.g. Team Sthlm, Team Helsingborg, Team Polen).
 
-Columns:
-- id (uuid, pk)
-- name (text, unique)
-- created_at (timestamptz)
-- updated_at (timestamptz)
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| name | text | NOT NULL, UNIQUE |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## calendar_holidays
-Holidays belonging to a calendar.
 
-Columns:
-- id (uuid, pk)
-- calendar_id (uuid, fk → calendars.id)
-- holiday_date (date)
-- name (text)
-- created_at (timestamptz)
-- updated_at (timestamptz)
-
-Constraint:
-- unique(calendar_id, holiday_date)
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| calendar_id | uuid | NOT NULL, FK → `calendars.id` |
+| holiday_date | date | NOT NULL |
+| name | text | NOT NULL |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## consultants
-A person that can be allocated to projects. Has a default role, calendar and team.
 
-Columns:
-- id (uuid, pk)
-- name (text)
-- email (text, nullable)
-- role_id (uuid, fk → roles.id)
-- calendar_id (uuid, fk → calendars.id)
-- team_id (uuid, nullable, fk → teams.id)
-- is_external (boolean, default false)  # true = external consultant
-- work_percentage (smallint, default 100)  # 100 = full-time; 80 = 80% (capacity = calendar × work_percentage/100)
-- overhead_percentage (smallint, default 0)  # 0–100; share of capacity used for overhead (e.g. sales). Available for projects = capacity × (1 − overhead_percentage/100)
-- start_date (date, nullable)  # First day consultant is available; null = no start limit
-- end_date (date, nullable)  # Last day consultant is available; null = no end limit. Allocation cells outside this period are shown gray (bookings still allowed).
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Allocatable person; default role, calendar, optional team.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| name | text | NOT NULL |
+| email | text | nullable |
+| role_id | uuid | NOT NULL, FK → `roles.id` |
+| calendar_id | uuid | NOT NULL, FK → `calendars.id` |
+| team_id | uuid | nullable, FK → `teams.id` |
+| is_external | boolean | NOT NULL, default false |
+| work_percentage | smallint | NOT NULL, default 100; check 5–100 |
+| overhead_percentage | smallint | nullable, default 0 |
+| start_date | date | nullable |
+| end_date | date | nullable |
+| birth_date | date | nullable |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## projects
-A project always belongs to a customer. Optionally linked to one external project: either a Jira project or a DevOps project (for time reporting etc.).
 
-Columns:
-- id (uuid, pk)
-- customer_id (uuid, fk → customers.id)
-- name (text)
-- is_active (boolean, default true)  # false = inactive/archived
-- start_date (date, nullable)
-- end_date (date, nullable)
-- created_at (timestamptz)
-- updated_at (timestamptz)
-- jira_project_key (text, nullable)  # Link to jira_issues.project_key; mutually exclusive with devops_project
-- devops_project (text, nullable)   # Link to devops_work_items.project; mutually exclusive with jira_project_key
+Belongs to one customer. Optional Jira / DevOps integration fields, PM, budgets.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| customer_id | uuid | NOT NULL, FK → `customers.id` |
+| name | text | NOT NULL |
+| start_date | date | nullable |
+| end_date | date | nullable |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
+| is_active | boolean | NOT NULL, default true |
+| type | `project_type` (enum) | NOT NULL, default `customer` |
+| probability | integer | NOT NULL, default 100; check 1–100 |
+| jira_project_key | text | nullable; joins `jira_issues.project_key` |
+| devops_project | text | nullable; joins `devops_work_items.project` |
+| budget_hours | numeric | nullable |
+| budget_money | numeric | nullable |
+| project_manager_id | uuid | nullable, FK → `consultants.id` |
 
 ---
 
 ## jira_issues
-Issues synced from Jira. Filled automatically by an external sync process.
 
-Columns:
-- jira_key (text, pk)
-- summary (text)
-- parent_key (text, nullable)
-- parent_summary (text, nullable)
-- parent_type (text, nullable)
-- status (text)
-- created_at (timestamptz)
-- updated_at (timestamptz)
-- due_date (date, nullable)
-- issue_type (text)
-- original_estimate_hours (numeric, nullable)
-- source_instance (text)
-- last_synced_at (timestamptz)
-- project_key (text)   # Used to link projects.jira_project_key
-- project_name (text, nullable)
+Synced Jira issues.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| jira_key | text | PK |
+| summary | text | nullable |
+| parent_key | text | nullable |
+| parent_summary | text | nullable |
+| parent_type | text | nullable |
+| status | text | nullable |
+| created_at | timestamptz | nullable |
+| updated_at | timestamptz | nullable |
+| due_date | date | nullable |
+| issue_type | text | nullable |
+| original_estimate_hours | numeric | nullable |
+| source_instance | text | nullable |
+| last_synced_at | timestamptz | nullable, default now() |
+| project_key | text | nullable |
+| project_name | text | nullable |
+| url | text | nullable |
 
 ---
 
 ## devops_work_items
-Work items synced from Azure DevOps. Filled automatically by an external sync process.
 
-Columns:
-- work_item_id (int8, pk)
-- title (text)
-- project (text)   # Used to link projects.devops_project
-- state (text)
-- last_synced_at (timestamptz)
+Synced Azure DevOps work items.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| work_item_id | bigint | PK |
+| title | text | nullable |
+| project | text | nullable |
+| state | text | nullable |
+| last_synced_at | timestamptz | nullable, default now() |
 
 ---
 
 ## customer_rates
-Customer-specific hourly rates per role (used for pricing).
 
-Columns:
-- id (uuid, pk)
-- customer_id (uuid, fk → customers.id)
-- role_id (uuid, fk → roles.id)
-- rate_per_hour (numeric)
-- currency (text, default 'SEK')
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Customer-level hourly rates per role.
 
-Constraint:
-- unique(customer_id, role_id)
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| customer_id | uuid | NOT NULL, FK → `customers.id` |
+| role_id | uuid | NOT NULL, FK → `roles.id` |
+| rate_per_hour | numeric | NOT NULL, ≥ 0 |
+| currency | text | NOT NULL, default `SEK` |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## project_rates
-Project-specific hourly rates per role. Override customer rates when present. Effective rate for an allocation: project rate if it exists for that project and role, otherwise customer rate (for the project’s customer and role).
 
-Columns:
-- id (uuid, pk)
-- project_id (uuid, fk → projects.id)
-- role_id (uuid, fk → roles.id)
-- rate_per_hour (numeric)
-- currency (text, default 'SEK')
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Project-level rates per role (override customer rates when present).
 
-Constraint:
-- unique(project_id, role_id)
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| project_id | uuid | NOT NULL, FK → `projects.id` |
+| role_id | uuid | NOT NULL, FK → `roles.id` |
+| rate_per_hour | numeric | NOT NULL |
+| currency | text | NOT NULL, default `SEK` |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
 ---
 
 ## customer_consultants
-Consultants assigned to a customer. Used to restrict which projects are offered when adding an allocation for a consultant: only projects belonging to customers that have that consultant assigned are listed. If no consultant is selected, all projects are listed.
 
-Columns:
-- customer_id (uuid, fk → customers.id, part of pk)
-- consultant_id (uuid, fk → consultants.id, part of pk)
-- created_at (timestamptz)
+Which consultants may work on which customers (used e.g. for allocation / time-report access).
 
-Constraint:
-- primary key (customer_id, consultant_id)
+| Column | Type | Notes |
+|--------|------|--------|
+| customer_id | uuid | PK part, FK → `customers.id` |
+| consultant_id | uuid | PK part, FK → `consultants.id` |
+| created_at | timestamptz | NOT NULL |
 
 ---
 
 ## allocations
-One row per consultant + project + week.
-Used by both views:
-- "Per consultant"
-- "Per customer"
 
-Columns:
-- id (uuid, pk)
-- consultant_id (uuid, fk → consultants.id)
-- project_id (uuid, fk → projects.id)
-- role_id (uuid, nullable, fk → roles.id)  # override role for this allocation (optional)
-- year (smallint)
-- week (smallint)
-- hours (numeric)
-- created_at (timestamptz)
-- updated_at (timestamptz)
+Consultant allocation per project (and optional role) per ISO week.
 
-Uniqueness rules:
-- If role_id is NOT NULL: unique(consultant_id, project_id, year, week, role_id)
-- If role_id is NULL: only one row per (consultant_id, project_id, year, week)
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| consultant_id | uuid | nullable, FK → `consultants.id` |
+| project_id | uuid | NOT NULL, FK → `projects.id` |
+| role_id | uuid | nullable, FK → `roles.id` |
+| year | smallint | NOT NULL; check 2000–2100 |
+| week | smallint | NOT NULL; check 1–53 |
+| hours | numeric | NOT NULL, ≥ 0 |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
 
-Notes:
-- Consultants have a default role, but allocations may override it via role_id.
-- Projects always belong to a customer.
-- All rollups (per customer, per consultant, dashboards) are derived from allocations + joins.
+Uniqueness and extra constraints: confirm in live DB / migrations (not in the excerpt).
+
+---
+
+## allocation_history
+
+Audit log for allocation changes.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| allocation_id | uuid | nullable |
+| action | text | NOT NULL; check: `create`, `update`, `delete`, `bulk` |
+| changed_by_email | text | NOT NULL |
+| changed_at | timestamptz | NOT NULL, default now() |
+| details | jsonb | nullable |
+
+---
+
+## time_report_entries
+
+One row per **calendar day** per logical grid row (consultant + customer + project + role + Jira/DevOps key + `display_order`). The app groups rows by week for the time report UI.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| consultant_id | uuid | NOT NULL, FK → `consultants.id` |
+| customer_id | uuid | NOT NULL, FK → `customers.id` |
+| project_id | uuid | NOT NULL, FK → `projects.id` |
+| role_id | uuid | NOT NULL, FK → `roles.id` |
+| jira_devops_key | text | nullable |
+| entry_date | date | NOT NULL |
+| hours | numeric | NOT NULL, default 0 |
+| internal_comment | text | nullable (per-day comment) |
+| rate_snapshot | numeric | nullable |
+| display_order | smallint | NOT NULL, default 0; separates multiple UI lines with same project/role/jira |
+| description | text | nullable; row-level task text |
+| pm_edited_hours | numeric | nullable |
+| pm_edited_comment | text | nullable |
+| pm_edited_at | timestamptz | nullable |
+| pm_edited_by | uuid | nullable, FK → `consultants.id` |
+| invoiced_at | timestamptz | nullable |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
+
+Unique / index definitions: see migrations (e.g. uniqueness including `display_order`).
 
 ---
 
 ## feature_requests
-User-submitted feature requests. Shown and managed on the Settings page.
 
-Columns:
-- id (uuid, pk)
-- content (text)
-- created_at (timestamptz)
-- updated_at (timestamptz)
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK |
+| content | text | NOT NULL |
+| created_at | timestamptz | NOT NULL |
+| updated_at | timestamptz | NOT NULL |
+| submitted_by_email | text | nullable |
+| is_implemented | boolean | NOT NULL, default false |
 
 ---
+
+## Relationship summary (short)
+
+- **customers** → **projects** → **allocations** / **time_report_entries**  
+- **consultants** ↔ **customers** via **customer_consultants**; **allocations** link consultant + project + week (+ optional role)  
+- **customer_rates** / **project_rates** + **roles** drive pricing; **time_report_entries** can store **rate_snapshot** at save  
+- **jira_issues** / **devops_work_items** integrate with **projects** for issue pickers  
+
+RLS and API exposure are defined in Supabase and application code, not in this DDL excerpt.
