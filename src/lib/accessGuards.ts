@@ -16,3 +16,10 @@ export async function assertNotSubcontractorForWrite() {
     throw new Error("Unauthorized");
   }
 }
+
+export async function assertAdmin() {
+  const user = await getCurrentAppUser();
+  if (!user || user.role !== "admin") {
+    throw new Error("Unauthorized");
+  }
+}

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { updateConsultant, deleteConsultant } from "@/lib/consultantsClient";
+import { updateConsultant } from "@/lib/consultantsClient";
+import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
 import { getRoles } from "@/lib/rolesClient";
@@ -25,6 +26,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  isAdmin?: boolean;
 };
 
 export function EditConsultantModal({
@@ -32,6 +34,7 @@ export function EditConsultantModal({
   isOpen,
   onClose,
   onSuccess,
+  isAdmin = false,
 }: Props) {
   const [name, setName] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -124,7 +127,7 @@ export function EditConsultantModal({
     setError(null);
     setDeleting(true);
     try {
-      await deleteConsultant(consultant.id);
+      await deleteConsultantAction(consultant.id);
       setShowDeleteConfirm(false);
       resetForm();
       onSuccess();
@@ -331,14 +334,18 @@ export function EditConsultantModal({
         </form>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="dangerSecondary"
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </Button>
+          {isAdmin ? (
+            <Button
+              type="button"
+              variant="dangerSecondary"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={submitting || deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
@@ -354,15 +361,17 @@ export function EditConsultantModal({
         </div>
       </div>
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete consultant"
-        message={`Delete ${consultant?.name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          title="Delete consultant"
+          message={`Delete ${consultant?.name}? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   );
 }

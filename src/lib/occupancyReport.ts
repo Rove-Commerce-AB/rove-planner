@@ -1,7 +1,7 @@
 import "server-only";
 
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCachedConsultantsRaw } from "./consultantsCache";
-import { createClient } from "@/lib/supabase/server";
 import { getProjectsWithCustomer } from "./projects";
 import { getAllocationsForWeeks } from "./allocations";
 import {
@@ -50,15 +50,14 @@ function weekLabel(year: number, week: number): string {
 async function getOccupancyBaseData(
   weeks: { year: number; week: number }[]
 ): Promise<OccupancyBaseData> {
-  const [consultantsRaw, allocations, calendarsRes] = await Promise.all([
+  const [consultantsRaw, allocations, calQuery] = await Promise.all([
     getCachedConsultantsRaw(),
     getAllocationsForWeeks(weeks),
-    (async () => {
-      const supabase = await createClient();
-      return supabase.from("calendars").select("id,hours_per_week");
-    })(),
+    cloudSqlPool.query<{ id: string; hours_per_week: string | number }>(
+      `SELECT id, hours_per_week FROM calendars`
+    ),
   ]);
-  const calendarsData = calendarsRes.data ?? [];
+  const calendarsData = calQuery.rows;
   const calendarMap = new Map<string, number>();
   for (const c of calendarsData as { id: string; hours_per_week?: number }[]) {
     calendarMap.set(c.id, Number(c.hours_per_week) || DEFAULT_HOURS_PER_WEEK);

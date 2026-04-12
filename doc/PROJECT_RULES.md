@@ -18,9 +18,9 @@ AI-vänlig kodbas (Cursor, Copilot m.fl.)
 Frontend: Next.js (App Router)
 UI: React + TypeScript
 Styling: Tailwind CSS
-Backend: Supabase
-Databas: PostgreSQL (via Supabase)
-Auth: Supabase Auth (senare)
+Backend: Next.js (Server Components, server actions) + `src/lib/` med `pg` mot PostgreSQL
+Databas: PostgreSQL (Google Cloud SQL)
+Auth: Auth.js (NextAuth) med Google; `app_users` i samma databas
 Hosting: Vercel
 Versionering: Git + GitHub
 
@@ -76,7 +76,7 @@ consultant → många allocations
 allocation → exakt en consultant + ett project + en role
 consultant → exakt en calendar
 
-6. Databasprinciper (Supabase)
+6. Databasprinciper (PostgreSQL / Cloud SQL)
 PostgreSQL är source of truth
 Alla tabeller:
 id (uuid)
@@ -84,17 +84,18 @@ created_at
 updated_at
 Soft deletes används vid behov (is_active)
 Säkerhet
-Row Level Security (RLS) aktiveras
+Åtkomst sker via servern (Auth.js-session + kontroller i `lib/`); ingen direkt DB från webbläsaren
+Anslutning: `CLOUD_SQL_URL` (se `src/lib/cloudSqlPool.ts`)
 Första versionen: single-tenant
-Senare: org_id på alla tabeller
+Senare: org_id på alla tabeller (vid behov)
 
 7. Dataåtkomst
-Alla Supabase-anrop sker via lib/.
+All databasåtkomst sker via `src/lib/` (query-moduler + tunna wrappers), anropade från Server Components eller server actions.
 Exempel:
-lib/clients.ts
+lib/customers.ts
 lib/projects.ts
 lib/allocations.ts
-Pages får inte prata direkt med Supabase utanför lib.
+Pages och klientkomponenter får inte öppna egna databasanslutningar utanför det mönstret.
 
 8. UI-principer
 Dashboard är read-only

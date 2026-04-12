@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { ArrowRightLeft, Plus } from "lucide-react";
 import {
   updateProject,
-  deleteProject,
   getUniqueJiraAndDevopsProjects,
   type IntegrationProjectOption,
 } from "@/lib/projectsClient";
+import { deleteProjectAction } from "@/app/(app)/projects/actions";
 import { getCustomers } from "@/lib/customersClient";
 import { getConsultantsList } from "@/lib/consultantsClient";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
@@ -85,6 +85,7 @@ type Props = {
   currentWeek: number;
   /** Role ID -> rate per hour (SEK) for planning panel revenue row. */
   allocationRates?: Record<string, number>;
+  isAdmin?: boolean;
 };
 
 export function ProjectDetailClient({
@@ -97,6 +98,7 @@ export function ProjectDetailClient({
   currentYear,
   currentWeek,
   allocationRates,
+  isAdmin = false,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
@@ -467,7 +469,7 @@ export function ProjectDetailClient({
     setError(null);
     setDeleting(true);
     try {
-      await deleteProject(initial.id);
+      await deleteProjectAction(initial.id, initial.customer_id);
       setShowDeleteConfirm(false);
       const customerId = initial.customer_id;
       if (customerId) {
@@ -1060,12 +1062,14 @@ export function ProjectDetailClient({
       </Panel>
       </div>
 
-      <DetailPageDeleteFooter
-        className="mx-auto w-full max-w-3xl pt-4"
-        onRequestDelete={() => setShowDeleteConfirm(true)}
-        disabled={submitting || deleting}
-        label="Delete project"
-      />
+      {isAdmin && (
+        <DetailPageDeleteFooter
+          className="mx-auto w-full max-w-3xl pt-4"
+          onRequestDelete={() => setShowDeleteConfirm(true)}
+          disabled={submitting || deleting}
+          label="Delete project"
+        />
+      )}
 
       <AddProjectRateModal
         isOpen={addRateModalOpen}
@@ -1077,15 +1081,17 @@ export function ProjectDetailClient({
         projectId={initial.id}
       />
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete project"
-        message={`Delete ${name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          title="Delete project"
+          message={`Delete ${name}? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       <Dialog
         open={showMoveBookingModal}

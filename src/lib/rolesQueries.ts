@@ -1,55 +1,38 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 export type Role = {
   id: string;
   name: string;
 };
 
-export async function fetchRoles(supabase: SupabaseClient): Promise<Role[]> {
-  const { data, error } = await supabase
-    .from("roles")
-    .select("id,name")
-    .order("name");
-
-  if (error) throw error;
-  return data ?? [];
+export async function fetchRoles(): Promise<Role[]> {
+  const { rows } = await cloudSqlPool.query<Role>(
+    `SELECT id, name FROM roles ORDER BY name`
+  );
+  return rows;
 }
 
-export async function createRoleQuery(
-  supabase: SupabaseClient,
-  name: string
-): Promise<Role> {
-  const { data, error } = await supabase
-    .from("roles")
-    .insert({ name: name.trim() })
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+export async function createRoleQuery(name: string): Promise<Role> {
+  const { rows } = await cloudSqlPool.query<Role>(
+    `INSERT INTO roles (name) VALUES ($1) RETURNING id, name`,
+    [name.trim()]
+  );
+  if (!rows[0]) throw new Error("Failed to create role");
+  return rows[0];
 }
 
 export async function updateRoleQuery(
-  supabase: SupabaseClient,
   id: string,
   name: string
 ): Promise<Role> {
-  const { data, error } = await supabase
-    .from("roles")
-    .update({ name: name.trim() })
-    .eq("id", id)
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+  const { rows } = await cloudSqlPool.query<Role>(
+    `UPDATE roles SET name = $2, updated_at = now() WHERE id = $1 RETURNING id, name`,
+    [id, name.trim()]
+  );
+  if (!rows[0]) throw new Error("Failed to update role");
+  return rows[0];
 }
 
-export async function deleteRoleQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("roles").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteRoleQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM roles WHERE id = $1`, [id]);
 }

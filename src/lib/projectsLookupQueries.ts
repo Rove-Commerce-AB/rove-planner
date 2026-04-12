@@ -1,9 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import type { ProjectType } from "@/types";
 
 const PROJECT_SELECT =
-  "id,customer_id,name,is_active,type,project_manager_id,start_date,end_date,probability,jira_project_key,devops_project,budget_hours,budget_money";
+  "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, budget_hours, budget_money";
 
 export type ProjectRecordRow = {
   id: string;
@@ -22,31 +22,30 @@ export type ProjectRecordRow = {
 };
 
 export async function fetchProjectsByCustomerIds(
-  supabase: SupabaseClient,
   customerIds: string[]
 ): Promise<ProjectRecordRow[]> {
   if (customerIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .in("customer_id", customerIds);
-
-  if (error) throw error;
-  return (data ?? []) as ProjectRecordRow[];
+  const { rows } = await cloudSqlPool.query<ProjectRecordRow>(
+    `SELECT ${PROJECT_SELECT} FROM projects WHERE customer_id = ANY($1::uuid[])`,
+    [customerIds]
+  );
+  return rows.map((r) => ({
+    ...r,
+    probability: r.probability != null ? Number(r.probability) : null,
+    budget_hours: r.budget_hours != null ? Number(r.budget_hours) : null,
+    budget_money: r.budget_money != null ? Number(r.budget_money) : null,
+  }));
 }
 
 export async function fetchProjectsByIds(
-  supabase: SupabaseClient,
   ids: string[]
 ): Promise<{ id: string; name: string }[]> {
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("projects")
-    .select("id,name")
-    .in("id", ids);
-
-  if (error) throw error;
-  return data ?? [];
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM projects WHERE id = ANY($1::uuid[])`,
+    [ids]
+  );
+  return rows;
 }

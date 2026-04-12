@@ -1,11 +1,11 @@
 import "server-only";
 
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getProjectsByCustomerIds } from "@/lib/projects";
 import {
   getJiraIssuesByProjectKey,
   getDevOpsWorkItemsByProject,
 } from "@/lib/timeReportIntegrations";
-import { createClient } from "@/lib/supabase/server";
 import { getCustomerRates } from "@/lib/customerRates";
 import { getProjectRates, getRolesWithRateForAllocation } from "@/lib/projectRates";
 import { getCalendarHolidays } from "@/lib/calendarHolidays";
@@ -22,34 +22,32 @@ import type {
 } from "@/types";
 
 async function getTimeReportAccessContext() {
-  const [appUser, consultant, supabase] = await Promise.all([
+  const [appUser, consultant] = await Promise.all([
     getCurrentAppUser(),
     getConsultantForCurrentUser(),
-    createClient(),
   ]);
   if (!consultant?.id) {
     return {
       appUser,
       consultant: null,
-      supabase,
       allowedCustomerIds: new Set<string>(),
       bookedProjectIds: new Set<string>(),
     };
   }
 
-  const { data: customerLinks } = await supabase
-    .from("customer_consultants")
-    .select("customer_id")
-    .eq("consultant_id", consultant.id);
-  const allowedCustomerIds = new Set((customerLinks ?? []).map((r) => r.customer_id));
+  const { rows: customerLinks } = await cloudSqlPool.query<{ customer_id: string }>(
+    `SELECT customer_id FROM customer_consultants WHERE consultant_id = $1`,
+    [consultant.id]
+  );
+  const allowedCustomerIds = new Set(customerLinks.map((r) => r.customer_id));
 
-  const { data: allocations } = await supabase
-    .from("allocations")
-    .select("project_id")
-    .eq("consultant_id", consultant.id);
-  const bookedProjectIds = new Set((allocations ?? []).map((r) => r.project_id));
+  const { rows: allocations } = await cloudSqlPool.query<{ project_id: string }>(
+    `SELECT project_id FROM allocations WHERE consultant_id = $1`,
+    [consultant.id]
+  );
+  const bookedProjectIds = new Set(allocations.map((r) => r.project_id));
 
-  return { appUser, consultant, supabase, allowedCustomerIds, bookedProjectIds };
+  return { appUser, consultant, allowedCustomerIds, bookedProjectIds };
 }
 
 function isSubcontractorRole(role: string | undefined): boolean {
@@ -83,13 +81,15 @@ export async function getJiraDevOpsOptionsForProject(
   if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(projectId)) {
     return [];
   }
-  const supabase = ctx.supabase;
-  const { data: project, error } = await supabase
-    .from("projects")
-    .select("jira_project_key, devops_project")
-    .eq("id", projectId)
-    .single();
-  if (error || !project) return [];
+  const { rows } = await cloudSqlPool.query<{
+    jira_project_key: string | null;
+    devops_project: string | null;
+  }>(
+    `SELECT jira_project_key, devops_project FROM projects WHERE id = $1`,
+    [projectId]
+  );
+  const project = rows[0];
+  if (!project) return [];
 
   const options: JiraDevOpsOption[] = [];
   if (project.jira_project_key) {
@@ -117,7 +117,11 @@ export async function getTaskOptionsForCustomerAndProject(
   const ctx = await getTimeReportAccessContext();
   if (!ctx.consultant) return [];
   if (!ctx.allowedCustomerIds.has(customerId)) return [];
-  if (isSubcontractorRole(ctx.appUser?.role) && projectId && !ctx.bookedProjectIds.has(projectId)) {
+  if (
+    isSubcontractorRole(ctx.appUser?.role) &&
+    projectId &&
+    !ctx.bookedProjectIds.has(projectId)
+  ) {
     return [];
   }
 
@@ -128,13 +132,10 @@ export async function getTaskOptionsForCustomerAndProject(
   const rates = await getCustomerRates(customerId);
   const roleIds = [...new Set(rates.map((r) => r.role_id))];
   if (roleIds.length === 0) return [];
-  const supabase = await createClient();
-  const { data: roles, error } = await supabase
-    .from("roles")
-    .select("id,name")
-    .in("id", roleIds)
-    .order("name");
-  if (error || !roles) return [];
+  const { rows: roles } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM roles WHERE id = ANY($1::uuid[]) ORDER BY name`,
+    [roleIds]
+  );
   return roles.map((r) => ({ value: r.id, label: r.name }));
 }
 
@@ -203,7 +204,6 @@ export async function batchHydrateTimeReport(
     uniquePairs.push({ customerId: pair.customerId, projectId: normProjectId });
   }
 
-  const supabase = ctx.supabase;
   const taskEntries = await Promise.all(
     uniquePairs.map(async ({ customerId, projectId }) => {
       const key = timeReportTaskCacheKeyServer(customerId, projectId);
@@ -216,16 +216,11 @@ export async function batchHydrateTimeReport(
       if (roleIds.length === 0) {
         return [key, [] as TaskOption[]] as const;
       }
-      const { data: roles, error } = await supabase
-        .from("roles")
-        .select("id,name")
-        .in("id", roleIds)
-        .order("name");
-      const options =
-        error || !roles
-          ? []
-          : roles.map((r) => ({ value: r.id, label: r.name }));
-      return [key, options] as const;
+      const { rows: roles } = await cloudSqlPool.query<{ id: string; name: string }>(
+        `SELECT id, name FROM roles WHERE id = ANY($1::uuid[]) ORDER BY name`,
+        [roleIds]
+      );
+      return [key, roles.map((r) => ({ value: r.id, label: r.name }))] as const;
     })
   );
 
@@ -266,6 +261,20 @@ async function getEffectiveRateSnapshot(
   return null;
 }
 
+type TimeReportRow = {
+  id: string;
+  customer_id: string;
+  project_id: string;
+  role_id: string;
+  jira_devops_key: string | null;
+  description: string | null;
+  entry_date: string;
+  hours: string | number;
+  internal_comment: string | null;
+  rate_snapshot: string | number | null;
+  display_order: string | number | null;
+};
+
 export async function getTimeReportEntries(
   consultantId: string,
   year: number,
@@ -274,35 +283,29 @@ export async function getTimeReportEntries(
   const consultant = await getConsultantForCurrentUser();
   if (!consultant || consultant.id !== consultantId) return [];
 
-  const supabase = await createClient();
   const weekDates = getISOWeekDateStrings(year, week);
 
-  const { data: rows, error } = await supabase
-    .from("time_report_entries")
-    .select(
-      "id, customer_id, project_id, role_id, jira_devops_key, description, entry_date, hours, internal_comment, rate_snapshot, display_order"
-    )
-    .eq("consultant_id", consultantId)
-    .in("entry_date", weekDates)
-    .order("display_order", { ascending: true })
-    .order("entry_date", { ascending: true });
+  const { rows } = await cloudSqlPool.query<TimeReportRow>(
+    `SELECT id, customer_id, project_id, role_id, jira_devops_key, description,
+            entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
+     FROM time_report_entries
+     WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
+     ORDER BY display_order ASC NULLS LAST, entry_date ASC`,
+    [consultantId, weekDates]
+  );
 
-  if (error) throw error;
-  if (!rows || rows.length === 0) return [];
+  if (!rows.length) return [];
 
-  type Row = (typeof rows)[0];
-  // Include display_order so multiple grid rows with the same customer + project + role + jira
-  // stay separate (save assigns a distinct display_order per row; without it, reload merges them).
-  const groupKey = (r: Row) =>
+  const groupKey = (r: TimeReportRow) =>
     `${r.customer_id}|${r.project_id}|${r.role_id}|${r.jira_devops_key ?? ""}|${Number(r.display_order ?? 0)}`;
-  const byGroup = new Map<string, Row[]>();
+  const byGroup = new Map<string, TimeReportRow[]>();
   for (const r of rows) {
     const key = groupKey(r);
     if (!byGroup.has(key)) byGroup.set(key, []);
     byGroup.get(key)!.push(r);
   }
 
-  const byCustomer = new Map<string, { key: string; dayRows: Row[] }[]>();
+  const byCustomer = new Map<string, { key: string; dayRows: TimeReportRow[] }[]>();
   for (const [, dayRows] of byGroup) {
     const first = dayRows[0];
     const customerId = first.customer_id;
@@ -313,8 +316,8 @@ export async function getTimeReportEntries(
   const result: TimeReportCustomerGroup[] = [];
   for (const [customerId, groups] of byCustomer) {
     groups.sort((a, b) => {
-      const orderA = a.dayRows[0]?.display_order ?? 0;
-      const orderB = b.dayRows[0]?.display_order ?? 0;
+      const orderA = Number(a.dayRows[0]?.display_order ?? 0);
+      const orderB = Number(b.dayRows[0]?.display_order ?? 0);
       return orderA - orderB;
     });
     const entries: TimeReportEntry[] = groups.map(({ dayRows }) => {
@@ -362,16 +365,12 @@ export async function saveTimeReportEntries(
   }
 
   const isSubcontractor = isSubcontractorRole(ctx.appUser?.role);
-  const supabase = ctx.supabase;
   const weekDates = getISOWeekDateStrings(year, week);
 
-  const { error: deleteError } = await supabase
-    .from("time_report_entries")
-    .delete()
-    .eq("consultant_id", consultantId)
-    .in("entry_date", weekDates);
-
-  if (deleteError) return { error: deleteError.message };
+  await cloudSqlPool.query(
+    `DELETE FROM time_report_entries WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
+    [consultantId, weekDates]
+  );
 
   const rows: {
     consultant_id: string;
@@ -469,8 +468,31 @@ export async function saveTimeReportEntries(
   }
 
   if (rows.length > 0) {
-    const { error } = await supabase.from("time_report_entries").insert(rows);
-    if (error) return { error: error.message };
+    for (const row of rows) {
+      try {
+        await cloudSqlPool.query(
+          `INSERT INTO time_report_entries (
+             consultant_id, customer_id, project_id, role_id, jira_devops_key,
+             description, entry_date, hours, internal_comment, rate_snapshot, display_order
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11)`,
+          [
+            row.consultant_id,
+            row.customer_id,
+            row.project_id,
+            row.role_id,
+            row.jira_devops_key,
+            row.description,
+            row.entry_date,
+            row.hours,
+            row.internal_comment,
+            row.rate_snapshot,
+            row.display_order,
+          ]
+        );
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Insert failed" };
+      }
+    }
   }
 
   return {};
@@ -498,17 +520,16 @@ export async function copyEntryToWeek(
     return { error: "Project and Role are required." };
   }
 
-  const supabase = ctx.supabase;
   const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
 
-  const { data: existing } = await supabase
-    .from("time_report_entries")
-    .select("display_order")
-    .eq("consultant_id", consultantId)
-    .in("entry_date", weekDates);
+  const { rows: existing } = await cloudSqlPool.query<{ display_order: number | null }>(
+    `SELECT display_order FROM time_report_entries
+     WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
+    [consultantId, weekDates]
+  );
 
   const maxOrder =
-    existing?.length && existing.every((r) => r.display_order != null)
+    existing.length && existing.every((r) => r.display_order != null)
       ? Math.max(...existing.map((r) => Number(r.display_order)))
       : 0;
   const displayOrder = maxOrder + 1000;
@@ -557,7 +578,30 @@ export async function copyEntryToWeek(
     return { error: "Entry has no hours or comments to copy." };
   }
 
-  const { error } = await supabase.from("time_report_entries").insert(rows);
-  if (error) return { error: error.message };
+  for (const row of rows) {
+    try {
+      await cloudSqlPool.query(
+        `INSERT INTO time_report_entries (
+           consultant_id, customer_id, project_id, role_id, jira_devops_key,
+           description, entry_date, hours, internal_comment, rate_snapshot, display_order
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11)`,
+        [
+          row.consultant_id,
+          row.customer_id,
+          row.project_id,
+          row.role_id,
+          row.jira_devops_key,
+          row.description,
+          row.entry_date,
+          row.hours,
+          row.internal_comment,
+          row.rate_snapshot,
+          row.display_order,
+        ]
+      );
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Insert failed" };
+    }
+  }
   return {};
 }

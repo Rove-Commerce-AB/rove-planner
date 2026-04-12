@@ -1,20 +1,17 @@
-import { createClient } from "@/lib/supabase/client";
-import * as q from "./customerConsultantsQueries";
+"use server";
 
-export type { CustomerConsultant } from "./customerConsultantsQueries";
+import * as q from "./customerConsultantsQueries";
 
 export async function addConsultantToCustomer(
   customerId: string,
   consultantId: string
 ) {
-  const supabase = createClient();
-  return q.addConsultantToCustomer(supabase, customerId, consultantId);
+  return q.addConsultantToCustomer(customerId, consultantId);
 }
 
 export async function removeConsultantFromCustomer(
   customerId: string,
   consultantId: string
 ) {
-  const supabase = createClient();
-  return q.removeConsultantFromCustomer(supabase, customerId, consultantId);
+  return q.removeConsultantFromCustomer(customerId, consultantId);
 }

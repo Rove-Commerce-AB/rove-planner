@@ -56,12 +56,14 @@ type Props = {
   customer: CustomerWithDetails;
   initialConsultants: CustomerConsultant[];
   allConsultants: { id: string; name: string }[];
+  isAdmin?: boolean;
 };
 
 export function CustomerDetailClient({
   customer: initialCustomer,
   initialConsultants,
   allConsultants,
+  isAdmin = false,
 }: Props) {
   const router = useRouter();
   const { refreshCustomers } = useSidePanel();
@@ -633,11 +635,13 @@ export function CustomerDetailClient({
             </Panel>
           </div>
 
-          <DetailPageDeleteFooter
-            onRequestDelete={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-            label="Delete customer"
-          />
+          {isAdmin && (
+            <DetailPageDeleteFooter
+              onRequestDelete={() => setShowDeleteConfirm(true)}
+              disabled={submitting || deleting}
+              label="Delete customer"
+            />
+          )}
         </div>
       </div>
 
@@ -664,15 +668,17 @@ export function CustomerDetailClient({
         customerId={initialCustomer.id}
       />
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete customer"
-        message={`Delete ${name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          title="Delete customer"
+          message={`Delete ${name}? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       <ConfirmModal
         isOpen={showRemoveConsultantConfirm}

@@ -1,9 +1,9 @@
 # Database schema
 
-This document mirrors the **Supabase / PostgreSQL** schema (DDL excerpt). Use it when generating SQL, queries, types, or UI logic.  
+This document mirrors the **PostgreSQL** schema in use (DDL excerpt), e.g. on **Google Cloud SQL**. Use it when generating queries, types, or UI logic.  
 Terminology: we use **customer** (never client).
 
-> Additional indexes, unique constraints, and RLS policies may exist in migrations and are not repeated here unless noted.
+> Additional indexes, unique constraints, and policies may exist in the live database and are not repeated here unless noted.
 
 ---
 
@@ -311,4 +311,4 @@ Unique / index definitions: see migrations (e.g. uniqueness including `display_o
 - **customer_rates** / **project_rates** + **roles** drive pricing; **time_report_entries** can store **rate_snapshot** at save  
 - **jira_issues** / **devops_work_items** integrate with **projects** for issue pickers  
 
-RLS and API exposure are defined in Supabase and application code, not in this DDL excerpt.
+Authorization and row-level rules are enforced in **application code** (Auth.js + `app_users` + checks in `src/lib/`), not in this DDL excerpt.

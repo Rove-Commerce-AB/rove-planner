@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 export type Calendar = {
   id: string;
@@ -13,30 +13,25 @@ export type CreateCalendarInput = {
   hours_per_week: number;
 };
 
-export async function fetchCalendars(
-  supabase: SupabaseClient
-): Promise<Calendar[]> {
-  const { data, error } = await supabase
-    .from("calendars")
-    .select("id,name,country_code,hours_per_week")
-    .order("name");
-
-  if (error) throw error;
-  return data ?? [];
+export async function fetchCalendars(): Promise<Calendar[]> {
+  const { rows } = await cloudSqlPool.query<Calendar>(
+    `SELECT id, name, country_code, hours_per_week FROM calendars ORDER BY name`
+  );
+  return rows;
 }
 
-export async function fetchCalendarsWithHolidayCount(
-  supabase: SupabaseClient
-): Promise<(Calendar & { holiday_count: number })[]> {
-  const calendars = await fetchCalendars(supabase);
+export async function fetchCalendarsWithHolidayCount(): Promise<
+  (Calendar & { holiday_count: number })[]
+> {
+  const calendars = await fetchCalendars();
   if (calendars.length === 0) return [];
 
   let counts: { calendar_id: string }[] = [];
   try {
-    const { data } = await supabase
-      .from("calendar_holidays")
-      .select("calendar_id");
-    counts = data ?? [];
+    const { rows } = await cloudSqlPool.query<{ calendar_id: string }>(
+      `SELECT calendar_id FROM calendar_holidays`
+    );
+    counts = rows;
   } catch {
     // calendar_holidays table may not exist
   }
@@ -53,51 +48,51 @@ export async function fetchCalendarsWithHolidayCount(
 }
 
 export async function createCalendarQuery(
-  supabase: SupabaseClient,
   input: CreateCalendarInput
 ): Promise<Calendar> {
-  const { data, error } = await supabase
-    .from("calendars")
-    .insert({
-      name: input.name.trim(),
-      country_code: input.country_code.trim().toUpperCase().slice(0, 2),
-      hours_per_week: input.hours_per_week,
-    })
-    .select("id,name,country_code,hours_per_week")
-    .single();
-
-  if (error) throw error;
-  return data;
+  const { rows } = await cloudSqlPool.query<Calendar>(
+    `INSERT INTO calendars (name, country_code, hours_per_week)
+     VALUES ($1, $2, $3)
+     RETURNING id, name, country_code, hours_per_week`,
+    [
+      input.name.trim(),
+      input.country_code.trim().toUpperCase().slice(0, 2),
+      input.hours_per_week,
+    ]
+  );
+  if (!rows[0]) throw new Error("Failed to create calendar");
+  return rows[0];
 }
 
 export async function updateCalendarQuery(
-  supabase: SupabaseClient,
   id: string,
   input: { name?: string; country_code?: string; hours_per_week?: number }
 ): Promise<Calendar> {
-  const updates: Record<string, unknown> = {};
-  if (input.name !== undefined) updates.name = input.name.trim();
-  if (input.country_code !== undefined)
-    updates.country_code = input.country_code.trim().toUpperCase().slice(0, 2);
-  if (input.hours_per_week !== undefined)
-    updates.hours_per_week = input.hours_per_week;
-
-  const { data, error } = await supabase
-    .from("calendars")
-    .update(updates)
-    .eq("id", id)
-    .select("id,name,country_code,hours_per_week")
-    .single();
-
-  if (error) throw error;
-  return data;
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (input.name !== undefined) {
+    updates.push(`name = $${i++}`);
+    values.push(input.name.trim());
+  }
+  if (input.country_code !== undefined) {
+    updates.push(`country_code = $${i++}`);
+    values.push(input.country_code.trim().toUpperCase().slice(0, 2));
+  }
+  if (input.hours_per_week !== undefined) {
+    updates.push(`hours_per_week = $${i++}`);
+    values.push(input.hours_per_week);
+  }
+  updates.push(`updated_at = now()`);
+  values.push(id);
+  const { rows } = await cloudSqlPool.query<Calendar>(
+    `UPDATE calendars SET ${updates.join(", ")} WHERE id = $${i} RETURNING id, name, country_code, hours_per_week`,
+    values
+  );
+  if (!rows[0]) throw new Error("Failed to update calendar");
+  return rows[0];
 }
 
-export async function deleteCalendarQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("calendars").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteCalendarQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM calendars WHERE id = $1`, [id]);
 }

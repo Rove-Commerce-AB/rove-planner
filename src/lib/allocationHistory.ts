@@ -3,7 +3,7 @@
  * Types live in @/types. Write-side (log, deleteWithHistory) in lib/allocationWrite.ts; server actions re-export.
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import type { AllocationHistoryDetails, AllocationHistoryEntry } from "@/types";
 
 export type { AllocationHistoryDetails, AllocationHistoryEntry };
@@ -20,77 +20,86 @@ type AllocMapValue = {
 export async function fetchAllocationHistory(
   limit = 100
 ): Promise<AllocationHistoryEntry[]> {
-  const supabase = await createClient();
-  const { data: rows, error } = await supabase
-    .from("allocation_history")
-    .select("id, allocation_id, action, changed_by_email, changed_at, details")
-    .order("changed_at", { ascending: false })
-    .limit(limit);
-
-  if (error) return [];
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    allocation_id: string | null;
+    action: string;
+    changed_by_email: string;
+    changed_at: string;
+    details: unknown;
+  }>(
+    `SELECT id, allocation_id, action, changed_by_email, changed_at::text, details
+     FROM allocation_history
+     ORDER BY changed_at DESC
+     LIMIT $1`,
+    [limit]
+  );
 
   const allocationIds = [
     ...new Set(
-      (rows ?? [])
+      rows
         .filter((r) => r.allocation_id != null)
         .map((r) => r.allocation_id as string)
     ),
   ];
-  const bulkIds = (rows ?? []).flatMap((r) =>
-    r.details && Array.isArray(r.details.allocation_ids)
-      ? r.details.allocation_ids
-      : []
-  );
+  const bulkIds = rows.flatMap((r) => {
+    const d = r.details as AllocationHistoryDetails | null;
+    return d && Array.isArray(d.allocation_ids) ? d.allocation_ids : [];
+  });
   const allIds = [...new Set([...allocationIds, ...bulkIds])];
 
   let allocMap: Map<string, AllocMapValue> = new Map();
   if (allIds.length > 0) {
-    const { data: allocs } = await supabase
-      .from("allocations")
-      .select("id, year, week, hours, project_id, consultant_id")
-      .in("id", allIds);
-    if (allocs && allocs.length > 0) {
+    const { rows: allocs } = await cloudSqlPool.query<{
+      id: string;
+      year: number;
+      week: number;
+      hours: string | number;
+      project_id: string;
+      consultant_id: string | null;
+    }>(
+      `SELECT id, year, week, hours, project_id, consultant_id
+       FROM allocations WHERE id = ANY($1::uuid[])`,
+      [allIds]
+    );
+    if (allocs.length > 0) {
       const projectIds = [...new Set(allocs.map((a) => a.project_id))];
       const consultantIds = [
-        ...new Set(
-          allocs.map((a) => a.consultant_id).filter(Boolean) as string[]
-        ),
+        ...new Set(allocs.map((a) => a.consultant_id).filter(Boolean) as string[]),
       ];
-      const [projRes, consRes] = await Promise.all([
+      const [projRows, consRows] = await Promise.all([
         projectIds.length > 0
-          ? supabase
-              .from("projects")
-              .select("id, name, customer_id")
-              .in("id", projectIds)
-          : { data: [] },
+          ? cloudSqlPool.query<{
+              id: string;
+              name: string;
+              customer_id: string;
+            }>(
+              `SELECT id, name, customer_id FROM projects WHERE id = ANY($1::uuid[])`,
+              [projectIds]
+            )
+          : Promise.resolve({ rows: [] as never[] }),
         consultantIds.length > 0
-          ? supabase
-              .from("consultants")
-              .select("id, name")
-              .in("id", consultantIds)
-          : { data: [] },
+          ? cloudSqlPool.query<{ id: string; name: string }>(
+              `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[])`,
+              [consultantIds]
+            )
+          : Promise.resolve({ rows: [] as never[] }),
       ]);
-      const projects = (projRes.data ?? []) as Array<{
-        id: string;
-        name: string;
-        customer_id: string;
-      }>;
+      const projects = projRows.rows;
       const projectsByName = new Map(projects.map((p) => [p.id, p]));
       const customerIds = [
         ...new Set(projects.map((p) => p.customer_id).filter(Boolean)),
       ] as string[];
-      const { data: custData } =
+      const custRes =
         customerIds.length > 0
-          ? await supabase
-              .from("customers")
-              .select("id, name")
-              .in("id", customerIds)
-          : { data: [] };
-      const customersByName = new Map(
-        (custData ?? []).map((c) => [c.id, c.name])
-      );
+          ? await cloudSqlPool.query<{ id: string; name: string }>(
+              `SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`,
+              [customerIds]
+            )
+          : { rows: [] as { id: string; name: string }[] };
+      const customersByName = new Map(custRes.rows.map((c) => [c.id, c.name]));
       const consultantsByName = new Map(
-        (consRes.data ?? []).map((c) => [c.id, c.name])
+        consRows.rows.map((c) => [c.id, c.name])
       );
       for (const a of allocs) {
         const proj = projectsByName.get(a.project_id);
@@ -105,13 +114,13 @@ export async function fetchAllocationHistory(
             : "To plan",
           year: a.year,
           week: a.week,
-          hours: a.hours,
+          hours: Number(a.hours),
         });
       }
     }
   }
 
-  return (rows ?? []).map((r) => mapRowToEntry(r, allocMap));
+  return rows.map((r) => mapRowToEntry(r, allocMap));
 }
 
 function mapRowToEntry(

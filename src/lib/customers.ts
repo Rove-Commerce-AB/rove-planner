@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
 import * as q from "./customersQueries";
 
 export type {
@@ -10,41 +9,33 @@ export type {
 } from "./customersQueries";
 
 export async function getCustomerById(id: string) {
-  const supabase = await createClient();
-  return q.fetchCustomerById(supabase, id);
+  return q.fetchCustomerById(id);
 }
 
 export async function getCustomers() {
-  const supabase = await createClient();
-  return q.fetchCustomers(supabase);
+  return q.fetchCustomers();
 }
 
 export async function getCustomerIdByName(name: string) {
-  const supabase = await createClient();
-  return q.fetchCustomerIdByName(supabase, name);
+  return q.fetchCustomerIdByName(name);
 }
 
 export async function getCustomersByIds(ids: string[]) {
-  const supabase = await createClient();
-  return q.fetchCustomersByIds(supabase, ids);
+  return q.fetchCustomersByIds(ids);
 }
 
 export async function createCustomer(input: q.CreateCustomerInput) {
-  const supabase = await createClient();
-  return q.createCustomerQuery(supabase, input);
+  return q.createCustomerQuery(input);
 }
 
 export async function updateCustomer(id: string, input: q.UpdateCustomerInput) {
-  const supabase = await createClient();
-  return q.updateCustomerQuery(supabase, id, input);
+  return q.updateCustomerQuery(id, input);
 }
 
 export async function deleteCustomer(id: string) {
-  const supabase = await createClient();
-  return q.deleteCustomerQuery(supabase, id);
+  return q.deleteCustomerQuery(id);
 }
 
 export async function getCustomersWithDetails() {
-  const supabase = await createClient();
-  return q.fetchCustomersWithDetails(supabase);
+  return q.fetchCustomersWithDetails();
 }

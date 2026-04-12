@@ -18,6 +18,7 @@ type Props = {
   onSuccess: () => void;
   /** Consultants for Account Manager dropdown; pass from parent if modal is used. */
   allConsultants?: { id: string; name: string }[];
+  isAdmin?: boolean;
 };
 
 export function EditCustomerModal({
@@ -26,6 +27,7 @@ export function EditCustomerModal({
   onClose,
   onSuccess,
   allConsultants = [],
+  isAdmin = false,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("information");
   const [name, setName] = useState("");
@@ -257,14 +259,18 @@ export function EditCustomerModal({
         </Tabs>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="dangerSecondary"
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </Button>
+          {isAdmin ? (
+            <Button
+              type="button"
+              variant="dangerSecondary"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={submitting || deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={handleClose}>
               {activeTab === "rates" ? "Close" : "Cancel"}
@@ -282,15 +288,17 @@ export function EditCustomerModal({
         </div>
       </div>
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete customer"
-        message={`Delete ${customer?.name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          title="Delete customer"
+          message={`Delete ${customer?.name}? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   );
 }

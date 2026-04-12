@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import * as allocations from "./allocationsQueries";
 import * as cc from "./customerConsultantsQueries";
@@ -63,124 +63,180 @@ export type UpdateProjectInput = {
 };
 
 const PROJECT_SELECT =
-  "id,customer_id,name,is_active,type,project_manager_id,start_date,end_date,probability,jira_project_key,devops_project,budget_hours,budget_money";
+  "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, budget_hours, budget_money";
+
+function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
+  return {
+    id: r.id as string,
+    customer_id: r.customer_id as string,
+    name: r.name as string,
+    is_active: Boolean(r.is_active),
+    type: (r.type as ProjectType) ?? "customer",
+    project_manager_id: (r.project_manager_id as string | null) ?? null,
+    start_date: (r.start_date as string | null) ?? null,
+    end_date: (r.end_date as string | null) ?? null,
+    probability:
+      r.probability != null ? Number(r.probability as string | number) : null,
+    jira_project_key: (r.jira_project_key as string | null) ?? null,
+    devops_project: (r.devops_project as string | null) ?? null,
+    budget_hours:
+      r.budget_hours != null ? Number(r.budget_hours as string | number) : null,
+    budget_money:
+      r.budget_money != null ? Number(r.budget_money as string | number) : null,
+  };
+}
 
 export async function createProjectQuery(
-  supabase: SupabaseClient,
   input: CreateProjectInput
 ): Promise<ProjectRecord> {
   const prob = input.probability ?? 100;
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({
-      name: input.name.trim(),
-      customer_id: input.customer_id,
-      is_active: input.is_active ?? true,
-      type: input.type ?? "customer",
-      project_manager_id: input.project_manager_id ?? null,
-      start_date: input.start_date?.trim() || null,
-      end_date: input.end_date?.trim() || null,
-      probability: prob,
-      jira_project_key: input.jira_project_key?.trim() || null,
-      devops_project: input.devops_project?.trim() || null,
-      budget_hours: input.budget_hours ?? null,
-      budget_money: input.budget_money ?? null,
-    })
-    .select(PROJECT_SELECT)
-    .single();
-
-  if (error) throw error;
-  return data as ProjectRecord;
+  const { rows } = await cloudSqlPool.query(
+    `INSERT INTO projects (
+       name, customer_id, is_active, type, project_manager_id,
+       start_date, end_date, probability, jira_project_key, devops_project,
+       budget_hours, budget_money
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING ${PROJECT_SELECT}`,
+    [
+      input.name.trim(),
+      input.customer_id,
+      input.is_active ?? true,
+      input.type ?? "customer",
+      input.project_manager_id ?? null,
+      input.start_date?.trim() || null,
+      input.end_date?.trim() || null,
+      prob,
+      input.jira_project_key?.trim() || null,
+      input.devops_project?.trim() || null,
+      input.budget_hours ?? null,
+      input.budget_money ?? null,
+    ]
+  );
+  if (!rows[0]) throw new Error("Failed to create project");
+  return rowToProjectRecord(rows[0] as Record<string, unknown>);
 }
 
 export async function updateProjectQuery(
-  supabase: SupabaseClient,
   id: string,
   input: UpdateProjectInput
 ): Promise<void> {
-  const updates: Record<string, unknown> = {};
-  if (input.name !== undefined) updates.name = input.name.trim();
-  if (input.customer_id !== undefined) updates.customer_id = input.customer_id;
-  if (input.is_active !== undefined) updates.is_active = input.is_active;
-  if (input.type !== undefined) updates.type = input.type;
-  if (input.project_manager_id !== undefined)
-    updates.project_manager_id = input.project_manager_id ?? null;
-  if (input.start_date !== undefined)
-    updates.start_date = input.start_date?.trim() || null;
-  if (input.end_date !== undefined)
-    updates.end_date = input.end_date?.trim() || null;
-  if (input.probability !== undefined) updates.probability = input.probability;
-  if (input.jira_project_key !== undefined)
-    updates.jira_project_key = input.jira_project_key?.trim() || null;
-  if (input.devops_project !== undefined)
-    updates.devops_project = input.devops_project?.trim() || null;
-  if (input.budget_hours !== undefined)
-    updates.budget_hours = input.budget_hours ?? null;
-  if (input.budget_money !== undefined)
-    updates.budget_money = input.budget_money ?? null;
-
-  const { data, error } = await supabase
-    .from("projects")
-    .update(updates)
-    .eq("id", id)
-    .select(PROJECT_SELECT)
-    .single();
-
-  if (error) throw error;
-  if (!data) throw new Error("Update returned no data");
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (input.name !== undefined) {
+    sets.push(`name = $${i++}`);
+    values.push(input.name.trim());
+  }
+  if (input.customer_id !== undefined) {
+    sets.push(`customer_id = $${i++}`);
+    values.push(input.customer_id);
+  }
+  if (input.is_active !== undefined) {
+    sets.push(`is_active = $${i++}`);
+    values.push(input.is_active);
+  }
+  if (input.type !== undefined) {
+    sets.push(`type = $${i++}`);
+    values.push(input.type);
+  }
+  if (input.project_manager_id !== undefined) {
+    sets.push(`project_manager_id = $${i++}`);
+    values.push(input.project_manager_id ?? null);
+  }
+  if (input.start_date !== undefined) {
+    sets.push(`start_date = $${i++}`);
+    values.push(input.start_date?.trim() || null);
+  }
+  if (input.end_date !== undefined) {
+    sets.push(`end_date = $${i++}`);
+    values.push(input.end_date?.trim() || null);
+  }
+  if (input.probability !== undefined) {
+    sets.push(`probability = $${i++}`);
+    values.push(input.probability);
+  }
+  if (input.jira_project_key !== undefined) {
+    sets.push(`jira_project_key = $${i++}`);
+    values.push(input.jira_project_key?.trim() || null);
+  }
+  if (input.devops_project !== undefined) {
+    sets.push(`devops_project = $${i++}`);
+    values.push(input.devops_project?.trim() || null);
+  }
+  if (input.budget_hours !== undefined) {
+    sets.push(`budget_hours = $${i++}`);
+    values.push(input.budget_hours ?? null);
+  }
+  if (input.budget_money !== undefined) {
+    sets.push(`budget_money = $${i++}`);
+    values.push(input.budget_money ?? null);
+  }
+  if (sets.length === 0) return;
+  sets.push(`updated_at = now()`);
+  values.push(id);
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE projects SET ${sets.join(", ")} WHERE id = $${i}`,
+    values
+  );
+  if (!rowCount) throw new Error("Update returned no data");
 }
 
-export async function deleteProjectQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("projects").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteProjectQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM projects WHERE id = $1`, [id]);
 }
 
 export type IntegrationProjectOption = { value: string; label: string };
 
-export async function fetchUniqueJiraAndDevopsProjects(
-  supabase: SupabaseClient
-): Promise<IntegrationProjectOption[]> {
-  const [jiraRes, devopsRes] = await Promise.all([
-    supabase.rpc("get_distinct_jira_projects"),
-    supabase.rpc("get_distinct_devops_projects"),
-  ]);
+export async function fetchUniqueJiraAndDevopsProjects(): Promise<
+  IntegrationProjectOption[]
+> {
+  try {
+    const [jiraRes, devopsRes] = await Promise.all([
+      cloudSqlPool.query<{
+        project_key: string;
+        project_name: string | null;
+      }>(`SELECT * FROM get_distinct_jira_projects()`),
+      cloudSqlPool.query<{ project: string }>(
+        `SELECT * FROM get_distinct_devops_projects()`
+      ),
+    ]);
 
-  const jiraOptions: IntegrationProjectOption[] = (jiraRes.data ?? []).map(
-    (row: { project_key: string; project_name: string | null }) => {
+    const jiraOptions: IntegrationProjectOption[] = jiraRes.rows.map((row) => {
       const key = row.project_key?.trim() ?? "";
       const name = (row.project_name ?? key).trim();
       return {
         value: `jira:${key}`,
         label: `Jira: ${key}${name && name !== key ? ` (${name})` : ""}`,
       };
-    }
-  );
+    });
 
-  const devopsOptions: IntegrationProjectOption[] = (devopsRes.data ?? []).map(
-    (row: { project: string }) => {
-      const p = (row.project ?? "").trim();
-      return { value: `devops:${p}`, label: `DevOps: ${p}` };
-    }
-  );
+    const devopsOptions: IntegrationProjectOption[] = devopsRes.rows.map(
+      (row) => {
+        const p = (row.project ?? "").trim();
+        return { value: `devops:${p}`, label: `DevOps: ${p}` };
+      }
+    );
 
-  return [{ value: "", label: "—" }, ...jiraOptions, ...devopsOptions];
+    return [{ value: "", label: "—" }, ...jiraOptions, ...devopsOptions];
+  } catch {
+    return [{ value: "", label: "—" }];
+  }
 }
 
 export async function fetchProjectWithDetailsById(
-  supabase: SupabaseClient,
   id: string
 ): Promise<ProjectWithDetails | null> {
-  const [project, customersList] = await Promise.all([
-    supabase.from("projects").select(PROJECT_SELECT).eq("id", id).single(),
-    customers.fetchCustomers(supabase),
+  const [projectRes, customersList] = await Promise.all([
+    cloudSqlPool.query(
+      `SELECT ${PROJECT_SELECT} FROM projects WHERE id = $1`,
+      [id]
+    ),
+    customers.fetchCustomers(),
   ]);
 
-  if (project.error || !project.data) return null;
-  const p = project.data;
+  const p = projectRes.rows[0] as Record<string, unknown> | undefined;
+  if (!p) return null;
+
   const projectType = (p.type as ProjectType) ?? "customer";
 
   const customerMap = new Map(
@@ -192,32 +248,35 @@ export async function fetchProjectWithDetailsById(
       },
     ])
   );
-  const cust = customerMap.get(p.customer_id);
-  const projectManagerId = p.project_manager_id ?? null;
+  const cust = customerMap.get(p.customer_id as string);
+  const projectManagerId = (p.project_manager_id as string | null) ?? null;
   const projectManagerNames = projectManagerId
-    ? await consultants.fetchConsultantNamesByIds(supabase, [projectManagerId])
+    ? await consultants.fetchConsultantNamesByIds([projectManagerId])
     : new Map<string, string>();
   const projectManagerName = projectManagerId
     ? projectManagerNames.get(projectManagerId) ?? null
     : null;
 
-  const probability = p.probability != null ? p.probability : 100;
+  const probability =
+    p.probability != null ? Number(p.probability as number) : 100;
   return {
-    id: p.id,
-    name: p.name,
-    isActive: p.is_active,
+    id: p.id as string,
+    name: p.name as string,
+    isActive: Boolean(p.is_active),
     type: projectType,
-    customer_id: p.customer_id ?? "",
+    customer_id: (p.customer_id as string) ?? "",
     customerName: cust?.name ?? "Unknown",
     projectManagerId,
     projectManagerName,
-    startDate: p.start_date ?? null,
-    endDate: p.end_date ?? null,
+    startDate: (p.start_date as string | null) ?? null,
+    endDate: (p.end_date as string | null) ?? null,
     probability,
-    jiraProjectKey: p.jira_project_key ?? null,
-    devopsProject: p.devops_project ?? null,
-    budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
-    budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
+    jiraProjectKey: (p.jira_project_key as string | null) ?? null,
+    devopsProject: (p.devops_project as string | null) ?? null,
+    budgetHours:
+      p.budget_hours != null ? Number(p.budget_hours as number) : null,
+    budgetMoney:
+      p.budget_money != null ? Number(p.budget_money as number) : null,
     consultantCount: 0,
     totalHoursAllocated: 0,
     consultantInitials: [],
@@ -225,25 +284,19 @@ export async function fetchProjectWithDetailsById(
   };
 }
 
-export async function fetchProjects(
-  supabase: SupabaseClient
-): Promise<ProjectRecord[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .order("is_active", { ascending: false })
-    .order("name");
-
-  if (error) throw error;
-  return (data ?? []) as ProjectRecord[];
+export async function fetchProjects(): Promise<ProjectRecord[]> {
+  const { rows } = await cloudSqlPool.query(
+    `SELECT ${PROJECT_SELECT} FROM projects ORDER BY is_active DESC, name`
+  );
+  return rows.map((r) => rowToProjectRecord(r as Record<string, unknown>));
 }
 
-export async function fetchProjectsWithDetails(
-  supabase: SupabaseClient
-): Promise<ProjectWithDetails[]> {
+export async function fetchProjectsWithDetails(): Promise<
+  ProjectWithDetails[]
+> {
   const [projects, customersList] = await Promise.all([
-    fetchProjects(supabase),
-    customers.fetchCustomers(supabase),
+    fetchProjects(),
+    customers.fetchCustomers(),
   ]);
 
   if (projects.length === 0) return [];
@@ -264,7 +317,6 @@ export async function fetchProjectsWithDetails(
   let projectManagerNames = new Map<string, string>();
   try {
     projectManagerNames = await consultants.fetchConsultantNamesByIds(
-      supabase,
       projectManagerIds
     );
   } catch {
@@ -276,7 +328,6 @@ export async function fetchProjectsWithDetails(
   > = [];
   try {
     allocationRows = await allocations.getAllocationsByProjectIds(
-      supabase,
       projects.map((p) => p.id)
     );
   } catch {
@@ -290,11 +341,13 @@ export async function fetchProjectsWithDetails(
   ];
   let consultantRows: { id: string; name: string }[] = [];
   try {
-    const { data } = await supabase
-      .from("consultants")
-      .select("id,name")
-      .in("id", consultantIds);
-    consultantRows = data ?? [];
+    if (consultantIds.length > 0) {
+      const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+        `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[])`,
+        [consultantIds]
+      );
+      consultantRows = rows;
+    }
   } catch {
     // Consultants table may not exist
   }
@@ -355,51 +408,51 @@ export async function fetchProjectsWithDetails(
 }
 
 export async function fetchProjectsByCustomerIds(
-  supabase: SupabaseClient,
   customerIds: string[]
 ): Promise<ProjectRecord[]> {
   if (customerIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .in("customer_id", customerIds);
-
-  if (error) throw error;
-  return (data ?? []) as ProjectRecord[];
+  const { rows } = await cloudSqlPool.query(
+    `SELECT ${PROJECT_SELECT} FROM projects WHERE customer_id = ANY($1::uuid[])`,
+    [customerIds]
+  );
+  return rows.map((r) => rowToProjectRecord(r as Record<string, unknown>));
 }
 
 export async function fetchProjectsByIds(
-  supabase: SupabaseClient,
   ids: string[]
 ): Promise<{ id: string; name: string }[]> {
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("projects")
-    .select("id,name")
-    .in("id", ids);
-
-  if (error) throw error;
-  return data ?? [];
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM projects WHERE id = ANY($1::uuid[])`,
+    [ids]
+  );
+  return rows;
 }
 
 export async function fetchProjectsWithCustomerNames(
-  supabase: SupabaseClient,
   ids: string[]
 ): Promise<{ id: string; name: string; customerName: string }[]> {
   if (ids.length === 0) return [];
-  const { data: projects, error: projErr } = await supabase
-    .from("projects")
-    .select("id,name,customer_id")
-    .in("id", ids);
-  if (projErr || !projects?.length) return [];
+  const { rows: projects } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    customer_id: string;
+  }>(
+    `SELECT id, name, customer_id FROM projects WHERE id = ANY($1::uuid[])`,
+    [ids]
+  );
+  if (!projects.length) return [];
   const customerIds = [...new Set(projects.map((p) => p.customer_id).filter(Boolean))];
-  const { data: customersData } = await supabase
-    .from("customers")
-    .select("id,name")
-    .in("id", customerIds);
-  const customerMap = new Map((customersData ?? []).map((c) => [c.id, c.name]));
+  const { rows: customersData } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+  }>(
+    `SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`,
+    [customerIds]
+  );
+  const customerMap = new Map(customersData.map((c) => [c.id, c.name]));
   return projects.map((p) => ({
     id: p.id,
     name: p.name ?? "Unknown",
@@ -420,30 +473,45 @@ export type ProjectWithCustomer = {
 };
 
 export async function fetchProjectsWithCustomer(
-  supabase: SupabaseClient,
   ids: string[] = []
 ): Promise<ProjectWithCustomer[]> {
-  let projectsQuery = supabase
-    .from("projects")
-    .select("id,name,customer_id,type,is_active,probability")
-    .order("name");
-  if (ids.length > 0) {
-    projectsQuery = projectsQuery.in("id", ids);
-  }
-  const { data: projects, error: projErr } = await projectsQuery;
+  let list: {
+    id: string;
+    name: string;
+    customer_id: string;
+    type: string;
+    is_active: boolean;
+    probability: number | null;
+  }[] = [];
 
-  if (projErr) throw projErr;
-  const list = projects ?? [];
+  if (ids.length > 0) {
+    const { rows } = await cloudSqlPool.query(
+      `SELECT id, name, customer_id, type, is_active, probability
+       FROM projects WHERE id = ANY($1::uuid[]) ORDER BY name`,
+      [ids]
+    );
+    list = rows as typeof list;
+  } else {
+    const { rows } = await cloudSqlPool.query(
+      `SELECT id, name, customer_id, type, is_active, probability FROM projects ORDER BY name`
+    );
+    list = rows as typeof list;
+  }
 
   if (list.length === 0) return [];
 
   const customerIds = [...new Set(list.map((p) => p.customer_id))];
-  const { data: customersData } = await supabase
-    .from("customers")
-    .select("id,name,color,is_active")
-    .in("id", customerIds);
+  const { rows: customersData } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    color: string | null;
+    is_active: boolean;
+  }>(
+    `SELECT id, name, color, is_active FROM customers WHERE id = ANY($1::uuid[])`,
+    [customerIds]
+  );
   const customerMap = new Map(
-    (customersData ?? []).map((c) => [
+    customersData.map((c) => [
       c.id,
       {
         name: c.name,
@@ -471,32 +539,40 @@ export async function fetchProjectsWithCustomer(
 }
 
 export async function fetchProjectsAvailableForConsultant(
-  supabase: SupabaseClient,
   consultantId: string | null
 ): Promise<ProjectWithCustomer[]> {
-  if (!consultantId) return fetchProjectsWithCustomer(supabase, []);
+  if (!consultantId) return fetchProjectsWithCustomer([]);
 
-  const customerIds = await cc.getCustomerIdsForConsultant(
-    supabase,
-    consultantId
-  );
+  const customerIds = await cc.getCustomerIdsForConsultant(consultantId);
   if (customerIds.length === 0) return [];
 
-  const { data: projects, error: projErr } = await supabase
-    .from("projects")
-    .select("id,name,customer_id,type,is_active,probability")
-    .in("customer_id", customerIds)
-    .order("name");
+  const { rows: projects } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    customer_id: string;
+    type: string;
+    is_active: boolean;
+    probability: number | null;
+  }>(
+    `SELECT id, name, customer_id, type, is_active, probability
+     FROM projects WHERE customer_id = ANY($1::uuid[]) ORDER BY name`,
+    [customerIds]
+  );
 
-  if (projErr || !projects?.length) return [];
+  if (!projects.length) return [];
 
-  const { data: customersData } = await supabase
-    .from("customers")
-    .select("id,name,color,is_active")
-    .in("id", [...new Set(projects.map((p) => p.customer_id))]);
-
+  const cidList = [...new Set(projects.map((p) => p.customer_id))];
+  const { rows: customersData } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    color: string | null;
+    is_active: boolean;
+  }>(
+    `SELECT id, name, color, is_active FROM customers WHERE id = ANY($1::uuid[])`,
+    [cidList]
+  );
   const customerMap = new Map(
-    (customersData ?? []).map((c) => [
+    customersData.map((c) => [
       c.id,
       {
         name: c.name,

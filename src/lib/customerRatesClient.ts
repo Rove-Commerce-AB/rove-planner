@@ -1,11 +1,11 @@
-import { createClient } from "@/lib/supabase/client";
+"use server";
+
 import * as q from "./customerRatesQueries";
 
 export type { CustomerRate } from "./customerRatesQueries";
 
 export async function getCustomerRates(customerId: string) {
-  const supabase = createClient();
-  return q.fetchCustomerRates(supabase, customerId);
+  return q.fetchCustomerRates(customerId);
 }
 
 export async function createCustomerRate(
@@ -14,9 +14,7 @@ export async function createCustomerRate(
   ratePerHour: number,
   currency = "SEK"
 ) {
-  const supabase = createClient();
   return q.createCustomerRateQuery(
-    supabase,
     customerId,
     roleId,
     ratePerHour,
@@ -25,11 +23,9 @@ export async function createCustomerRate(
 }
 
 export async function updateCustomerRate(id: string, ratePerHour: number) {
-  const supabase = createClient();
-  return q.updateCustomerRateQuery(supabase, id, ratePerHour);
+  return q.updateCustomerRateQuery(id, ratePerHour);
 }
 
 export async function deleteCustomerRate(id: string) {
-  const supabase = createClient();
-  return q.deleteCustomerRateQuery(supabase, id);
+  return q.deleteCustomerRateQuery(id);
 }

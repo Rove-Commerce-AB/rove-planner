@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/client";
+"use server";
+
 import * as q from "./consultantsQueries";
 
 export type {
@@ -9,41 +10,30 @@ export type {
 } from "./consultantsQueries";
 
 export async function createConsultant(input: q.CreateConsultantInput) {
-  const supabase = createClient();
-  return q.createConsultantQuery(supabase, input);
+  return q.createConsultantQuery(input);
 }
 
 export async function updateConsultant(
   id: string,
   input: q.UpdateConsultantInput
 ) {
-  const supabase = createClient();
-  return q.updateConsultantQuery(supabase, id, input);
-}
-
-export async function deleteConsultant(id: string) {
-  const supabase = createClient();
-  return q.deleteConsultantQuery(supabase, id);
+  return q.updateConsultantQuery(id, input);
 }
 
 export async function getConsultantById(id: string) {
-  const supabase = createClient();
-  return q.fetchConsultantById(supabase, id);
+  return q.fetchConsultantById(id);
 }
 
 export async function getConsultantsWithDefaultRole() {
-  const supabase = createClient();
-  return q.fetchConsultantsWithDefaultRole(supabase);
+  return q.fetchConsultantsWithDefaultRole();
 }
 
 export async function getConsultantsList() {
-  const supabase = createClient();
-  return q.fetchConsultantsList(supabase);
+  return q.fetchConsultantsList();
 }
 
 export async function getConsultantNamesByIds(ids: string[]) {
-  const supabase = createClient();
-  return q.fetchConsultantNamesByIds(supabase, ids);
+  return q.fetchConsultantNamesByIds(ids);
 }
 
 export async function getAvailableHoursForConsultantWeek(
@@ -51,16 +41,9 @@ export async function getAvailableHoursForConsultantWeek(
   year: number,
   week: number
 ) {
-  const supabase = createClient();
-  return q.fetchAvailableHoursForConsultantWeek(
-    supabase,
-    consultantId,
-    year,
-    week
-  );
+  return q.fetchAvailableHoursForConsultantWeek(consultantId, year, week);
 }
 
 export async function getConsultantsWithDetails(year: number, week: number) {
-  const supabase = createClient();
-  return q.fetchConsultantsWithDetails(supabase, year, week);
+  return q.fetchConsultantsWithDetails(year, week);
 }

@@ -6,6 +6,7 @@ import { getProjectRates } from "@/lib/projectRates";
 import { getCustomerRates } from "@/lib/customerRates";
 import { ProjectDetailClient } from "@/components/ProjectDetailClient";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
+import { getCurrentAppUser } from "@/lib/appUsers";
 
 const PLANNING_WEEKS = 30;
 /** Weeks to show to the left of current week (default view: past, then current, then future). */
@@ -49,10 +50,12 @@ export default async function ProjectPage({ params, searchParams }: Props) {
       e instanceof Error ? e.message : "Could not load planning data";
   }
 
-  const [projectRates, customerRates] = await Promise.all([
+  const [projectRates, customerRates, appUser] = await Promise.all([
     getProjectRates(project.id),
     project.customer_id ? getCustomerRates(project.customer_id) : Promise.resolve([]),
+    getCurrentAppUser(),
   ]);
+  const isAdmin = appUser?.role === "admin";
   const allocationRates: Record<string, number> = {};
   for (const r of customerRates) allocationRates[r.role_id] = r.rate_per_hour;
   for (const r of projectRates) allocationRates[r.role_id] = r.rate_per_hour;
@@ -69,6 +72,7 @@ export default async function ProjectPage({ params, searchParams }: Props) {
         currentYear={currentYear}
         currentWeek={currentWeek}
         allocationRates={Object.keys(allocationRates).length > 0 ? allocationRates : undefined}
+        isAdmin={isAdmin}
       />
     </div>
   );

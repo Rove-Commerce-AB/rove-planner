@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
 import * as q from "./calendarHolidaysQueries";
 
 export type { CalendarHoliday } from "./calendarHolidaysUtils";
@@ -11,13 +10,11 @@ export {
 } from "./calendarHolidaysUtils";
 
 export async function getCalendarHolidays(calendarId: string) {
-  const supabase = await createClient();
-  return q.fetchCalendarHolidays(supabase, calendarId);
+  return q.fetchCalendarHolidays(calendarId);
 }
 
 export async function getCalendarHolidaysByCalendarIds(calendarIds: string[]) {
-  const supabase = await createClient();
-  return q.fetchCalendarHolidaysByCalendarIds(supabase, calendarIds);
+  return q.fetchCalendarHolidaysByCalendarIds(calendarIds);
 }
 
 export async function createCalendarHoliday(
@@ -25,11 +22,9 @@ export async function createCalendarHoliday(
   holidayDate: string,
   name: string
 ) {
-  const supabase = await createClient();
-  return q.createCalendarHolidayQuery(supabase, calendarId, holidayDate, name);
+  return q.createCalendarHolidayQuery(calendarId, holidayDate, name);
 }
 
 export async function deleteCalendarHoliday(id: string) {
-  const supabase = await createClient();
-  return q.deleteCalendarHolidayQuery(supabase, id);
+  return q.deleteCalendarHolidayQuery(id);
 }

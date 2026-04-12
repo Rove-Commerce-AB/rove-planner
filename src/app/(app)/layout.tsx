@@ -1,9 +1,9 @@
 import { AppLayoutClient } from "@/components/AppLayoutClient";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
-/** Auth and app_users gatekeeping run in src/proxy.ts (Supabase session + redirects). */
+/** Auth and app_users gatekeeping run in src/proxy.ts. */
 
 export default async function AppLayout({
   children,
@@ -16,13 +16,11 @@ export default async function AppLayout({
     if (!isAdmin && !isSubcontractor) {
       const consultant = await getConsultantForCurrentUser();
       if (consultant?.id) {
-        const supabase = await createClient();
-        const { data } = await supabase
-          .from("projects")
-          .select("id")
-          .eq("project_manager_id", consultant.id)
-          .limit(1);
-        canSeeTimeReportProjectManager = (data?.length ?? 0) > 0;
+        const { rows } = await cloudSqlPool.query<{ id: string }>(
+          `SELECT id FROM projects WHERE project_manager_id = $1 LIMIT 1`,
+          [consultant.id]
+        );
+        canSeeTimeReportProjectManager = rows.length > 0;
       }
     } else {
       canSeeTimeReportProjectManager = true;
