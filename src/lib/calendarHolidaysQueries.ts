@@ -1,20 +1,18 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import type { CalendarHoliday } from "./calendarHolidaysUtils";
 
 export async function fetchCalendarHolidays(
-  supabase: SupabaseClient,
   calendarId: string
 ): Promise<CalendarHoliday[]> {
-  const { data, error } = await supabase
-    .from("calendar_holidays")
-    .select("id,calendar_id,holiday_date,name")
-    .eq("calendar_id", calendarId)
-    .order("holiday_date");
-
-  if (error) throw error;
-
-  return (data ?? []).map((h) => ({
+  const { rows } = await cloudSqlPool.query<CalendarHoliday>(
+    `SELECT id, calendar_id, holiday_date::text AS holiday_date, name
+     FROM calendar_holidays
+     WHERE calendar_id = $1
+     ORDER BY holiday_date`,
+    [calendarId]
+  );
+  return rows.map((h) => ({
     id: h.id,
     calendar_id: h.calendar_id,
     holiday_date: h.holiday_date,
@@ -23,22 +21,21 @@ export async function fetchCalendarHolidays(
 }
 
 export async function fetchCalendarHolidaysByCalendarIds(
-  supabase: SupabaseClient,
   calendarIds: string[]
 ): Promise<Map<string, CalendarHoliday[]>> {
   if (calendarIds.length === 0) return new Map();
 
-  const { data, error } = await supabase
-    .from("calendar_holidays")
-    .select("id,calendar_id,holiday_date,name")
-    .in("calendar_id", calendarIds)
-    .order("holiday_date");
-
-  if (error) throw error;
+  const { rows } = await cloudSqlPool.query<CalendarHoliday>(
+    `SELECT id, calendar_id, holiday_date::text AS holiday_date, name
+     FROM calendar_holidays
+     WHERE calendar_id = ANY($1::uuid[])
+     ORDER BY holiday_date`,
+    [calendarIds]
+  );
 
   const byCalendar = new Map<string, CalendarHoliday[]>();
-  for (const h of data ?? []) {
-    const row = {
+  for (const h of rows) {
+    const row: CalendarHoliday = {
       id: h.id,
       calendar_id: h.calendar_id,
       holiday_date: h.holiday_date,
@@ -52,39 +49,28 @@ export async function fetchCalendarHolidaysByCalendarIds(
 }
 
 export async function createCalendarHolidayQuery(
-  supabase: SupabaseClient,
   calendarId: string,
   holidayDate: string,
   name: string
 ): Promise<CalendarHoliday> {
-  const { data, error } = await supabase
-    .from("calendar_holidays")
-    .insert({
-      calendar_id: calendarId,
-      holiday_date: holidayDate.trim(),
-      name: name.trim(),
-    })
-    .select("id,calendar_id,holiday_date,name")
-    .single();
-
-  if (error) throw error;
-
+  const { rows } = await cloudSqlPool.query<CalendarHoliday>(
+    `INSERT INTO calendar_holidays (calendar_id, holiday_date, name)
+     VALUES ($1, $2::date, $3)
+     RETURNING id, calendar_id, holiday_date::text AS holiday_date, name`,
+    [calendarId, holidayDate.trim(), name.trim()]
+  );
+  if (!rows[0]) throw new Error("Failed to create holiday");
+  const h = rows[0];
   return {
-    id: data.id,
-    calendar_id: data.calendar_id,
-    holiday_date: data.holiday_date,
-    name: data.name,
+    id: h.id,
+    calendar_id: h.calendar_id,
+    holiday_date: h.holiday_date,
+    name: h.name,
   };
 }
 
-export async function deleteCalendarHolidayQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase
-    .from("calendar_holidays")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw error;
+export async function deleteCalendarHolidayQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM calendar_holidays WHERE id = $1`, [
+    id,
+  ]);
 }

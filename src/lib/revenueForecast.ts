@@ -1,7 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getWorkingDaysByMonthInWeek, isoWeeksInYear } from "./dateUtils";
 import { getAllocationsForWeeks } from "./allocationsQueries";
 import { fetchCalendarHolidaysByCalendarIds } from "./calendarHolidaysQueries";
@@ -52,145 +52,161 @@ export async function getRevenueForecast(
   yearTo: number,
   weekTo: number
 ): Promise<RevenueForecastMonth[]> {
-  const supabase = await createClient();
   return unstable_cache(
     async () => {
       const weeks = getWeeksInRange(yearFrom, weekFrom, yearTo, weekTo);
-      const allocations = await getAllocationsForWeeks(supabase, weeks);
+      const allocations = await getAllocationsForWeeks(weeks);
       if (allocations.length === 0) {
         return [];
       }
 
       const consultantIds = [
-        ...new Set(allocations.map((a) => a.consultant_id).filter((id): id is string => id != null)),
+        ...new Set(
+          allocations
+            .map((a) => a.consultant_id)
+            .filter((id): id is string => id != null)
+        ),
       ];
-  const projectIds = [...new Set(allocations.map((a) => a.project_id))];
+      const projectIds = [...new Set(allocations.map((a) => a.project_id))];
 
-  const [consultantsData, projectsData] = await Promise.all([
-    supabase
-      .from("consultants")
-      .select("id,calendar_id,role_id")
-      .in("id", consultantIds),
-    supabase
-      .from("projects")
-      .select("id,customer_id,type")
-      .in("id", projectIds),
-  ]);
+      const [consultantsRes, projectsRes] = await Promise.all([
+        consultantIds.length
+          ? cloudSqlPool.query<{
+              id: string;
+              calendar_id: string;
+              role_id: string;
+            }>(
+              `SELECT id, calendar_id, role_id FROM consultants WHERE id = ANY($1::uuid[])`,
+              [consultantIds]
+            )
+          : Promise.resolve({ rows: [] as never[] }),
+        projectIds.length
+          ? cloudSqlPool.query<{
+              id: string;
+              customer_id: string;
+              type: string;
+            }>(
+              `SELECT id, customer_id, type FROM projects WHERE id = ANY($1::uuid[])`,
+              [projectIds]
+            )
+          : Promise.resolve({ rows: [] as never[] }),
+      ]);
 
-  if (consultantsData.error) throw consultantsData.error;
-  if (projectsData.error) throw projectsData.error;
+      const consultants = new Map(
+        consultantsRes.rows.map((c) => [
+          c.id,
+          { calendar_id: c.calendar_id, role_id: c.role_id },
+        ])
+      );
+      const projects = new Map(
+        projectsRes.rows.map((p) => [
+          p.id,
+          {
+            customer_id: p.customer_id ?? "",
+            type: p.type ?? "customer",
+          },
+        ])
+      );
 
-  const consultants = new Map(
-    (consultantsData.data ?? []).map((c) => [
-      c.id,
-      { calendar_id: c.calendar_id, role_id: c.role_id },
-    ])
-  );
-  const projects = new Map(
-    (projectsData.data ?? []).map((p) => [
-      p.id,
-      {
-        customer_id: p.customer_id ?? "",
-        type: (p.type as string) ?? "customer",
-      },
-    ])
-  );
+      const customerIds = [
+        ...new Set(
+          projectsRes.rows.map((p) => p.customer_id).filter(Boolean) as string[]
+        ),
+      ];
+      const customersRes =
+        customerIds.length > 0
+          ? await cloudSqlPool.query<{ id: string; name: string }>(
+              `SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`,
+              [customerIds]
+            )
+          : { rows: [] as { id: string; name: string }[] };
+      const customerNames = new Map(
+        customersRes.rows.map((c) => [c.id, c.name ?? c.id])
+      );
+      const allRates = await fetchCustomerRatesByCustomerIds(customerIds);
+      const ratesByCustomer = new Map<
+        string,
+        { role_id: string; rate_per_hour: number; currency: string }[]
+      >();
+      for (const cid of customerIds) {
+        ratesByCustomer.set(
+          cid,
+          allRates
+            .filter((r) => r.customer_id === cid)
+            .map((r) => ({
+              role_id: r.role_id,
+              rate_per_hour: r.rate_per_hour,
+              currency: r.currency ?? "SEK",
+            }))
+        );
+      }
 
-  const customerIds = [
-    ...new Set(
-      (projectsData.data ?? [])
-        .map((p) => p.customer_id)
-        .filter(Boolean) as string[]
-    ),
-  ];
-  const { data: customersData } = await supabase
-    .from("customers")
-    .select("id,name")
-    .in("id", customerIds);
-  const customerNames = new Map(
-    (customersData ?? []).map((c) => [c.id, c.name ?? c.id])
-  );
-  const allRates = await fetchCustomerRatesByCustomerIds(
-    supabase,
-    customerIds
-  );
-  const ratesByCustomer = new Map<string, { role_id: string; rate_per_hour: number; currency: string }[]>();
-  for (const cid of customerIds) {
-    ratesByCustomer.set(
-      cid,
-      allRates
-        .filter((r) => r.customer_id === cid)
-        .map((r) => ({
-          role_id: r.role_id,
-          rate_per_hour: r.rate_per_hour,
-          currency: r.currency ?? "SEK",
-        }))
-    );
-  }
+      const calendarIds = [
+        ...new Set(
+          consultantsRes.rows.map((c) => c.calendar_id).filter(Boolean)
+        ),
+      ] as string[];
+      const holidaysByCalendarRaw =
+        await fetchCalendarHolidaysByCalendarIds(calendarIds);
+      const holidaysByCalendar = new Map<string, Set<string>>();
+      for (const calId of calendarIds) {
+        const holidays = holidaysByCalendarRaw.get(calId) ?? [];
+        holidaysByCalendar.set(
+          calId,
+          new Set(holidays.map((h) => h.holiday_date))
+        );
+      }
 
-  const calendarIds = [
-    ...new Set(
-      (consultantsData.data ?? []).map((c) => c.calendar_id).filter(Boolean)
-    ),
-  ] as string[];
-  const holidaysByCalendarRaw = await fetchCalendarHolidaysByCalendarIds(
-    supabase,
-    calendarIds
-  );
-  const holidaysByCalendar = new Map<string, Set<string>>();
-  for (const calId of calendarIds) {
-    const holidays = holidaysByCalendarRaw.get(calId) ?? [];
-    holidaysByCalendar.set(calId, new Set(holidays.map((h) => h.holiday_date)));
-  }
+      const revenueByMonth = new Map<
+        string,
+        { revenue: number; currency: string; byCustomer: Map<string, number> }
+      >();
 
-  const revenueByMonth = new Map<
-    string,
-    { revenue: number; currency: string; byCustomer: Map<string, number> }
-  >();
+      for (const a of allocations) {
+        if (!a.consultant_id) continue;
+        const consultant = consultants.get(a.consultant_id);
+        const project = projects.get(a.project_id);
+        if (!consultant || !project) continue;
+        if (project.type !== "customer") continue;
 
-  for (const a of allocations) {
-    const consultant = consultants.get(a.consultant_id);
-    const project = projects.get(a.project_id);
-    if (!consultant || !project) continue;
-    if (project.type !== "customer") continue;
+        const customerId = project.customer_id;
+        const roleId = a.role_id ?? consultant.role_id;
+        if (!roleId) continue;
 
-    const customerId = project.customer_id;
-    const roleId = a.role_id ?? consultant.role_id;
-    if (!roleId) continue;
+        const rates = ratesByCustomer.get(customerId) ?? [];
+        const rateRow = rates.find((r) => r.role_id === roleId);
+        if (!rateRow) continue;
 
-    const rates = ratesByCustomer.get(customerId) ?? [];
-    const rateRow = rates.find((r) => r.role_id === roleId);
-    if (!rateRow) continue;
+        const holidaySet =
+          holidaysByCalendar.get(consultant.calendar_id) ?? new Set<string>();
+        const workingDaysByMonth = getWorkingDaysByMonthInWeek(
+          a.year,
+          a.week,
+          holidaySet
+        );
+        const totalWorkingDays = workingDaysByMonth.reduce(
+          (sum, x) => sum + x.workingDays,
+          0
+        );
+        if (totalWorkingDays === 0) continue;
 
-    const holidaySet = holidaysByCalendar.get(consultant.calendar_id) ?? new Set<string>();
-    const workingDaysByMonth = getWorkingDaysByMonthInWeek(
-      a.year,
-      a.week,
-      holidaySet
-    );
-  const totalWorkingDays = workingDaysByMonth.reduce(
-    (sum, x) => sum + x.workingDays,
-    0
-  );
-  if (totalWorkingDays === 0) continue;
+        const rate = rateRow.rate_per_hour;
+        const currency = rateRow.currency;
 
-  const rate = rateRow.rate_per_hour;
-  const currency = rateRow.currency;
-
-  for (const { year, month, workingDays } of workingDaysByMonth) {
-    const key = `${year}-${String(month).padStart(2, "0")}`;
-    const hoursInMonth = (a.hours * workingDays) / totalWorkingDays;
-    const revenue = hoursInMonth * rate;
-    let existing = revenueByMonth.get(key);
-    if (!existing) {
-      existing = { revenue: 0, currency, byCustomer: new Map() };
-      revenueByMonth.set(key, existing);
-    }
-    existing.revenue += revenue;
-    const custRev = existing.byCustomer.get(customerId) ?? 0;
-    existing.byCustomer.set(customerId, custRev + revenue);
-  }
-  }
+        for (const { year, month, workingDays } of workingDaysByMonth) {
+          const key = `${year}-${String(month).padStart(2, "0")}`;
+          const hoursInMonth = (a.hours * workingDays) / totalWorkingDays;
+          const revenue = hoursInMonth * rate;
+          let existing = revenueByMonth.get(key);
+          if (!existing) {
+            existing = { revenue: 0, currency, byCustomer: new Map() };
+            revenueByMonth.set(key, existing);
+          }
+          existing.revenue += revenue;
+          const custRev = existing.byCustomer.get(customerId) ?? 0;
+          existing.byCustomer.set(customerId, custRev + revenue);
+        }
+      }
 
       return Array.from(revenueByMonth.entries())
         .map(([key, { revenue, currency, byCustomer }]) => {
@@ -204,11 +220,25 @@ export async function getRevenueForecast(
               revenue: rev,
             }))
             .sort((a, b) => a.customerName.localeCompare(b.customerName));
-          return { year: y, month: m, revenue, currency, byCustomer: byCustomerList };
+          return {
+            year: y,
+            month: m,
+            revenue,
+            currency,
+            byCustomer: byCustomerList,
+          };
         })
-        .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month));
+        .sort((a, b) =>
+          a.year !== b.year ? a.year - b.year : a.month - b.month
+        );
     },
-    ["revenue-forecast", String(yearFrom), String(weekFrom), String(yearTo), String(weekTo)],
+    [
+      "revenue-forecast",
+      String(yearFrom),
+      String(weekFrom),
+      String(yearTo),
+      String(weekTo),
+    ],
     { revalidate: REVENUE_FORECAST_CACHE_REVALIDATE, tags: ["revenue-forecast"] }
   )();
 }

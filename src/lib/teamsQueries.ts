@@ -1,55 +1,38 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 export type Team = {
   id: string;
   name: string;
 };
 
-export async function fetchTeams(supabase: SupabaseClient): Promise<Team[]> {
-  const { data, error } = await supabase
-    .from("teams")
-    .select("id,name")
-    .order("name");
-
-  if (error) throw error;
-  return data ?? [];
+export async function fetchTeams(): Promise<Team[]> {
+  const { rows } = await cloudSqlPool.query<Team>(
+    `SELECT id, name FROM teams ORDER BY name`
+  );
+  return rows;
 }
 
-export async function createTeamQuery(
-  supabase: SupabaseClient,
-  name: string
-): Promise<Team> {
-  const { data, error } = await supabase
-    .from("teams")
-    .insert({ name: name.trim() })
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+export async function createTeamQuery(name: string): Promise<Team> {
+  const { rows } = await cloudSqlPool.query<Team>(
+    `INSERT INTO teams (name) VALUES ($1) RETURNING id, name`,
+    [name.trim()]
+  );
+  if (!rows[0]) throw new Error("Failed to create team");
+  return rows[0];
 }
 
 export async function updateTeamQuery(
-  supabase: SupabaseClient,
   id: string,
   name: string
 ): Promise<Team> {
-  const { data, error } = await supabase
-    .from("teams")
-    .update({ name: name.trim() })
-    .eq("id", id)
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+  const { rows } = await cloudSqlPool.query<Team>(
+    `UPDATE teams SET name = $2, updated_at = now() WHERE id = $1 RETURNING id, name`,
+    [id, name.trim()]
+  );
+  if (!rows[0]) throw new Error("Failed to update team");
+  return rows[0];
 }
 
-export async function deleteTeamQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("teams").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteTeamQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM teams WHERE id = $1`, [id]);
 }

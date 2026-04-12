@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import * as allocations from "./allocationsQueries";
 import { fetchCalendarHolidays } from "./calendarHolidaysQueries";
@@ -52,87 +52,108 @@ export type UpdateConsultantInput = {
 };
 
 export async function createConsultantQuery(
-  supabase: SupabaseClient,
   input: CreateConsultantInput
 ): Promise<{ id: string; name: string }> {
-  const { data, error } = await supabase
-    .from("consultants")
-    .insert({
-      name: input.name.trim(),
-      email: input.email?.trim() || null,
-      role_id: input.role_id,
-      calendar_id: input.calendar_id,
-      team_id: input.team_id ?? null,
-      is_external: input.is_external ?? false,
-      work_percentage: input.work_percentage ?? 100,
-      overhead_percentage: input.overhead_percentage ?? 0,
-      start_date: input.start_date ?? null,
-      end_date: input.end_date ?? null,
-      birth_date: input.birth_date ?? null,
-    })
-    .select("id,name")
-    .single();
-
-  if (error) throw error;
-  return data;
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `INSERT INTO consultants (
+       name, email, role_id, calendar_id, team_id, is_external,
+       work_percentage, overhead_percentage, start_date, end_date, birth_date
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING id, name`,
+    [
+      input.name.trim(),
+      input.email?.trim() || null,
+      input.role_id,
+      input.calendar_id,
+      input.team_id ?? null,
+      input.is_external ?? false,
+      input.work_percentage ?? 100,
+      input.overhead_percentage ?? 0,
+      input.start_date ?? null,
+      input.end_date ?? null,
+      input.birth_date ?? null,
+    ]
+  );
+  if (!rows[0]) throw new Error("Failed to create consultant");
+  return rows[0];
 }
 
 export async function updateConsultantQuery(
-  supabase: SupabaseClient,
   id: string,
   input: UpdateConsultantInput
 ): Promise<void> {
-  const updates: Record<string, unknown> = {};
-  if (input.name !== undefined) updates.name = input.name.trim();
-  if (input.email !== undefined)
-    updates.email = input.email?.trim() || null;
-  if (input.role_id !== undefined) updates.role_id = input.role_id;
-  if (input.calendar_id !== undefined) updates.calendar_id = input.calendar_id;
-  if (input.team_id !== undefined) updates.team_id = input.team_id ?? null;
-  if (input.is_external !== undefined) updates.is_external = input.is_external;
-  if (input.work_percentage !== undefined)
-    updates.work_percentage = input.work_percentage;
-  if (input.overhead_percentage !== undefined)
-    updates.overhead_percentage = input.overhead_percentage;
-  if (input.start_date !== undefined)
-    updates.start_date = input.start_date ?? null;
-  if (input.end_date !== undefined) updates.end_date = input.end_date ?? null;
-  if (input.birth_date !== undefined)
-    updates.birth_date = input.birth_date ?? null;
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (input.name !== undefined) {
+    sets.push(`name = $${i++}`);
+    values.push(input.name.trim());
+  }
+  if (input.email !== undefined) {
+    sets.push(`email = $${i++}`);
+    values.push(input.email?.trim() || null);
+  }
+  if (input.role_id !== undefined) {
+    sets.push(`role_id = $${i++}`);
+    values.push(input.role_id);
+  }
+  if (input.calendar_id !== undefined) {
+    sets.push(`calendar_id = $${i++}`);
+    values.push(input.calendar_id);
+  }
+  if (input.team_id !== undefined) {
+    sets.push(`team_id = $${i++}`);
+    values.push(input.team_id ?? null);
+  }
+  if (input.is_external !== undefined) {
+    sets.push(`is_external = $${i++}`);
+    values.push(input.is_external);
+  }
+  if (input.work_percentage !== undefined) {
+    sets.push(`work_percentage = $${i++}`);
+    values.push(input.work_percentage);
+  }
+  if (input.overhead_percentage !== undefined) {
+    sets.push(`overhead_percentage = $${i++}`);
+    values.push(input.overhead_percentage);
+  }
+  if (input.start_date !== undefined) {
+    sets.push(`start_date = $${i++}`);
+    values.push(input.start_date ?? null);
+  }
+  if (input.end_date !== undefined) {
+    sets.push(`end_date = $${i++}`);
+    values.push(input.end_date ?? null);
+  }
+  if (input.birth_date !== undefined) {
+    sets.push(`birth_date = $${i++}`);
+    values.push(input.birth_date ?? null);
+  }
+  if (sets.length === 0) return;
+  sets.push(`updated_at = now()`);
+  values.push(id);
+  await cloudSqlPool.query(
+    `UPDATE consultants SET ${sets.join(", ")} WHERE id = $${i}`,
+    values
+  );
 
-  const { error } = await supabase
-    .from("consultants")
-    .update(updates)
-    .eq("id", id);
-
-  if (error) throw error;
-
-  // When a consultant becomes external, they should not stay linked to Rove.
   if (input.is_external === true) {
-    const { data: roveCustomer } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("name", ROVE_CUSTOMER_NAME)
-      .maybeSingle();
-
-    if (roveCustomer?.id) {
-      const { error: unlinkError } = await supabase
-        .from("customer_consultants")
-        .delete()
-        .eq("customer_id", roveCustomer.id)
-        .eq("consultant_id", id);
-      if (unlinkError) throw unlinkError;
+    const { rows: roveRows } = await cloudSqlPool.query<{ id: string }>(
+      `SELECT id FROM customers WHERE name = $1 LIMIT 1`,
+      [ROVE_CUSTOMER_NAME]
+    );
+    const roveId = roveRows[0]?.id;
+    if (roveId) {
+      await cloudSqlPool.query(
+        `DELETE FROM customer_consultants WHERE customer_id = $1 AND consultant_id = $2`,
+        [roveId, id]
+      );
     }
   }
 }
 
-export async function deleteConsultantQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("consultants").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteConsultantQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM consultants WHERE id = $1`, [id]);
 }
 
 export type ConsultantForEdit = {
@@ -154,38 +175,51 @@ export type ConsultantForEdit = {
 };
 
 export async function fetchConsultantByEmail(
-  supabase: SupabaseClient,
   email: string
 ): Promise<{ id: string; name: string; calendar_id: string } | null> {
   const normalized = email?.trim().toLowerCase();
   if (!normalized) return null;
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name,calendar_id")
-    .eq("email", normalized)
-    .maybeSingle();
-  if (error || !data) return null;
-  return { id: data.id, name: data.name, calendar_id: data.calendar_id };
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    calendar_id: string;
+  }>(
+    `SELECT id, name, calendar_id FROM consultants WHERE lower(email) = $1 LIMIT 1`,
+    [normalized]
+  );
+  return rows[0] ?? null;
 }
 
 export async function fetchConsultantById(
-  supabase: SupabaseClient,
   id: string
 ): Promise<ConsultantForEdit | null> {
-  const { data: c, error } = await supabase
-    .from("consultants")
-    .select(
-      "id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date,birth_date"
-    )
-    .eq("id", id)
-    .single();
+  const { rows } = await cloudSqlPool.query(
+    `SELECT id, name, email, role_id, calendar_id, team_id, is_external,
+            work_percentage, overhead_percentage, start_date::text, end_date::text, birth_date::text
+     FROM consultants WHERE id = $1`,
+    [id]
+  );
+  const c = rows[0] as {
+    id: string;
+    name: string;
+    email: string | null;
+    role_id: string;
+    calendar_id: string;
+    team_id: string | null;
+    is_external: boolean;
+    work_percentage: number;
+    overhead_percentage: number;
+    start_date: string | null;
+    end_date: string | null;
+    birth_date: string | null;
+  } | undefined;
 
-  if (error || !c) return null;
+  if (!c) return null;
 
   const [rolesData, calendarsData, teamsData] = await Promise.all([
-    roles.fetchRoles(supabase),
-    calendars.fetchCalendars(supabase),
-    teams.fetchTeams(supabase),
+    roles.fetchRoles(),
+    calendars.fetchCalendars(),
+    teams.fetchTeams(),
   ]);
   const roleMap = new Map(rolesData.map((r) => [r.id, r.name]));
   const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
@@ -214,34 +248,34 @@ export async function fetchConsultantById(
   };
 }
 
-export async function fetchConsultantsWithDefaultRole(
-  supabase: SupabaseClient
-): Promise<{ id: string; name: string; role_id: string | null }[]> {
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name,role_id")
-    .order("name");
-
-  if (error) throw error;
-  return (data ?? []).map((c) => ({
+export async function fetchConsultantsWithDefaultRole(): Promise<
+  { id: string; name: string; role_id: string | null }[]
+> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    role_id: string | null;
+  }>(`SELECT id, name, role_id FROM consultants ORDER BY name`);
+  return rows.map((c) => ({
     id: c.id,
     name: c.name,
     role_id: c.role_id ?? null,
   }));
 }
 
-export async function fetchConsultantsList(
-  supabase: SupabaseClient
-): Promise<ConsultantListItem[]> {
-  const { data: rows, error } = await supabase
-    .from("consultants")
-    .select("id,name,team_id,is_external,end_date")
-    .order("name");
+export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    team_id: string | null;
+    is_external: boolean;
+    end_date: string | null;
+  }>(
+    `SELECT id, name, team_id, is_external, end_date::text AS end_date FROM consultants ORDER BY name`
+  );
+  if (!rows.length) return [];
 
-  if (error) throw error;
-  if (!rows?.length) return [];
-
-  const teamsData = await teams.fetchTeams(supabase);
+  const teamsData = await teams.fetchTeams();
   const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -270,45 +304,45 @@ export async function fetchConsultantsList(
 }
 
 export async function fetchConsultantNamesByIds(
-  supabase: SupabaseClient,
   ids: string[]
 ): Promise<Map<string, string>> {
   const unique = [...new Set(ids)].filter(Boolean);
   if (unique.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name")
-    .in("id", unique);
-  if (error) throw error;
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[])`,
+    [unique]
+  );
   const map = new Map<string, string>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     map.set(row.id, row.name ?? "");
   }
   return map;
 }
 
 export async function fetchAvailableHoursForConsultantWeek(
-  supabase: SupabaseClient,
   consultantId: string,
   year: number,
   week: number
 ): Promise<number> {
-  const { data: c, error: cErr } = await supabase
-    .from("consultants")
-    .select("calendar_id,work_percentage,overhead_percentage")
-    .eq("id", consultantId)
-    .single();
+  const { rows: cRows } = await cloudSqlPool.query<{
+    calendar_id: string;
+    work_percentage: number;
+    overhead_percentage: number;
+  }>(
+    `SELECT calendar_id, work_percentage, overhead_percentage FROM consultants WHERE id = $1`,
+    [consultantId]
+  );
+  const c = cRows[0];
+  if (!c) return 0;
 
-  if (cErr || !c) return 0;
-
-  const { data: cal, error: calErr } = await supabase
-    .from("calendars")
-    .select("hours_per_week")
-    .eq("id", c.calendar_id)
-    .single();
+  const { rows: calRows } = await cloudSqlPool.query<{ hours_per_week: string | number }>(
+    `SELECT hours_per_week FROM calendars WHERE id = $1`,
+    [c.calendar_id]
+  );
+  const cal = calRows[0];
 
   const hoursPerWeek =
-    calErr || !cal
+    !cal
       ? DEFAULT_HOURS_PER_WEEK
       : Number(cal.hours_per_week) || DEFAULT_HOURS_PER_WEEK;
   const workPct =
@@ -316,7 +350,7 @@ export async function fetchAvailableHoursForConsultantWeek(
   const overheadPct =
     Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
   const { start, end } = getISOWeekDateRange(year, week);
-  const holidays = await fetchCalendarHolidays(supabase, c.calendar_id);
+  const holidays = await fetchCalendarHolidays(c.calendar_id);
   const weekdayHolidays = countWeekdayHolidaysInRange(holidays, start, end);
   const workingDays = Math.max(0, 5 - weekdayHolidays);
   const capacityHours = (hoursPerWeek * (workingDays / 5)) * workPct;
@@ -333,20 +367,15 @@ function getInitials(name: string): string {
 }
 
 export async function fetchConsultantsWithDetails(
-  supabase: SupabaseClient,
   year: number,
   week: number
 ): Promise<ConsultantWithDetails[]> {
-  const { data: rows, error: listErr } = await supabase
-    .from("consultants")
-    .select(
-      "id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date"
-    )
-    .order("name");
-  if (listErr) throw listErr;
-  const consultants = rows ?? [];
-
-  if (consultants.length === 0) return [];
+  const { rows: consultants } = await cloudSqlPool.query(
+    `SELECT id, name, email, role_id, calendar_id, team_id, is_external,
+            work_percentage, overhead_percentage, start_date::text, end_date::text
+     FROM consultants ORDER BY name`
+  );
+  if (!consultants.length) return [];
 
   let rolesData: Awaited<ReturnType<typeof roles.fetchRoles>> = [];
   let calendarsData: Awaited<ReturnType<typeof calendars.fetchCalendars>> = [];
@@ -357,12 +386,11 @@ export async function fetchConsultantsWithDetails(
 
   try {
     [rolesData, calendarsData, teamsData, allocationsData] = await Promise.all([
-      roles.fetchRoles(supabase),
-      calendars.fetchCalendars(supabase),
-      teams.fetchTeams(supabase),
+      roles.fetchRoles(),
+      calendars.fetchCalendars(),
+      teams.fetchTeams(),
       allocations.getAllocationsForWeek(
-        supabase,
-        consultants.map((c) => c.id),
+        consultants.map((c: { id: string }) => c.id),
         year,
         week
       ),
@@ -380,7 +408,7 @@ export async function fetchConsultantsWithDetails(
   let projectMap = new Map<string, string>();
   try {
     const projectIds = [...new Set(allocationsData.map((a) => a.project_id))];
-    const projects = await fetchProjectsByIds(supabase, projectIds);
+    const projects = await fetchProjectsByIds(projectIds);
     projectMap = new Map(projects.map((p) => [p.id, p.name]));
   } catch {
     // Projects table may not exist
@@ -400,7 +428,17 @@ export async function fetchConsultantsWithDetails(
     allocationsByConsultant.set(a.consultant_id, list);
   }
 
-  return consultants.map((c) => {
+  return consultants.map((c: {
+    id: string;
+    name: string;
+    email: string | null;
+    role_id: string;
+    calendar_id: string;
+    team_id: string | null;
+    is_external: boolean;
+    work_percentage: number;
+    overhead_percentage: number;
+  }) => {
     const calendar = calendarMap.get(c.calendar_id);
     const calendarHours = calendar?.hoursPerWeek ?? DEFAULT_HOURS_PER_WEEK;
     const workPct =

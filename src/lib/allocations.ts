@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
 import * as q from "./allocationsQueries";
 
 export type AllocationRecord = q.AllocationRecord;
@@ -12,23 +11,21 @@ export async function getAllocationsForWeek(
   year: number,
   week: number
 ) {
-  const supabase = await createClient();
-  return q.getAllocationsForWeek(supabase, consultantIds, year, week);
+  return q.getAllocationsForWeek(consultantIds, year, week);
 }
 
 export async function getAllocationsByProjectIds(projectIds: string[]) {
-  const supabase = await createClient();
-  return q.getAllocationsByProjectIds(supabase, projectIds);
+  return q.getAllocationsByProjectIds(projectIds);
 }
 
 export async function getAllocationsForProjectWithWeeks(projectId: string) {
-  const supabase = await createClient();
-  return q.getAllocationsForProjectWithWeeks(supabase, projectId);
+  return q.getAllocationsForProjectWithWeeks(projectId);
 }
 
-export async function getAllocationsForWeeks(weeks: { year: number; week: number }[]) {
-  const supabase = await createClient();
-  return q.getAllocationsForWeeks(supabase, weeks);
+export async function getAllocationsForWeeks(
+  weeks: { year: number; week: number }[]
+) {
+  return q.getAllocationsForWeeks(weeks);
 }
 
 export async function getAllocationsForWeekRange(
@@ -36,13 +33,11 @@ export async function getAllocationsForWeekRange(
   weekFrom: number,
   weekTo: number
 ) {
-  const supabase = await createClient();
-  return q.getAllocationsForWeekRange(supabase, year, weekFrom, weekTo);
+  return q.getAllocationsForWeekRange(year, weekFrom, weekTo);
 }
 
 export async function createAllocation(input: q.CreateAllocationInput) {
-  const supabase = await createClient();
-  return q.createAllocation(supabase, input);
+  return q.createAllocation(input);
 }
 
 export async function createAllocationsForWeekRange(
@@ -54,9 +49,7 @@ export async function createAllocationsForWeekRange(
   weekTo: number,
   hoursPerWeek: number
 ) {
-  const supabase = await createClient();
   return q.createAllocationsForWeekRange(
-    supabase,
     consultant_id,
     project_id,
     role_id,
@@ -76,9 +69,7 @@ export async function createAllocationsForWeekRangeWithGetter(
   weekTo: number,
   getHoursForWeek: (y: number, w: number) => Promise<number>
 ) {
-  const supabase = await createClient();
   return q.createAllocationsForWeekRangeWithGetter(
-    supabase,
     consultant_id,
     project_id,
     role_id,
@@ -93,29 +84,24 @@ export async function updateAllocation(
   id: string,
   input: q.UpdateAllocationInput
 ) {
-  const supabase = await createClient();
-  return q.updateAllocation(supabase, id, input);
+  return q.updateAllocation(id, input);
 }
 
 export async function deleteAllocation(id: string) {
-  const supabase = await createClient();
-  return q.deleteAllocation(supabase, id);
+  return q.deleteAllocation(id);
 }
 
 export async function deleteAllocations(ids: string[]) {
-  const supabase = await createClient();
-  return q.deleteAllocations(supabase, ids);
+  return q.deleteAllocations(ids);
 }
 
 export async function deleteAllocationsByProjectId(projectId: string) {
-  const supabase = await createClient();
-  return q.deleteAllocationsByProjectId(supabase, projectId);
+  return q.deleteAllocationsByProjectId(projectId);
 }
 
 export async function moveAllocationsForProject(
   projectId: string,
   deltaWeeks: number
 ) {
-  const supabase = await createClient();
-  return q.moveAllocationsForProject(supabase, projectId, deltaWeeks);
+  return q.moveAllocationsForProject(projectId, deltaWeeks);
 }

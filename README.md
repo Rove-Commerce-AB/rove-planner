@@ -1,5 +1,10 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Rove Planner (this repo)
+
+- **Database:** PostgreSQL on Google Cloud SQL. Set `CLOUD_SQL_URL` in `.env.local` (see `src/lib/cloudSqlPool.ts`). Schema notes: [`doc/DATABASE.md`](doc/DATABASE.md).
+- **Auth:** Auth.js with Google; app users in PostgreSQL (`app_users`). Architecture: [`doc/PROJECT_RULES.md`](doc/PROJECT_RULES.md).
+
 ## Getting Started
 
 First, run the development server:

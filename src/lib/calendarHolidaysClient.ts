@@ -1,16 +1,11 @@
-import { createClient } from "@/lib/supabase/client";
+"use server";
+
 import * as q from "./calendarHolidaysQueries";
 
 export type { CalendarHoliday } from "./calendarHolidaysUtils";
-export {
-  hasHolidayInRange,
-  countHolidaysInRange,
-  countWeekdayHolidaysInRange,
-} from "./calendarHolidaysUtils";
 
 export async function getCalendarHolidays(calendarId: string) {
-  const supabase = createClient();
-  return q.fetchCalendarHolidays(supabase, calendarId);
+  return q.fetchCalendarHolidays(calendarId);
 }
 
 export async function createCalendarHoliday(
@@ -18,11 +13,9 @@ export async function createCalendarHoliday(
   holidayDate: string,
   name: string
 ) {
-  const supabase = createClient();
-  return q.createCalendarHolidayQuery(supabase, calendarId, holidayDate, name);
+  return q.createCalendarHolidayQuery(calendarId, holidayDate, name);
 }
 
 export async function deleteCalendarHoliday(id: string) {
-  const supabase = createClient();
-  return q.deleteCalendarHolidayQuery(supabase, id);
+  return q.deleteCalendarHolidayQuery(id);
 }

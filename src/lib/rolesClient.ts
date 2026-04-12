@@ -1,24 +1,21 @@
-import { createClient } from "@/lib/supabase/client";
+"use server";
+
 import * as q from "./rolesQueries";
 
 export type { Role } from "./rolesQueries";
 
 export async function getRoles() {
-  const supabase = createClient();
-  return q.fetchRoles(supabase);
+  return q.fetchRoles();
 }
 
 export async function createRole(name: string) {
-  const supabase = createClient();
-  return q.createRoleQuery(supabase, name);
+  return q.createRoleQuery(name);
 }
 
 export async function updateRole(id: string, name: string) {
-  const supabase = createClient();
-  return q.updateRoleQuery(supabase, id, name);
+  return q.updateRoleQuery(id, name);
 }
 
 export async function deleteRole(id: string) {
-  const supabase = createClient();
-  return q.deleteRoleQuery(supabase, id);
+  return q.deleteRoleQuery(id);
 }

@@ -1,7 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { auth } from "@/auth";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { revalidatePath } from "next/cache";
 
 export type AppUser = {
@@ -13,7 +13,6 @@ export type AppUser = {
 };
 
 export type AppUserRole = "admin" | "member" | "subcontractor";
-type DbAppUserRole = AppUserRole | "underkonsult";
 
 export type CurrentAppUser = {
   email: string;
@@ -21,48 +20,25 @@ export type CurrentAppUser = {
   name: string | null;
 } | null;
 
-function normalizeRoleFromDb(role: string): AppUserRole {
-  if (role === "underkonsult") return "subcontractor";
-  if (role === "admin" || role === "member" || role === "subcontractor") return role;
-  return "member";
-}
-
-function isRoleConstraintError(message: string | undefined): boolean {
-  if (!message) return false;
-  return message.includes("app_users_role_check");
-}
-
 export async function getCurrentAppUser(): Promise<CurrentAppUser> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.email) return null;
+  const session = await auth();
+  if (!session?.user?.email) return null;
 
-  const { data: row } = await supabase
-    .from("app_users")
-    .select("email, role, name")
-    .eq("email", user.email)
-    .maybeSingle();
-
-  return row
-    ? { email: row.email, role: normalizeRoleFromDb(row.role), name: row.name }
-    : null;
+  return {
+    email: session.user.email,
+    role: session.user.role as AppUserRole,
+    name: session.user.name ?? null,
+  };
 }
 
 export async function getAppUsersForAdmin(): Promise<AppUser[]> {
   const current = await getCurrentAppUser();
   if (!current || current.role !== "admin") return [];
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("app_users")
-    .select("id, email, role, name, created_at")
-    .order("email");
-
-  if (error) return [];
-  const rows = (data ?? []) as (AppUser & { role: DbAppUserRole })[];
-  return rows.map((row) => ({ ...row, role: normalizeRoleFromDb(row.role) }));
+  const { rows } = await cloudSqlPool.query<AppUser>(
+    "SELECT id, email, role, name, created_at FROM app_users ORDER BY email"
+  );
+  return rows;
 }
 
 export async function addAppUser(formData: FormData) {
@@ -71,33 +47,20 @@ export async function addAppUser(formData: FormData) {
     throw new Error("Unauthorized");
   }
 
-  const email = (formData.get("email") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
   const name = (formData.get("name") as string)?.trim() || null;
   const role = ((formData.get("role") as string) || "member") as AppUserRole;
+
+  if (!email) throw new Error("Email is required");
   if (role !== "admin" && role !== "member" && role !== "subcontractor") {
     throw new Error("Invalid role");
   }
 
+  await cloudSqlPool.query(
+    "INSERT INTO app_users (email, name, role) VALUES ($1, $2, $3)",
+    [email, name, role]
+  );
 
-  if (!email) throw new Error("Email is required");
-
-  const admin = createAdminClient();
-  const { error } = await admin.from("app_users").insert({
-    email: email.toLowerCase(),
-    name: name || null,
-    role,
-  });
-
-  if (error && role === "subcontractor" && isRoleConstraintError(error.message)) {
-    const legacyInsert = await admin.from("app_users").insert({
-      email: email.toLowerCase(),
-      name: name || null,
-      role: "underkonsult",
-    });
-    if (legacyInsert.error) throw new Error(legacyInsert.error.message);
-  } else if (error) {
-    throw new Error(error.message);
-  }
   revalidatePath("/settings");
 }
 
@@ -107,10 +70,8 @@ export async function removeAppUser(id: string) {
     throw new Error("Unauthorized");
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin.from("app_users").delete().eq("id", id);
+  await cloudSqlPool.query("DELETE FROM app_users WHERE id = $1", [id]);
 
-  if (error) throw new Error(error.message);
   revalidatePath("/settings");
 }
 
@@ -125,39 +86,40 @@ export async function updateAppUser(args: {
     throw new Error("Unauthorized");
   }
 
-  const updates: Record<string, unknown> = {};
+  const setParts: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
 
   if (args.email !== undefined) {
     const email = args.email.trim().toLowerCase();
     if (!email) throw new Error("Email is required");
-    updates.email = email;
+    setParts.push(`email = $${idx++}`);
+    values.push(email);
   }
 
   if (args.name !== undefined) {
     const name = (args.name ?? "").trim();
-    updates.name = name === "" ? null : name;
+    setParts.push(`name = $${idx++}`);
+    values.push(name === "" ? null : name);
   }
 
   if (args.role !== undefined) {
     if (args.role !== "admin" && args.role !== "member" && args.role !== "subcontractor") {
       throw new Error("Invalid role");
     }
-    updates.role = args.role;
+    setParts.push(`role = $${idx++}`);
+    values.push(args.role);
   }
 
-  if (Object.keys(updates).length === 0) return;
+  if (setParts.length === 0) return;
 
-  const admin = createAdminClient();
-  let errorResult = await admin.from("app_users").update(updates).eq("id", args.id);
-  if (
-    errorResult.error &&
-    args.role === "subcontractor" &&
-    isRoleConstraintError(errorResult.error.message)
-  ) {
-    const fallbackUpdates = { ...updates, role: "underkonsult" as const };
-    errorResult = await admin.from("app_users").update(fallbackUpdates).eq("id", args.id);
-  }
-  const { error } = errorResult;
-  if (error) throw new Error(error.message);
+  setParts.push(`updated_at = now()`);
+  values.push(args.id);
+
+  await cloudSqlPool.query(
+    `UPDATE app_users SET ${setParts.join(", ")} WHERE id = $${idx}`,
+    values
+  );
+
   revalidatePath("/settings");
 }

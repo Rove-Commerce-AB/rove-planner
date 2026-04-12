@@ -83,7 +83,7 @@ const EditableHourTd = memo(function EditableHourTd({
 }: EditableHourTdProps) {
   return (
     <td
-      className={`relative h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 align-middle last:border-r-0 ${dayIndex === 0 ? "border-l border-border-subtle" : ""} ${isGray ? "bg-bg-muted/30" : ""} ${isToday ? "bg-brand-blue/10" : ""}`}
+      className={`relative h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 align-middle ${dayIndex === 0 ? "border-l border-border-subtle" : ""} ${isGray ? "bg-bg-muted/30" : ""} ${isToday ? "bg-brand-blue/10" : ""}`}
     >
       <div
         role="button"
@@ -750,6 +750,14 @@ export function TimeReportPageClient({
     [customerGroups]
   );
 
+  const weekTotalDisplay = useMemo(() => {
+    const w = weekTotalHours;
+    if (!Number.isFinite(w) || w === 0) return "";
+    return Math.abs(w - Math.round(w)) < 1e-6
+      ? String(Math.round(w))
+      : String(Math.round(w * 10) / 10).replace(/\.0$/, "");
+  }, [weekTotalHours]);
+
   const monthLabel = useMemo(
     () => `${TIME_REPORT_MONTH_NAMES[displayMonth - 1]} ${displayYear}`,
     [displayMonth, displayYear]
@@ -865,7 +873,7 @@ export function TimeReportPageClient({
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {saveState === "saving" && (
             <span className="text-xs text-text-secondary">Saving…</span>
           )}
@@ -929,15 +937,6 @@ export function TimeReportPageClient({
             </div>
           </div>
         </div>
-      ) : customerGroups.length === 0 ? (
-        <div className="overflow-hidden rounded-lg bg-bg-default">
-          <div className="h-0.5 w-full bg-brand-blue/70" />
-          <div className="p-4 text-center">
-            <p className="text-xs text-text-secondary">
-              No customers added. Click &quot;Add customer&quot; to start reporting time.
-            </p>
-          </div>
-        </div>
       ) : (
         <div className="space-y-2">
           <div className="overflow-x-auto rounded-lg">
@@ -959,7 +958,7 @@ export function TimeReportPageClient({
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
-                    className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
                       <div>
@@ -973,30 +972,43 @@ export function TimeReportPageClient({
               </tr>
             </thead>
             <tbody>
-              {customerGroups.length > 0 && (
-                <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
-                  <td colSpan={4} className="px-1.5 py-1 text-left text-text-primary" />
-                  {totalHoursPerDay.map((h, i) => (
-                    <td
-                      key={i}
-                      className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
-                    >
+              {customerGroups.length === 0 ? (
+                <tr className="border-b border-border-subtle bg-bg-default">
+                  <td
+                    colSpan={12}
+                    className="px-4 py-6 text-center text-xs text-text-secondary"
+                  >
+                    No customers added. Click &quot;Add customer&quot; to start reporting time.
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
+                    <td colSpan={4} className="px-1.5 py-1 text-left text-text-primary" />
+                    {totalHoursPerDay.map((h, i) => (
+                      <td
+                        key={i}
+                        className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                      >
+                        <div className="flex h-full w-full items-center justify-center">
+                          <span className="text-xs tabular-nums text-text-primary">
+                            {h > 0 ? String(h) : ""}
+                          </span>
+                        </div>
+                      </td>
+                    ))}
+                    <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
                       <div className="flex h-full w-full items-center justify-center">
-                        <span className="text-xs tabular-nums text-text-primary">
-                          {h > 0 ? String(h) : ""}
+                        <span className="text-xs font-medium tabular-nums text-text-primary">
+                          {weekTotalDisplay}
                         </span>
                       </div>
                     </td>
-                  ))}
-                  <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle" />
-                </tr>
-              )}
-              {customerGroups.map((group, groupIndex) => {
+                  </tr>
+                  {customerGroups.map((group, groupIndex) => {
                 const customer = customerById.get(group.customerId);
                 const name = customer?.name ?? "—";
                 const color = customer?.color ?? "#3b82f6";
-                const total = groupTotalHours(group.entries);
-                const daily = dayTotals(group.entries);
 
                 return (
                   <Fragment key={group.customerId}>
@@ -1006,23 +1018,19 @@ export function TimeReportPageClient({
                       </tr>
                     )}
                     <tr className="border-b border-border-subtle bg-bg-muted/40">
-                      <td colSpan={4} className="px-1.5 py-1">
-                        <div className="flex w-full items-center gap-2 font-medium text-text-primary">
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: color }}
-                            aria-hidden
-                          />
-                          <span>{name}</span>
-                          <span className="font-normal text-text-muted">
-                            {total > 0 ? `${total}h` : ""}
-                          </span>
+                      <td
+                        colSpan={4}
+                        className="border-l-[4px] border-solid px-1.5 py-1"
+                        style={{ borderLeftColor: color }}
+                      >
+                        <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
+                          <span className="min-w-0 truncate">{name}</span>
                         </div>
                       </td>
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
-                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         />
                       ))}
                       <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
@@ -1042,7 +1050,10 @@ export function TimeReportPageClient({
                           key={entry.id}
                           className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                         >
-                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
+                          <td
+                            className="w-[140px] min-w-[140px] max-w-[140px] border-l-[4px] border-solid px-1.5 py-1"
+                            style={{ borderLeftColor: color }}
+                          >
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -1219,34 +1230,14 @@ export function TimeReportPageClient({
                           </td>
                         </tr>
                       ))}
-                    <tr className="border-b border-border-subtle bg-bg-muted/30 text-text-secondary">
-                        <td colSpan={4} className="px-1.5 py-1 text-left text-xs font-medium" />
-                        {daily.map((h, i) => (
-                          <td
-                            key={i}
-                            className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle last:border-r-0 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
-                          >
-                            <div className="flex h-full w-full items-center justify-center">
-                              <span className="text-xs tabular-nums text-text-secondary">
-                                {h > 0 ? String(h) : ""}
-                              </span>
-                            </div>
-                          </td>
-                        ))}
-                        <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
-                          <div className="flex h-full w-full items-center justify-center">
-                            <span className="text-xs font-medium tabular-nums text-text-secondary">
-                              {total > 0 ? String(total) : ""}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
                     <tr aria-hidden>
                       <td colSpan={12} className="h-2 p-0" />
                     </tr>
                   </Fragment>
                 );
               })}
+                </>
+              )}
             </tbody>
           </table>
           </div>

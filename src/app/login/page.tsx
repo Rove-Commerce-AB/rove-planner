@@ -2,34 +2,16 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui";
 import { Panel } from "@/components/ui";
 
 function LoginForm() {
   const searchParams = useSearchParams();
   const authError = searchParams.get("error") === "auth";
-  const rawMessage = searchParams.get("message") ?? null;
-  const isHtmlResponseError =
-    rawMessage && (
-      rawMessage.includes("not valid JSON") ||
-      rawMessage.includes("Unexpected token")
-    );
-  const authMessage = isHtmlResponseError
-    ? "The auth server returned a web page instead of data. This often happens when a proxy, antivirus, or network intercepts the connection. Try: another network (e.g. mobile hotspot), or temporarily disabling HTTPS scanning."
-    : rawMessage;
 
   async function signInWithGoogle() {
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback`,
-      },
-    });
-    if (error) {
-      console.error("OAuth error:", error);
-    }
+    await signIn("google", { callbackUrl: "/" });
   }
 
   return (
@@ -44,11 +26,6 @@ function LoginForm() {
         {authError && (
           <p className="mt-4 text-sm text-danger">
             Sign-in failed. Please try again.
-            {authMessage && (
-              <span className={`mt-2 block opacity-90 ${isHtmlResponseError ? "text-xs" : "font-mono text-xs"}`}>
-                {authMessage}
-              </span>
-            )}
           </p>
         )}
         <Button

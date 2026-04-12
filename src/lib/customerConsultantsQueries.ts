@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 export type CustomerConsultant = {
   id: string;
@@ -6,66 +6,53 @@ export type CustomerConsultant = {
 };
 
 export async function getConsultantsByCustomerId(
-  supabase: SupabaseClient,
   customerId: string
 ): Promise<CustomerConsultant[]> {
-  const { data, error } = await supabase
-    .from("customer_consultants")
-    .select("consultant_id")
-    .eq("customer_id", customerId);
+  const { rows: linkRows } = await cloudSqlPool.query<{ consultant_id: string }>(
+    `SELECT consultant_id FROM customer_consultants WHERE customer_id = $1`,
+    [customerId]
+  );
 
-  if (error) return [];
-
-  const consultantIds = (data ?? []).map((r) => r.consultant_id);
+  const consultantIds = linkRows.map((r) => r.consultant_id);
   if (consultantIds.length === 0) return [];
 
-  const { data: consultants, error: consultantsError } = await supabase
-    .from("consultants")
-    .select("id,name")
-    .in("id", consultantIds)
-    .order("name");
-
-  if (consultantsError || !consultants) return [];
+  const { rows: consultants } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+  }>(
+    `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[]) ORDER BY name`,
+    [consultantIds]
+  );
 
   return consultants.map((c) => ({ id: c.id, name: c.name }));
 }
 
 export async function addConsultantToCustomer(
-  supabase: SupabaseClient,
   customerId: string,
   consultantId: string
 ): Promise<void> {
-  const { error } = await supabase.from("customer_consultants").insert({
-    customer_id: customerId,
-    consultant_id: consultantId,
-  });
-
-  if (error) throw error;
+  await cloudSqlPool.query(
+    `INSERT INTO customer_consultants (customer_id, consultant_id) VALUES ($1, $2)`,
+    [customerId, consultantId]
+  );
 }
 
 export async function removeConsultantFromCustomer(
-  supabase: SupabaseClient,
   customerId: string,
   consultantId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("customer_consultants")
-    .delete()
-    .eq("customer_id", customerId)
-    .eq("consultant_id", consultantId);
-
-  if (error) throw error;
+  await cloudSqlPool.query(
+    `DELETE FROM customer_consultants WHERE customer_id = $1 AND consultant_id = $2`,
+    [customerId, consultantId]
+  );
 }
 
 export async function getCustomerIdsForConsultant(
-  supabase: SupabaseClient,
   consultantId: string
 ): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("customer_consultants")
-    .select("customer_id")
-    .eq("consultant_id", consultantId);
-
-  if (error) return [];
-  return (data ?? []).map((r) => r.customer_id);
+  const { rows } = await cloudSqlPool.query<{ customer_id: string }>(
+    `SELECT customer_id FROM customer_consultants WHERE consultant_id = $1`,
+    [consultantId]
+  );
+  return rows.map((r) => r.customer_id);
 }

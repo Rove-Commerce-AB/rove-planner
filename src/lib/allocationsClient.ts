@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/client";
+"use server";
+
 import * as q from "./allocationsQueries";
 
 export type AllocationRecord = q.AllocationRecord;
@@ -6,16 +7,14 @@ export type CreateAllocationInput = q.CreateAllocationInput;
 export type UpdateAllocationInput = q.UpdateAllocationInput;
 
 export async function createAllocation(input: q.CreateAllocationInput) {
-  const supabase = createClient();
-  return q.createAllocation(supabase, input);
+  return q.createAllocation(input);
 }
 
 export async function updateAllocation(
   id: string,
   input: q.UpdateAllocationInput
 ) {
-  const supabase = createClient();
-  return q.updateAllocation(supabase, id, input);
+  return q.updateAllocation(id, input);
 }
 
 export async function createAllocationsForWeekRange(
@@ -27,9 +26,7 @@ export async function createAllocationsForWeekRange(
   weekTo: number,
   hoursPerWeek: number
 ) {
-  const supabase = createClient();
   return q.createAllocationsForWeekRange(
-    supabase,
     consultant_id,
     project_id,
     role_id,

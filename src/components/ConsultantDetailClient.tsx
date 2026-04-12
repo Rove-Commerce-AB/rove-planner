@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { updateConsultant, deleteConsultant } from "@/lib/consultantsClient";
+import { updateConsultant } from "@/lib/consultantsClient";
+import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
 import type { ConsultantForEdit } from "@/lib/consultantsClient";
 import {
   ConfirmModal,
@@ -260,7 +261,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
     setError(null);
     setDeleting(true);
     try {
-      await deleteConsultant(initial.id);
+      await deleteConsultantAction(initial.id);
       setShowDeleteConfirm(false);
       router.push("/");
       router.refresh();
@@ -722,21 +723,25 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
         </div>
       </Panel>
 
-      <DetailPageDeleteFooter
-        onRequestDelete={() => setShowDeleteConfirm(true)}
-        disabled={submitting || deleting}
-        label="Delete consultant"
-      />
+      {isAdmin && (
+        <>
+          <DetailPageDeleteFooter
+            onRequestDelete={() => setShowDeleteConfirm(true)}
+            disabled={submitting || deleting}
+            label="Delete consultant"
+          />
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete consultant"
-        message={`Delete ${name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-      />
+          <ConfirmModal
+            isOpen={showDeleteConfirm}
+            title="Delete consultant"
+            message={`Delete ${name}? This cannot be undone.`}
+            confirmLabel="Delete"
+            variant="danger"
+            onClose={() => setShowDeleteConfirm(false)}
+            onConfirm={handleDelete}
+          />
+        </>
+      )}
     </>
   );
 }

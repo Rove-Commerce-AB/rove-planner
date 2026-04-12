@@ -2,10 +2,8 @@ import "server-only";
 
 import { revalidateTag } from "next/cache";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import type { AllocationHistoryDetails } from "@/types";
-
-type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
 export async function logAllocationHistory(
   allocationId: string | null,
@@ -14,19 +12,19 @@ export async function logAllocationHistory(
 ): Promise<void> {
   const user = await getCurrentAppUser();
   const email = user?.email ?? "unknown";
-  const supabase = await createClient();
-  await supabase.from("allocation_history").insert({
-    allocation_id: allocationId,
-    action,
-    changed_by_email: email,
-    details: details ?? null,
-  });
+  await cloudSqlPool.query(
+    `INSERT INTO allocation_history (allocation_id, action, changed_by_email, details)
+     VALUES ($1, $2, $3, $4::jsonb)`,
+    [
+      allocationId,
+      action,
+      email,
+      details != null ? JSON.stringify(details) : null,
+    ]
+  );
 }
 
-async function getAllocationSnapshot(
-  supabase: SupabaseServer,
-  allocationId: string
-): Promise<{
+async function getAllocationSnapshot(allocationId: string): Promise<{
   project_name: string;
   customer_name: string | null;
   consultant_name: string;
@@ -34,48 +32,39 @@ async function getAllocationSnapshot(
   week: number;
   hours: number;
 } | null> {
-  const { data: a } = await supabase
-    .from("allocations")
-    .select("id, year, week, hours, project_id, consultant_id")
-    .eq("id", allocationId)
-    .single();
-  if (!a) return null;
-  const { data: proj } = await supabase
-    .from("projects")
-    .select("id, name, customer_id")
-    .eq("id", a.project_id)
-    .single();
-  let customer_name: string | null = null;
-  if (proj?.customer_id) {
-    const { data: cust } = await supabase
-      .from("customers")
-      .select("name")
-      .eq("id", proj.customer_id)
-      .single();
-    customer_name = cust?.name ?? null;
-  }
-  let consultant_name = "To plan";
-  if (a.consultant_id) {
-    const { data: cons } = await supabase
-      .from("consultants")
-      .select("name")
-      .eq("id", a.consultant_id)
-      .single();
-    consultant_name = cons?.name ?? "—";
-  }
+  const { rows } = await cloudSqlPool.query<{
+    year: number;
+    week: number;
+    hours: string | number;
+    project_name: string;
+    customer_name: string | null;
+    consultant_name: string | null;
+  }>(
+    `SELECT a.year, a.week, a.hours,
+            p.name AS project_name,
+            cu.name AS customer_name,
+            co.name AS consultant_name
+     FROM allocations a
+     JOIN projects p ON p.id = a.project_id
+     LEFT JOIN customers cu ON cu.id = p.customer_id
+     LEFT JOIN consultants co ON co.id = a.consultant_id
+     WHERE a.id = $1`,
+    [allocationId]
+  );
+  const row = rows[0];
+  if (!row) return null;
   return {
-    project_name: proj?.name ?? "—",
-    customer_name,
-    consultant_name,
-    year: a.year,
-    week: a.week,
-    hours: Number(a.hours),
+    project_name: row.project_name ?? "—",
+    customer_name: row.customer_name,
+    consultant_name: row.consultant_name ?? "To plan",
+    year: row.year,
+    week: row.week,
+    hours: Number(row.hours),
   };
 }
 
 export async function logAllocationHistoryCreate(allocationId: string): Promise<void> {
-  const supabase = await createClient();
-  const snapshot = await getAllocationSnapshot(supabase, allocationId);
+  const snapshot = await getAllocationSnapshot(allocationId);
   await logAllocationHistory(
     allocationId,
     "create",
@@ -96,8 +85,7 @@ export async function logAllocationHistoryUpdate(
   allocationId: string,
   hours_after: number
 ): Promise<void> {
-  const supabase = await createClient();
-  const snapshot = await getAllocationSnapshot(supabase, allocationId);
+  const snapshot = await getAllocationSnapshot(allocationId);
   await logAllocationHistory(
     allocationId,
     "update",
@@ -119,15 +107,17 @@ export async function logBulkAllocationHistory(
   totalHours: number
 ): Promise<void> {
   if (allocationIds.length === 0) return;
-  const supabase = await createClient();
-  const snapshot = await getAllocationSnapshot(supabase, allocationIds[0]);
+  const snapshot = await getAllocationSnapshot(allocationIds[0]);
   let week_range: string | undefined;
   if (allocationIds.length > 0) {
-    const { data: allocs } = await supabase
-      .from("allocations")
-      .select("year, week")
-      .in("id", allocationIds);
-    if (allocs && allocs.length > 0) {
+    const { rows: allocs } = await cloudSqlPool.query<{
+      year: number;
+      week: number;
+    }>(
+      `SELECT year, week FROM allocations WHERE id = ANY($1::uuid[])`,
+      [allocationIds]
+    );
+    if (allocs.length > 0) {
       const weeks = allocs.map((a) => ({ year: a.year, week: a.week }));
       const min = weeks.reduce((a, b) =>
         a.year < b.year || (a.year === b.year && a.week < b.week) ? a : b
@@ -158,69 +148,72 @@ export async function getBookingAllocationsForRow(
   projectId: string,
   roleId: string | null
 ): Promise<{ id: string; year: number; week: number }[]> {
-  const supabase = await createClient();
-  let query = supabase
-    .from("allocations")
-    .select("id,year,week")
-    .eq("project_id", projectId)
-    .order("year", { ascending: true })
-    .order("week", { ascending: true });
-  if (consultantId === null) {
-    query = query.is("consultant_id", null);
-  } else {
-    query = query.eq("consultant_id", consultantId);
-  }
-  if (roleId === null) {
-    query = query.is("role_id", null);
-  } else {
-    query = query.eq("role_id", roleId);
-  }
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    year: r.year,
-    week: r.week,
-  }));
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    year: number;
+    week: number;
+  }>(
+    `SELECT id, year, week FROM allocations
+     WHERE project_id = $1
+       AND consultant_id IS NOT DISTINCT FROM $2::uuid
+       AND role_id IS NOT DISTINCT FROM $3::uuid
+     ORDER BY year ASC, week ASC`,
+    [projectId, consultantId, roleId]
+  );
+  return rows;
 }
 
 export async function deleteAllocationWithHistory(allocationId: string): Promise<void> {
-  const supabase = await createClient();
-  const snapshot = await getAllocationSnapshot(supabase, allocationId);
+  const snapshot = await getAllocationSnapshot(allocationId);
   const user = await getCurrentAppUser();
   const email = user?.email ?? "unknown";
-  await supabase.from("allocation_history").insert({
-    allocation_id: allocationId,
-    action: "delete",
-    changed_by_email: email,
-    details: snapshot
-      ? {
-          customer_name: snapshot.customer_name ?? undefined,
-          project_name: snapshot.project_name,
-          consultant_name: snapshot.consultant_name,
-          week_range_removed: String(snapshot.week),
-          hours_removed: snapshot.hours,
-        }
-      : null,
-  });
-  await supabase.from("allocations").delete().eq("id", allocationId);
+  await cloudSqlPool.query(
+    `INSERT INTO allocation_history (allocation_id, action, changed_by_email, details)
+     VALUES ($1, 'delete', $2, $3::jsonb)`,
+    [
+      allocationId,
+      email,
+      JSON.stringify(
+        snapshot
+          ? {
+              customer_name: snapshot.customer_name ?? undefined,
+              project_name: snapshot.project_name,
+              consultant_name: snapshot.consultant_name,
+              week_range_removed: String(snapshot.week),
+              hours_removed: snapshot.hours,
+            }
+          : null
+      ),
+    ]
+  );
+  await cloudSqlPool.query(`DELETE FROM allocations WHERE id = $1`, [
+    allocationId,
+  ]);
   revalidateTag("allocation-page", "max");
 }
 
 export async function deleteAllocationsWithHistory(allocationIds: string[]): Promise<void> {
   if (allocationIds.length === 0) return;
-  const supabase = await createClient();
-  const { data: allocs } = await supabase
-    .from("allocations")
-    .select("id, year, week, hours, project_id, consultant_id")
-    .in("id", allocationIds);
-  if (!allocs || allocs.length === 0) {
-    await supabase.from("allocations").delete().in("id", allocationIds);
+  const { rows: allocs } = await cloudSqlPool.query<{
+    id: string;
+    year: number;
+    week: number;
+    hours: string | number;
+    project_id: string;
+    consultant_id: string | null;
+  }>(
+    `SELECT id, year, week, hours, project_id, consultant_id FROM allocations WHERE id = ANY($1::uuid[])`,
+    [allocationIds]
+  );
+  if (!allocs.length) {
+    await cloudSqlPool.query(`DELETE FROM allocations WHERE id = ANY($1::uuid[])`, [
+      allocationIds,
+    ]);
     revalidateTag("allocation-page", "max");
     return;
   }
   const firstId = allocs[0].id;
-  const snapshot = await getAllocationSnapshot(supabase, firstId);
+  const snapshot = await getAllocationSnapshot(firstId);
   const weeks = allocs.map((a) => a.week).sort((a, b) => a - b);
   const weekRange =
     weeks.length === 1
@@ -229,19 +222,23 @@ export async function deleteAllocationsWithHistory(allocationIds: string[]): Pro
   const totalHours = allocs.reduce((s, a) => s + Number(a.hours), 0);
   const user = await getCurrentAppUser();
   const email = user?.email ?? "unknown";
-  await supabase.from("allocation_history").insert({
-    allocation_id: null,
-    action: "delete",
-    changed_by_email: email,
-    details: {
-      allocation_ids: allocationIds,
-      customer_name: snapshot?.customer_name ?? undefined,
-      project_name: snapshot?.project_name,
-      consultant_name: snapshot?.consultant_name,
-      week_range_removed: weekRange,
-      hours_removed: totalHours,
-    },
-  });
-  await supabase.from("allocations").delete().in("id", allocationIds);
+  await cloudSqlPool.query(
+    `INSERT INTO allocation_history (allocation_id, action, changed_by_email, details)
+     VALUES (NULL, 'delete', $1, $2::jsonb)`,
+    [
+      email,
+      JSON.stringify({
+        allocation_ids: allocationIds,
+        customer_name: snapshot?.customer_name ?? undefined,
+        project_name: snapshot?.project_name,
+        consultant_name: snapshot?.consultant_name,
+        week_range_removed: weekRange,
+        hours_removed: totalHours,
+      }),
+    ]
+  );
+  await cloudSqlPool.query(`DELETE FROM allocations WHERE id = ANY($1::uuid[])`, [
+    allocationIds,
+  ]);
   revalidateTag("allocation-page", "max");
 }

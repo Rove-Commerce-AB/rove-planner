@@ -2,11 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import {
-  updateProject,
-  deleteProject,
-  getProjectWithDetailsById,
-} from "@/lib/projectsClient";
+import { updateProject, getProjectWithDetailsById } from "@/lib/projectsClient";
+import { deleteProjectAction } from "@/app/(app)/projects/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, ConfirmModal, Select, Switch, modalInputClass, modalSelectTriggerClass } from "@/components/ui";
 import { getCustomers } from "@/lib/customersClient";
@@ -17,6 +14,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  isAdmin?: boolean;
 };
 
 export function EditProjectModal({
@@ -24,6 +22,7 @@ export function EditProjectModal({
   isOpen,
   onClose,
   onSuccess,
+  isAdmin = false,
 }: Props) {
   const [name, setName] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -103,7 +102,7 @@ export function EditProjectModal({
     setError(null);
     setDeleting(true);
     try {
-      await deleteProject(project.id);
+      await deleteProjectAction(project.id, project.customer_id ?? null);
       setShowDeleteConfirm(false);
       resetForm();
       onSuccess();
@@ -253,14 +252,18 @@ export function EditProjectModal({
         </form>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="dangerSecondary"
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </Button>
+          {isAdmin ? (
+            <Button
+              type="button"
+              variant="dangerSecondary"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={submitting || deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={handleClose}>
               Cancel
@@ -276,15 +279,17 @@ export function EditProjectModal({
         </div>
       </div>
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete project"
-        message={`Delete ${project?.name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-      />
+      {isAdmin && (
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          title="Delete project"
+          message={`Delete ${project?.name}? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
 import { getCurrentAppUser } from "./appUsers";
 import { addConsultantToCustomer } from "./customerConsultants";
 import { getCustomerIdByName } from "./customers";
@@ -32,50 +31,41 @@ export async function linkNewInternalConsultantToRoveCustomer(
 }
 
 export async function createConsultant(input: q.CreateConsultantInput) {
-  const supabase = await createClient();
-  return q.createConsultantQuery(supabase, input);
+  return q.createConsultantQuery(input);
 }
 
 export async function updateConsultant(id: string, input: q.UpdateConsultantInput) {
-  const supabase = await createClient();
-  return q.updateConsultantQuery(supabase, id, input);
+  return q.updateConsultantQuery(id, input);
 }
 
 export async function deleteConsultant(id: string) {
-  const supabase = await createClient();
-  return q.deleteConsultantQuery(supabase, id);
+  return q.deleteConsultantQuery(id);
 }
 
 export async function getConsultantByEmail(email: string) {
-  const supabase = await createClient();
-  return q.fetchConsultantByEmail(supabase, email);
+  return q.fetchConsultantByEmail(email);
 }
 
 export async function getConsultantForCurrentUser() {
   const user = await getCurrentAppUser();
   if (!user?.email) return null;
-  const supabase = await createClient();
-  return q.fetchConsultantByEmail(supabase, user.email);
+  return q.fetchConsultantByEmail(user.email);
 }
 
 export async function getConsultantById(id: string) {
-  const supabase = await createClient();
-  return q.fetchConsultantById(supabase, id);
+  return q.fetchConsultantById(id);
 }
 
 export async function getConsultantsWithDefaultRole() {
-  const supabase = await createClient();
-  return q.fetchConsultantsWithDefaultRole(supabase);
+  return q.fetchConsultantsWithDefaultRole();
 }
 
 export async function getConsultantsList() {
-  const supabase = await createClient();
-  return q.fetchConsultantsList(supabase);
+  return q.fetchConsultantsList();
 }
 
 export async function getConsultantNamesByIds(ids: string[]) {
-  const supabase = await createClient();
-  return q.fetchConsultantNamesByIds(supabase, ids);
+  return q.fetchConsultantNamesByIds(ids);
 }
 
 export async function getAvailableHoursForConsultantWeek(
@@ -83,16 +73,9 @@ export async function getAvailableHoursForConsultantWeek(
   year: number,
   week: number
 ) {
-  const supabase = await createClient();
-  return q.fetchAvailableHoursForConsultantWeek(
-    supabase,
-    consultantId,
-    year,
-    week
-  );
+  return q.fetchAvailableHoursForConsultantWeek(consultantId, year, week);
 }
 
 export async function getConsultantsWithDetails(year: number, week: number) {
-  const supabase = await createClient();
-  return q.fetchConsultantsWithDetails(supabase, year, week);
+  return q.fetchConsultantsWithDetails(year, week);
 }

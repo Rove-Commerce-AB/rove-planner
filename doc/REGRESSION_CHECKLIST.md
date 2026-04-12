@@ -45,6 +45,6 @@ Use this after refactors or releases that touch the listed areas. Check items th
 
 ## Cross-cutting
 
-- [ ] No unexpected Supabase or RLS errors in the browser console for happy paths.
+- [ ] No unexpected network or server errors in the browser console for happy paths.
 - [ ] Swedish URL aliases (if used) still redirect to the correct English route.
 - [ ] Automated tests: `npm run test:run` passes locally / in CI.

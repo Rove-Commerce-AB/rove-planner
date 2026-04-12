@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   BarChart2,
   Users,
@@ -14,7 +14,7 @@ import {
   LogOut,
   Home,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { signOut } from "next-auth/react";
 import { useSidePanel } from "@/contexts/SidePanelContext";
 
 const navGroup1 = [
@@ -114,7 +114,6 @@ export function Sidebar({
   const showRestrictedNavigation = !isSubcontractor;
 
   const pathname = usePathname();
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
 
@@ -123,10 +122,7 @@ export function Sidebar({
   }, []);
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    await signOut({ callbackUrl: "/login" });
   }
 
   // Collapse by default; expand while hovering.

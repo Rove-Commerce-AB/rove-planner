@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getConsultantByEmail } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 import { ProjectManagerTimeReportClient } from "./ProjectManagerTimeReportClient";
 
@@ -10,37 +10,34 @@ export const dynamic = "force-dynamic";
 export default async function ProjectManagerTimeReportPage() {
   await redirectSubcontractorToAccessDenied();
 
-  const [appUser, supabase] = await Promise.all([
-    getCurrentAppUser(),
-    createClient(),
-  ]);
+  const appUser = await getCurrentAppUser();
   const isAdmin = appUser?.role === "admin";
   const consultant = appUser?.email
     ? await getConsultantByEmail(appUser.email)
     : null;
   if (!consultant?.id) notFound();
 
-  const projectsQuery = supabase
-    .from("projects")
-    .select("id, name, customer_id, is_active")
-    .order("name");
-
-  const projects = await projectsQuery.eq("project_manager_id", consultant.id);
-
-  const projectsData = projects.data ?? [];
+  const { rows: projectsData } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    customer_id: string;
+    is_active: boolean;
+  }>(
+    `SELECT id, name, customer_id, is_active FROM projects
+     WHERE project_manager_id = $1
+     ORDER BY name`,
+    [consultant.id]
+  );
   if (projectsData.length === 0) notFound();
 
   const customerIds = [...new Set(projectsData.map((p) => p.customer_id).filter(Boolean))] as string[];
-  const customersRes =
+  const { rows: customersData } =
     customerIds.length > 0
-      ? await supabase
-          .from("customers")
-          .select("id, name")
-          .in("id", customerIds)
-          .order("name")
-      : { data: [] as { id: string; name: string }[] };
-
-  const customersData = customersRes.data ?? [];
+      ? await cloudSqlPool.query<{ id: string; name: string }>(
+          `SELECT id, name FROM customers WHERE id = ANY($1::uuid[]) ORDER BY name`,
+          [customerIds]
+        )
+      : { rows: [] as { id: string; name: string }[] };
   const customerMap = new Map(customersData.map((c) => [c.id, c.name]));
 
   const now = new Date();

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
@@ -15,15 +15,12 @@ export type FeatureRequest = {
 };
 
 export async function getFeatureRequests(): Promise<FeatureRequest[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("feature_requests")
-    .select("id,content,created_at,updated_at,submitted_by_email,is_implemented")
-    .order("is_implemented", { ascending: true })
-    .order("created_at", { ascending: false });
-
-  if (error) return [];
-  return (data ?? []) as FeatureRequest[];
+  const { rows } = await cloudSqlPool.query<FeatureRequest>(
+    `SELECT id, content, created_at::text, updated_at::text, submitted_by_email, is_implemented
+     FROM feature_requests
+     ORDER BY is_implemented ASC, created_at DESC`
+  );
+  return rows;
 }
 
 export async function setFeatureRequestImplemented(
@@ -31,13 +28,11 @@ export async function setFeatureRequestImplemented(
   is_implemented: boolean
 ): Promise<void> {
   await assertNotSubcontractorForWrite();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("feature_requests")
-    .update({ is_implemented, updated_at: new Date().toISOString() })
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE feature_requests SET is_implemented = $2, updated_at = now() WHERE id = $1`,
+    [id, is_implemented]
+  );
+  if (!rowCount) throw new Error("Update failed");
   revalidatePath("/settings");
 }
 
@@ -46,13 +41,10 @@ export async function createFeatureRequest(content: string): Promise<void> {
   if (!trimmed) throw new Error("Content is required");
 
   const user = await getCurrentAppUser();
-  const supabase = await createClient();
-  const { error } = await supabase.from("feature_requests").insert({
-    content: trimmed,
-    submitted_by_email: user?.email ?? null,
-  });
-
-  if (error) throw new Error(error.message);
+  await cloudSqlPool.query(
+    `INSERT INTO feature_requests (content, submitted_by_email) VALUES ($1, $2)`,
+    [trimmed, user?.email ?? null]
+  );
   revalidatePath("/settings");
 }
 
@@ -64,21 +56,16 @@ export async function updateFeatureRequest(
   const trimmed = content?.trim();
   if (!trimmed) throw new Error("Content is required");
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("feature_requests")
-    .update({ content: trimmed, updated_at: new Date().toISOString() })
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE feature_requests SET content = $2, updated_at = now() WHERE id = $1`,
+    [id, trimmed]
+  );
+  if (!rowCount) throw new Error("Update failed");
   revalidatePath("/settings");
 }
 
 export async function deleteFeatureRequest(id: string): Promise<void> {
   await assertNotSubcontractorForWrite();
-  const supabase = await createClient();
-  const { error } = await supabase.from("feature_requests").delete().eq("id", id);
-
-  if (error) throw new Error(error.message);
+  await cloudSqlPool.query(`DELETE FROM feature_requests WHERE id = $1`, [id]);
   revalidatePath("/settings");
 }

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 export type CustomerRate = {
   id: string;
@@ -8,105 +8,76 @@ export type CustomerRate = {
   currency: string;
 };
 
-export async function fetchCustomerRates(
-  supabase: SupabaseClient,
-  customerId: string
-): Promise<CustomerRate[]> {
-  const { data, error } = await supabase
-    .from("customer_rates")
-    .select("id,customer_id,role_id,rate_per_hour,currency")
-    .eq("customer_id", customerId);
-
-  if (error) throw error;
-
-  return (data ?? []).map((r) => ({
+function mapRow(r: {
+  id: string;
+  customer_id: string;
+  role_id: string;
+  rate_per_hour: string | number;
+  currency: string | null;
+}): CustomerRate {
+  return {
     id: r.id,
     customer_id: r.customer_id,
     role_id: r.role_id,
     rate_per_hour: Number(r.rate_per_hour),
     currency: r.currency ?? "SEK",
-  }));
+  };
+}
+
+export async function fetchCustomerRates(
+  customerId: string
+): Promise<CustomerRate[]> {
+  const { rows } = await cloudSqlPool.query(
+    `SELECT id, customer_id, role_id, rate_per_hour, currency
+     FROM customer_rates WHERE customer_id = $1`,
+    [customerId]
+  );
+  return rows.map(mapRow);
 }
 
 export async function fetchCustomerRatesByCustomerIds(
-  supabase: SupabaseClient,
   customerIds: string[]
 ): Promise<CustomerRate[]> {
   if (customerIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("customer_rates")
-    .select("id,customer_id,role_id,rate_per_hour,currency")
-    .in("customer_id", customerIds);
-
-  if (error) throw error;
-
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    customer_id: r.customer_id,
-    role_id: r.role_id,
-    rate_per_hour: Number(r.rate_per_hour),
-    currency: r.currency ?? "SEK",
-  }));
+  const { rows } = await cloudSqlPool.query(
+    `SELECT id, customer_id, role_id, rate_per_hour, currency
+     FROM customer_rates WHERE customer_id = ANY($1::uuid[])`,
+    [customerIds]
+  );
+  return rows.map(mapRow);
 }
 
 export async function createCustomerRateQuery(
-  supabase: SupabaseClient,
   customerId: string,
   roleId: string,
   ratePerHour: number,
   currency = "SEK"
 ): Promise<CustomerRate> {
-  const { data, error } = await supabase
-    .from("customer_rates")
-    .insert({
-      customer_id: customerId,
-      role_id: roleId,
-      rate_per_hour: ratePerHour,
-      currency,
-    })
-    .select("id,customer_id,role_id,rate_per_hour,currency")
-    .single();
-
-  if (error) throw error;
-
-  return {
-    id: data.id,
-    customer_id: data.customer_id,
-    role_id: data.role_id,
-    rate_per_hour: Number(data.rate_per_hour),
-    currency: data.currency ?? "SEK",
-  };
+  const { rows } = await cloudSqlPool.query(
+    `INSERT INTO customer_rates (customer_id, role_id, rate_per_hour, currency)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, customer_id, role_id, rate_per_hour, currency`,
+    [customerId, roleId, ratePerHour, currency]
+  );
+  if (!rows[0]) throw new Error("Failed to create customer rate");
+  return mapRow(rows[0] as Parameters<typeof mapRow>[0]);
 }
 
 export async function updateCustomerRateQuery(
-  supabase: SupabaseClient,
   id: string,
   ratePerHour: number
 ): Promise<CustomerRate> {
-  const { data, error } = await supabase
-    .from("customer_rates")
-    .update({ rate_per_hour: ratePerHour })
-    .eq("id", id)
-    .select("id,customer_id,role_id,rate_per_hour,currency")
-    .single();
-
-  if (error) throw error;
-
-  return {
-    id: data.id,
-    customer_id: data.customer_id,
-    role_id: data.role_id,
-    rate_per_hour: Number(data.rate_per_hour),
-    currency: data.currency ?? "SEK",
-  };
+  const { rows } = await cloudSqlPool.query(
+    `UPDATE customer_rates SET rate_per_hour = $2, updated_at = now()
+     WHERE id = $1
+     RETURNING id, customer_id, role_id, rate_per_hour, currency`,
+    [id, ratePerHour]
+  );
+  if (!rows[0]) throw new Error("Failed to update customer rate");
+  return mapRow(rows[0] as Parameters<typeof mapRow>[0]);
 }
 
-export async function deleteCustomerRateQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("customer_rates").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteCustomerRateQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM customer_rates WHERE id = $1`, [id]);
 }

@@ -49,7 +49,7 @@ No raw `<table>` markup in pages or features.
 ### DataTable is "dumb"
 - No business logic
 - No calculations
-- No Supabase calls
+- No direct database calls (data comes from server props / server actions)
 - Receives fully prepared data only
 
 ### Visual behavior

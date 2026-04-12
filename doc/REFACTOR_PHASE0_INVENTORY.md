@@ -1,6 +1,8 @@
 # Phase 0 — Refactor inventory (megafiles, UI vs lib, criteria)
 
-**Purpose:** Reduce regression risk and make later refactors measurable. Aligns with [PROJECT_RULES.md](./PROJECT_RULES.md) (no business logic in UI, all Supabase via `lib/`, one file = clear responsibility).
+**Purpose:** Reduce regression risk and make later refactors measurable. Aligns with [PROJECT_RULES.md](./PROJECT_RULES.md) (no business logic in UI, all database access via `lib/` + server actions, one file = clear responsibility).
+
+**Note:** Line counts and some paths in this doc are a **snapshot**; the live stack uses **PostgreSQL (Cloud SQL) + `pg`**. Re-run a line-count sweep when planning major splits.
 
 **Scope:** Documentation only; no functional changes.
 
@@ -79,7 +81,7 @@ Sorted by size. Line counts are non-blank / WC-style totals from PowerShell `Mea
 ### `AllocationCustomerProjectTabs.tsx`
 
 - **Props:** Large “controller” surface: tab mode, `data`, week range, `monthSpans`, `isCurrentWeek`, `renderWeekHeaderCells`, navigation callbacks/URLs, expanded sets, editing cell state, save handlers, and many more (see `AllocationCustomerProjectTabsProps` in file).
-- **`lib`:** `AllocationPageData` type only (no direct Supabase).
+- **`lib`:** `AllocationPageData` type only (no direct database access in this file).
 - **Note:** Tightly coupled to parent state in `AllocationPageClient`; prime candidate for hooks + presentational split.
 
 ### `TimeReportPageClient.tsx`
@@ -167,13 +169,11 @@ Megafiles depend on centralized types mainly for **entities**: `ProjectWithDetai
 
 ---
 
-## 6. Supabase access split (pointer to Phase 1)
+## 6. Database access (current stack)
 
-Not a Phase 0 deliverable to fix, but inventory note:
-
-- **Server:** `createClient` from `src/lib/supabase/server.ts` in layouts, auth callback, several `actions.ts`, `appUsers`, `allocationHistory`, `featureRequests`, PM/time-report pages.
-- **Browser:** `createClient` from `src/lib/supabase/client.ts` in `Sidebar`, login, access-denied.
-- **Singleton `src/lib/supabaseClient.ts`:** Still imported by many `lib/*` modules (`allocations`, `projects`, `customers`, `allocationPage`, etc.) — **dual path** vs cookie-bound server client; standardization tracked in refactor Phase 1.
+- **Single path:** Server-only access via `pg` (`src/lib/cloudSqlPool.ts`) and query modules under `src/lib/*Queries.ts` / wrappers.
+- **Auth:** Auth.js (Google); `app_users` and role checks in `lib/` gate mutations and sensitive reads.
+- **No browser DB client:** Client components use server actions or serialized props only.
 
 ---
 
@@ -187,7 +187,7 @@ Group work items roughly as follows (no need to create all at once):
 4. **Project / customer / consultant details** — Extract “read vs edit” sections; shared inline-edit patterns already in `lib/inlineEdit.ts` + UI.
 5. **Settings** — One file per section (users, roles, teams, calendars, feature requests) + thin container.
 6. **Types** — Move repeated time-report DTOs to `src/types` when shared.
-7. **Supabase unification** — Per Phase 1 plan: one production path for server vs browser; isolate or remove `supabaseClient` for app code.
+7. **Data layer hygiene** — Keep query logic in `lib/`; avoid duplicating connection patterns outside `cloudSqlPool`.
 
 ---
 

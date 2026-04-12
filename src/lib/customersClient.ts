@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/client";
+"use server";
+
 import * as q from "./customersQueries";
 
 export type {
@@ -8,6 +9,5 @@ export type {
 } from "./customersQueries";
 
 export async function getCustomers() {
-  const supabase = createClient();
-  return q.fetchCustomers(supabase);
+  return q.fetchCustomers();
 }

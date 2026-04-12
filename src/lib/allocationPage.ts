@@ -20,43 +20,41 @@ import {
 import { fetchCalendarHolidays } from "./calendarHolidaysQueries";
 import * as rolesQueries from "./rolesQueries";
 import * as teamsQueries from "./teamsQueries";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCachedConsultantsRaw } from "./consultantsCache";
 import { getConsultantsByCustomerId } from "./customerConsultants";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
 import { getISOWeekDateRange, isoWeeksInYear } from "./dateUtils";
 import { getProjectsWithCustomer } from "./projects";
 import { getRoles } from "./roles";
-import { createClient } from "@/lib/supabase/server";
 import { getTeams } from "./teams";
 
 const CACHE_REVALIDATE = 60;
 
 async function getCachedRoles() {
-  const supabase = await createClient();
   return unstable_cache(
-    async () => rolesQueries.fetchRoles(supabase),
+    async () => rolesQueries.fetchRoles(),
     ["allocation-roles"],
     { revalidate: CACHE_REVALIDATE }
   )();
 }
 
 async function getCachedTeams() {
-  const supabase = await createClient();
   return unstable_cache(
-    async () => teamsQueries.fetchTeams(supabase),
+    async () => teamsQueries.fetchTeams(),
     ["allocation-teams"],
     { revalidate: CACHE_REVALIDATE }
   )();
 }
 
 async function getCachedCalendars() {
-  const supabase = await createClient();
   return unstable_cache(
     async () => {
-      const { data } = await supabase
-        .from("calendars")
-        .select("id,hours_per_week");
-      return data ?? [];
+      const { rows } = await cloudSqlPool.query<{
+        id: string;
+        hours_per_week: string | number;
+      }>(`SELECT id, hours_per_week FROM calendars`);
+      return rows;
     },
     ["allocation-calendars"],
     { revalidate: CACHE_REVALIDATE }
@@ -64,9 +62,8 @@ async function getCachedCalendars() {
 }
 
 async function getCachedCalendarHolidays(calendarId: string) {
-  const supabase = await createClient();
   return unstable_cache(
-    async () => fetchCalendarHolidays(supabase, calendarId),
+    async () => fetchCalendarHolidays(calendarId),
     ["allocation-holidays", calendarId],
     { revalidate: CACHE_REVALIDATE }
   )();
@@ -268,13 +265,11 @@ async function getConsultantsRawByIds(
   ids: string[]
 ): Promise<Awaited<ReturnType<typeof getCachedConsultantsRaw>>> {
   if (ids.length === 0) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("consultants")
-    .select(CONSULTANTS_SELECT)
-    .in("id", ids)
-    .order("name");
-  return data ?? [];
+  const { rows } = await cloudSqlPool.query(
+    `SELECT ${CONSULTANTS_SELECT} FROM consultants WHERE id = ANY($1::uuid[]) ORDER BY name`,
+    [ids]
+  );
+  return rows as Awaited<ReturnType<typeof getCachedConsultantsRaw>>;
 }
 
 /** Allocation data scoped to one project and only consultants linked to that project's customer. For project detail planning panel. */

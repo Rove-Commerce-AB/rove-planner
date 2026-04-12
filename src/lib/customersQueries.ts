@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import { fetchProjectsByCustomerIds } from "./projectsLookupQueries";
@@ -38,6 +38,9 @@ export type UpdateCustomerInput = {
   is_active?: boolean;
 };
 
+const CUSTOMER_SELECT =
+  "id, name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_active";
+
 function getInitials(name: string): string {
   return name
     .split(" ")
@@ -48,39 +51,33 @@ function getInitials(name: string): string {
 }
 
 async function consultantNamesMap(
-  supabase: SupabaseClient,
   ids: string[]
 ): Promise<Map<string, string>> {
   const unique = [...new Set(ids)].filter(Boolean);
   if (unique.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("consultants")
-    .select("id,name")
-    .in("id", unique);
-  if (error) throw error;
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[])`,
+    [unique]
+  );
   const map = new Map<string, string>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     map.set(row.id, row.name ?? "");
   }
   return map;
 }
 
 export async function fetchCustomerById(
-  supabase: SupabaseClient,
   id: string
 ): Promise<CustomerWithDetails | null> {
-  const { data, error } = await supabase
-    .from("customers")
-    .select(
-      "id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active"
-    )
-    .eq("id", id)
-    .single();
-
-  if (error || !data) return null;
+  const { rows } = await cloudSqlPool.query(
+    `SELECT ${CUSTOMER_SELECT} FROM customers WHERE id = $1`,
+    [id]
+  );
+  const data = rows[0] as Customer | undefined;
+  if (!data) return null;
 
   const accountManagerNames = data.account_manager_id
-    ? await consultantNamesMap(supabase, [data.account_manager_id])
+    ? await consultantNamesMap([data.account_manager_id])
     : new Map<string, string>();
 
   let projectsByCustomer = new Map<
@@ -88,7 +85,7 @@ export async function fetchCustomerById(
     { id: string; name: string; is_active: boolean; type: string }[]
   >();
   try {
-    const projects = await fetchProjectsByCustomerIds(supabase, [data.id]);
+    const projects = await fetchProjectsByCustomerIds([data.id]);
     for (const p of projects) {
       const list = projectsByCustomer.get(p.customer_id) ?? [];
       list.push({
@@ -134,135 +131,119 @@ export async function fetchCustomerById(
   };
 }
 
-export async function fetchCustomers(
-  supabase: SupabaseClient
-): Promise<Customer[]> {
-  const { data, error } = await supabase
-    .from("customers")
-    .select(
-      "id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active"
-    )
-    .order("name");
-
-  if (error) throw error;
-  return data ?? [];
+export async function fetchCustomers(): Promise<Customer[]> {
+  const { rows } = await cloudSqlPool.query<Customer>(
+    `SELECT ${CUSTOMER_SELECT} FROM customers ORDER BY name`
+  );
+  return rows;
 }
 
 export async function fetchCustomerIdByName(
-  supabase: SupabaseClient,
   name: string
 ): Promise<string | null> {
   const trimmed = name?.trim();
   if (!trimmed) return null;
-  const { data, error } = await supabase
-    .from("customers")
-    .select("id")
-    .ilike("name", trimmed)
-    .limit(1)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data.id;
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM customers WHERE lower(name) = lower($1) LIMIT 1`,
+    [trimmed]
+  );
+  return rows[0]?.id ?? null;
 }
 
-export async function fetchCustomersByIds(
-  supabase: SupabaseClient,
-  ids: string[]
-): Promise<Customer[]> {
+export async function fetchCustomersByIds(ids: string[]): Promise<Customer[]> {
   if (ids.length === 0) return [];
-  const { data, error } = await supabase
-    .from("customers")
-    .select(
-      "id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active"
-    )
-    .in("id", ids)
-    .order("name");
-  if (error) throw error;
-  return (data ?? []) as Customer[];
+  const { rows } = await cloudSqlPool.query<Customer>(
+    `SELECT ${CUSTOMER_SELECT} FROM customers WHERE id = ANY($1::uuid[]) ORDER BY name`,
+    [ids]
+  );
+  return rows;
 }
 
 export async function createCustomerQuery(
-  supabase: SupabaseClient,
   input: CreateCustomerInput
 ): Promise<Customer> {
-  const { data, error } = await supabase
-    .from("customers")
-    .insert({
-      name: input.name.trim(),
-      contact_name: input.contact_name?.trim() || null,
-      contact_email: input.contact_email?.trim() || null,
-      account_manager_id: input.account_manager_id ?? null,
-      color: input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
-      logo_url: input.logo_url?.trim() || null,
-      url: input.url?.trim() ?? null,
-      is_active: input.is_active ?? true,
-    })
-    .select(
-      "id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active"
-    )
-    .single();
-
-  if (error) throw error;
-  return data as Customer;
+  const { rows } = await cloudSqlPool.query<Customer>(
+    `INSERT INTO customers (
+       name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_active
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING ${CUSTOMER_SELECT}`,
+    [
+      input.name.trim(),
+      input.contact_name?.trim() || null,
+      input.contact_email?.trim() || null,
+      input.account_manager_id ?? null,
+      input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
+      input.logo_url?.trim() || null,
+      input.url?.trim() ?? null,
+      input.is_active ?? true,
+    ]
+  );
+  if (!rows[0]) throw new Error("Failed to create customer");
+  return rows[0];
 }
 
 export async function updateCustomerQuery(
-  supabase: SupabaseClient,
   id: string,
   input: UpdateCustomerInput
 ): Promise<Customer> {
-  const { data, error } = await supabase
-    .from("customers")
-    .update({
-      ...(input.name !== undefined && { name: input.name.trim() }),
-      ...(input.contact_name !== undefined && {
-        contact_name: input.contact_name?.trim() || null,
-      }),
-      ...(input.contact_email !== undefined && {
-        contact_email: input.contact_email?.trim() || null,
-      }),
-      ...(input.account_manager_id !== undefined && {
-        account_manager_id: input.account_manager_id ?? null,
-      }),
-      ...(input.color !== undefined && {
-        color: input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
-      }),
-      ...(input.logo_url !== undefined && {
-        logo_url: input.logo_url?.trim() || null,
-      }),
-      ...(input.url !== undefined && { url: input.url?.trim() || null }),
-      ...(input.is_active !== undefined && { is_active: input.is_active }),
-    })
-    .eq("id", id)
-    .select(
-      "id,name,contact_name,contact_email,account_manager_id,color,logo_url,url,is_active"
-    )
-    .single();
-
-  if (error) throw error;
-  return data;
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (input.name !== undefined) {
+    sets.push(`name = $${i++}`);
+    values.push(input.name.trim());
+  }
+  if (input.contact_name !== undefined) {
+    sets.push(`contact_name = $${i++}`);
+    values.push(input.contact_name?.trim() || null);
+  }
+  if (input.contact_email !== undefined) {
+    sets.push(`contact_email = $${i++}`);
+    values.push(input.contact_email?.trim() || null);
+  }
+  if (input.account_manager_id !== undefined) {
+    sets.push(`account_manager_id = $${i++}`);
+    values.push(input.account_manager_id ?? null);
+  }
+  if (input.color !== undefined) {
+    sets.push(`color = $${i++}`);
+    values.push(input.color?.trim() || DEFAULT_CUSTOMER_COLOR);
+  }
+  if (input.logo_url !== undefined) {
+    sets.push(`logo_url = $${i++}`);
+    values.push(input.logo_url?.trim() || null);
+  }
+  if (input.url !== undefined) {
+    sets.push(`url = $${i++}`);
+    values.push(input.url?.trim() || null);
+  }
+  if (input.is_active !== undefined) {
+    sets.push(`is_active = $${i++}`);
+    values.push(input.is_active);
+  }
+  sets.push(`updated_at = now()`);
+  values.push(id);
+  const { rows } = await cloudSqlPool.query<Customer>(
+    `UPDATE customers SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${CUSTOMER_SELECT}`,
+    values
+  );
+  if (!rows[0]) throw new Error("Failed to update customer");
+  return rows[0];
 }
 
-export async function deleteCustomerQuery(
-  supabase: SupabaseClient,
-  id: string
-): Promise<void> {
-  const { error } = await supabase.from("customers").delete().eq("id", id);
-
-  if (error) throw error;
+export async function deleteCustomerQuery(id: string): Promise<void> {
+  await cloudSqlPool.query(`DELETE FROM customers WHERE id = $1`, [id]);
 }
 
-export async function fetchCustomersWithDetails(
-  supabase: SupabaseClient
-): Promise<CustomerWithDetails[]> {
-  const customers = await fetchCustomers(supabase);
+export async function fetchCustomersWithDetails(): Promise<
+  CustomerWithDetails[]
+> {
+  const customers = await fetchCustomers();
 
   const accountManagerIds = [
     ...new Set(customers.map((c) => c.account_manager_id).filter(Boolean)),
   ] as string[];
-  const accountManagerNames = await consultantNamesMap(
-    supabase,
-    accountManagerIds
-  );
+  const accountManagerNames = await consultantNamesMap(accountManagerIds);
 
   let projectsByCustomer = new Map<
     string,
@@ -270,7 +251,6 @@ export async function fetchCustomersWithDetails(
   >();
   try {
     const projects = await fetchProjectsByCustomerIds(
-      supabase,
       customers.map((c) => c.id)
     );
     for (const p of projects) {

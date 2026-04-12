@@ -12,7 +12,7 @@ import type {
   UpdateCustomerInput,
 } from "@/lib/customers";
 import type { Customer } from "@/lib/customers";
-import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
+import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
 export async function revalidateCustomers() {
   await assertNotSubcontractorForWrite();
@@ -40,7 +40,7 @@ export async function updateCustomerAction(
 }
 
 export async function deleteCustomerAction(id: string): Promise<void> {
-  await assertNotSubcontractorForWrite();
+  await assertAdmin();
   await deleteCustomer(id);
   revalidatePath("/customers");
 }

@@ -2,7 +2,7 @@ import "server-only";
 
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
-import { createClient } from "@/lib/supabase/server";
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import type { ProjectManagerEntry } from "@/types";
 
 function getMonthRange(year: number, month: number): { start: string; end: string } {
@@ -26,28 +26,39 @@ export async function getProjectManagerTimeEntries(args: {
 
   if (!args.projectId) return { entries: [] };
 
-  const supabase = await createClient();
   const monthRange = getMonthRange(args.year, args.month);
 
-  const { data: managed } = await supabase
-    .from("projects")
-    .select("id")
-    .eq("id", args.projectId)
-    .eq("project_manager_id", consultant.id)
-    .limit(1);
-  if (!managed || managed.length === 0) return { entries: [] };
+  const { rows: managed } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM projects WHERE id = $1 AND project_manager_id = $2 LIMIT 1`,
+    [args.projectId, consultant.id]
+  );
+  if (!managed.length) return { entries: [] };
 
-  const { data: rows, error } = await supabase
-    .from("time_report_entries")
-    .select(
-      "id, entry_date, consultant_id, customer_id, project_id, role_id, jira_devops_key, description, hours, internal_comment, pm_edited_hours, pm_edited_comment, invoiced_at"
-    )
-    .eq("project_id", args.projectId)
-    .gte("entry_date", monthRange.start)
-    .lte("entry_date", monthRange.end)
-    .order("entry_date", { ascending: true });
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    entry_date: string;
+    consultant_id: string;
+    customer_id: string;
+    project_id: string;
+    role_id: string;
+    jira_devops_key: string | null;
+    description: string | null;
+    hours: string | number;
+    internal_comment: string | null;
+    pm_edited_hours: string | number | null;
+    pm_edited_comment: string | null;
+    invoiced_at: string | null;
+  }>(
+    `SELECT id, entry_date::text AS entry_date, consultant_id, customer_id, project_id, role_id,
+            jira_devops_key, description, hours, internal_comment,
+            pm_edited_hours, pm_edited_comment, invoiced_at::text AS invoiced_at
+     FROM time_report_entries
+     WHERE project_id = $1 AND entry_date >= $2::date AND entry_date <= $3::date
+     ORDER BY entry_date ASC`,
+    [args.projectId, monthRange.start, monthRange.end]
+  );
 
-  if (error || !rows) return { entries: [] };
+  if (rows.length === 0) return { entries: [] };
 
   const consultantIds = [...new Set(rows.map((r) => r.consultant_id).filter(Boolean))];
   const customerIds = [...new Set(rows.map((r) => r.customer_id).filter(Boolean))];
@@ -63,24 +74,33 @@ export async function getProjectManagerTimeEntries(args: {
 
   const [consultantsRes, customersRes, jiraRes] = await Promise.all([
     consultantIds.length
-      ? supabase.from("consultants").select("id,name").in("id", consultantIds)
-      : Promise.resolve({ data: [] as { id: string; name: string | null }[], error: null }),
+      ? cloudSqlPool.query<{ id: string; name: string | null }>(
+          `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[])`,
+          [consultantIds]
+        )
+      : Promise.resolve({ rows: [] as { id: string; name: string | null }[] }),
     customerIds.length
-      ? supabase.from("customers").select("id,name").in("id", customerIds)
-      : Promise.resolve({ data: [] as { id: string; name: string | null }[], error: null }),
+      ? cloudSqlPool.query<{ id: string; name: string | null }>(
+          `SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`,
+          [customerIds]
+        )
+      : Promise.resolve({ rows: [] as { id: string; name: string | null }[] }),
     jiraKeys.length
-      ? supabase.from("jira_issues").select("jira_key, summary").in("jira_key", jiraKeys)
-      : Promise.resolve({ data: [] as { jira_key: string; summary: string | null }[], error: null }),
+      ? cloudSqlPool.query<{ jira_key: string; summary: string | null }>(
+          `SELECT jira_key, summary FROM jira_issues WHERE jira_key = ANY($1::text[])`,
+          [jiraKeys]
+        )
+      : Promise.resolve({ rows: [] as { jira_key: string; summary: string | null }[] }),
   ]);
 
   const consultantMap = new Map(
-    (consultantsRes.data ?? []).map((c) => [c.id, c.name ?? "Unknown"])
+    consultantsRes.rows.map((c) => [c.id, c.name ?? "Unknown"])
   );
   const customerMap = new Map(
-    (customersRes.data ?? []).map((c) => [c.id, c.name ?? "Unknown"])
+    customersRes.rows.map((c) => [c.id, c.name ?? "Unknown"])
   );
   const jiraMap = new Map(
-    (jiraRes.data ?? []).map((j) => [j.jira_key, j.summary ?? null])
+    jiraRes.rows.map((j) => [j.jira_key, j.summary ?? null])
   );
 
   const entries: ProjectManagerEntry[] = rows.map((r) => ({
@@ -122,21 +142,22 @@ export async function pmUpdateTimeEntry(args: {
   const consultant = await getConsultantForCurrentUser();
   if (!consultant?.id) return { ok: false, error: "Unauthorized" };
 
-  const supabase = await createClient();
-  const { data: entry, error: entryErr } = await supabase
-    .from("time_report_entries")
-    .select("id, project_id, invoiced_at")
-    .eq("id", args.entryId)
-    .single();
+  const { rows: entryRows } = await cloudSqlPool.query<{
+    id: string;
+    project_id: string;
+    invoiced_at: string | null;
+  }>(
+    `SELECT id, project_id, invoiced_at::text FROM time_report_entries WHERE id = $1`,
+    [args.entryId]
+  );
+  const entry = entryRows[0];
+  if (!entry) return { ok: false, error: "Entry not found" };
 
-  if (entryErr || !entry) return { ok: false, error: "Entry not found" };
-  const { data: managed } = await supabase
-    .from("projects")
-    .select("id")
-    .eq("id", entry.project_id)
-    .eq("project_manager_id", consultant.id)
-    .limit(1);
-  if (!managed || managed.length === 0) return { ok: false, error: "Unauthorized" };
+  const { rows: managed } = await cloudSqlPool.query(
+    `SELECT id FROM projects WHERE id = $1 AND project_manager_id = $2 LIMIT 1`,
+    [entry.project_id, consultant.id]
+  );
+  if (!managed.length) return { ok: false, error: "Unauthorized" };
 
   if (entry.invoiced_at && !isAdmin) {
     return { ok: false, error: "Already marked for invoicing" };
@@ -148,23 +169,30 @@ export async function pmUpdateTimeEntry(args: {
   const comment = args.pmComment.trim() === "" ? null : args.pmComment.trim();
   const pmEditedAt = new Date().toISOString();
 
-  const updates: Record<string, unknown> = {
-    pm_edited_comment: comment,
-    pm_edited_at: pmEditedAt,
-  };
-  if (args.pmHours !== undefined) updates.pm_edited_hours = args.pmHours;
-  if (consultant?.id) updates.pm_edited_by = consultant.id;
-
+  const sets: string[] = [
+    "pm_edited_comment = $2",
+    "pm_edited_at = $3::timestamptz",
+    "pm_edited_by = $4",
+  ];
+  const values: unknown[] = [args.entryId, comment, pmEditedAt, consultant.id];
+  let i = 5;
+  if (args.pmHours !== undefined) {
+    sets.push(`pm_edited_hours = $${i++}`);
+    values.push(args.pmHours);
+  }
   if (args.markInvoicing) {
-    updates.invoiced_at = pmEditedAt;
+    sets.push(`invoiced_at = $${i++}::timestamptz`);
+    values.push(pmEditedAt);
   }
 
-  const { error: updateErr } = await supabase
-    .from("time_report_entries")
-    .update(updates)
-    .eq("id", args.entryId);
-
-  if (updateErr) return { ok: false, error: updateErr.message };
+  try {
+    await cloudSqlPool.query(
+      `UPDATE time_report_entries SET ${sets.join(", ")} WHERE id = $1`,
+      values
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Update failed" };
+  }
   return { ok: true };
 }
 
@@ -178,38 +206,34 @@ export async function pmSetInvoicingStatus(args: {
 
   const consultant = await getConsultantForCurrentUser();
   if (!consultant?.id) return { ok: false, error: "Unauthorized" };
-  const supabase = await createClient();
 
   const pmEditedAt = new Date().toISOString();
 
-  const { data: entry, error: entryErr } = await supabase
-    .from("time_report_entries")
-    .select("id, project_id")
-    .eq("id", args.entryId)
-    .single();
+  const { rows: entryRows } = await cloudSqlPool.query<{ id: string; project_id: string }>(
+    `SELECT id, project_id FROM time_report_entries WHERE id = $1`,
+    [args.entryId]
+  );
+  const entry = entryRows[0];
+  if (!entry) return { ok: false, error: "Entry not found" };
 
-  if (entryErr || !entry) return { ok: false, error: "Entry not found" };
+  const { rows: managed } = await cloudSqlPool.query(
+    `SELECT id FROM projects WHERE id = $1 AND project_manager_id = $2 LIMIT 1`,
+    [entry.project_id, consultant.id]
+  );
+  if (!managed.length) return { ok: false, error: "Unauthorized" };
 
-  const { data: managed } = await supabase
-    .from("projects")
-    .select("id")
-    .eq("id", entry.project_id)
-    .eq("project_manager_id", consultant.id)
-    .limit(1);
-  if (!managed || managed.length === 0) return { ok: false, error: "Unauthorized" };
-
-  const updates: Record<string, unknown> = {
-    pm_edited_at: pmEditedAt,
-    invoiced_at: args.ready ? pmEditedAt : null,
-  };
-  if (consultant?.id) updates.pm_edited_by = consultant.id;
-
-  const { error: updateErr } = await supabase
-    .from("time_report_entries")
-    .update(updates)
-    .eq("id", args.entryId);
-
-  if (updateErr) return { ok: false, error: updateErr.message };
+  try {
+    await cloudSqlPool.query(
+      `UPDATE time_report_entries
+       SET pm_edited_at = $2::timestamptz,
+           invoiced_at = CASE WHEN $3 THEN $2::timestamptz ELSE NULL END,
+           pm_edited_by = $4
+       WHERE id = $1`,
+      [args.entryId, pmEditedAt, args.ready, consultant.id]
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Update failed" };
+  }
   return { ok: true };
 }
 
@@ -223,40 +247,37 @@ export async function pmSetInvoicingStatusBulk(args: {
 
   const consultant = await getConsultantForCurrentUser();
   if (!consultant?.id) return { ok: false, error: "Unauthorized" };
-  const supabase = await createClient();
 
   if (!args.entryIds.length) return { ok: true };
 
-  const { data: entries, error: entriesErr } = await supabase
-    .from("time_report_entries")
-    .select("id, project_id")
-    .in("id", args.entryIds);
-  if (entriesErr) return { ok: false, error: entriesErr.message };
-  const projectIds = [...new Set((entries ?? []).map((r) => r.project_id).filter(Boolean))];
+  const { rows: entries } = await cloudSqlPool.query<{ id: string; project_id: string }>(
+    `SELECT id, project_id FROM time_report_entries WHERE id = ANY($1::uuid[])`,
+    [args.entryIds]
+  );
+  const projectIds = [...new Set(entries.map((r) => r.project_id).filter(Boolean))];
   if (projectIds.length === 0) return { ok: false, error: "No entries found" };
 
-  const { data: managedProjects, error: managedErr } = await supabase
-    .from("projects")
-    .select("id")
-    .in("id", projectIds as string[])
-    .eq("project_manager_id", consultant.id);
-  if (managedErr) return { ok: false, error: managedErr.message };
-  if ((managedProjects?.length ?? 0) !== projectIds.length) {
+  const { rows: managedProjects } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM projects WHERE id = ANY($1::uuid[]) AND project_manager_id = $2`,
+    [projectIds, consultant.id]
+  );
+  if (managedProjects.length !== projectIds.length) {
     return { ok: false, error: "Unauthorized" };
   }
 
   const pmEditedAt = new Date().toISOString();
-  const updates: Record<string, unknown> = {
-    pm_edited_at: pmEditedAt,
-    invoiced_at: args.ready ? pmEditedAt : null,
-  };
-  if (consultant?.id) updates.pm_edited_by = consultant.id;
 
-  const { error: updateErr } = await supabase
-    .from("time_report_entries")
-    .update(updates)
-    .in("id", args.entryIds);
-
-  if (updateErr) return { ok: false, error: updateErr.message };
+  try {
+    await cloudSqlPool.query(
+      `UPDATE time_report_entries
+       SET pm_edited_at = $1::timestamptz,
+           invoiced_at = CASE WHEN $2 THEN $1::timestamptz ELSE NULL END,
+           pm_edited_by = $3
+       WHERE id = ANY($4::uuid[])`,
+      [pmEditedAt, args.ready, consultant.id, args.entryIds]
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Update failed" };
+  }
   return { ok: true };
 }
