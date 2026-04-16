@@ -47,6 +47,16 @@ body {
   font-family: var(--font-primary);
 }
 
+/* Interactive UI controls should always communicate clickability on hover. */
+a:hover,
+a[href]:hover,
+button:not(:disabled):hover,
+[role="button"]:not([aria-disabled="true"]):hover,
+[role="tab"]:not([aria-disabled="true"]):hover,
+[aria-pressed]:not([aria-disabled="true"]):hover {
+  cursor: pointer;
+}
+
 /* Ensure form controls using border-form never get a harsh (browser) border color.
    Use both .border-form and element selectors so we win over Tailwind utilities and browser defaults. */
 .border-form,

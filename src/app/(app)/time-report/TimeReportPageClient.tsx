@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef, Fragment, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, X, Copy, Link, ExternalLink, Loader2 } from "lucide-react";
-import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek, batchHydrateTimeReport } from "./actions";
+import { getActiveProjectsForCustomer, getJiraDevOpsOptionsForProject, getTaskOptionsForCustomerAndProject, getHolidayDatesForWeek, getTimeReportMonthTotalHours, getTimeReportEntries, saveTimeReportEntries, copyEntryToWeek, batchHydrateTimeReport } from "./actions";
 import type { ProjectOption, JiraDevOpsOption, TaskOption } from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
 import {
@@ -149,6 +149,8 @@ export function TimeReportPageClient({
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded">("idle");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [monthTotalHours, setMonthTotalHours] = useState(0);
+  const [monthTotalState, setMonthTotalState] = useState<"idle" | "loading" | "error">("idle");
   const [showValidationHighlights, setShowValidationHighlights] = useState(false);
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRequestIdRef = useRef(0);
@@ -766,6 +768,12 @@ export function TimeReportPageClient({
     () => getWeeksInMonthLocal(displayMonth, displayYear),
     [displayMonth, displayYear]
   );
+  const monthTotalDisplay = useMemo(() => {
+    if (!Number.isFinite(monthTotalHours) || monthTotalHours <= 0) return "0";
+    return Math.abs(monthTotalHours - Math.round(monthTotalHours)) < 1e-6
+      ? String(Math.round(monthTotalHours))
+      : String(Math.round(monthTotalHours * 10) / 10).replace(/\.0$/, "");
+  }, [monthTotalHours]);
 
   const totalHoursPerDay = useMemo(
     () =>
@@ -785,6 +793,32 @@ export function TimeReportPageClient({
     () => customerGroups.reduce((n, g) => n + g.entries.length, 0),
     [customerGroups]
   );
+
+  useEffect(() => {
+    if (!consultant) {
+      setMonthTotalHours(0);
+      setMonthTotalState("idle");
+      return;
+    }
+
+    let isStale = false;
+    setMonthTotalState("loading");
+    getTimeReportMonthTotalHours(consultant.id, displayYear, displayMonth)
+      .then((total) => {
+        if (isStale) return;
+        setMonthTotalHours(total);
+        setMonthTotalState("idle");
+      })
+      .catch(() => {
+        if (isStale) return;
+        setMonthTotalHours(0);
+        setMonthTotalState("error");
+      });
+
+    return () => {
+      isStale = true;
+    };
+  }, [consultant, displayMonth, displayYear]);
 
   useEffect(() => {
     if (!ENABLE_PERF_DEBUG) return;
@@ -874,6 +908,12 @@ export function TimeReportPageClient({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="text-xs text-text-secondary">
+            Month total hours reported:{" "}
+            <span className="font-medium text-text-primary tabular-nums">
+              {monthTotalState === "loading" ? "…" : monthTotalDisplay}
+            </span>
+          </div>
           {saveState === "saving" && (
             <span className="text-xs text-text-secondary">Saving…</span>
           )}
@@ -882,45 +922,8 @@ export function TimeReportPageClient({
               {saveError}
             </span>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setAddCustomerOpen(true)}
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-            Add customer
-          </Button>
         </div>
       </div>
-
-      {addCustomerOpen && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-bg-muted/60 p-1.5 pr-1">
-          <span className="text-xs text-text-secondary">Add customer:</span>
-          {availableToAdd.length === 0 ? (
-            <span className="text-xs text-text-muted">
-              All customers added
-            </span>
-          ) : (
-            availableToAdd.map((c) => (
-              <Button
-                key={c.id}
-                variant="secondary"
-                size="sm"
-                onClick={() => addCustomerGroup(c.id)}
-              >
-                {c.name}
-              </Button>
-            ))
-          )}
-          <IconButton
-            aria-label="Close"
-            onClick={() => setAddCustomerOpen(false)}
-            className="ml-auto shrink-0"
-          >
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-      )}
 
       {loadState === "loading" ? (
         <div className="overflow-hidden rounded-lg bg-bg-default">
@@ -1241,6 +1244,44 @@ export function TimeReportPageClient({
             </tbody>
           </table>
           </div>
+          <div className="flex justify-start">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddCustomerOpen(true)}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              Add customer
+            </Button>
+          </div>
+          {addCustomerOpen && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-bg-muted/60 p-1.5 pr-1">
+              <span className="text-xs text-text-secondary">Add customer:</span>
+              {availableToAdd.length === 0 ? (
+                <span className="text-xs text-text-muted">
+                  All customers added
+                </span>
+              ) : (
+                availableToAdd.map((c) => (
+                  <Button
+                    key={c.id}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => addCustomerGroup(c.id)}
+                  >
+                    {c.name}
+                  </Button>
+                ))
+              )}
+              <IconButton
+                aria-label="Close"
+                onClick={() => setAddCustomerOpen(false)}
+                className="ml-auto shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </IconButton>
+            </div>
+          )}
         </div>
       )}
 

@@ -352,6 +352,32 @@ export async function getTimeReportEntries(
   return result;
 }
 
+export async function getTimeReportMonthTotalHours(
+  consultantId: string,
+  year: number,
+  month: number
+): Promise<number> {
+  const consultant = await getConsultantForCurrentUser();
+  if (!consultant || consultant.id !== consultantId) return 0;
+
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd = new Date(year, month, 0);
+  const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(
+    monthEnd.getDate()
+  ).padStart(2, "0")}`;
+
+  const { rows } = await cloudSqlPool.query<{ total_hours: string | number | null }>(
+    `SELECT COALESCE(SUM(hours), 0) AS total_hours
+     FROM time_report_entries
+     WHERE consultant_id = $1
+       AND entry_date >= $2::date
+       AND entry_date <= $3::date`,
+    [consultantId, monthStart, monthEndStr]
+  );
+
+  return Number(rows[0]?.total_hours ?? 0);
+}
+
 export async function saveTimeReportEntries(
   consultantId: string,
   year: number,

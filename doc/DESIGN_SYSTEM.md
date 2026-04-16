@@ -156,6 +156,18 @@ Use Tailwind tokens only: `rounded`, `rounded-sm`, `rounded-md`, `rounded-lg`, `
 
 ---
 
+## Interaction & cursor
+
+- All interactive controls must use a hand cursor on hover:
+  - links (`<a>`, `a[href]`)
+  - buttons (`button:not(:disabled)`)
+  - button-like controls (`[role="button"]`, toggles via `[aria-pressed]`)
+  - tabs (`[role="tab"]`)
+- This is enforced globally in `src/app/globals.css`.
+- Do not override this behavior in feature code unless there is a strict accessibility reason.
+
+---
+
 ## Panel & dashboard layout (mandatory)
 
 All overview and detail views must use the Panel system.
