@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, History, Pencil, Trash2 } from "lucide-react";
 import {
@@ -36,9 +36,38 @@ function weekLabel(year: number, week: number) {
   return `${year} · W${String(week).padStart(2, "0")}`;
 }
 
+/** Stable key for grouping rows by latest status ISO week. */
+function latestStatusWeekKey(latest: CustomerStatusEntrySerialized | null): string {
+  if (!latest) return "__none__";
+  return `${latest.year}-W${String(latest.week).padStart(2, "0")}`;
+}
+
+function parseStatusWeekKey(key: string): { year: number; week: number } | null {
+  if (key === "__none__") return null;
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(key);
+  if (!m) return null;
+  return { year: Number(m[1]), week: Number(m[2]) };
+}
+
+/** Same on Node and browsers — never use default locale (hydration-safe). */
+function compareCustomerNameAsc(a: string, b: string): number {
+  return a.localeCompare(b, "sv", { sensitivity: "base" });
+}
+
+/** Descending by calendar position of ISO week (newest first). `__none__` last. */
+function compareStatusWeekKeysDesc(a: string, b: string): number {
+  if (a === "__none__") return 1;
+  if (b === "__none__") return -1;
+  const pa = parseStatusWeekKey(a);
+  const pb = parseStatusWeekKey(b);
+  if (!pa || !pb) return 0;
+  if (pa.year !== pb.year) return pb.year - pa.year;
+  return pb.week - pa.week;
+}
+
 function formatDateTime(iso: string) {
   try {
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat("sv-SE", {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(iso));
@@ -131,6 +160,21 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isHistoryPending, startHistoryTransition] = useTransition();
+
+  const rowsByStatusWeek = useMemo(() => {
+    const map = new Map<string, CustomerStatusRowProps[]>();
+    for (const row of rows) {
+      const key = latestStatusWeekKey(row.latest);
+      const list = map.get(key) ?? [];
+      list.push(row);
+      map.set(key, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => compareCustomerNameAsc(a.customerName, b.customerName));
+    }
+    const keys = [...map.keys()].sort(compareStatusWeekKeysDesc);
+    return { map, keys };
+  }, [rows]);
 
   function getForm(customerId: string, defaultLight: TrafficLight) {
     return (
@@ -259,42 +303,46 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
         <p className="text-sm text-text-muted">No active customers.</p>
       ) : null}
 
-      {rows.map((row) => {
-        const isOpen = expandedId === row.customerId;
-        const defaultLight: TrafficLight = row.latest?.traffic_light ?? "yellow";
-        const f = getForm(row.customerId, defaultLight);
+      {rowsByStatusWeek.keys.map((weekKey) => {
+        const groupRows = rowsByStatusWeek.map.get(weekKey) ?? [];
+        const parsed = parseStatusWeekKey(weekKey);
+        const heading =
+          parsed != null
+            ? `Updated ${weekLabel(parsed.year, parsed.week)}`
+            : "No status recorded";
 
         return (
-          <div
-            key={row.customerId}
-            className="rounded-lg border border-border-subtle bg-bg-default"
-          >
-            <div className="flex flex-wrap items-start gap-3 px-3 py-3 sm:items-center">
-              <TrafficLightLead latest={row.latest} />
+          <div key={weekKey} className="space-y-2">
+            <h2 className="border-b border-border-subtle pb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+              {heading}
+            </h2>
+            {groupRows.map((row) => {
+              const isOpen = expandedId === row.customerId;
+              const defaultLight: TrafficLight = row.latest?.traffic_light ?? "yellow";
+              const f = getForm(row.customerId, defaultLight);
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-text-primary">
-                    {row.customerName}
-                  </span>
-                  {row.latest ? (
-                    <span className="text-xs tabular-nums text-text-muted">
-                      {weekLabel(row.latest.year, row.latest.week)}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-text-muted">
-                      No status recorded
-                    </span>
-                  )}
-                </div>
-                {row.latest ? (
-                  <p className="mt-1 text-sm leading-snug text-text-primary/90 whitespace-pre-wrap">
-                    {row.latest.body}
-                  </p>
-                ) : null}
-              </div>
+              return (
+                <div
+                  key={row.customerId}
+                  className="rounded-lg border border-border-subtle bg-bg-default"
+                >
+                  <div className="flex flex-wrap items-start gap-3 px-3 py-3 sm:items-center">
+                    <TrafficLightLead latest={row.latest} />
 
-              <div className="ml-auto flex shrink-0 items-center gap-0.5 self-start sm:self-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-text-primary">
+                          {row.customerName}
+                        </span>
+                      </div>
+                      {row.latest ? (
+                        <p className="mt-1 text-sm leading-snug text-text-primary/90 whitespace-pre-wrap">
+                          {row.latest.body}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="ml-auto flex shrink-0 items-center gap-0.5 self-start sm:self-center">
                 <button
                   type="button"
                   onClick={() => expandForNew(row.customerId)}
@@ -317,10 +365,10 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
                 >
                   <History className="h-4 w-4" />
                 </IconButton>
-              </div>
-            </div>
+                    </div>
+                  </div>
 
-            {isOpen ? (
+                  {isOpen ? (
               <div className="space-y-3 border-t border-border-subtle px-3 py-3 sm:px-4">
                 <div>
                   <p className="mb-1.5 text-xs font-medium text-text-muted">
@@ -384,7 +432,10 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
                   </Button>
                 </div>
               </div>
-            ) : null}
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         );
       })}
