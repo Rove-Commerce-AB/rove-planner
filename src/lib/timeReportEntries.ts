@@ -12,6 +12,7 @@ import { getCalendarHolidays } from "@/lib/calendarHolidays";
 import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { getInternalRoveCustomerId } from "@/lib/customers";
 import type {
   JiraDevOpsOption,
   ProjectOption,
@@ -40,6 +41,10 @@ async function getTimeReportAccessContext() {
     [consultant.id]
   );
   const allowedCustomerIds = new Set(customerLinks.map((r) => r.customer_id));
+  if (isSubcontractorRole(appUser?.role)) {
+    const roveId = await getInternalRoveCustomerId();
+    if (roveId) allowedCustomerIds.delete(roveId);
+  }
 
   const { rows: allocations } = await cloudSqlPool.query<{ project_id: string }>(
     `SELECT project_id FROM allocations WHERE consultant_id = $1`,
@@ -298,7 +303,7 @@ export async function getTimeReportEntries(
 
   const weekDates = getISOWeekDateStrings(year, week);
 
-  const { rows } = await cloudSqlPool.query<TimeReportRow>(
+  let { rows } = await cloudSqlPool.query<TimeReportRow>(
     `SELECT id, customer_id, project_id, role_id, jira_devops_key, description,
             entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
      FROM time_report_entries
@@ -306,6 +311,12 @@ export async function getTimeReportEntries(
      ORDER BY display_order ASC NULLS LAST, entry_date ASC`,
     [consultantId, weekDates]
   );
+
+  const appUser = await getCurrentAppUser();
+  if (isSubcontractorRole(appUser?.role)) {
+    const roveId = await getInternalRoveCustomerId();
+    if (roveId) rows = rows.filter((r) => r.customer_id !== roveId);
+  }
 
   if (!rows.length) return [];
 
@@ -379,13 +390,26 @@ export async function getTimeReportMonthTotalHours(
     monthEnd.getDate()
   ).padStart(2, "0")}`;
 
+  const appUser = await getCurrentAppUser();
+  const roveId =
+    isSubcontractorRole(appUser?.role) ? await getInternalRoveCustomerId() : null;
+
   const { rows } = await cloudSqlPool.query<{ total_hours: string | number | null }>(
-    `SELECT COALESCE(SUM(hours), 0) AS total_hours
-     FROM time_report_entries
-     WHERE consultant_id = $1
-       AND entry_date >= $2::date
-       AND entry_date <= $3::date`,
-    [consultantId, monthStart, monthEndStr]
+    roveId
+      ? `SELECT COALESCE(SUM(hours), 0) AS total_hours
+         FROM time_report_entries
+         WHERE consultant_id = $1
+           AND entry_date >= $2::date
+           AND entry_date <= $3::date
+           AND customer_id <> $4::uuid`
+      : `SELECT COALESCE(SUM(hours), 0) AS total_hours
+         FROM time_report_entries
+         WHERE consultant_id = $1
+           AND entry_date >= $2::date
+           AND entry_date <= $3::date`,
+    roveId
+      ? [consultantId, monthStart, monthEndStr, roveId]
+      : [consultantId, monthStart, monthEndStr]
   );
 
   return Number(rows[0]?.total_hours ?? 0);

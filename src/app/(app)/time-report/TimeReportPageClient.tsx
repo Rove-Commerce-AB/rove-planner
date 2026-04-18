@@ -289,6 +289,8 @@ type EditableHourTdProps = {
   value: number;
   isEditing: boolean;
   isGray: boolean;
+  /** Sat–Sun (month: lör–sön): slightly stronger mute than weekday public holidays. */
+  grayWeekend?: boolean;
   isToday: boolean;
   onStartEdit: () => void;
   onCommit: (value: number) => void;
@@ -304,6 +306,7 @@ const EditableHourTd = memo(function EditableHourTd({
   value,
   isEditing,
   isGray,
+  grayWeekend = false,
   isToday,
   onStartEdit,
   onCommit,
@@ -316,9 +319,10 @@ const EditableHourTd = memo(function EditableHourTd({
     ? "min-w-0 w-full max-w-none"
     : "w-[3rem] min-w-[3rem]";
   const rowH = compact ? "h-7" : "h-8";
+  const grayBg = isGray ? (grayWeekend ? "bg-bg-muted/60" : "bg-bg-muted/51") : "";
   return (
     <td
-      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${isGray ? "bg-bg-muted/30" : ""} ${isToday ? "bg-brand-blue/10" : ""}`}
+      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
     >
       <div
         role="button"
@@ -801,7 +805,7 @@ export function TimeReportPageClient({
   const isDayGrayed = useCallback(
     (dayIndex: number) => {
       const isWeekend = dayIndex === 5 || dayIndex === 6;
-      const isHoliday = holidayDateSet.has(weekDates[dayIndex]);
+      const isHoliday = holidayDateSet.has(weekDates[dayIndex]!);
       return isWeekend || isHoliday;
     },
     [holidayDateSet, weekDates]
@@ -821,9 +825,17 @@ export function TimeReportPageClient({
     [todayStr]
   );
 
-  const dayCellGrayClass = "bg-bg-muted/30";
+  const isWeekDayWeekend = useCallback((dayIndex: number) => dayIndex === 5 || dayIndex === 6, []);
+  const isMonthDateWeekend = useCallback((dateStr: string) => {
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    return dow === 0 || dow === 6;
+  }, []);
+
+  /** Cell-only: weekend columns a bit stronger than weekday public holidays (headers stay uniform). */
+  const dayCellWeekendGrayClass = "bg-bg-muted/60";
+  const dayCellHolidayWeekdayGrayClass = "bg-bg-muted/51";
   const dayHeaderGrayClass = "bg-bg-muted/40 text-text-muted";
-  const todayColumnClass = "bg-brand-blue/10";
+  const todayColumnClass = "bg-brand-blue/32";
   const todayHeaderClass = "bg-brand-blue/15";
 
   const applyCalendarMonth = useCallback((newYear: number, newMonth: number) => {
@@ -1684,6 +1696,7 @@ export function TimeReportPageClient({
                   <th
                     key={i}
                     className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    title={isTodayColumn(i) ? "Idag" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
                       <div>
@@ -1713,7 +1726,7 @@ export function TimeReportPageClient({
                     {totalHoursPerDay.map((h, i) => (
                       <td
                         key={i}
-                        className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                        className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
                           <span className="text-xs tabular-nums text-text-primary">
@@ -1755,7 +1768,7 @@ export function TimeReportPageClient({
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
-                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayCellGrayClass : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         />
                       ))}
                       <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
@@ -1911,6 +1924,7 @@ export function TimeReportPageClient({
                                 editingCell.dayIndex === dayIndex
                               }
                               isGray={isDayGrayed(dayIndex)}
+                              grayWeekend={isWeekDayWeekend(dayIndex)}
                               isToday={isTodayColumn(dayIndex)}
                               onStartEdit={() =>
                                 setEditingCell({ scope: "week", entryId: entry.id, dayIndex })
@@ -2019,10 +2033,12 @@ export function TimeReportPageClient({
                       ? TIME_REPORT_DAY_LABELS[6]
                       : TIME_REPORT_DAY_LABELS[dow - 1];
                   const dom = parseInt(dateStr.slice(8, 10), 10);
+                  const isTodayHeader = isMonthDateToday(dateStr);
                   return (
                     <th
                       key={dateStr}
-                      className={`min-w-0 border-r border-border-subtle p-0 py-0.5 font-medium leading-none text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isMonthDateToday(dateStr) ? todayHeaderClass : ""}`}
+                      className={`min-w-0 border-r border-border-subtle p-0 py-0.5 font-medium leading-none text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
+                      title={isTodayHeader ? "Idag" : undefined}
                     >
                       <div className="flex flex-col items-center justify-center gap-0 px-0.5">
                         <span className="text-[8px] leading-none">{label}</span>
@@ -2053,7 +2069,7 @@ export function TimeReportPageClient({
                       return (
                         <td
                           key={dateStr}
-                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayCellGrayClass : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className="truncate text-[9px] tabular-nums text-text-primary">
@@ -2095,7 +2111,7 @@ export function TimeReportPageClient({
                           {monthCalendarDates.map((dateStr, dateIdx) => (
                             <td
                               key={dateStr}
-                              className={`min-w-0 border-r border-border-subtle px-0.5 py-0.5 ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayCellGrayClass : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                              className={`min-w-0 border-r border-border-subtle px-0.5 py-0.5 ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                             />
                           ))}
                           <td className="min-w-0 px-0.5 py-0.5 align-middle">
@@ -2260,6 +2276,7 @@ export function TimeReportPageClient({
                                     editingCell.dateStr === dateStr
                                   }
                                   isGray={isMonthDateGrayed(dateStr)}
+                                  grayWeekend={isMonthDateWeekend(dateStr)}
                                   isToday={isMonthDateToday(dateStr)}
                                   onStartEdit={() =>
                                     setEditingCell({

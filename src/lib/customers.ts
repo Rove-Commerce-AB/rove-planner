@@ -20,6 +20,11 @@ export async function getCustomerIdByName(name: string) {
   return q.fetchCustomerIdByName(name);
 }
 
+/** Internal house customer (name in DB: "Rove"). Hidden from subcontractors in time report. */
+export async function getInternalRoveCustomerId(): Promise<string | null> {
+  return getCustomerIdByName("Rove");
+}
+
 export async function getCustomersByIds(ids: string[]) {
   return q.fetchCustomersByIds(ids);
 }

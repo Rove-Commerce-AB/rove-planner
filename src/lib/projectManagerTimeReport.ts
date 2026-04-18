@@ -15,16 +15,28 @@ function getMonthRange(year: number, month: number): { start: string; end: strin
   return { start: toYMD(start), end: toYMD(end) };
 }
 
+export type ProjectManagerMonthBundle = {
+  entries: ProjectManagerEntry[];
+  /** Persisted sum of COALESCE(pm_edited_hours, hours) for this project/month (refreshed on load). */
+  invoicedHoursFromLines: number;
+  /** When set, overrides invoicedHoursFromLines for billing. */
+  invoicedHoursFixed: number | null;
+};
+
 export async function getProjectManagerTimeEntries(args: {
   projectId: string;
   year: number;
   month: number;
-}): Promise<{ entries: ProjectManagerEntry[] }> {
+}): Promise<ProjectManagerMonthBundle> {
   await getCurrentAppUser();
   const consultant = await getConsultantForCurrentUser();
-  if (!consultant?.id) return { entries: [] };
+  if (!consultant?.id) {
+    return { entries: [], invoicedHoursFromLines: 0, invoicedHoursFixed: null };
+  }
 
-  if (!args.projectId) return { entries: [] };
+  if (!args.projectId) {
+    return { entries: [], invoicedHoursFromLines: 0, invoicedHoursFixed: null };
+  }
 
   const monthRange = getMonthRange(args.year, args.month);
 
@@ -32,7 +44,37 @@ export async function getProjectManagerTimeEntries(args: {
     `SELECT id FROM projects WHERE id = $1 AND project_manager_id = $2 LIMIT 1`,
     [args.projectId, consultant.id]
   );
-  if (!managed.length) return { entries: [] };
+  if (!managed.length) {
+    return { entries: [], invoicedHoursFromLines: 0, invoicedHoursFixed: null };
+  }
+
+  const { rows: sumRows } = await cloudSqlPool.query<{ line_sum: string }>(
+    `SELECT COALESCE(SUM(COALESCE(pm_edited_hours, hours)), 0)::text AS line_sum
+     FROM time_report_entries
+     WHERE project_id = $1::uuid AND entry_date >= $2::date AND entry_date <= $3::date`,
+    [args.projectId, monthRange.start, monthRange.end]
+  );
+  const lineSum = Number(sumRows[0]?.line_sum ?? 0);
+
+  const { rows: snapRows } = await cloudSqlPool.query<{
+    invoiced_hours_from_lines: string;
+    invoiced_hours_fixed: string | null;
+  }>(
+    `INSERT INTO project_month_invoice_hours (project_id, year, month, invoiced_hours_from_lines, updated_by)
+     VALUES ($1::uuid, $2::int, $3::int, $4::numeric, $5::uuid)
+     ON CONFLICT (project_id, year, month) DO UPDATE SET
+       invoiced_hours_from_lines = EXCLUDED.invoiced_hours_from_lines,
+       updated_at = now(),
+       updated_by = EXCLUDED.updated_by
+     RETURNING invoiced_hours_from_lines, invoiced_hours_fixed`,
+    [args.projectId, args.year, args.month, lineSum, consultant.id]
+  );
+  const snap = snapRows[0];
+  const invoicedHoursFromLines = Number(snap?.invoiced_hours_from_lines ?? lineSum);
+  const invoicedHoursFixed =
+    snap?.invoiced_hours_fixed != null && snap.invoiced_hours_fixed !== ""
+      ? Number(snap.invoiced_hours_fixed)
+      : null;
 
   const { rows } = await cloudSqlPool.query<{
     id: string;
@@ -58,7 +100,9 @@ export async function getProjectManagerTimeEntries(args: {
     [args.projectId, monthRange.start, monthRange.end]
   );
 
-  if (rows.length === 0) return { entries: [] };
+  if (rows.length === 0) {
+    return { entries: [], invoicedHoursFromLines, invoicedHoursFixed };
+  }
 
   const consultantIds = [...new Set(rows.map((r) => r.consultant_id).filter(Boolean))];
   const customerIds = [...new Set(rows.map((r) => r.customer_id).filter(Boolean))];
@@ -138,7 +182,76 @@ export async function getProjectManagerTimeEntries(args: {
     invoicedAt: r.invoiced_at ? String(r.invoiced_at) : null,
   }));
 
-  return { entries };
+  return { entries, invoicedHoursFromLines, invoicedHoursFixed };
+}
+
+export async function pmSetProjectMonthInvoicedHoursFixed(args: {
+  projectId: string;
+  year: number;
+  month: number;
+  /** Pass `null` to clear fixed override; row stays with refreshed line sum. */
+  invoicedHoursFixed: number | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const consultant = await getConsultantForCurrentUser();
+  if (!consultant?.id) return { ok: false, error: "Unauthorized" };
+
+  if (!args.projectId) return { ok: false, error: "Missing project" };
+  if (args.month < 1 || args.month > 12) return { ok: false, error: "Invalid month" };
+
+  const { rows: managed } = await cloudSqlPool.query(
+    `SELECT id FROM projects WHERE id = $1 AND project_manager_id = $2 LIMIT 1`,
+    [args.projectId, consultant.id]
+  );
+  if (!managed.length) return { ok: false, error: "Unauthorized" };
+
+  if (args.invoicedHoursFixed != null) {
+    if (!Number.isFinite(args.invoicedHoursFixed) || args.invoicedHoursFixed < 0) {
+      return { ok: false, error: "Invalid hours value" };
+    }
+  }
+
+  const monthRange = getMonthRange(args.year, args.month);
+
+  try {
+    await cloudSqlPool.query(
+      `INSERT INTO project_month_invoice_hours (
+         project_id, year, month, invoiced_hours_from_lines, invoiced_hours_fixed, updated_by
+       )
+       SELECT
+         $1::uuid,
+         $2::int,
+         $3::int,
+         COALESCE(
+           (
+             SELECT SUM(COALESCE(t.pm_edited_hours, t.hours))
+             FROM time_report_entries t
+             WHERE t.project_id = $1::uuid
+               AND t.entry_date >= $6::date
+               AND t.entry_date <= $7::date
+           ),
+           0
+         ),
+         $4::numeric,
+         $5::uuid
+       ON CONFLICT (project_id, year, month) DO UPDATE SET
+         invoiced_hours_from_lines = EXCLUDED.invoiced_hours_from_lines,
+         invoiced_hours_fixed = EXCLUDED.invoiced_hours_fixed,
+         updated_at = now(),
+         updated_by = EXCLUDED.updated_by`,
+      [
+        args.projectId,
+        args.year,
+        args.month,
+        args.invoicedHoursFixed,
+        consultant.id,
+        monthRange.start,
+        monthRange.end,
+      ]
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Update failed" };
+  }
+  return { ok: true };
 }
 
 export async function pmUpdateTimeEntry(args: {

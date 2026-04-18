@@ -5,6 +5,7 @@ import {
   pmUpdateTimeEntry as pmUpdateTimeEntryRaw,
   pmSetInvoicingStatus as pmSetInvoicingStatusRaw,
   pmSetInvoicingStatusBulk as pmSetInvoicingStatusBulkRaw,
+  pmSetProjectMonthInvoicedHoursFixed as pmSetProjectMonthInvoicedHoursFixedRaw,
 } from "@/lib/projectManagerTimeReport";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
@@ -38,4 +39,14 @@ export async function pmSetInvoicingStatusBulk(args: {
 }) {
   await assertNotSubcontractorForWrite();
   return pmSetInvoicingStatusBulkRaw(args);
+}
+
+export async function pmSetProjectMonthInvoicedHoursFixed(args: {
+  projectId: string;
+  year: number;
+  month: number;
+  invoicedHoursFixed: number | null;
+}) {
+  await assertNotSubcontractorForWrite();
+  return pmSetProjectMonthInvoicedHoursFixedRaw(args);
 }

@@ -11,12 +11,14 @@ import {
   type InlineEditStatusState,
   SAVED_DURATION_MS,
   editInputClass,
+  Button,
 } from "@/components/ui";
 import {
   pmSetInvoicingStatus,
   pmSetInvoicingStatusBulk,
   pmUpdateTimeEntry,
   getProjectManagerTimeEntries,
+  pmSetProjectMonthInvoicedHoursFixed,
 } from "./actions";
 import type { ProjectManagerEntry } from "@/types";
 import { getMonthLabel } from "@/lib/dateUtils";
@@ -107,6 +109,12 @@ export function ProjectManagerTimeReportClient({
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
   const [entries, setEntries] = useState<ProjectManagerEntry[]>([]);
+  /** Persisted sum for this project/month (COALESCE(pm, reported)); refreshed on each load. */
+  const [invoicedHoursFromLines, setInvoicedHoursFromLines] = useState(0);
+  const [invoicedHoursFixed, setInvoicedHoursFixed] = useState<number | null>(null);
+  const [fixedHoursDraft, setFixedHoursDraft] = useState("");
+  const [fixedSaveError, setFixedSaveError] = useState<string | null>(null);
+  const [fixedSaving, setFixedSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterConsultantIds, setFilterConsultantIds] = useState<string[]>([]);
@@ -147,6 +155,7 @@ export function ProjectManagerTimeReportClient({
     if (!selectedProjectId) return;
     setLoading(true);
     setError(null);
+    setFixedSaveError(null);
     try {
       const res = await getProjectManagerTimeEntries({
         projectId: selectedProjectId,
@@ -154,6 +163,11 @@ export function ProjectManagerTimeReportClient({
         month,
       });
       setEntries(res.entries);
+      setInvoicedHoursFromLines(res.invoicedHoursFromLines);
+      setInvoicedHoursFixed(res.invoicedHoursFixed ?? null);
+      setFixedHoursDraft(
+        res.invoicedHoursFixed != null ? String(res.invoicedHoursFixed) : ""
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load entries");
     } finally {
@@ -344,6 +358,43 @@ export function ProjectManagerTimeReportClient({
     const totalPmEdited = sortedEntries.reduce((s, e) => s + (e.pmEditedHours ?? 0), 0);
     return { totalReported, totalPmEdited };
   }, [sortedEntries]);
+
+  const displayedInvoicedHours =
+    invoicedHoursFixed != null ? invoicedHoursFixed : invoicedHoursFromLines;
+
+  async function saveInvoicedHoursFixed(next: number | null) {
+    if (!selectedProjectId || !canEdit) return;
+    setFixedSaving(true);
+    setFixedSaveError(null);
+    try {
+      const res = await pmSetProjectMonthInvoicedHoursFixed({
+        projectId: selectedProjectId,
+        year,
+        month,
+        invoicedHoursFixed: next,
+      });
+      if (!res.ok) throw new Error(res.error ?? "Failed to save");
+      await reload();
+    } catch (e) {
+      setFixedSaveError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setFixedSaving(false);
+    }
+  }
+
+  async function applyFixedHoursDraft() {
+    const trimmed = fixedHoursDraft.trim().replace(",", ".");
+    if (trimmed === "") {
+      await saveInvoicedHoursFixed(null);
+      return;
+    }
+    const parsed = parseFloat(trimmed);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      setFixedSaveError("Enter a valid non-negative number, or leave blank to use the line sum.");
+      return;
+    }
+    await saveInvoicedHoursFixed(parsed);
+  }
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -596,6 +647,85 @@ export function ProjectManagerTimeReportClient({
             />
           </div>
         </div>
+
+        {selectedProjectId ? (
+          <div className="rounded-lg border border-border-subtle bg-bg-default px-4 py-3 shadow-sm sm:max-w-2xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[0.65rem] font-medium uppercase tracking-wide text-text-muted">
+                  Invoiced hours
+                </p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-text-primary">
+                  {loading ? "—" : HOURS_NUMBER_FORMATTER.format(displayedInvoicedHours)}
+                </p>
+                <p className="mt-1 max-w-md text-xs leading-snug text-text-secondary">
+                  {loading ? (
+                    "Loading…"
+                  ) : invoicedHoursFixed != null ? (
+                    <>
+                      Using a <span className="font-medium text-text-primary">fixed</span> total for
+                      this month. Stored line sum for this month is{" "}
+                      {HOURS_NUMBER_FORMATTER.format(invoicedHoursFromLines)} h.
+                    </>
+                  ) : (
+                    <>
+                      Stored for this month from time entries (PM hour when set, else reported):{" "}
+                      {HOURS_NUMBER_FORMATTER.format(invoicedHoursFromLines)} h. Refreshes when you open
+                      Time approval.
+                    </>
+                  )}
+                </p>
+              </div>
+              {canEdit ? (
+                <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 sm:w-[min(100%,18rem)]">
+                  <label
+                    htmlFor="pm-invoiced-fixed"
+                    className="text-xs font-medium text-text-secondary"
+                  >
+                    Fixed amount to invoice (optional)
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      id="pm-invoiced-fixed"
+                      type="text"
+                      inputMode="decimal"
+                      value={fixedHoursDraft}
+                      onChange={(ev) => setFixedHoursDraft(ev.target.value)}
+                      placeholder="Leave blank for line sum"
+                      disabled={fixedSaving}
+                      className={`${editInputClass} h-9 w-[min(100%,10rem)] text-right text-sm tabular-nums`}
+                    />
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      disabled={fixedSaving || loading}
+                      onClick={() => void applyFixedHoursDraft()}
+                    >
+                      Save
+                    </Button>
+                    {invoicedHoursFixed != null ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={fixedSaving || loading}
+                        onClick={() => void saveInvoicedHoursFixed(null)}
+                      >
+                        Use line sum
+                      </Button>
+                    ) : null}
+                  </div>
+                  {fixedSaveError ? (
+                    <p className="text-xs text-danger" role="alert">
+                      {fixedSaveError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {error && (
