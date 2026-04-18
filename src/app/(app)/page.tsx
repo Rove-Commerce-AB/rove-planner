@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { auth } from "@/auth";
 import { getPersonalDashboardData } from "@/lib/dashboard";
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import { PageHeader, Panel, PanelSectionTitle } from "@/components/ui";
 import type { PersonalAllocationRow } from "@/lib/dashboard";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { getNotificationsForCurrentUser } from "@/lib/userNotifications";
-import { DashboardNotificationsPanel } from "@/components/DashboardNotificationsPanel";
+import { listOpenTodosAssignedToUser } from "@/lib/taskBoardQueries";
 
 export const dynamic = "force-dynamic";
 
@@ -51,18 +51,45 @@ function buildTableData(rows: PersonalAllocationRow[]) {
 
 export default async function DashboardPage() {
   const appUser = await getCurrentAppUser();
-  const notifications =
-    appUser != null ? await getNotificationsForCurrentUser(20) : [];
+  const session = await auth();
+  const appUserId = session?.user?.appUserId;
+  const isSubcontractor = appUser?.role === "subcontractor";
+
+  const myTasks =
+    appUser != null && appUserId != null && !isSubcontractor
+      ? await listOpenTodosAssignedToUser(appUserId)
+      : [];
+
   const { consultant, weeks, rows } = await getPersonalDashboardData();
   const { year: currentYear, week: currentWeek } = getCurrentYearWeek();
   const monthSpans = getMonthSpansForWeeks(weeks);
 
-  const notificationsPanel =
-    appUser != null ? (
-      <Panel>
-        <PanelSectionTitle>Notifications</PanelSectionTitle>
+  const myTasksPanel =
+    appUser != null && appUserId != null && !isSubcontractor ? (
+      <Panel className="mt-6">
+        <PanelSectionTitle>My tasks</PanelSectionTitle>
         <div className="p-3 pt-0">
-          <DashboardNotificationsPanel notifications={notifications} />
+          {myTasks.length === 0 ? (
+            <p className="py-2 text-sm text-text-primary opacity-70">
+              No open tasks assigned to you.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border-subtle">
+              {myTasks.map((t) => (
+                <li key={t.todo_id} className="py-2.5 first:pt-1">
+                  <Link
+                    href={`/taskboard/${t.board_id}`}
+                    className="block text-sm text-text-primary transition-colors hover:text-brand-signal"
+                  >
+                    <span className="font-medium">{t.todo_title}</span>
+                    <span className="mt-0.5 block text-xs text-text-muted">
+                      {t.board_title}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </Panel>
     ) : null;
@@ -215,8 +242,8 @@ export default async function DashboardPage() {
           description={pageDescription}
           className="mb-6"
         />
-        <div className={notificationsPanel ? "mb-6" : undefined}>{mainContent}</div>
-        {notificationsPanel}
+        {mainContent}
+        {myTasksPanel}
       </div>
     </div>
   );

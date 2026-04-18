@@ -90,6 +90,68 @@ function notificationBody(n: UserNotificationRow): { text: ReactNode } {
       ),
     };
   }
+  if (n.kind === USER_NOTIFICATION_KIND.TASK_BOARD_INVITED) {
+    const boardId =
+      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
+    const boardTitle =
+      typeof p.boardTitle === "string" && p.boardTitle.trim()
+        ? p.boardTitle.trim()
+        : "a board";
+    const inviter =
+      typeof p.inviterLabel === "string" && p.inviterLabel.trim()
+        ? p.inviterLabel.trim()
+        : "Someone";
+    const text = (
+      <>
+        <span className="font-medium">{inviter}</span> added you to the board{" "}
+        {boardId ? (
+          <Link
+            href={`/taskboard/${boardId}`}
+            className="font-medium text-brand-signal hover:underline"
+          >
+            {boardTitle}
+          </Link>
+        ) : (
+          <span className="font-medium">{boardTitle}</span>
+        )}
+        .
+      </>
+    );
+    return { text };
+  }
+  if (n.kind === USER_NOTIFICATION_KIND.TASK_TODO_ASSIGNED) {
+    const boardId =
+      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
+    const boardTitle =
+      typeof p.boardTitle === "string" && p.boardTitle.trim()
+        ? p.boardTitle.trim()
+        : "a board";
+    const todoTitle =
+      typeof p.todoTitle === "string" && p.todoTitle.trim()
+        ? p.todoTitle.trim()
+        : "a task";
+    const assigner =
+      typeof p.assignerLabel === "string" && p.assignerLabel.trim()
+        ? p.assignerLabel.trim()
+        : "Someone";
+    const text = (
+      <>
+        <span className="font-medium">{assigner}</span> assigned you a todo on{" "}
+        {boardId ? (
+          <Link
+            href={`/taskboard/${boardId}`}
+            className="font-medium text-brand-signal hover:underline"
+          >
+            {boardTitle}
+          </Link>
+        ) : (
+          <span className="font-medium">{boardTitle}</span>
+        )}
+        : <span className="font-medium opacity-90">&quot;{todoTitle}&quot;</span>
+      </>
+    );
+    return { text };
+  }
   return { text: n.kind };
 }
 

@@ -8,26 +8,35 @@ import {
   Users,
   Building2,
   CalendarCheck,
+  ClipboardList,
   Clock,
   FolderKanban,
+  LayoutDashboard,
   Settings,
   LogOut,
   Home,
+  Bell,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useSidePanel } from "@/contexts/SidePanelContext";
+
+/** 3.25rem rail − w-8 icon, split evenly → icon centered in collapsed strip without layout shift on expand. */
+const SIDEBAR_RAIL_PAD_X = "10px";
 
 const navGroup1 = [
   { href: "/", label: "Dashboard", icon: Home },
 ] as const;
 
-const navGroup2 = [
-  { href: "/allocation", label: "Allocation", icon: CalendarCheck },
-] as const;
+const allocationNav = {
+  href: "/allocation",
+  label: "Allocation",
+  icon: CalendarCheck,
+} as const;
 
-const navGroup3 = [
-  { panel: "consultants" as const, label: "Consultants", icon: Users },
+/** Customers first, then Consultants — sidebar group 5. */
+const sidePanelNav = [
   { panel: "customers" as const, label: "Customers", icon: Building2 },
+  { panel: "consultants" as const, label: "Consultants", icon: Users },
 ] as const;
 
 function NavLink({
@@ -37,6 +46,7 @@ function NavLink({
   pathname,
   collapsed,
   badgeCount,
+  activeMatch = "exact",
 }: {
   href: string;
   label: string;
@@ -44,11 +54,16 @@ function NavLink({
   pathname: string;
   collapsed: boolean;
   badgeCount?: number;
+  activeMatch?: "exact" | "prefix";
 }) {
-  const isActive = href === "/" ? pathname === "/" : pathname === href;
-  const labelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
-    collapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
-  }`;
+  const isActive =
+    href === "/"
+      ? pathname === "/"
+      : activeMatch === "prefix"
+        ? pathname === href || pathname.startsWith(`${href}/`)
+        : pathname === href;
+  const labelExpandedClass =
+    "flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left text-xs max-w-[10rem] whitespace-nowrap";
   const showBadge =
     typeof badgeCount === "number" && badgeCount > 0;
   const badgeLabel =
@@ -57,6 +72,7 @@ function NavLink({
   return (
     <Link
       href={href}
+      aria-label={collapsed ? label : undefined}
       title={
         collapsed
           ? showBadge
@@ -64,14 +80,22 @@ function NavLink({
             : label
           : undefined
       }
-      className={`relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
+      className={`group relative flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-xs font-medium ${
+        collapsed ? "gap-0" : "gap-1.5"
+      } ${
         isActive
-          ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/95"
-          : "border-l-2 border-transparent text-text-primary/85 hover:bg-nav-hover hover:text-text-primary/90"
+          ? collapsed
+            ? "font-semibold text-[color:var(--color-accent-1)]"
+            : "bg-brand-blue font-semibold text-[color:var(--color-accent-1)]"
+          : "text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
       }`}
     >
-      <span className="relative flex-shrink-0">
-        <Icon className="h-5 w-5" />
+      <span
+        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+          isActive && collapsed ? "bg-brand-blue" : ""
+        }`}
+      >
+        <Icon className={`h-4 w-4 ${isActive ? "text-[color:var(--color-accent-1)]" : ""}`} />
         {collapsed && showBadge && (
           <span
             className="absolute -right-1 -top-1 box-border inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-text-primary/25 bg-brand-blue px-0.5 text-center text-[9px] font-semibold leading-none text-text-primary tabular-nums"
@@ -83,21 +107,23 @@ function NavLink({
           </span>
         )}
       </span>
-      <span className={`flex min-w-0 flex-1 items-center ${labelSpanClass}`}>
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{label}</span>
-          {!collapsed && showBadge && (
-            <span
-              className="box-border inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-text-primary/25 bg-brand-blue px-1 text-center text-[11px] font-semibold leading-none text-text-primary tabular-nums"
-              aria-label={`${badgeCount} unread notifications`}
-            >
-              <span className="flex -translate-x-px items-center justify-center leading-none">
-                {badgeLabel}
+      {!collapsed ? (
+        <span className={labelExpandedClass}>
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{label}</span>
+            {showBadge && (
+              <span
+                className="box-border inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default/80 px-0.5 text-center text-[10px] font-semibold leading-none text-text-primary tabular-nums"
+                aria-label={`${badgeCount} unread notifications`}
+              >
+                <span className="flex -translate-x-px items-center justify-center leading-none">
+                  {badgeLabel}
+                </span>
               </span>
-            </span>
-          )}
+            )}
+          </span>
         </span>
-      </span>
+      ) : null}
     </Link>
   );
 }
@@ -115,24 +141,36 @@ function NavPanelButton({
 }) {
   const { panel: openPanel, togglePanel } = useSidePanel();
   const isActive = openPanel === panel;
-  const labelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
-    collapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
-  }`;
   return (
     <button
       type="button"
       onClick={() => togglePanel(panel)}
+      aria-label={collapsed ? label : undefined}
       title={collapsed ? label : undefined}
-      className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-colors ${
+      className={`group flex h-8 w-full min-w-0 cursor-pointer items-center justify-start rounded-md py-0 text-left text-xs font-medium ${
+        collapsed ? "gap-0" : "gap-1.5"
+      } ${
         isActive
-          ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/95"
-          : "border-l-2 border-transparent text-text-primary/85 hover:bg-nav-hover hover:text-text-primary/90"
+          ? collapsed
+            ? "font-semibold text-[color:var(--color-accent-1)]"
+            : "bg-brand-blue font-semibold text-[color:var(--color-accent-1)]"
+          : "text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
       }`}
     >
-      <Icon className="h-5 w-5 flex-shrink-0" />
-      <span className={labelSpanClass}>
-        {label}
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+          isActive && collapsed ? "bg-brand-blue" : ""
+        }`}
+      >
+        <Icon
+          className={`h-4 w-4 ${isActive ? "text-[color:var(--color-accent-1)]" : ""}`}
+        />
       </span>
+      {!collapsed ? (
+        <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
+          {label}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -141,14 +179,14 @@ type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
   isSubcontractor?: boolean;
-  dashboardUnreadNotificationCount?: number;
+  unreadNotificationCount?: number;
 };
 
 export function Sidebar({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
   isSubcontractor = false,
-  dashboardUnreadNotificationCount = 0,
+  unreadNotificationCount = 0,
 }: SidebarProps) {
   const showRestrictedNavigation = !isSubcontractor;
 
@@ -164,74 +202,49 @@ export function Sidebar({
     await signOut({ callbackUrl: "/login" });
   }
 
-  // Collapse by default; expand while hovering.
-  // Start collapsed until mount to avoid a width mismatch on first render.
   const effectiveCollapsed = mounted ? !isHovering : true;
 
-  const bottomLabelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
-    effectiveCollapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
-  }`;
+  const settingsActive = pathname === "/settings";
+
+  const navPadX = effectiveCollapsed
+    ? { paddingLeft: SIDEBAR_RAIL_PAD_X, paddingRight: SIDEBAR_RAIL_PAD_X }
+    : { paddingLeft: SIDEBAR_RAIL_PAD_X, paddingRight: "0.375rem" };
+
+  /** Same horizontal origin as `nav` so footer icons do not shift when expanding. */
+  const footerPad = {
+    paddingLeft: SIDEBAR_RAIL_PAD_X,
+    paddingRight: effectiveCollapsed ? SIDEBAR_RAIL_PAD_X : "0.375rem",
+    paddingTop: "0.375rem",
+    paddingBottom: "0.375rem",
+  };
 
   return (
-    <aside
-      className="flex h-screen w-[3.25rem] flex-shrink-0 flex-col bg-bg-default"
-    >
+    <aside className="flex h-screen w-[3.25rem] flex-shrink-0 flex-col bg-bg-default">
       <div
-        className={`flex h-screen flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default transition-[width] duration-120 ease-out relative z-40 ${
+        className={`relative z-40 flex h-screen flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default transition-[width] duration-120 ease-out ${
           effectiveCollapsed ? "w-[3.25rem]" : "w-52"
         }`}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
-        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5 pt-4 pb-1.5">
-          <div className="space-y-0.5">
+        <nav
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-1.5 pt-2 [scrollbar-gutter:stable]"
+          style={navPadX}
+        >
+          {/* 1. Dashboard */}
+          <div className="space-y-px">
             {navGroup1.map((item) => (
               <NavLink
                 key={item.href}
                 pathname={pathname}
                 collapsed={effectiveCollapsed}
-                badgeCount={
-                  item.href === "/"
-                    ? dashboardUnreadNotificationCount
-                    : undefined
-                }
                 {...item}
               />
             ))}
           </div>
 
-          {showRestrictedNavigation && (
-            <>
-              <div className="my-1.5 border-t border-border-subtle" />
-
-              <div className="space-y-0.5">
-                {navGroup2.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    pathname={pathname}
-                    collapsed={effectiveCollapsed}
-                    {...item}
-                  />
-                ))}
-              </div>
-
-              <div className="my-1.5 border-t border-border-subtle" />
-
-              <div className="space-y-0.5">
-                {navGroup3.map((item) => (
-                  <NavPanelButton
-                    key={item.panel}
-                    collapsed={effectiveCollapsed}
-                    {...item}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="my-1.5 border-t border-border-subtle" />
-
-          <div className="space-y-0.5">
+          {/* 2. Time report, Time approval */}
+          <div className="space-y-px">
             <NavLink
               href="/time-report"
               label="Time report"
@@ -239,24 +252,72 @@ export function Sidebar({
               pathname={pathname}
               collapsed={effectiveCollapsed}
             />
+            {!isSubcontractor &&
+              (isAdmin || canSeeTimeReportProjectManager) && (
+                <NavLink
+                  href="/time-report/project-manager"
+                  label="Time approval"
+                  icon={FolderKanban}
+                  pathname={pathname}
+                  collapsed={effectiveCollapsed}
+                />
+              )}
           </div>
 
-        {!isSubcontractor && (isAdmin || canSeeTimeReportProjectManager) && (
-          <div className="space-y-0.5">
-            <NavLink
-              href="/time-report/project-manager"
-              label="My projects"
-              icon={FolderKanban}
-              pathname={pathname}
-              collapsed={effectiveCollapsed}
-            />
-          </div>
-        )}
+          {/* 3. Allocation */}
+          {showRestrictedNavigation && (
+            <div className="space-y-px">
+              <NavLink
+                pathname={pathname}
+                collapsed={effectiveCollapsed}
+                {...allocationNav}
+              />
+            </div>
+          )}
 
-          <div className="my-1.5 border-t border-border-subtle" />
+          {/* 4. Customer status */}
+          {!isSubcontractor && (
+            <div className="space-y-px">
+              <NavLink
+                href="/customer-status"
+                label="Customer status"
+                icon={ClipboardList}
+                pathname={pathname}
+                collapsed={effectiveCollapsed}
+              />
+            </div>
+          )}
 
+          {/* 5. Taskboard */}
+          {!isSubcontractor && (
+            <div className="space-y-px">
+              <NavLink
+                href="/taskboard"
+                label="Taskboard"
+                icon={LayoutDashboard}
+                pathname={pathname}
+                collapsed={effectiveCollapsed}
+                activeMatch="prefix"
+              />
+            </div>
+          )}
+
+          {/* 6. Customers, Consultants */}
+          {showRestrictedNavigation && (
+            <div className="space-y-px">
+              {sidePanelNav.map((item) => (
+                <NavPanelButton
+                  key={item.panel}
+                  collapsed={effectiveCollapsed}
+                  {...item}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 7. Reports */}
           {isAdmin && (
-            <div className="space-y-0.5">
+            <div className="space-y-px">
               <NavLink
                 href="/reports"
                 label="Reports"
@@ -269,36 +330,59 @@ export function Sidebar({
         </nav>
 
         <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
-          <div className="space-y-0.5 p-1.5">
+          <div className="space-y-px" style={footerPad}>
+            <NavLink
+              href="/notifications"
+              label="Notifications"
+              icon={Bell}
+              pathname={pathname}
+              collapsed={effectiveCollapsed}
+              badgeCount={unreadNotificationCount}
+            />
             {isAdmin && (
               <Link
                 href="/settings"
+                aria-label={effectiveCollapsed ? "Settings" : undefined}
                 title={effectiveCollapsed ? "Settings" : undefined}
-                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
-                  pathname === "/settings"
-                    ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/95"
-                    : "border-l-2 border-transparent text-text-primary/85 hover:bg-nav-hover hover:text-text-primary/90"
+                className={`group flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-xs font-medium ${
+                  effectiveCollapsed ? "gap-0" : "gap-1.5"
+                } ${
+                  settingsActive
+                    ? effectiveCollapsed
+                      ? "font-semibold text-[color:var(--color-accent-1)]"
+                      : "bg-brand-blue font-semibold text-[color:var(--color-accent-1)]"
+                    : "text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
                 }`}
               >
-                <Settings className="h-5 w-5 flex-shrink-0" />
-                <span className={bottomLabelSpanClass}>Settings</span>
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+                    settingsActive && effectiveCollapsed ? "bg-brand-blue" : ""
+                  }`}
+                >
+                  <Settings
+                    className={`h-4 w-4 ${settingsActive ? "text-[color:var(--color-accent-1)]" : ""}`}
+                  />
+                </span>
+                {!effectiveCollapsed ? (
+                  <span className="min-w-0 flex-1 truncate text-left">Settings</span>
+                ) : null}
               </Link>
-            )}
-            {isAdmin && (
-              <div className="my-1.5 border-t border-border-subtle" aria-hidden />
             )}
             <button
               type="button"
               onClick={handleSignOut}
+              aria-label={effectiveCollapsed ? "Log out" : undefined}
               title={effectiveCollapsed ? "Log out" : undefined}
-              className={`mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-nav-hover ${
-                "text-text-primary/85 hover:text-text-primary/90"
-              } ${
-                "justify-start"
+              className={`group flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-left text-xs font-medium text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90 ${
+                effectiveCollapsed ? "gap-0" : "gap-1.5"
               }`}
             >
-              <LogOut className="h-5 w-5 flex-shrink-0" />
-              <span className={bottomLabelSpanClass}>Log out</span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                <LogOut className="h-4 w-4" />
+              </span>
+              {!effectiveCollapsed ? (
+                <span className="min-w-0 flex-1 truncate text-left">Log out</span>
+              ) : null}
             </button>
           </div>
         </div>

@@ -31,6 +31,8 @@ type Props = {
   onBlur?: React.FocusEventHandler<HTMLButtonElement>;
   /** Show a small spinner on the trigger (e.g. while options are loading) */
   isLoading?: boolean;
+  /** Native tooltip on the closed trigger (e.g. assignee picker). */
+  triggerTitle?: string;
 };
 
 export function Select({
@@ -49,6 +51,7 @@ export function Select({
   viewportClassName = "",
   onBlur,
   isLoading = false,
+  triggerTitle,
 }: Props) {
   const EMPTY = "__empty__";
   const hasEmptyOption = options.some((o) => o.value === "");
@@ -139,6 +142,7 @@ export function Select({
       >
         <SelectPrimitive.Trigger
           id={id}
+          title={triggerTitle}
           onBlur={onBlur}
           aria-busy={isLoading}
           aria-invalid={Boolean(error)}

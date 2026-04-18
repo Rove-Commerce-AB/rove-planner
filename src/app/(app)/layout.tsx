@@ -31,7 +31,7 @@ export default async function AppLayout({
     canSeeTimeReportProjectManager = false;
   }
 
-  const dashboardUnreadNotificationCount = user
+  const unreadNotificationCount = user
     ? await getUnreadNotificationCountForCurrentUser()
     : 0;
 
@@ -40,7 +40,7 @@ export default async function AppLayout({
       isAdmin={isAdmin}
       canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
       isSubcontractor={isSubcontractor}
-      dashboardUnreadNotificationCount={dashboardUnreadNotificationCount}
+      unreadNotificationCount={unreadNotificationCount}
     >
       {children}
     </AppLayoutClient>

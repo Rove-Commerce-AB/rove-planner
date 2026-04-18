@@ -1,6 +1,8 @@
 export const USER_NOTIFICATION_KIND = {
   ALLOCATION_BOOKED: "allocation_booked",
   FEATURE_REQUEST_IMPLEMENTED: "feature_request_implemented",
+  TASK_BOARD_INVITED: "task_board_invited",
+  TASK_TODO_ASSIGNED: "task_todo_assigned",
 } as const;
 
 export type UserNotificationKind =

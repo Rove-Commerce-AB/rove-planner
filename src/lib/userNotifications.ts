@@ -13,6 +13,8 @@ import {
 function revalidateDashboardShell() {
   revalidatePath("/", "page");
   revalidatePath("/", "layout");
+  revalidatePath("/notifications", "page");
+  revalidatePath("/notifications", "layout");
 }
 
 function isUserNotificationsAccessError(e: unknown): boolean {

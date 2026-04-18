@@ -1543,7 +1543,7 @@ export function TimeReportPageClient({
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex justify-end">
-          <div className="flex items-center gap-0.5 rounded-md border border-border-subtle p-0.5">
+          <div className="flex items-center gap-0.5 rounded-md p-0.5">
             <Button
               type="button"
               variant={viewMode === "month" ? "primary" : "secondary"}

@@ -5,7 +5,7 @@
 -- if you need to preserve old pm_edited_hours values.
 --
 -- After this, new inserts from the app already set pm_edited_hours = hours; PMs
--- can still change PM hours from My projects as before.
+-- can still change PM hours from Time approval as before.
 
 BEGIN;
 
