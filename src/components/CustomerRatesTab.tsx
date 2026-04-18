@@ -342,7 +342,6 @@ export function CustomerRatesTab(props: Props) {
                   size="md"
                   className="w-full"
                   triggerClassName="h-9 border-form"
-                  viewportClassName="max-h-60 overflow-y-auto"
                 />
               </div>
               <div className="min-w-[11rem] shrink-0">

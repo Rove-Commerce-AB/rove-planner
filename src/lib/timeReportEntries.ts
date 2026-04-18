@@ -245,6 +245,19 @@ export async function getHolidayDatesForWeek(
     .map((h) => h.holiday_date);
 }
 
+/** Inclusive YYYY-MM-DD range (calendar month or any span). */
+export async function getHolidayDatesForRange(
+  calendarId: string | null,
+  start: string,
+  end: string
+): Promise<string[]> {
+  if (!calendarId) return [];
+  const holidays = await getCalendarHolidays(calendarId);
+  return holidays
+    .filter((h) => h.holiday_date >= start && h.holiday_date <= end)
+    .map((h) => h.holiday_date);
+}
+
 async function getEffectiveRateSnapshot(
   projectId: string,
   customerId: string,
@@ -566,6 +579,8 @@ export async function copyEntryToWeek(
     entry.roleId
   );
 
+  const copyHours = entry.copyHours !== false;
+
   const rows: {
     consultant_id: string;
     customer_id: string;
@@ -581,9 +596,25 @@ export async function copyEntryToWeek(
   }[] = [];
 
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-    const hours = entry.hours[dayIndex] ?? 0;
-    const comment = entry.comments[dayIndex]?.trim() ?? "";
-    if (hours > 0 || comment !== "") {
+    const hours = copyHours ? (entry.hours[dayIndex] ?? 0) : 0;
+    const comment = copyHours ? (entry.comments[dayIndex]?.trim() ?? "") : "";
+    if (copyHours) {
+      if (hours > 0 || comment !== "") {
+        rows.push({
+          consultant_id: consultantId,
+          customer_id: customerId,
+          project_id: entry.projectId,
+          role_id: entry.roleId,
+          jira_devops_key: entry.jiraDevOpsValue || null,
+          description: (entry.task ?? "").trim() || null,
+          entry_date: weekDates[dayIndex]!,
+          hours,
+          internal_comment: comment || null,
+          rate_snapshot: rateSnapshot,
+          display_order: displayOrder,
+        });
+      }
+    } else {
       rows.push({
         consultant_id: consultantId,
         customer_id: customerId,
@@ -591,9 +622,9 @@ export async function copyEntryToWeek(
         role_id: entry.roleId,
         jira_devops_key: entry.jiraDevOpsValue || null,
         description: (entry.task ?? "").trim() || null,
-        entry_date: weekDates[dayIndex],
-        hours,
-        internal_comment: comment || null,
+        entry_date: weekDates[dayIndex]!,
+        hours: 0,
+        internal_comment: null,
         rate_snapshot: rateSnapshot,
         display_order: displayOrder,
       });

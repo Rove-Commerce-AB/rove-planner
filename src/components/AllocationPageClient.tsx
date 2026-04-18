@@ -1112,7 +1112,7 @@ export function AllocationPageClient({
                 <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
                   Or select weeks to remove
                 </p>
-                <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                <div className="ds-dropdown-list-scroll max-h-48 space-y-1.5">
                   {deleteBookingDialog.allocations.map((a) => (
                     <label
                       key={a.allocationId}

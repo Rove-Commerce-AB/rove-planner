@@ -33,4 +33,9 @@ export type TimeReportEntryCopyPayload = {
   task: string;
   hours: number[];
   comments: Record<number, string>;
+  /**
+   * When false, copies project, role, Jira/DevOps, and description only — all target days
+   * get 0 hours and no internal comments. When true or omitted, copies hours and comments as usual.
+   */
+  copyHours?: boolean;
 };

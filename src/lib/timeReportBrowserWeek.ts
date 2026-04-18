@@ -101,6 +101,21 @@ export function getWeeksInMonthLocal(
   return list;
 }
 
+/** YYYY-MM-DD for each calendar day in the month (1-based month). */
+export function getCalendarDatesInMonth(year: number, month: number): string[] {
+  const last = new Date(year, month, 0).getDate();
+  return Array.from({ length: last }, (_, i) => {
+    const d = i + 1;
+    return (
+      year +
+      "-" +
+      String(month).padStart(2, "0") +
+      "-" +
+      String(d).padStart(2, "0")
+    );
+  });
+}
+
 /** YYYY-MM-DD for Mon..Sun of the given ISO week. */
 export function getWeekDates(year: number, week: number): string[] {
   const { start } = getISOWeekDateRangeLocal(year, week);

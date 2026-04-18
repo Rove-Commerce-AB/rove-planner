@@ -36,30 +36,67 @@ function NavLink({
   icon: Icon,
   pathname,
   collapsed,
+  badgeCount,
 }: {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   pathname: string;
   collapsed: boolean;
+  badgeCount?: number;
 }) {
   const isActive = href === "/" ? pathname === "/" : pathname === href;
   const labelSpanClass = `transition-[max-width,opacity] duration-120 overflow-hidden whitespace-nowrap ${
     collapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100"
   }`;
+  const showBadge =
+    typeof badgeCount === "number" && badgeCount > 0;
+  const badgeLabel =
+    badgeCount != null && badgeCount > 99 ? "99+" : String(badgeCount ?? "");
+
   return (
     <Link
       href={href}
-      title={collapsed ? label : undefined}
-      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
+      title={
+        collapsed
+          ? showBadge
+            ? `${label} (${badgeCount} unread)`
+            : label
+          : undefined
+      }
+      className={`relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
         isActive
           ? "border-l-2 border-border-subtle bg-nav-active font-semibold text-text-primary/90"
           : "border-l-2 border-transparent text-text-primary/75 hover:bg-nav-hover hover:text-text-primary/85"
       }`}
     >
-      <Icon className="h-5 w-5 flex-shrink-0" />
-      <span className={labelSpanClass}>
-        {label}
+      <span className="relative flex-shrink-0">
+        <Icon className="h-5 w-5" />
+        {collapsed && showBadge && (
+          <span
+            className="absolute -right-1 -top-1 box-border inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-text-primary/25 bg-brand-blue px-0.5 text-center text-[9px] font-semibold leading-none text-text-primary tabular-nums"
+            aria-hidden
+          >
+            <span className="flex -translate-y-px items-center justify-center leading-none">
+              {badgeLabel}
+            </span>
+          </span>
+        )}
+      </span>
+      <span className={`flex min-w-0 flex-1 items-center ${labelSpanClass}`}>
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{label}</span>
+          {!collapsed && showBadge && (
+            <span
+              className="box-border inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-text-primary/25 bg-brand-blue px-1 text-center text-[11px] font-semibold leading-none text-text-primary tabular-nums"
+              aria-label={`${badgeCount} unread notifications`}
+            >
+              <span className="flex -translate-x-px items-center justify-center leading-none">
+                {badgeLabel}
+              </span>
+            </span>
+          )}
+        </span>
       </span>
     </Link>
   );
@@ -104,12 +141,14 @@ type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
   isSubcontractor?: boolean;
+  dashboardUnreadNotificationCount?: number;
 };
 
 export function Sidebar({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
   isSubcontractor = false,
+  dashboardUnreadNotificationCount = 0,
 }: SidebarProps) {
   const showRestrictedNavigation = !isSubcontractor;
 
@@ -151,6 +190,11 @@ export function Sidebar({
                 key={item.href}
                 pathname={pathname}
                 collapsed={effectiveCollapsed}
+                badgeCount={
+                  item.href === "/"
+                    ? dashboardUnreadNotificationCount
+                    : undefined
+                }
                 {...item}
               />
             ))}

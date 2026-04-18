@@ -2,6 +2,7 @@ import { AppLayoutClient } from "@/components/AppLayoutClient";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { getUnreadNotificationCountForCurrentUser } from "@/lib/userNotifications";
 
 /** Auth and app_users gatekeeping run in src/proxy.ts. */
 
@@ -30,11 +31,16 @@ export default async function AppLayout({
     canSeeTimeReportProjectManager = false;
   }
 
+  const dashboardUnreadNotificationCount = user
+    ? await getUnreadNotificationCountForCurrentUser()
+    : 0;
+
   return (
     <AppLayoutClient
       isAdmin={isAdmin}
       canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
       isSubcontractor={isSubcontractor}
+      dashboardUnreadNotificationCount={dashboardUnreadNotificationCount}
     >
       {children}
     </AppLayoutClient>

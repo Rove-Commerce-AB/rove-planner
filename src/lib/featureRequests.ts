@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { notifyFeatureRequestImplemented } from "@/lib/userNotifications";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
 type LinearConfig = {
@@ -121,11 +122,36 @@ export async function setFeatureRequestImplemented(
   is_implemented: boolean
 ): Promise<void> {
   await assertNotSubcontractorForWrite();
+  const { rows: beforeRows } = await cloudSqlPool.query<{
+    submitted_by_email: string | null;
+    is_implemented: boolean;
+    content: string;
+  }>(
+    `SELECT submitted_by_email, is_implemented, content FROM feature_requests WHERE id = $1`,
+    [id]
+  );
+  const prev = beforeRows[0];
+  if (!prev) throw new Error("Update failed");
+
   const { rowCount } = await cloudSqlPool.query(
     `UPDATE feature_requests SET is_implemented = $2, updated_at = now() WHERE id = $1`,
     [id, is_implemented]
   );
   if (!rowCount) throw new Error("Update failed");
+
+  if (
+    is_implemented &&
+    !prev.is_implemented &&
+    prev.submitted_by_email?.trim()
+  ) {
+    const c = prev.content;
+    const preview = c.length > 120 ? `${c.slice(0, 117)}...` : c;
+    await notifyFeatureRequestImplemented({
+      submittedByEmail: prev.submitted_by_email.trim(),
+      featureRequestId: id,
+      contentPreview: preview,
+    });
+  }
   revalidatePath("/settings");
 }
 

@@ -206,7 +206,7 @@ export function CalendarAccordionItem({
           <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
             Holidays
           </h4>
-          <div className="mb-4 max-h-48 overflow-y-auto rounded-md border border-panel">
+          <div className="ds-dropdown-list-scroll mb-4 max-h-48 rounded-md border border-panel">
             {holidays.length === 0 ? (
               <p className="p-4 text-sm text-text-primary opacity-60">No holidays</p>
             ) : (

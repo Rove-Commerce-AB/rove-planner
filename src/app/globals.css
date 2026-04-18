@@ -218,6 +218,85 @@ body.allocation-project-row-dragging * {
   margin-top: -1px;
 }
 
+/**
+ * Scrollable dropdown / compact list panes (Select viewport, Combobox list, etc.).
+ * Thin, low-contrast scrollbar — visible enough to hint overflow without dominating the UI.
+ */
+.ds-dropdown-list-scroll {
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text-primary) 24%, transparent)
+    color-mix(in srgb, var(--color-text-primary) 4%, var(--color-bg-default));
+}
+
+.ds-dropdown-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ds-dropdown-list-scroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-text-primary) 5%, var(--color-bg-default));
+  border-radius: 999px;
+}
+
+.ds-dropdown-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+}
+
+.ds-dropdown-list-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-text-primary) 38%, transparent);
+}
+
+/** Prefer vertical scroll track when list is taller than viewport (set from JS on Select/Combobox). */
+.ds-dropdown-list-scroll.ds-dropdown-list-scroll--scrollable {
+  overflow-y: scroll;
+}
+
+/**
+ * Radix Select injects a <style> on the viewport that sets scrollbar-width: none and
+ * ::-webkit-scrollbar { display: none }. Override so native scrollbars show again.
+ * Inline overflow from Radix is beaten with !important where needed.
+ */
+[data-radix-select-viewport].ds-dropdown-list-scroll {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+  scrollbar-color: color-mix(in srgb, var(--color-text-primary) 24%, transparent)
+    color-mix(in srgb, var(--color-text-primary) 4%, var(--color-bg-default)) !important;
+}
+
+[data-radix-select-viewport].ds-dropdown-list-scroll::-webkit-scrollbar {
+  display: block !important;
+  width: 6px !important;
+}
+
+[data-radix-select-viewport].ds-dropdown-list-scroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-text-primary) 5%, var(--color-bg-default));
+  border-radius: 999px;
+}
+
+[data-radix-select-viewport].ds-dropdown-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+}
+
+[data-radix-select-viewport].ds-dropdown-list-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-text-primary) 38%, transparent);
+}
+
+[data-radix-select-viewport].ds-dropdown-list-scroll.ds-dropdown-list-scroll--scrollable {
+  overflow-y: scroll !important;
+}
+
 @keyframes weekStripInFromLeft {
   from {
     opacity: 0;

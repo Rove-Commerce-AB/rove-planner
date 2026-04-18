@@ -97,7 +97,6 @@ export function AddCustomerRateModal({
               placeholder="Role"
               variant="modal"
               options={availableRoles.map((r) => ({ value: r.id, label: r.name }))}
-              viewportClassName="max-h-60 overflow-y-auto"
             />
             <Input
               id="add-customer-rate-value"

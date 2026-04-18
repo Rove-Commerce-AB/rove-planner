@@ -27,7 +27,7 @@ export default async function TimeReportPage() {
 
   return (
     <div className="p-6">
-      <div className="mx-auto max-w-[1200px]">
+      <div className="mx-auto w-full max-w-[min(100vw-3rem,96rem)]">
         <PageHeader
           title="Time report"
           className="mb-6"

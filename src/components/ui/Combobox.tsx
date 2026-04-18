@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 
@@ -96,6 +96,18 @@ export function Combobox({
 
   const listContent = options.length === 0 ? [] : filtered;
   const showList = isOpen && !disabled;
+  const listRef = useRef<HTMLUListElement>(null);
+  const [listScrollable, setListScrollable] = useState(false);
+
+  const recomputeListScrollable = useCallback(() => {
+    const el = listRef.current;
+    if (!el || !showList) {
+      setListScrollable(false);
+      return;
+    }
+    setListScrollable(el.scrollHeight > el.clientHeight + 1);
+  }, [showList]);
+
   const clampHighlight = (i: number) => Math.max(0, Math.min(i, listContent.length - 1));
 
   useEffect(() => {
@@ -105,6 +117,24 @@ export function Combobox({
   useEffect(() => {
     highlightedRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [highlightedIndex]);
+
+  useLayoutEffect(() => {
+    if (!showList) {
+      setListScrollable(false);
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => recomputeListScrollable());
+    });
+  }, [showList, listStyle, listContent.length, recomputeListScrollable]);
+
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el || !showList) return;
+    const ro = new ResizeObserver(() => recomputeListScrollable());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showList, recomputeListScrollable]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -237,10 +267,11 @@ export function Combobox({
 
   const listElement = showList && listStyle && (
     <ul
+      ref={listRef}
       id="combobox-list"
       role="listbox"
       data-combobox-list
-      className={`ds-dropdown-content ds-dropdown-joined max-h-60 overflow-auto rounded-b-xl rounded-t-none border border-t-0 bg-bg-default px-1 pb-1 pt-2 shadow-none z-[9999] ${listBorderClass}`}
+      className={`ds-dropdown-content ds-dropdown-joined relative min-h-0 overflow-x-hidden rounded-b-xl ds-dropdown-list-scroll max-h-60 rounded-t-none border border-t-0 bg-bg-default px-1 pb-1 pt-2 shadow-none z-[9999] ${listScrollable ? "ds-dropdown-list-scroll--scrollable" : ""} ${listBorderClass}`}
       style={{
         position: listStyle.isInline ? "absolute" : "fixed",
         top: listStyle.top,

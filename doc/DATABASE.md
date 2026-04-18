@@ -304,6 +304,25 @@ Unique / index definitions: see migrations (e.g. uniqueness including `display_o
 
 ---
 
+## user_notifications
+
+In-app notifications for authenticated users (`app_users`). Rows are created from application code (e.g. new allocations, feature request implemented).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE CASCADE |
+| kind | text | NOT NULL, e.g. `allocation_booked`, `feature_request_implemented` |
+| payload | jsonb | NOT NULL, default `{}`; shape depends on `kind` |
+| read_at | timestamptz | nullable; null = unread |
+| created_at | timestamptz | NOT NULL, default now() |
+
+Indexes: `(app_user_id, created_at DESC)`; partial `(app_user_id) WHERE read_at IS NULL`.
+
+DDL script: [`sql/20260418_user_notifications.sql`](sql/20260418_user_notifications.sql). If the app DB user (from `CLOUD_SQL_URL`) is not the table owner, run the commented `GRANT` at the end of that script as a superuser so the app can `SELECT`/`INSERT`/`UPDATE` this table.
+
+---
+
 ## Relationship summary (short)
 
 - **customers** → **projects** → **allocations** / **time_report_entries**  

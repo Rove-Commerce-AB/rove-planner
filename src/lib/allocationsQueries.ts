@@ -1,4 +1,5 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { notifyAllocationInserts } from "@/lib/userNotifications";
 import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
 
 export type AllocationRecord = {
@@ -182,7 +183,9 @@ export async function createAllocation(
     ]
   );
   if (!rows[0]) throw new Error("Failed to create allocation");
-  return mapAllocation(rows[0] as Parameters<typeof mapAllocation>[0]);
+  const created = mapAllocation(rows[0] as Parameters<typeof mapAllocation>[0]);
+  await notifyAllocationInserts([created]);
+  return created;
 }
 
 function weekKey(year: number, week: number): string {
@@ -293,6 +296,10 @@ export async function createAllocationsForWeekRange(
     insertResults = rows.map(mapAllocation);
   }
 
+  if (insertResults.length > 0) {
+    await notifyAllocationInserts(insertResults);
+  }
+
   const byKey = new Map<string, AllocationRecord>();
   for (const r of updateResults) byKey.set(weekKey(r.year, r.week), r);
   for (const r of insertResults) byKey.set(weekKey(r.year, r.week), r);
@@ -368,6 +375,10 @@ export async function createAllocationsForWeekRangeWithGetter(
       values
     );
     insertResults = rows.map(mapAllocation);
+  }
+
+  if (insertResults.length > 0) {
+    await notifyAllocationInserts(insertResults);
   }
 
   const byKey = new Map<string, AllocationRecord>();

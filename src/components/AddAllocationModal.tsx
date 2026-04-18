@@ -369,7 +369,6 @@ export function AddAllocationModal({
                 placeholder="Select project"
                 variant="modal"
                 triggerClassName={`mt-1.5 h-10 rounded-lg border-[#e5e5e3] px-3 text-sm ${modalSelectTriggerClass}`}
-                viewportClassName="max-h-60 overflow-y-auto"
                 options={[...projects]
                   .sort((a, b) => a.customerName.localeCompare(b.customerName))
                   .map((p) => ({

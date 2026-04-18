@@ -11,6 +11,7 @@ export function TimeReportHourCell({
   entryId: _entryId,
   dayIndex: _dayIndex,
   onStartEdit: _onStartEdit,
+  compact = false,
 }: {
   value: number;
   entryId: string;
@@ -19,6 +20,8 @@ export function TimeReportHourCell({
   onStartEdit: () => void;
   onCommit: (v: number) => void;
   onBlur: () => void;
+  /** Narrow cells for month grid. */
+  compact?: boolean;
 }) {
   const [localValue, setLocalValue] = useState(String(value || ""));
 
@@ -53,14 +56,20 @@ export function TimeReportHourCell({
           }
         }}
         autoFocus
-        className="h-6 w-9 rounded border border-form bg-bg-default px-0.5 text-right text-xs tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className={`rounded border border-form bg-bg-default px-0.5 text-right tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+          compact ? "h-5 w-full min-w-0 max-w-full text-[9px]" : "h-6 w-9 text-xs"
+        }`}
       />
     );
   }
 
   const display = value === 0 ? "" : String(value);
   return (
-    <span className="inline-flex h-6 shrink-0 items-center text-xs tabular-nums text-text-primary">
+    <span
+      className={`inline-flex min-w-0 max-w-full items-center justify-center tabular-nums text-text-primary ${
+        compact ? "h-5 w-full text-[9px]" : "h-6 shrink-0 text-xs"
+      }`}
+    >
       {display}
     </span>
   );

@@ -46,11 +46,13 @@ function LayoutContent({
   isAdmin,
   canSeeTimeReportProjectManager,
   isSubcontractor,
+  dashboardUnreadNotificationCount,
 }: {
   children: React.ReactNode;
   isAdmin: boolean;
   canSeeTimeReportProjectManager: boolean;
   isSubcontractor: boolean;
+  dashboardUnreadNotificationCount: number;
 }) {
   const pathname = usePathname();
   const { panel, closingPanel, openPanel, finishClosingPanel } = useSidePanel();
@@ -93,6 +95,7 @@ function LayoutContent({
         isAdmin={isAdmin}
         canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
         isSubcontractor={isSubcontractor}
+        dashboardUnreadNotificationCount={dashboardUnreadNotificationCount}
       />
       {showSlot && visiblePanel !== null && (
         <PanelSlot
@@ -117,11 +120,13 @@ export function AppLayoutClient({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
   isSubcontractor = false,
+  dashboardUnreadNotificationCount = 0,
 }: {
   children: React.ReactNode;
   isAdmin: boolean;
   canSeeTimeReportProjectManager?: boolean;
   isSubcontractor?: boolean;
+  dashboardUnreadNotificationCount?: number;
 }) {
   return (
     <SidePanelProvider>
@@ -129,6 +134,7 @@ export function AppLayoutClient({
         isAdmin={isAdmin}
         canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
         isSubcontractor={isSubcontractor}
+        dashboardUnreadNotificationCount={dashboardUnreadNotificationCount}
       >
         {children}
       </LayoutContent>

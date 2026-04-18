@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useLayoutEffect, useCallback, useState } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { ChevronDown, Loader2 } from "lucide-react";
 
@@ -24,7 +25,7 @@ type Props = {
   className?: string;
   /** Extra classes for the trigger (e.g. h-10 for consistent height) */
   triggerClassName?: string;
-  /** Extra classes for the dropdown viewport (e.g. max-h-60 overflow-y-auto for scroll) */
+  /** Extra classes merged onto the list viewport (scroll styling is built-in; e.g. `max-h-72` to tune height). */
   viewportClassName?: string;
   /** Called when the trigger loses focus (e.g. click outside) */
   onBlur?: React.FocusEventHandler<HTMLButtonElement>;
@@ -57,6 +58,33 @@ export function Select({
       : value === ""
         ? EMPTY
         : value;
+
+  const viewportHasMaxHeight = /\bmax-h-/.test(viewportClassName);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [listScrollable, setListScrollable] = useState(false);
+
+  const recomputeListScrollable = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) {
+      setListScrollable(false);
+      return;
+    }
+    setListScrollable(el.scrollHeight > el.clientHeight + 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    recomputeListScrollable();
+  }, [recomputeListScrollable, options]);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const el = viewportRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => recomputeListScrollable());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [menuOpen, recomputeListScrollable, options.length]);
 
   const isFilter = variant === "filter";
   const isModal = variant === "modal";
@@ -98,6 +126,16 @@ export function Select({
           onValueChange(v === EMPTY || v === undefined ? "" : v)
         }
         disabled={disabled}
+        onOpenChange={(open) => {
+          setMenuOpen(open);
+          if (open) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => recomputeListScrollable());
+            });
+          } else {
+            setListScrollable(false);
+          }
+        }}
       >
         <SelectPrimitive.Trigger
           id={id}
@@ -141,14 +179,15 @@ export function Select({
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content
-            className={`ds-dropdown-content ds-dropdown-joined z-[100] w-[var(--radix-select-trigger-width)] overflow-hidden rounded-b-xl rounded-t-none border border-t-0 bg-bg-default shadow-none ${contentBorderClass}`}
+            className={`ds-dropdown-content ds-dropdown-joined z-[100] w-[var(--radix-select-trigger-width)] overflow-x-hidden overflow-y-visible rounded-b-xl rounded-t-none border border-t-0 bg-bg-default shadow-none ${contentBorderClass}`}
             position="popper"
             side="bottom"
             sideOffset={0}
             align="start"
           >
             <SelectPrimitive.Viewport
-              className={`max-h-60 overflow-y-auto px-1 pb-1 pt-2 ${viewportClassName}`.trim()}
+              ref={viewportRef}
+              className={`relative min-h-0 overflow-x-hidden rounded-b-xl ds-dropdown-list-scroll px-1 pb-1 pt-2 ${listScrollable ? "ds-dropdown-list-scroll--scrollable" : ""} ${viewportHasMaxHeight ? "" : "max-h-60"} ${viewportClassName}`.trim()}
             >
               {options.map((opt) => (
                 <SelectPrimitive.Item
