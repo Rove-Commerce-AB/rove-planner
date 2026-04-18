@@ -11,6 +11,7 @@ import {
   type TransitionStartFunction,
 } from "react";
 import { ArrowLeft, Pencil, Share2, Trash2, UserMinus } from "lucide-react";
+import { BoardMemberAvatars } from "@/components/taskboard/BoardMemberAvatars";
 import { TodoDueDatePicker } from "@/components/taskboard/TodoDueDatePicker";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -268,11 +269,21 @@ export function TaskboardDetailPageClient({
           All boards
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <PageHeader
-            title={initialTitle}
-            titleTooltip={initialTitle}
-            className="mb-0"
-          />
+          <div className="min-w-0 flex-1">
+            <PageHeader
+              title={initialTitle}
+              titleTooltip={initialTitle}
+              className="mb-0"
+            />
+            {initialMembers.length > 0 ? (
+              <div className="mt-2">
+                <BoardMemberAvatars
+                  members={initialMembers}
+                  align="start"
+                />
+              </div>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"

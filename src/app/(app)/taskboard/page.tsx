@@ -25,16 +25,18 @@ export default async function TaskboardPage() {
       (b.creator_name && b.creator_name.trim()) || b.creator_email || "Unknown",
     created_at: b.created_at.toISOString(),
     updated_at: b.updated_at.toISOString(),
+    members: b.members.map((m) => ({
+      app_user_id: m.app_user_id,
+      email: m.email,
+      name: m.name,
+    })),
   }));
 
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-[min(100vw-3rem,72rem)]">
         <PageHeader title="Taskboard" className="mb-6" />
-        <TaskboardListPageClient
-          boards={boards}
-          currentAppUserId={appUserId}
-        />
+        <TaskboardListPageClient boards={boards} />
       </div>
     </div>
   );

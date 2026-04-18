@@ -12,6 +12,17 @@ export type TaskBoardSummary = {
   updated_at: Date;
 };
 
+/** Member row embedded in task board list (from JSON aggregate). */
+export type TaskBoardListMemberSnippet = {
+  app_user_id: string;
+  email: string;
+  name: string | null;
+};
+
+export type TaskBoardListItem = TaskBoardSummary & {
+  members: TaskBoardListMemberSnippet[];
+};
+
 export type TaskBoardDetail = {
   id: string;
   title: string;
@@ -48,17 +59,59 @@ export type AppUserSearchRow = {
 
 export async function listBoardsForMember(
   appUserId: string
-): Promise<TaskBoardSummary[]> {
-  const { rows } = await cloudSqlPool.query<TaskBoardSummary>(
+): Promise<TaskBoardListItem[]> {
+  type Row = TaskBoardSummary & { members_json: unknown };
+  const { rows } = await cloudSqlPool.query<Row>(
     `SELECT b.id, b.title, b.created_by_app_user_id, b.created_at, b.updated_at,
-            au.email AS creator_email, au.name AS creator_name
+            au.email AS creator_email, au.name AS creator_name,
+            COALESCE(
+              (
+                SELECT json_agg(
+                  json_build_object(
+                    'app_user_id', m2.app_user_id,
+                    'email', u.email,
+                    'name', u.name
+                  ) ORDER BY lower(trim(u.email))
+                )
+                FROM task_board_members m2
+                INNER JOIN app_users u ON u.id = m2.app_user_id
+                WHERE m2.board_id = b.id
+              ),
+              '[]'::json
+            ) AS members_json
      FROM task_boards b
      INNER JOIN task_board_members m ON m.board_id = b.id AND m.app_user_id = $1
      LEFT JOIN app_users au ON au.id = b.created_by_app_user_id
      ORDER BY b.updated_at DESC`,
     [appUserId]
   );
-  return rows;
+  return rows.map((r) => {
+    const { members_json, ...summary } = r;
+    const members = parseTaskBoardListMembersJson(members_json);
+    return { ...summary, members };
+  });
+}
+
+function parseTaskBoardListMembersJson(raw: unknown): TaskBoardListMemberSnippet[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (x): x is TaskBoardListMemberSnippet =>
+        x != null &&
+        typeof x === "object" &&
+        typeof (x as TaskBoardListMemberSnippet).app_user_id === "string" &&
+        typeof (x as TaskBoardListMemberSnippet).email === "string"
+    );
+  }
+  if (typeof raw === "string") {
+    try {
+      const v = JSON.parse(raw) as unknown;
+      return parseTaskBoardListMembersJson(v);
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 export async function createBoardWithCreatorMember(

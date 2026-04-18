@@ -7,7 +7,13 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
+import {
+  BoardMemberAvatars,
+  type BoardMemberAvatarMember,
+} from "@/components/taskboard/BoardMemberAvatars";
 import { createBoardAction } from "./actions";
+
+export type TaskboardListMember = BoardMemberAvatarMember;
 
 export type TaskboardListBoard = {
   id: string;
@@ -16,14 +22,14 @@ export type TaskboardListBoard = {
   creator_label: string;
   created_at: string;
   updated_at: string;
+  members: TaskboardListMember[];
 };
 
 type Props = {
   boards: TaskboardListBoard[];
-  currentAppUserId: string;
 };
 
-export function TaskboardListPageClient({ boards, currentAppUserId }: Props) {
+export function TaskboardListPageClient({ boards }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
@@ -32,11 +38,7 @@ export function TaskboardListPageClient({ boards, currentAppUserId }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-text-primary/80">
-          Boards you are a member of. Rename, delete, or invite others from
-          inside a board.
-        </p>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <Button
           type="button"
           size="sm"
@@ -59,29 +61,27 @@ export function TaskboardListPageClient({ boards, currentAppUserId }: Props) {
         </p>
       ) : (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {boards.map((b) => {
-            const isOwner = b.created_by_app_user_id === currentAppUserId;
-            const ownerLine = isOwner ? "You" : b.creator_label;
-            return (
-              <li key={b.id}>
-                <Link
-                  href={`/taskboard/${b.id}`}
-                  title={`View board: ${b.title}`}
-                  className="block h-full rounded-xl border border-border-subtle bg-bg-default p-5 shadow-sm transition-colors hover:border-brand-signal/50 hover:bg-bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-content)]"
+          {boards.map((b) => (
+            <li key={b.id} className="flex min-h-0 h-full">
+              <Link
+                href={`/taskboard/${b.id}`}
+                title={`View board: ${b.title}`}
+                className="flex h-full min-h-[7.5rem] w-full flex-col rounded-xl border border-border-subtle bg-bg-default p-5 shadow-sm transition-colors hover:border-brand-signal/50 hover:bg-bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-content)]"
+              >
+                <h2
+                  className="line-clamp-2 min-h-0 flex-1 text-base font-semibold leading-snug text-text-primary"
+                  title={b.title}
                 >
-                  <h2
-                    className="line-clamp-2 text-base font-semibold leading-snug text-text-primary"
-                    title={b.title}
-                  >
-                    {b.title}
-                  </h2>
-                  <p className="mt-3 text-xs text-text-muted">
-                    Owner: <span className="text-text-primary/80">{ownerLine}</span>
-                  </p>
-                </Link>
-              </li>
-            );
-          })}
+                  {b.title}
+                </h2>
+                {b.members.length > 0 ? (
+                  <div className="mt-4 flex shrink-0 justify-end">
+                    <BoardMemberAvatars members={b.members} />
+                  </div>
+                ) : null}
+              </Link>
+            </li>
+          ))}
         </ul>
       )}
 
