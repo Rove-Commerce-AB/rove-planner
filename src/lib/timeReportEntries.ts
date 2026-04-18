@@ -512,8 +512,8 @@ export async function saveTimeReportEntries(
         await cloudSqlPool.query(
           `INSERT INTO time_report_entries (
              consultant_id, customer_id, project_id, role_id, jira_devops_key,
-             description, entry_date, hours, internal_comment, rate_snapshot, display_order
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11)`,
+             description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11)`,
           [
             row.consultant_id,
             row.customer_id,
@@ -640,8 +640,8 @@ export async function copyEntryToWeek(
       await cloudSqlPool.query(
         `INSERT INTO time_report_entries (
            consultant_id, customer_id, project_id, role_id, jira_devops_key,
-           description, entry_date, hours, internal_comment, rate_snapshot, display_order
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11)`,
+           description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11)`,
         [
           row.consultant_id,
           row.customer_id,

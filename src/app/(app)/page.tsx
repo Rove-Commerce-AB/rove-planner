@@ -105,19 +105,20 @@ export default async function DashboardPage() {
     mainContent = (
       <Panel>
         <PanelSectionTitle>NEXT 10 WEEKS</PanelSectionTitle>
-        <div className="overflow-x-auto p-3 pt-0">
+        <div className="allocation-tables overflow-x-auto p-2 pt-0">
           <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
             <colgroup>
               <col style={{ width: 280 }} />
               {weeks.map((w) => (
-                <col key={`${w.year}-${w.week}`} className="w-[2.5rem]" />
+                <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
               ))}
               <col className="w-14" />
             </colgroup>
             <thead>
-              <tr className="border-b border-grid-subtle bg-bg-muted/80">
+              <tr className="border-b border-grid-subtle">
                 <th
-                  className="border-r border-grid-subtle px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-text-primary opacity-70"
+                  rowSpan={2}
+                  className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
                   style={{ width: 280, maxWidth: 280, boxSizing: "border-box" }}
                 >
                   Customer · Project · Role
@@ -131,23 +132,26 @@ export default async function DashboardPage() {
                     {span.label}
                   </th>
                 ))}
-                <th className="border-r border-grid-subtle px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wider text-text-primary opacity-70">
+                <th
+                  rowSpan={2}
+                  className="border-r border-grid-subtle px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+                >
                   Sum
                 </th>
               </tr>
-              <tr className="border-b border-grid-subtle bg-bg-muted">
-                <th className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80">
-                  {" "}
-                </th>
+              <tr className="border-b border-grid-subtle">
                 {weeks.map((w) => (
                   <th
                     key={`${w.year}-${w.week}`}
-                    className={`border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-70 ${isCurrentWeek(w) ? "bg-brand-signal/15" : ""}`}
+                    className={`border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
+                      isCurrentWeek(w)
+                        ? "current-week-header bg-brand-signal/20 border-l border-r"
+                        : ""
+                    }`}
                   >
-                    W{w.week}
+                    v{w.week}
                   </th>
                 ))}
-                <th className="border-r border-grid-subtle px-0 py-1" aria-hidden />
               </tr>
             </thead>
             <tbody>
@@ -159,23 +163,19 @@ export default async function DashboardPage() {
                     key={keyStr(key)}
                     className="border-b border-grid-light-subtle last:border-form bg-bg-default"
                   >
-                    <td className="border-r border-grid-light-subtle px-2 py-1 align-middle text-left">
-                      <span className="text-text-primary opacity-90">
-                        {info.customerName}
-                      </span>
-                      <span className="mx-1.5 text-text-primary opacity-50">·</span>
+                    <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top text-left text-[10px] text-text-primary">
+                      <span className="opacity-90">{info.customerName}</span>
+                      <span className="mx-1.5 opacity-50">·</span>
                       <Link
                         href={`/projects/${key.projectId}`}
-                        className="font-medium text-brand-signal hover:underline"
+                        className="font-medium text-text-primary hover:underline"
                       >
                         {info.projectName}
                       </Link>
                       {info.roleName !== "—" && (
                         <>
-                          <span className="mx-1.5 text-text-primary opacity-50">·</span>
-                          <span className="text-text-primary opacity-80">
-                            {info.roleName}
-                          </span>
+                          <span className="mx-1.5 opacity-50">·</span>
+                          <span className="opacity-80">{info.roleName}</span>
                         </>
                       )}
                     </td>
@@ -186,13 +186,15 @@ export default async function DashboardPage() {
                       return (
                         <td
                           key={`${w.year}-${w.week}`}
-                          className={`border-r border-grid-light-subtle px-1 py-1 text-center tabular-nums text-text-primary ${isCurrentWeek(w) ? "bg-brand-signal/10" : ""}`}
+                          className={`border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary ${
+                            isCurrentWeek(w) ? "current-week-cell border-l border-r" : ""
+                          }`}
                         >
                           {h > 0 ? `${h}h` : "—"}
                         </td>
                       );
                     })}
-                    <td className="border-r border-grid-light-subtle px-1 py-1 text-right tabular-nums font-medium text-text-primary">
+                    <td className="border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums font-medium text-text-primary">
                       {rowTotal > 0 ? `${rowTotal}h` : "—"}
                     </td>
                   </tr>

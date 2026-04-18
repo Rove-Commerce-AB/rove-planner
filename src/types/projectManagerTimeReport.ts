@@ -3,6 +3,8 @@ export type ProjectManagerEntry = {
   entryDate: string;
   consultantId: string;
   consultantName: string;
+  roleId: string;
+  roleName: string;
   customerId: string;
   customerName: string;
   projectId: string;

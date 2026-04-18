@@ -54,9 +54,9 @@
 
     /* === Layout (prototype) === */
     --color-bg-content: #fafafa;             /* Right content area – light gray (lagom) */
-    --color-nav-active: #e8e8e8;             /* Active nav item bg – soft gray */
-    --color-nav-active-accent: #e0ddda;      /* Left border accent for active item – subtle */
-    --color-nav-hover: #eee;                 /* Nav item hover bg – subtle */
+    --color-nav-active: #d8d8d8;             /* Active nav item bg – slightly darker than before */
+    --color-nav-active-accent: #d0cdc9;      /* Left border accent for active item */
+    --color-nav-hover: #e4e4e4;              /* Nav item hover bg – toward black vs #eee */
 
     /* === Panel (control panel / dashboard) === */
     --panel-bg: var(--color-white);          /* Panels – white on light gray content area */

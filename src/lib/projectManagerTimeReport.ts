@@ -62,6 +62,7 @@ export async function getProjectManagerTimeEntries(args: {
 
   const consultantIds = [...new Set(rows.map((r) => r.consultant_id).filter(Boolean))];
   const customerIds = [...new Set(rows.map((r) => r.customer_id).filter(Boolean))];
+  const roleIds = [...new Set(rows.map((r) => r.role_id).filter(Boolean))] as string[];
 
   const jiraKeys = [
     ...new Set(
@@ -72,7 +73,7 @@ export async function getProjectManagerTimeEntries(args: {
     ),
   ];
 
-  const [consultantsRes, customersRes, jiraRes] = await Promise.all([
+  const [consultantsRes, customersRes, rolesRes, jiraRes] = await Promise.all([
     consultantIds.length
       ? cloudSqlPool.query<{ id: string; name: string | null }>(
           `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[])`,
@@ -83,6 +84,12 @@ export async function getProjectManagerTimeEntries(args: {
       ? cloudSqlPool.query<{ id: string; name: string | null }>(
           `SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`,
           [customerIds]
+        )
+      : Promise.resolve({ rows: [] as { id: string; name: string | null }[] }),
+    roleIds.length
+      ? cloudSqlPool.query<{ id: string; name: string | null }>(
+          `SELECT id, name FROM roles WHERE id = ANY($1::uuid[])`,
+          [roleIds]
         )
       : Promise.resolve({ rows: [] as { id: string; name: string | null }[] }),
     jiraKeys.length
@@ -102,12 +109,15 @@ export async function getProjectManagerTimeEntries(args: {
   const jiraMap = new Map(
     jiraRes.rows.map((j) => [j.jira_key, j.summary ?? null])
   );
+  const roleMap = new Map(rolesRes.rows.map((role) => [role.id, role.name ?? "Unknown"]));
 
   const entries: ProjectManagerEntry[] = rows.map((r) => ({
     id: r.id,
     entryDate: r.entry_date,
     consultantId: r.consultant_id,
     consultantName: consultantMap.get(r.consultant_id) ?? "Unknown",
+    roleId: r.role_id,
+    roleName: roleMap.get(r.role_id) ?? "Unknown",
     customerId: r.customer_id,
     customerName: customerMap.get(r.customer_id) ?? "Unknown",
     projectId: r.project_id,

@@ -20,7 +20,6 @@ import {
   getTaskOptionsForCustomerAndProject,
   getHolidayDatesForWeek,
   getHolidayDatesForRange,
-  getTimeReportMonthTotalHours,
   getTimeReportEntries,
   saveTimeReportEntries,
   copyEntryToWeek,
@@ -401,8 +400,6 @@ export function TimeReportPageClient({
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded">("idle");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [monthTotalHours, setMonthTotalHours] = useState(0);
-  const [monthTotalState, setMonthTotalState] = useState<"idle" | "loading" | "error">("idle");
   const [showValidationHighlights, setShowValidationHighlights] = useState(false);
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRequestIdRef = useRef(0);
@@ -1487,13 +1484,6 @@ export function TimeReportPageClient({
     );
   }, [commentState, dayDates]);
 
-  const monthTotalDisplay = useMemo(() => {
-    if (!Number.isFinite(monthTotalHours) || monthTotalHours <= 0) return "0";
-    return Math.abs(monthTotalHours - Math.round(monthTotalHours)) < 1e-6
-      ? String(Math.round(monthTotalHours))
-      : String(Math.round(monthTotalHours * 10) / 10).replace(/\.0$/, "");
-  }, [monthTotalHours]);
-
   const totalHoursPerDay = useMemo(
     () =>
       customerGroups.reduce<number[]>(
@@ -1514,32 +1504,6 @@ export function TimeReportPageClient({
     }
     return monthMergedRows.length;
   }, [viewMode, customerGroups, monthMergedRows]);
-
-  useEffect(() => {
-    if (!consultant) {
-      setMonthTotalHours(0);
-      setMonthTotalState("idle");
-      return;
-    }
-
-    let isStale = false;
-    setMonthTotalState("loading");
-    getTimeReportMonthTotalHours(consultant.id, displayYear, displayMonth)
-      .then((total) => {
-        if (isStale) return;
-        setMonthTotalHours(total);
-        setMonthTotalState("idle");
-      })
-      .catch(() => {
-        if (isStale) return;
-        setMonthTotalHours(0);
-        setMonthTotalState("error");
-      });
-
-    return () => {
-      isStale = true;
-    };
-  }, [consultant, displayMonth, displayYear]);
 
   useEffect(() => {
     if (!ENABLE_PERF_DEBUG) return;
@@ -1659,16 +1623,13 @@ export function TimeReportPageClient({
             )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <div className="text-xs text-text-secondary">
-              Month total hours reported:{" "}
-              <span className="font-medium text-text-primary tabular-nums">
-                {monthTotalState === "loading" ? "…" : monthTotalDisplay}
+            <div className="flex min-h-5 flex-wrap items-center justify-end gap-2">
+              <span
+                className={`text-xs text-text-secondary ${saveState === "saving" ? "" : "invisible"}`}
+                aria-hidden={saveState !== "saving"}
+              >
+                Saving…
               </span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {saveState === "saving" && (
-                <span className="text-xs text-text-secondary">Saving…</span>
-              )}
               {saveState === "error" && saveError && (
                 <span className="text-xs text-red-600" role="alert">
                   {saveError}
