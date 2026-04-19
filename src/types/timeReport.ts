@@ -5,6 +5,8 @@ export type JiraDevOpsOption = {
   value: string;
   label: string;
   url?: string | null;
+  /** Jira summary or DevOps work item title (for tooltips). */
+  description?: string | null;
 };
 
 export type TaskOption = { value: string; label: string };

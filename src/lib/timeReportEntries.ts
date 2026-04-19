@@ -104,12 +104,19 @@ export async function getJiraDevOpsOptionsForProject(
         value: `jira:${o.value}`,
         label: o.label,
         url: o.url ?? undefined,
+        description: o.summary?.trim() || null,
       }))
     );
   }
   if (project.devops_project) {
     const devops = await getDevOpsWorkItemsByProject(project.devops_project);
-    options.push(...devops.map((o) => ({ value: `devops:${o.value}`, label: o.label })));
+    options.push(
+      ...devops.map((o) => ({
+        value: `devops:${o.value}`,
+        label: o.label,
+        description: o.title?.trim() || null,
+      }))
+    );
   }
   return options;
 }

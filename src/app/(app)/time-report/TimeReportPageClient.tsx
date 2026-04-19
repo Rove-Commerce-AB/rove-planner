@@ -76,6 +76,15 @@ function weekSliceKey(year: number, week: number) {
   return `${year}-W${week}`;
 }
 
+/** Native `title` on the Jira/DevOps key: shows summary/title when loaded. */
+function jiraDevOpsKeyTooltipTitle(
+  displayKey: string,
+  description?: string | null
+): string {
+  const d = description?.trim();
+  return d ? `${displayKey} — ${d}` : `${displayKey} — Change Jira/DevOps`;
+}
+
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = {
   id: string;
@@ -1854,10 +1863,24 @@ export function TimeReportPageClient({
                             />
                           </td>
                           <td className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1 align-middle">
-                            {entry.jiraDevOpsValue ? (
+                            {entry.jiraDevOpsValue ? (() => {
+                              const displayKey = entry.jiraDevOpsValue.replace(
+                                /^(jira|devops):/,
+                                ""
+                              );
+                              const opt = entry.projectId
+                                ? jiraOptionByProjectAndValue.get(
+                                    `${entry.projectId}|${entry.jiraDevOpsValue}`
+                                  )
+                                : undefined;
+                              const desc = opt?.description?.trim();
+                              return (
                               <div className="flex items-center gap-0.5 min-w-0">
                                 <button
                                   type="button"
+                                  onMouseEnter={() => {
+                                    if (entry.projectId) void loadJiraDevOpsForProject(entry.projectId);
+                                  }}
                                   onClick={() => {
                                     setJiraDevOpsModalValue(entry.jiraDevOpsValue);
                                     setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
@@ -1868,14 +1891,11 @@ export function TimeReportPageClient({
                                       ? "text-text-primary"
                                       : "text-brand-signal"
                                   } hover:bg-bg-muted`}
-                                  title={`${entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")} – Change Jira/DevOps`}
+                                  title={jiraDevOpsKeyTooltipTitle(displayKey, opt?.description)}
                                 >
-                                  {entry.jiraDevOpsValue.replace(/^(jira|devops):/, "")}
+                                  {displayKey}
                                 </button>
                                 {entry.jiraDevOpsValue.startsWith("jira:") && (() => {
-                                  const opt = jiraOptionByProjectAndValue.get(
-                                    `${entry.projectId}|${entry.jiraDevOpsValue}`
-                                  );
                                   const url = opt?.url?.trim();
                                   const key = entry.jiraDevOpsValue.replace(/^jira:/, "");
                                   return url ? (
@@ -1885,7 +1905,11 @@ export function TimeReportPageClient({
                                       rel="noopener noreferrer"
                                       className="shrink-0 rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
                                       aria-label="Open in Jira"
-                                      title="Open in Jira"
+                                      title={
+                                        desc
+                                          ? `Open in Jira — ${desc}`
+                                          : "Open in Jira"
+                                      }
                                     >
                                       <ExternalLink className="h-3.5 w-3.5 stroke-[1.5]" />
                                     </a>
@@ -1900,7 +1924,8 @@ export function TimeReportPageClient({
                                   );
                                 })()}
                               </div>
-                            ) : (
+                              );
+                            })() : (
                               <IconButton
                                 aria-label="Add Jira/DevOps"
                                 onClick={() => {
@@ -2012,17 +2037,17 @@ export function TimeReportPageClient({
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="min-w-0 px-0.5 py-1 text-left font-medium text-text-secondary">
+                <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
-                <th className="min-w-0 px-0.5 py-1 text-left font-medium text-text-secondary">
+                <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
                   Role
                 </th>
-                <th className="min-w-0 px-0.5 py-1 text-left font-medium text-text-secondary">
+                <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
                 <th
-                  className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-0.5 py-1 text-center font-medium text-text-secondary"
+                  className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-1 py-1.5 text-center font-medium text-text-secondary"
                   scope="col"
                   title="Jira / DevOps"
                 >
@@ -2041,21 +2066,21 @@ export function TimeReportPageClient({
                   return (
                     <th
                       key={dateStr}
-                      className={`min-w-0 border-r border-border-subtle p-0 py-0.5 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
+                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
                       title={
                         isTodayHeader
                           ? `Idag — ${longDow} ${dom} (${dateStr})`
                           : `${longDow} ${dom} (${dateStr})`
                       }
                     >
-                      <div className="flex flex-col items-center justify-center gap-0 px-0.5">
-                        <span className="text-[8px] leading-none">{label}</span>
-                        <span className="text-[9px] leading-none text-text-muted tabular-nums">{dom}</span>
+                      <div className="flex flex-col items-center justify-center gap-0.5 px-0.5 py-0.5">
+                        <span className="text-[8px] leading-tight">{label}</span>
+                        <span className="text-[9px] leading-tight text-text-muted tabular-nums">{dom}</span>
                       </div>
                     </th>
                   );
                 })}
-                <th className="min-w-0 px-0.5 py-1" aria-hidden />
+                <th className="min-w-0 px-1 py-1.5" aria-hidden />
               </tr>
             </thead>
             <tbody>
@@ -2205,10 +2230,24 @@ export function TimeReportPageClient({
                                 />
                               </td>
                               <td className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-0.5 py-0.5 align-middle">
-                                {row.jiraDevOpsValue ? (
+                                {row.jiraDevOpsValue ? (() => {
+                                  const displayKey = row.jiraDevOpsValue.replace(
+                                    /^(jira|devops):/,
+                                    ""
+                                  );
+                                  const opt = row.projectId
+                                    ? jiraOptionByProjectAndValue.get(
+                                        `${row.projectId}|${row.jiraDevOpsValue}`
+                                      )
+                                    : undefined;
+                                  const desc = opt?.description?.trim();
+                                  return (
                                   <div className="flex min-w-0 items-center gap-0.5">
                                     <button
                                       type="button"
+                                      onMouseEnter={() => {
+                                        if (row.projectId) void loadJiraDevOpsForProject(row.projectId);
+                                      }}
                                       onClick={() => {
                                         setJiraDevOpsModalValue(row.jiraDevOpsValue);
                                         setJiraDevOpsModal({
@@ -2222,14 +2261,11 @@ export function TimeReportPageClient({
                                           ? "text-text-primary"
                                           : "text-brand-signal"
                                       } hover:bg-bg-muted`}
-                                      title={`${row.jiraDevOpsValue.replace(/^(jira|devops):/, "")} – Change Jira/DevOps`}
+                                      title={jiraDevOpsKeyTooltipTitle(displayKey, opt?.description)}
                                     >
-                                      {row.jiraDevOpsValue.replace(/^(jira|devops):/, "")}
+                                      {displayKey}
                                     </button>
                                     {row.jiraDevOpsValue.startsWith("jira:") && (() => {
-                                      const opt = jiraOptionByProjectAndValue.get(
-                                        `${row.projectId}|${row.jiraDevOpsValue}`
-                                      );
                                       const url = opt?.url?.trim();
                                       const key = row.jiraDevOpsValue.replace(/^jira:/, "");
                                       return url ? (
@@ -2239,7 +2275,11 @@ export function TimeReportPageClient({
                                           rel="noopener noreferrer"
                                           className="shrink-0 self-start rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
                                           aria-label="Open in Jira"
-                                          title="Open in Jira"
+                                          title={
+                                            desc
+                                              ? `Open in Jira — ${desc}`
+                                              : "Open in Jira"
+                                          }
                                         >
                                           <ExternalLink className="h-3 w-3 stroke-[1.5]" />
                                         </a>
@@ -2254,7 +2294,8 @@ export function TimeReportPageClient({
                                       );
                                     })()}
                                   </div>
-                                ) : (
+                                  );
+                                })() : (
                                   <IconButton
                                     aria-label="Add Jira/DevOps"
                                     onClick={() => {

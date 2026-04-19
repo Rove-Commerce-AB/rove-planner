@@ -6,11 +6,13 @@ export type JiraIssueOption = {
   value: string;
   label: string;
   url?: string | null;
+  summary: string | null;
 };
 
 export type DevOpsWorkItemOption = {
   value: string;
   label: string;
+  title: string | null;
 };
 
 /** Jira issues for a project key (project_key = projects.jira_project_key). */
@@ -30,6 +32,7 @@ export async function getJiraIssuesByProjectKey(
     value: row.jira_key,
     label: row.summary ? `${row.jira_key}: ${row.summary}` : row.jira_key,
     url: row.url ?? null,
+    summary: row.summary,
   }));
 }
 
@@ -50,5 +53,6 @@ export async function getDevOpsWorkItemsByProject(
     label: row.title
       ? `${row.work_item_id}: ${row.title}`
       : String(row.work_item_id),
+    title: row.title,
   }));
 }
