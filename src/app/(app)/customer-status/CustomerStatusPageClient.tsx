@@ -92,21 +92,31 @@ function TrafficDot({ light }: { light: TrafficLight }) {
   );
 }
 
-/** Leading column: latest traffic colour, or neutral grey when there is no entry. */
-function TrafficLightLead({
+/** Traffic light: click toggles latest status text (when form is not open for this row). */
+function TrafficLightToggle({
   latest,
+  previewOpen,
+  formOpen,
+  onTogglePreview,
 }: {
   latest: CustomerStatusEntrySerialized | null;
+  previewOpen: boolean;
+  formOpen: boolean;
+  onTogglePreview: () => void;
 }) {
   const hasStatus = latest != null;
-  const label = hasStatus
-    ? `Traffic: ${latest.traffic_light}`
-    : "No status recorded yet";
+  const ariaLabel = hasStatus
+    ? `Traffic: ${latest.traffic_light}. ${previewOpen ? "Hide" : "Show"} latest status.`
+    : "No status yet. Show message.";
   return (
-    <span
-      className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-full border border-border-subtle bg-bg-muted/40 sm:mt-0 sm:self-center"
-      title={label}
-      aria-label={label}
+    <button
+      type="button"
+      disabled={formOpen}
+      aria-expanded={previewOpen}
+      aria-label={ariaLabel}
+      title={hasStatus ? `${previewOpen ? "Hide" : "Show"} latest status` : "No status yet"}
+      onClick={onTogglePreview}
+      className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-default)] disabled:pointer-events-none disabled:opacity-40"
     >
       {hasStatus ? (
         <span
@@ -121,7 +131,7 @@ function TrafficLightLead({
       ) : (
         <span className="block h-4 w-4 rounded-full bg-text-muted/25" />
       )}
-    </span>
+    </button>
   );
 }
 
@@ -133,6 +143,10 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Which row shows latest status body under the header (traffic light toggles). */
+  const [latestPreviewCustomerId, setLatestPreviewCustomerId] = useState<
+    string | null
+  >(null);
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(
     null
   );
@@ -247,6 +261,13 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
   function collapseExpand() {
     setExpandedId(null);
     setSaveError(null);
+    setLatestPreviewCustomerId(null);
+  }
+
+  function toggleLatestPreview(customerId: string) {
+    setLatestPreviewCustomerId((prev) =>
+      prev === customerId ? null : customerId
+    );
   }
 
   /** Blank comment; traffic defaults from latest or yellow. */
@@ -255,6 +276,7 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
       collapseExpand();
       return;
     }
+    setLatestPreviewCustomerId(null);
     setSaveError(null);
     const row = rows.find((r) => r.customerId === customerId);
     const defaultLight: TrafficLight = row?.latest?.traffic_light ?? "yellow";
@@ -298,7 +320,7 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {rows.length === 0 ? (
         <p className="text-sm text-text-muted">No active customers.</p>
       ) : null}
@@ -312,126 +334,146 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
             : "No status recorded";
 
         return (
-          <div key={weekKey} className="space-y-2">
-            <h2 className="border-b border-border-subtle pb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <div
+            key={weekKey}
+            className={parsed == null ? "mt-8" : undefined}
+          >
+            <h2 className="border-b border-border-subtle pb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
               {heading}
             </h2>
-            {groupRows.map((row) => {
+            {groupRows.map((row, rowIndex) => {
               const isOpen = expandedId === row.customerId;
               const defaultLight: TrafficLight = row.latest?.traffic_light ?? "yellow";
               const f = getForm(row.customerId, defaultLight);
+              const previewOpen =
+                latestPreviewCustomerId === row.customerId && !isOpen;
+              const stripeClass =
+                rowIndex % 2 === 1 ? "bg-bg-muted/45" : "bg-transparent";
 
               return (
-                <div
-                  key={row.customerId}
-                  className="rounded-lg border border-border-subtle bg-bg-default"
-                >
-                  <div className="flex flex-wrap items-start gap-3 px-3 py-3 sm:items-center">
-                    <TrafficLightLead latest={row.latest} />
+                <div key={row.customerId} className={stripeClass}>
+                  <div className="flex items-center gap-2 py-0.5 sm:py-1">
+                    <TrafficLightToggle
+                      latest={row.latest}
+                      previewOpen={previewOpen}
+                      formOpen={isOpen}
+                      onTogglePreview={() => toggleLatestPreview(row.customerId)}
+                    />
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-text-primary">
-                          {row.customerName}
-                        </span>
-                      </div>
-                      {row.latest ? (
-                        <p className="mt-1 text-sm leading-snug text-text-primary/90 whitespace-pre-wrap">
-                          {row.latest.body}
-                        </p>
-                      ) : null}
+                      <span className="text-sm font-semibold leading-tight text-text-primary">
+                        {row.customerName}
+                      </span>
                     </div>
 
-                    <div className="ml-auto flex shrink-0 items-center gap-0.5 self-start sm:self-center">
-                <button
-                  type="button"
-                  onClick={() => expandForNew(row.customerId)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-text-primary/80 transition-colors hover:bg-bg-muted hover:text-text-primary"
-                >
-                  {isOpen ? (
-                    <>
-                      <ChevronDown className="h-4 w-4" />
-                      Close
-                    </>
-                  ) : (
-                    "New status"
-                  )}
-                </button>
-                <IconButton
-                  type="button"
-                  aria-label={`History for ${row.customerName}`}
-                  title="History"
-                  onClick={() => void openHistory(row.customerId, row.customerName)}
-                >
-                  <History className="h-4 w-4" />
-                </IconButton>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => expandForNew(row.customerId)}
+                        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-text-primary/80 transition-colors hover:bg-bg-muted hover:text-text-primary"
+                      >
+                        {isOpen ? (
+                          <>
+                            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                            Close
+                          </>
+                        ) : (
+                          "New status"
+                        )}
+                      </button>
+                      <IconButton
+                        type="button"
+                        aria-label={`History for ${row.customerName}`}
+                        title="History"
+                        onClick={() =>
+                          void openHistory(row.customerId, row.customerName)
+                        }
+                      >
+                        <History className="h-4 w-4" />
+                      </IconButton>
                     </div>
                   </div>
 
+                  {previewOpen ? (
+                    <div className="pb-1 pt-1.5">
+                      <div className="rounded-lg border border-border-subtle bg-bg-muted/50 px-3 py-2.5">
+                        {row.latest ? (
+                          <p className="max-h-32 overflow-y-auto text-sm leading-snug text-text-primary/90 whitespace-pre-wrap">
+                            {row.latest.body}
+                          </p>
+                        ) : (
+                          <p className="text-xs leading-snug text-text-muted">
+                            No status recorded yet.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {isOpen ? (
-              <div className="space-y-3 border-t border-border-subtle px-3 py-3 sm:px-4">
-                <div>
-                  <p className="mb-1.5 text-xs font-medium text-text-muted">
-                    Traffic light
-                  </p>
-                  <OptionSegments
-                    name={`traffic-${row.customerId}`}
-                    options={TRAFFIC_OPTIONS}
-                    value={f.traffic}
-                    onChange={(v) =>
-                      setForm(row.customerId, {
-                        traffic: v as TrafficLight,
-                      })
-                    }
-                    disabled={isPending}
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor={`body-${row.customerId}`}
-                    className="mb-1.5 block text-xs font-medium text-text-muted"
-                  >
-                    Comment
-                  </label>
-                  <textarea
-                    id={`body-${row.customerId}`}
-                    rows={3}
-                    maxLength={CUSTOMER_STATUS_BODY_MAX_LENGTH}
-                    value={f.body}
-                    onChange={(e) =>
-                      setForm(row.customerId, { body: e.target.value })
-                    }
-                    disabled={isPending}
-                    placeholder="Required — describe the current customer status."
-                    className={`${editInputClass} resize-y min-h-[4.5rem]`}
-                  />
-                  <p className="mt-1 text-xs text-text-muted">
-                    {f.body.trim().length}/{CUSTOMER_STATUS_BODY_MAX_LENGTH}
-                  </p>
-                </div>
-                {saveError ? (
-                  <p className="text-sm text-danger" role="alert">
-                    {saveError}
-                  </p>
-                ) : null}
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={isPending}
-                    onClick={() => collapseExpand()}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={isPending || !f.body.trim()}
-                    onClick={() => submit(row.customerId)}
-                  >
-                    {isPending ? "Saving…" : "Save"}
-                  </Button>
-                </div>
-              </div>
+                    <div className="space-y-2.5 pb-1.5 pt-2 sm:pb-2 sm:pt-2.5">
+                      <div>
+                        <p className="mb-1 text-xs font-medium text-text-muted">
+                          Traffic light
+                        </p>
+                        <OptionSegments
+                          name={`traffic-${row.customerId}`}
+                          options={TRAFFIC_OPTIONS}
+                          value={f.traffic}
+                          onChange={(v) =>
+                            setForm(row.customerId, {
+                              traffic: v as TrafficLight,
+                            })
+                          }
+                          disabled={isPending}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor={`body-${row.customerId}`}
+                          className="mb-1 block text-xs font-medium text-text-muted"
+                        >
+                          Comment
+                        </label>
+                        <textarea
+                          id={`body-${row.customerId}`}
+                          rows={2}
+                          maxLength={CUSTOMER_STATUS_BODY_MAX_LENGTH}
+                          value={f.body}
+                          onChange={(e) =>
+                            setForm(row.customerId, { body: e.target.value })
+                          }
+                          disabled={isPending}
+                          placeholder="Required — describe the current customer status."
+                          className={`${editInputClass} resize-y min-h-[3.25rem]`}
+                        />
+                        <p className="mt-0.5 text-xs text-text-muted">
+                          {f.body.trim().length}/{CUSTOMER_STATUS_BODY_MAX_LENGTH}
+                        </p>
+                      </div>
+                      {saveError ? (
+                        <p className="text-sm text-danger" role="alert">
+                          {saveError}
+                        </p>
+                      ) : null}
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={isPending}
+                          onClick={() => collapseExpand()}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={isPending || !f.body.trim()}
+                          onClick={() => submit(row.customerId)}
+                        >
+                          {isPending ? "Saving…" : "Save"}
+                        </Button>
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               );
