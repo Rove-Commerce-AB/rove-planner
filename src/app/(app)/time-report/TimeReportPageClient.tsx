@@ -34,7 +34,10 @@ import {
   getWeekDates,
   getCalendarDatesInMonth,
 } from "@/lib/timeReportBrowserWeek";
-import { TIME_REPORT_DAY_LABELS } from "./timeReportShared";
+import {
+  TIME_REPORT_DAY_LABELS,
+  TIME_REPORT_MONTH_GRID_DOW,
+} from "./timeReportShared";
 import {
   type TimeReportEntry as Entry,
   type TimeReportCustomerGroup as CustomerGroup,
@@ -1672,7 +1675,7 @@ export function TimeReportPageClient({
           <div
             className={
               viewMode === "month"
-                ? "w-full min-w-0 overflow-x-visible rounded-lg"
+                ? "w-full min-w-0 overflow-x-auto rounded-lg"
                 : "overflow-x-auto rounded-lg"
             }
           >
@@ -1998,12 +2001,12 @@ export function TimeReportPageClient({
           ) : (
           <table className="w-full table-fixed border-collapse text-[9px]">
             <colgroup>
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "1.75rem" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "calc(7ch + 1.25rem)" }} />
               {monthCalendarDates.map((d) => (
-                <col key={d} />
+                <col key={d} style={{ width: "1.28rem" }} />
               ))}
               <col style={{ width: "4.5rem" }} />
             </colgroup>
@@ -2019,7 +2022,7 @@ export function TimeReportPageClient({
                   Description
                 </th>
                 <th
-                  className="min-w-0 px-0.5 py-1 text-center font-medium text-text-secondary"
+                  className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-0.5 py-1 text-center font-medium text-text-secondary"
                   scope="col"
                   title="Jira / DevOps"
                 >
@@ -2028,21 +2031,26 @@ export function TimeReportPageClient({
                 {monthCalendarDates.map((dateStr, dateIdx) => {
                   const d = new Date(dateStr + "T12:00:00");
                   const dow = d.getDay();
-                  const label =
+                  const label = TIME_REPORT_MONTH_GRID_DOW[dow]!;
+                  const longDow =
                     dow === 0
                       ? TIME_REPORT_DAY_LABELS[6]
-                      : TIME_REPORT_DAY_LABELS[dow - 1];
+                      : TIME_REPORT_DAY_LABELS[dow - 1]!;
                   const dom = parseInt(dateStr.slice(8, 10), 10);
                   const isTodayHeader = isMonthDateToday(dateStr);
                   return (
                     <th
                       key={dateStr}
-                      className={`min-w-0 border-r border-border-subtle p-0 py-0.5 font-medium leading-none text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
-                      title={isTodayHeader ? "Idag" : undefined}
+                      className={`min-w-0 border-r border-border-subtle p-0 py-0.5 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
+                      title={
+                        isTodayHeader
+                          ? `Idag — ${longDow} ${dom} (${dateStr})`
+                          : `${longDow} ${dom} (${dateStr})`
+                      }
                     >
                       <div className="flex flex-col items-center justify-center gap-0 px-0.5">
                         <span className="text-[8px] leading-none">{label}</span>
-                        <span className="text-[7px] leading-none text-text-muted tabular-nums">{dom}</span>
+                        <span className="text-[9px] leading-none text-text-muted tabular-nums">{dom}</span>
                       </div>
                     </th>
                   );
@@ -2155,6 +2163,7 @@ export function TimeReportPageClient({
                                     variant="filter"
                                     placeholder="—"
                                     triggerClassName="h-6 w-full min-w-0 max-w-full truncate text-[10px]"
+                                    itemClassName="text-[10px] leading-tight"
                                     isLoading={Boolean(projectOptionsLoading[row.customerId])}
                                   />
                                 </div>
@@ -2174,6 +2183,7 @@ export function TimeReportPageClient({
                                     variant="filter"
                                     placeholder="—"
                                     triggerClassName="h-6 w-full min-w-0 max-w-full truncate text-[10px]"
+                                    itemClassName="text-[10px] leading-tight"
                                     isLoading={Boolean(
                                       taskOptionsLoading[
                                         taskCacheKey(row.customerId, row.projectId)
@@ -2194,7 +2204,7 @@ export function TimeReportPageClient({
                                   className="h-6 w-full min-w-0 rounded border border-form bg-bg-default px-1 py-0.5 text-[10px] text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
                                 />
                               </td>
-                              <td className="min-w-0 px-0.5 py-0.5 align-middle">
+                              <td className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-0.5 py-0.5 align-middle">
                                 {row.jiraDevOpsValue ? (
                                   <div className="flex min-w-0 items-center gap-0.5">
                                     <button
@@ -2207,7 +2217,7 @@ export function TimeReportPageClient({
                                         });
                                         if (row.projectId) loadJiraDevOpsForProject(row.projectId);
                                       }}
-                                      className={`min-w-0 flex-1 cursor-pointer truncate rounded px-0.5 py-0.5 text-left text-[9px] ${
+                                      className={`min-w-0 max-w-full flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded px-0.5 py-0.5 text-left text-[10px] leading-tight ${
                                         row.jiraDevOpsValue.startsWith("jira:")
                                           ? "text-text-primary"
                                           : "text-brand-signal"
@@ -2227,7 +2237,7 @@ export function TimeReportPageClient({
                                           href={url}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="shrink-0 rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
+                                          className="shrink-0 self-start rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
                                           aria-label="Open in Jira"
                                           title="Open in Jira"
                                         >
@@ -2235,7 +2245,7 @@ export function TimeReportPageClient({
                                         </a>
                                       ) : (
                                         <span
-                                          className="shrink-0 rounded p-0.5 text-text-muted"
+                                          className="shrink-0 self-start rounded p-0.5 text-text-muted"
                                           title={key ? `Jira ${key} – no URL in database` : undefined}
                                           aria-hidden
                                         >

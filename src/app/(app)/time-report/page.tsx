@@ -38,24 +38,19 @@ export default async function TimeReportPage() {
 
   return (
     <div className="p-6">
-      <div className="mx-auto w-full max-w-[min(100vw-3rem,96rem)]">
-        <PageHeader
-          title="Time report"
-          className="mb-6"
-        />
-        <TimeReportPageClient
-          consultant={consultant}
-          customers={customers.map((c) => ({
-            id: c.id,
-            name: c.name,
-            color: c.color ?? undefined,
-          }))}
-          initialYear={initialYear}
-          initialWeek={initialWeek}
-          calendarId={consultant?.calendar_id ?? null}
-          initialHolidayDates={initialHolidayDates}
-        />
-      </div>
+      <PageHeader title="Time report" className="mb-6" />
+      <TimeReportPageClient
+        consultant={consultant}
+        customers={customers.map((c) => ({
+          id: c.id,
+          name: c.name,
+          color: c.color ?? undefined,
+        }))}
+        initialYear={initialYear}
+        initialWeek={initialWeek}
+        calendarId={consultant?.calendar_id ?? null}
+        initialHolidayDates={initialHolidayDates}
+      />
     </div>
   );
 }

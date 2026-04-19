@@ -27,6 +27,8 @@ type Props = {
   triggerClassName?: string;
   /** Extra classes merged onto the list viewport (scroll styling is built-in; e.g. `max-h-72` to tune height). */
   viewportClassName?: string;
+  /** Extra classes on each option row (e.g. `text-[10px]` to match a compact trigger). */
+  itemClassName?: string;
   /** Called when the trigger loses focus (e.g. click outside) */
   onBlur?: React.FocusEventHandler<HTMLButtonElement>;
   /** Show a small spinner on the trigger (e.g. while options are loading) */
@@ -49,6 +51,7 @@ export function Select({
   className = "",
   triggerClassName = "",
   viewportClassName = "",
+  itemClassName = "",
   onBlur,
   isLoading = false,
   triggerTitle,
@@ -183,7 +186,7 @@ export function Select({
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content
-            className={`ds-dropdown-content ds-dropdown-joined z-[100] w-[var(--radix-select-trigger-width)] overflow-x-hidden overflow-y-visible rounded-b-xl rounded-t-none border border-t-0 bg-bg-default shadow-none ${contentBorderClass}`}
+            className={`ds-dropdown-content ds-dropdown-joined z-[100] min-w-[var(--radix-select-trigger-width)] w-max max-w-[min(100vw-2rem,42rem)] overflow-x-auto overflow-y-visible rounded-b-xl rounded-t-none border border-t-0 bg-bg-default shadow-none ${contentBorderClass}`}
             position="popper"
             side="bottom"
             sideOffset={0}
@@ -197,7 +200,11 @@ export function Select({
                 <SelectPrimitive.Item
                   key={opt.value === "" ? EMPTY : opt.value}
                   value={opt.value === "" ? EMPTY : opt.value}
-                  className={`relative flex cursor-pointer select-none items-center rounded-lg px-3 ${isFilter ? "py-1.5 text-xs" : "py-2 text-sm"} text-text-primary outline-none transition-colors data-[highlighted]:bg-brand-blue/20 data-[state=checked]:bg-brand-blue/30 data-[state=checked]:font-medium data-[state=checked]:text-text-primary data-[highlighted]:data-[state=checked]:bg-brand-blue/35`}
+                  className={`relative flex cursor-pointer select-none items-center whitespace-nowrap rounded-lg px-3 text-text-primary outline-none transition-colors data-[highlighted]:bg-brand-blue/20 data-[state=checked]:bg-brand-blue/30 data-[state=checked]:font-medium data-[state=checked]:text-text-primary data-[highlighted]:data-[state=checked]:bg-brand-blue/35 ${
+                    isFilter
+                      ? `py-1.5 ${itemClassName || "text-xs"}`
+                      : `py-2 ${itemClassName || "text-sm"}`
+                  }`}
                 >
                   <SelectPrimitive.ItemText>{opt.label}</SelectPrimitive.ItemText>
                 </SelectPrimitive.Item>
