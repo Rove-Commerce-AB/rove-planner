@@ -437,11 +437,6 @@ export async function saveTimeReportEntries(
   const isSubcontractor = isSubcontractorRole(ctx.appUser?.role);
   const weekDates = getISOWeekDateStrings(year, week);
 
-  await cloudSqlPool.query(
-    `DELETE FROM time_report_entries WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
-    [consultantId, weekDates]
-  );
-
   const rows: {
     consultant_id: string;
     customer_id: string;
@@ -537,32 +532,41 @@ export async function saveTimeReportEntries(
     }
   }
 
-  if (rows.length > 0) {
+  try {
+    await cloudSqlPool.query("BEGIN");
+    await cloudSqlPool.query(
+      `DELETE FROM time_report_entries WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
+      [consultantId, weekDates]
+    );
     for (const row of rows) {
-      try {
-        await cloudSqlPool.query(
-          `INSERT INTO time_report_entries (
-             consultant_id, customer_id, project_id, role_id, jira_devops_key,
-             description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11)`,
-          [
-            row.consultant_id,
-            row.customer_id,
-            row.project_id,
-            row.role_id,
-            row.jira_devops_key,
-            row.description,
-            row.entry_date,
-            row.hours,
-            row.internal_comment,
-            row.rate_snapshot,
-            row.display_order,
-          ]
-        );
-      } catch (e) {
-        return { error: e instanceof Error ? e.message : "Insert failed" };
-      }
+      await cloudSqlPool.query(
+        `INSERT INTO time_report_entries (
+           consultant_id, customer_id, project_id, role_id, jira_devops_key,
+           description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11)`,
+        [
+          row.consultant_id,
+          row.customer_id,
+          row.project_id,
+          row.role_id,
+          row.jira_devops_key,
+          row.description,
+          row.entry_date,
+          row.hours,
+          row.internal_comment,
+          row.rate_snapshot,
+          row.display_order,
+        ]
+      );
     }
+    await cloudSqlPool.query("COMMIT");
+  } catch (e) {
+    try {
+      await cloudSqlPool.query("ROLLBACK");
+    } catch {
+      // Ignore rollback errors and return the original failure.
+    }
+    return { error: e instanceof Error ? e.message : "Save failed" };
   }
 
   return {};
