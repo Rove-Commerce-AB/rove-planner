@@ -1819,6 +1819,8 @@ export function TimeReportPageClient({
                 const customer = customerById.get(group.customerId);
                 const name = customer?.name ?? "—";
                 const color = customer?.color ?? "#3b82f6";
+                const customerDayTotals = dayTotals(group.entries);
+                const customerWeekTotal = groupTotalHours(group.entries);
 
                 return (
                   <Fragment key={group.customerId}>
@@ -1850,10 +1852,22 @@ export function TimeReportPageClient({
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
-                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
-                        />
+                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                        >
+                          <div className="flex h-full w-full items-center justify-center">
+                            <span className="text-xs tabular-nums text-text-primary">
+                              {(customerDayTotals[i] ?? 0) > 0 ? String(customerDayTotals[i]) : ""}
+                            </span>
+                          </div>
+                        </td>
                       ))}
-                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle" />
+                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
+                        <div className="flex h-full w-full items-center justify-center">
+                          <span className="text-xs font-medium tabular-nums text-text-primary">
+                            {customerWeekTotal > 0 ? String(customerWeekTotal) : ""}
+                          </span>
+                        </div>
+                      </td>
                     </tr>
                     {group.entries.map((entry) => (
                         <tr
@@ -2194,6 +2208,13 @@ export function TimeReportPageClient({
                     const customer = customerById.get(customerId);
                     const name = customer?.name ?? "—";
                     const color = customer?.color ?? "#3b82f6";
+                    const customerMonthDayTotals = monthCalendarDates.map((dateStr) =>
+                      rows.reduce((sum, row) => sum + (row.hoursByDate[dateStr] ?? 0), 0)
+                    );
+                    const customerMonthTotal = customerMonthDayTotals.reduce(
+                      (sum, hours) => sum + hours,
+                      0
+                    );
                     return (
                       <Fragment key={customerId}>
                         {groupIndex === 0 && (
@@ -2224,10 +2245,24 @@ export function TimeReportPageClient({
                           {monthCalendarDates.map((dateStr, dateIdx) => (
                             <td
                               key={dateStr}
-                              className={`min-w-0 border-r border-border-subtle px-0.5 py-0.5 ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
-                            />
+                              className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                            >
+                              <div className="flex h-full w-full items-center justify-center">
+                                <span className="truncate text-[9px] tabular-nums text-text-primary">
+                                  {(customerMonthDayTotals[dateIdx] ?? 0) > 0
+                                    ? String(customerMonthDayTotals[dateIdx])
+                                    : ""}
+                                </span>
+                              </div>
+                            </td>
                           ))}
-                          <td className="min-w-0 px-0.5 py-0.5 align-middle" />
+                          <td className="min-w-0 px-0.5 py-0.5 align-middle">
+                            <div className="flex h-full w-full items-center justify-center">
+                              <span className="text-[9px] font-medium tabular-nums text-text-primary">
+                                {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
+                              </span>
+                            </div>
+                          </td>
                         </tr>
                         {rows.map((row) => {
                           return (
@@ -2636,6 +2671,7 @@ export function TimeReportPageClient({
                   onValueChange={(value) => setJiraDevOpsModalValue(value)}
                   options={getJiraDevOpsOptions(entry.projectId)}
                   placeholder="Type to search..."
+                  autoFocus
                   size="sm"
                   variant="filter"
                   inputClassName="h-9 w-full"
