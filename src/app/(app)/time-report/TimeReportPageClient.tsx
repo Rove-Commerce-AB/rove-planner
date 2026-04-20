@@ -10,6 +10,7 @@ import {
   Trash2,
   X,
   Copy,
+  CopyPlus,
   Link,
   ExternalLink,
   Loader2,
@@ -338,7 +339,10 @@ const EditableHourTd = memo(function EditableHourTd({
     >
       <div
         role="button"
-        tabIndex={0}
+        tabIndex={isEditing ? -1 : 0}
+        onFocus={() => {
+          if (!isEditing) onStartEdit();
+        }}
         onClick={() => (isEditing ? undefined : onStartEdit())}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -1321,6 +1325,45 @@ export function TimeReportPageClient({
     });
   };
 
+  const duplicateRow = (customerId: string, entryId: string) => {
+    setIsDirty(true);
+    if (viewMode === "week") {
+      setCustomerGroups((prev) =>
+        prev.map((g) => {
+          if (g.customerId !== customerId) return g;
+          const source = g.entries.find((e) => e.id === entryId);
+          if (!source) return g;
+          return {
+            ...g,
+            entries: [
+              ...g.entries,
+              {
+                ...newEntry(),
+                projectId: source.projectId,
+                roleId: source.roleId,
+              },
+            ],
+          };
+        })
+      );
+      return;
+    }
+
+    const dates = getCalendarDatesInMonth(displayYear, displayMonth);
+    const duplicate = (source: MonthMergedRow): MonthMergedRow => ({
+      ...newMonthMergedRow(customerId, dates),
+      projectId: source.projectId,
+      roleId: source.roleId,
+    });
+    setMonthMergedRows((prev) => {
+      const index = prev.findIndex((r) => r.customerId === customerId && r.id === entryId);
+      if (index === -1) return prev;
+      const source = prev[index]!;
+      const next = duplicate(source);
+      return [...prev.slice(0, index + 1), next, ...prev.slice(index + 1)];
+    });
+  };
+
   const removeEntry = (customerId: string, entryId: string) => {
     setIsDirty(true);
     if (viewMode === "week") {
@@ -1377,8 +1420,10 @@ export function TimeReportPageClient({
     if (commentState.kind === "week") {
       const customerId = customerIdByEntryId.get(commentState.entryId);
       if (!customerId) return;
+      const entry = entryById.get(commentState.entryId);
       const comments: Record<number, string> = {};
       for (let i = 0; i < 7; i++) {
+        if ((entry?.hours[i] ?? 0) <= 0) continue;
         const t = (commentTexts[i] ?? "").trim();
         if (t) comments[i] = t;
       }
@@ -1402,6 +1447,10 @@ export function TimeReportPageClient({
           if (r.id !== commentState.rowId) return r;
           const nextComments = { ...r.commentsByDate };
           for (const d of dates) {
+            if ((r.hoursByDate[d] ?? 0) <= 0) {
+              delete nextComments[d];
+              continue;
+            }
             const t = (commentTextsByDate[d] ?? "").trim();
             if (t) nextComments[d] = t;
             else delete nextComments[d];
@@ -1496,10 +1545,10 @@ export function TimeReportPageClient({
     if (!Number.isFinite(w) || w === 0) return "";
     return Math.abs(w - Math.round(w)) < 1e-6
       ? String(Math.round(w))
-      : String(Math.round(w * 10) / 10).replace(/\.0$/, "");
+      : String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
   }, [monthGridTotalHours]);
 
-  const monthTableColSpan = 4 + monthCalendarDates.length + 1;
+  const monthTableColSpan = 5 + monthCalendarDates.length + 1;
 
   const commentDialogWeekDayNumbers = useMemo(() => {
     if (!commentState || commentState.kind !== "week") return dayDates;
@@ -1507,6 +1556,16 @@ export function TimeReportPageClient({
       parseInt(s.slice(8, 10), 10)
     );
   }, [commentState, dayDates]);
+
+  const commentDialogWeekEntry = useMemo(() => {
+    if (!commentState || commentState.kind !== "week") return null;
+    return entryById.get(commentState.entryId) ?? null;
+  }, [commentState, entryById]);
+
+  const commentDialogMonthRow = useMemo(() => {
+    if (!commentState || commentState.kind !== "month") return null;
+    return monthMergedRows.find((r) => r.id === commentState.rowId) ?? null;
+  }, [commentState, monthMergedRows]);
 
   const totalHoursPerDay = useMemo(
     () =>
@@ -1692,6 +1751,7 @@ export function TimeReportPageClient({
           <table className="w-full table-fixed border-collapse text-xs">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5" aria-hidden />
                 <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
@@ -1725,7 +1785,7 @@ export function TimeReportPageClient({
               {customerGroups.length === 0 ? (
                 <tr className="border-b border-border-subtle bg-bg-default">
                   <td
-                    colSpan={12}
+                    colSpan={13}
                     className="px-4 py-6 text-center text-xs text-text-secondary"
                   >
                     No customers added. Click &quot;Add customer&quot; to start reporting time.
@@ -1734,7 +1794,7 @@ export function TimeReportPageClient({
               ) : (
                 <>
                   <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
-                    <td colSpan={4} className="px-1.5 py-1 text-left text-text-primary" />
+                    <td colSpan={5} className="px-1.5 py-1 text-left text-text-primary" />
                     {totalHoursPerDay.map((h, i) => (
                       <td
                         key={i}
@@ -1764,26 +1824,14 @@ export function TimeReportPageClient({
                   <Fragment key={group.customerId}>
                     {groupIndex === 0 && (
                       <tr aria-hidden>
-                        <td colSpan={12} className="h-2 p-0" />
+                        <td colSpan={13} className="h-2 p-0" />
                       </tr>
                     )}
                     <tr className="border-b border-border-subtle bg-bg-muted/40">
                       <td
-                        colSpan={4}
-                        className="border-l-[4px] border-solid px-1.5 py-1"
+                        className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-1 py-0.5 align-middle"
                         style={{ borderLeftColor: color }}
                       >
-                        <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
-                          <span className="min-w-0 truncate">{name}</span>
-                        </div>
-                      </td>
-                      {TIME_REPORT_DAY_LABELS.map((_, i) => (
-                        <td
-                          key={i}
-                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
-                        />
-                      ))}
-                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
                         <button
                           type="button"
                           aria-label="Add row"
@@ -1794,6 +1842,18 @@ export function TimeReportPageClient({
                           <Plus className="h-3.5 w-3.5" />
                         </button>
                       </td>
+                      <td colSpan={4} className="px-1.5 py-1">
+                        <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
+                          <span className="min-w-0 truncate">{name}</span>
+                        </div>
+                      </td>
+                      {TIME_REPORT_DAY_LABELS.map((_, i) => (
+                        <td
+                          key={i}
+                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle px-0.5 py-0.5 ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                        />
+                      ))}
+                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle" />
                     </tr>
                     {group.entries.map((entry) => (
                         <tr
@@ -1801,9 +1861,60 @@ export function TimeReportPageClient({
                           className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                         >
                           <td
-                            className="w-[140px] min-w-[140px] max-w-[140px] border-l-[4px] border-solid px-1.5 py-1"
+                            className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-1 py-1"
                             style={{ borderLeftColor: color }}
                           >
+                            <div className="flex items-center justify-center gap-0.5">
+                              <IconButton
+                                aria-label="Add internal comment"
+                                title="Add internal comment"
+                                onClick={() => openComment(entry.id)}
+                                className={entryHasComment(entry) ? "text-brand-signal" : ""}
+                              >
+                                <MessageSquare
+                                  className={`h-3.5 w-3.5 ${entryHasComment(entry) ? "fill-brand-signal stroke-brand-signal" : ""}`}
+                                />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Copy row to current week"
+                                title="Copy row to current week"
+                                onClick={() =>
+                                  setCopyRowDialog({
+                                    mode: "current-week",
+                                    customerId: group.customerId,
+                                    entry,
+                                  })
+                                }
+                                disabled={
+                                  !entry.projectId ||
+                                  !entry.roleId ||
+                                  (year === initialYear && week === initialWeek) ||
+                                  copyToWeekState === "copying"
+                                }
+                              >
+                                {copyToWeekState === "copying" ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" aria-hidden />
+                                )}
+                              </IconButton>
+                              <IconButton
+                                aria-label="Duplicate row"
+                                title="Duplicate row (Project + Role)"
+                                onClick={() => duplicateRow(group.customerId, entry.id)}
+                              >
+                                <CopyPlus className="h-3.5 w-3.5" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Delete entire row"
+                                title="Delete entire row"
+                                onClick={() => removeEntry(group.customerId, entry.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </IconButton>
+                            </div>
+                          </td>
+                          <td className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1">
                             <div
                               className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && entryHasContent(entry) && !entry.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
                             >
@@ -1967,54 +2078,11 @@ export function TimeReportPageClient({
                               onBlur={() => setEditingCell(null)}
                             />
                           ))}
-                          <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1">
-                            <div className="flex items-center justify-center gap-0.5">
-                              <IconButton
-                                aria-label="Add internal comment"
-                                title="Add internal comment"
-                                onClick={() => openComment(entry.id)}
-                                className={entryHasComment(entry) ? "text-brand-signal" : ""}
-                              >
-                                <MessageSquare
-                                  className={`h-3.5 w-3.5 ${entryHasComment(entry) ? "fill-brand-signal stroke-brand-signal" : ""}`}
-                                />
-                              </IconButton>
-                              <IconButton
-                                aria-label="Copy row to current week"
-                                title="Copy row to current week"
-                                onClick={() =>
-                                  setCopyRowDialog({
-                                    mode: "current-week",
-                                    customerId: group.customerId,
-                                    entry,
-                                  })
-                                }
-                                disabled={
-                                  !entry.projectId ||
-                                  !entry.roleId ||
-                                  (year === initialYear && week === initialWeek) ||
-                                  copyToWeekState === "copying"
-                                }
-                              >
-                                {copyToWeekState === "copying" ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                                ) : (
-                                  <Copy className="h-3.5 w-3.5" aria-hidden />
-                                )}
-                              </IconButton>
-                              <IconButton
-                                aria-label="Delete entire row"
-                                title="Delete entire row"
-                                onClick={() => removeEntry(group.customerId, entry.id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </IconButton>
-                            </div>
-                          </td>
+                          <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1" />
                         </tr>
                       ))}
                     <tr aria-hidden>
-                      <td colSpan={12} className="h-2 p-0" />
+                      <td colSpan={13} className="h-2 p-0" />
                     </tr>
                   </Fragment>
                 );
@@ -2026,6 +2094,7 @@ export function TimeReportPageClient({
           ) : (
           <table className="w-full table-fixed border-collapse text-[9px]">
             <colgroup>
+              <col style={{ width: "4.5rem" }} />
               <col style={{ width: "8%" }} />
               <col style={{ width: "7%" }} />
               <col style={{ width: "16%" }} />
@@ -2037,6 +2106,7 @@ export function TimeReportPageClient({
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5" aria-hidden />
                 <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
@@ -2096,7 +2166,7 @@ export function TimeReportPageClient({
               ) : (
                 <>
                   <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
-                    <td colSpan={4} className="px-1 py-0.5 text-left text-text-primary" />
+                    <td colSpan={5} className="px-1 py-0.5 text-left text-text-primary" />
                     {monthDateDayTotals.map((h, dateIdx) => {
                       const dateStr = monthCalendarDates[dateIdx]!;
                       return (
@@ -2133,21 +2203,9 @@ export function TimeReportPageClient({
                         )}
                         <tr className="border-b border-border-subtle bg-bg-muted/40">
                           <td
-                            colSpan={4}
-                            className="border-l-[4px] border-solid px-1 py-0.5"
+                            className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-0.5 py-0.5 align-middle"
                             style={{ borderLeftColor: color }}
                           >
-                            <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
-                              <span className="min-w-0 truncate text-[10px]">{name}</span>
-                            </div>
-                          </td>
-                          {monthCalendarDates.map((dateStr, dateIdx) => (
-                            <td
-                              key={dateStr}
-                              className={`min-w-0 border-r border-border-subtle px-0.5 py-0.5 ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
-                            />
-                          ))}
-                          <td className="min-w-0 px-0.5 py-0.5 align-middle">
                             <button
                               type="button"
                               aria-label="Add row"
@@ -2158,6 +2216,18 @@ export function TimeReportPageClient({
                               <Plus className="h-3 w-3" />
                             </button>
                           </td>
+                          <td colSpan={4} className="px-1 py-0.5">
+                            <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
+                              <span className="min-w-0 truncate text-[10px]">{name}</span>
+                            </div>
+                          </td>
+                          {monthCalendarDates.map((dateStr, dateIdx) => (
+                            <td
+                              key={dateStr}
+                              className={`min-w-0 border-r border-border-subtle px-0.5 py-0.5 ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                            />
+                          ))}
+                          <td className="min-w-0 px-0.5 py-0.5 align-middle" />
                         </tr>
                         {rows.map((row) => {
                           return (
@@ -2166,9 +2236,55 @@ export function TimeReportPageClient({
                               className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                             >
                               <td
-                                className="min-w-0 border-l-[4px] border-solid px-1 py-0.5"
+                                className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-0.5 py-0.5"
                                 style={{ borderLeftColor: color }}
                               >
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <IconButton
+                                    aria-label="Add internal comment"
+                                    title="Add internal comment"
+                                    onClick={() => openCommentMonth(row.id)}
+                                    className={
+                                      Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "")
+                                        ? "text-brand-signal"
+                                        : ""
+                                    }
+                                  >
+                                    <MessageSquare
+                                      className={`h-3 w-3 ${Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "") ? "fill-brand-signal stroke-brand-signal" : ""}`}
+                                    />
+                                  </IconButton>
+                                  <IconButton
+                                    aria-label="Copy this row to next month"
+                                    title="Copy this row to next month"
+                                    onClick={() => setCopyRowDialog({ mode: "next-month", row })}
+                                    disabled={
+                                      !row.projectId || !row.roleId || copyToNextMonthState === "copying"
+                                    }
+                                  >
+                                    {copyToNextMonthState === "copying" ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </IconButton>
+                                  <IconButton
+                                    aria-label="Duplicate row"
+                                    title="Duplicate row (Project + Role)"
+                                    onClick={() => duplicateRow(row.customerId, row.id)}
+                                  >
+                                    <CopyPlus className="h-3 w-3" />
+                                  </IconButton>
+                                  <IconButton
+                                    aria-label="Delete entire row"
+                                    title="Delete entire row"
+                                    onClick={() => removeEntry(row.customerId, row.id)}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </IconButton>
+                                </div>
+                              </td>
+                              <td className="min-w-0 px-1 py-0.5">
                                 <div
                                   className={`min-w-0 overflow-hidden rounded ${showValidationHighlights && mergedRowHasContent(row) && !row.projectId ? "ring-2 ring-red-500 ring-offset-1 ring-offset-bg-default" : ""}`}
                                 >
@@ -2352,45 +2468,7 @@ export function TimeReportPageClient({
                                   onBlur={() => setEditingCell(null)}
                                 />
                               ))}
-                              <td className="min-w-0 px-0.5 py-0.5">
-                                <div className="flex items-center justify-center gap-0.5">
-                                  <IconButton
-                                    aria-label="Add internal comment"
-                                    title="Add internal comment"
-                                    onClick={() => openCommentMonth(row.id)}
-                                    className={
-                                      Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "")
-                                        ? "text-brand-signal"
-                                        : ""
-                                    }
-                                  >
-                                    <MessageSquare
-                                      className={`h-3 w-3 ${Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "") ? "fill-brand-signal stroke-brand-signal" : ""}`}
-                                    />
-                                  </IconButton>
-                                  <IconButton
-                                    aria-label="Copy this row to next month"
-                                    title="Copy this row to next month"
-                                    onClick={() => setCopyRowDialog({ mode: "next-month", row })}
-                                    disabled={
-                                      !row.projectId || !row.roleId || copyToNextMonthState === "copying"
-                                    }
-                                  >
-                                    {copyToNextMonthState === "copying" ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                                    ) : (
-                                      <Copy className="h-3 w-3" />
-                                    )}
-                                  </IconButton>
-                                  <IconButton
-                                    aria-label="Delete entire row"
-                                    title="Delete entire row"
-                                    onClick={() => removeEntry(row.customerId, row.id)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </IconButton>
-                                </div>
-                              </td>
+                              <td className="min-w-0 px-0.5 py-0.5" />
                             </tr>
                           );
                         })}
@@ -2485,8 +2563,9 @@ export function TimeReportPageClient({
                             [dateStr]: e.target.value,
                           }))
                         }
+                        disabled={(commentDialogMonthRow?.hoursByDate[dateStr] ?? 0) <= 0}
                         rows={1}
-                        className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
+                        className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary disabled:cursor-not-allowed disabled:bg-bg-muted/40 disabled:text-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
                       />
                     </div>
                   );
@@ -2505,8 +2584,9 @@ export function TimeReportPageClient({
                       onChange={(e) =>
                         setCommentTexts((prev) => ({ ...prev, [i]: e.target.value }))
                       }
+                      disabled={(commentDialogWeekEntry?.hours[i] ?? 0) <= 0}
                       rows={1}
-                      className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
+                      className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary disabled:cursor-not-allowed disabled:bg-bg-muted/40 disabled:text-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
                     />
                   </div>
                 ))}
