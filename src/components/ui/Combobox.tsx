@@ -46,6 +46,8 @@ type Props = {
   emptyOptionsPlaceholder?: string;
   /** When false, render dropdown list inline (use inside Dialog so clicks on list are not "outside") */
   renderListInPortal?: boolean;
+  /** Focus input automatically when combobox mounts. */
+  autoFocus?: boolean;
 };
 
 export function Combobox({
@@ -60,6 +62,7 @@ export function Combobox({
   inputClassName = "",
   emptyOptionsPlaceholder,
   renderListInPortal = true,
+  autoFocus = false,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -325,6 +328,7 @@ export function Combobox({
           disabled={disabled}
           placeholder={placeholder}
           autoComplete="off"
+          autoFocus={autoFocus}
           role="combobox"
           aria-expanded={showList}
           aria-autocomplete="list"
