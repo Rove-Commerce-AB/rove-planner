@@ -1654,7 +1654,7 @@ export function TimeReportPageClient({
   }
 
   return (
-    <div className="time-report-font-10 flex min-w-0 flex-col gap-4">
+    <div className="time-report-font-12 flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex justify-end">
           <div className="flex items-center gap-0.5 rounded-md p-0.5">

@@ -365,19 +365,19 @@ body.allocation-project-row-dragging * {
   animation: weekStripOutToRight 280ms ease-in;
 }
 
-/* Temporary UI test: force compact typography in Time Report content. */
-.time-report-font-10,
-.time-report-font-10 * {
+/* Force 12px typography in Time Report content. */
+.time-report-font-12,
+.time-report-font-12 * {
   font-size: 12px !important;
 }
 
 /* Keep customer group labels slightly larger for readability. */
-.time-report-font-10 .time-report-customer-name {
+.time-report-font-12 .time-report-customer-name {
   font-size: 12px !important;
 }
 
 /* Table headers can stay slightly larger for scanability. */
-.time-report-font-10 th {
+.time-report-font-12 th {
   font-size: 12px !important;
 }
 
