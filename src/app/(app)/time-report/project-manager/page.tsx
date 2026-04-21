@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getConsultantByEmail } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
@@ -15,24 +15,20 @@ export default async function ProjectManagerTimeReportPage() {
   const consultant = appUser?.email
     ? await getConsultantByEmail(appUser.email)
     : null;
-  if (!consultant?.id && !isAdmin) redirect("/access-denied");
+  if (!consultant?.id) notFound();
 
-  const projectsData = consultant?.id
-    ? (
-        await cloudSqlPool.query<{
-          id: string;
-          name: string;
-          customer_id: string;
-          is_active: boolean;
-        }>(
-          `SELECT id, name, customer_id, is_active FROM projects
-           WHERE project_manager_id = $1
-           ORDER BY name`,
-          [consultant.id]
-        )
-      ).rows
-    : [];
-  if (projectsData.length === 0 && !isAdmin) redirect("/access-denied");
+  const { rows: projectsData } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+    customer_id: string;
+    is_active: boolean;
+  }>(
+    `SELECT id, name, customer_id, is_active FROM projects
+     WHERE project_manager_id = $1
+     ORDER BY name`,
+    [consultant.id]
+  );
+  if (projectsData.length === 0) notFound();
 
   const customerIds = [...new Set(projectsData.map((p) => p.customer_id).filter(Boolean))] as string[];
   const { rows: customersData } =
