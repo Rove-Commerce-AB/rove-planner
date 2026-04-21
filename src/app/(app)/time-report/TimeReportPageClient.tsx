@@ -28,7 +28,6 @@ import {
 } from "./actions";
 import type { ProjectOption, JiraDevOpsOption, TaskOption } from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
-import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
   getISOWeekDateRangeLocal,
   addWeeksToYearWeekLocal,
@@ -84,21 +83,7 @@ function jiraDevOpsKeyTooltipTitle(
   description?: string | null
 ): string {
   const d = description?.trim();
-  if (!d) return `${displayKey} — Change Jira/DevOps`;
-  const normalizedDisplay = displayKey.toLowerCase();
-  const normalizedDescription = d.toLowerCase();
-  // Jira labels already include summary (e.g. "ABC-123: Summary"), so avoid duplicates.
-  if (normalizedDisplay.includes(normalizedDescription)) return displayKey;
-  return `${displayKey} — ${d}`;
-}
-
-function jiraDevOpsDisplayLabel(
-  rawValue: string,
-  option?: { label: string } | null
-): string {
-  const label = option?.label?.trim();
-  if (label) return label;
-  return rawValue.replace(/^(jira|devops):/, "");
+  return d ? `${displayKey} — ${d}` : `${displayKey} — Change Jira/DevOps`;
 }
 
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
@@ -112,6 +97,20 @@ type MonthMergedRow = {
   hoursByDate: Record<string, number>;
   commentsByDate: Record<string, string>;
 };
+
+function commentSignatureForMerge(
+  entry: Entry,
+  weekDates: string[],
+  monthCalendarDates: string[]
+): string {
+  return monthCalendarDates
+    .map((d) => {
+      const i = weekDates.indexOf(d);
+      const c = i >= 0 ? (entry.comments[i] ?? "").trim() : "";
+      return `${d}\x01${c}`;
+    })
+    .join("\x02");
+}
 
 function buildMergedMonthRows(
   slices: Record<string, CustomerGroup[]>,
@@ -142,9 +141,8 @@ function buildMergedMonthRows(
           const c = (e.comments[i] ?? "").trim();
           if (c) commentsByDate[d] = e.comments[i] ?? "";
         }
-        // Do not include per-day comments in the merge key.
-        // Comments are date-specific and should merge into the same logical month row.
-        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
+        const cSig = commentSignatureForMerge(e, weekDates, monthCalendarDates);
+        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}|${cSig}`;
         sources.push({ mergeKey, customerId: g.customerId, entry: e, hoursByDate, commentsByDate });
       }
     }
@@ -332,7 +330,7 @@ const EditableHourTd = memo(function EditableHourTd({
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
   const cellW = compact
     ? "min-w-0 w-full max-w-none"
-    : "w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem]";
+    : "w-[3rem] min-w-[3rem]";
   const rowH = compact ? "h-7" : "h-8";
   const grayBg = isGray ? (grayWeekend ? "bg-bg-muted/60" : "bg-bg-muted/51") : "";
   return (
@@ -418,10 +416,6 @@ export function TimeReportPageClient({
     | { mode: "current-week"; customerId: string; entry: Entry }
     | { mode: "next-month"; row: MonthMergedRow }
   >(null);
-  const [pendingRowDelete, setPendingRowDelete] = useState<{
-    customerId: string;
-    entryId: string;
-  } | null>(null);
   const [copyToNextMonthState, setCopyToNextMonthState] = useState<"idle" | "copying" | "error">("idle");
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded">("idle");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
@@ -536,13 +530,6 @@ export function TimeReportPageClient({
     const monthEnd = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
     getHolidayDatesForRange(calendarId, monthStart, monthEnd).then(setHolidayDates);
   }, [calendarId, year, week, viewMode, displayMonth, displayYear]);
-
-  useEffect(() => {
-    document.body.classList.add("time-report-font-12");
-    return () => {
-      document.body.classList.remove("time-report-font-12");
-    };
-  }, []);
 
   useEffect(() => {
     if (!consultant || viewMode !== "week") return;
@@ -1132,24 +1119,6 @@ export function TimeReportPageClient({
     return [{ value: "", label: "—" }, ...list];
   };
 
-  useEffect(() => {
-    const projectIds = new Set<string>();
-    if (viewMode === "week") {
-      for (const group of customerGroups) {
-        for (const entry of group.entries) {
-          if (entry.projectId && entry.jiraDevOpsValue) projectIds.add(entry.projectId);
-        }
-      }
-    } else {
-      for (const row of monthMergedRows) {
-        if (row.projectId && row.jiraDevOpsValue) projectIds.add(row.projectId);
-      }
-    }
-    for (const projectId of projectIds) {
-      void loadJiraDevOpsForProject(projectId);
-    }
-  }, [viewMode, customerGroups, monthMergedRows, loadJiraDevOpsForProject]);
-
   const updateEntryInGroup = (customerId: string, entryId: string, patch: Partial<Entry>) => {
     setIsDirty(true);
     if (viewMode === "week") {
@@ -1654,7 +1623,7 @@ export function TimeReportPageClient({
   }
 
   return (
-    <div className="time-report-font-10 flex min-w-0 flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex justify-end">
           <div className="flex items-center gap-0.5 rounded-md p-0.5">
@@ -1690,7 +1659,6 @@ export function TimeReportPageClient({
                 <ChevronLeft className="h-5 w-5" />
               </IconButton>
               <Select
-                id="time-report-calendar-month-select"
                 value={calendarMonthValue}
                 onValueChange={(v) => void onPickCalendarMonth(v)}
                 options={calendarMonthSelectOptions}
@@ -1775,31 +1743,31 @@ export function TimeReportPageClient({
           <div
             className={
               viewMode === "month"
-                ? "time-report-tables w-full min-w-0 rounded-lg"
-                : "time-report-tables rounded-lg"
+                ? "w-full min-w-0 overflow-x-auto rounded-lg"
+                : "overflow-x-auto rounded-lg"
             }
           >
           {viewMode === "week" ? (
-          <table className="w-full min-w-[66rem] table-fixed border-collapse text-xs">
+          <table className="w-full table-fixed border-collapse text-xs">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5" aria-hidden />
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5" aria-hidden />
                 <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
                 <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Role
                 </th>
-                <th className="w-[clamp(8.5rem,15vw,11.25rem)] min-w-[8.5rem] max-w-[11.25rem] px-1.5 py-1.5 text-left font-medium text-text-secondary">
+                <th className="w-[200px] min-w-[200px] max-w-[200px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
-                <th className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps">
+                <th className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1.5 text-center font-medium text-text-secondary" scope="col" title="Jira / DevOps">
                   <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
-                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
                     title={isTodayColumn(i) ? "Idag" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
@@ -1810,7 +1778,7 @@ export function TimeReportPageClient({
                     </div>
                   </th>
                 ))}
-                <th className="w-[3rem] min-w-[3rem] px-1 py-1.5" aria-hidden />
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5" aria-hidden />
               </tr>
             </thead>
             <tbody>
@@ -1830,7 +1798,7 @@ export function TimeReportPageClient({
                     {totalHoursPerDay.map((h, i) => (
                       <td
                         key={i}
-                        className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                        className={`h-8 w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
                           <span className="text-xs tabular-nums text-text-primary">
@@ -1839,7 +1807,7 @@ export function TimeReportPageClient({
                         </div>
                       </td>
                     ))}
-                    <td className="w-[3rem] min-w-[3rem] px-1 py-1 align-middle">
+                    <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1 align-middle">
                       <div className="flex h-full w-full items-center justify-center">
                         <span className="text-xs font-medium tabular-nums text-text-primary">
                           {weekTotalDisplay}
@@ -1863,7 +1831,7 @@ export function TimeReportPageClient({
                     )}
                     <tr className="border-b border-border-subtle bg-bg-muted/40">
                       <td
-                        className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
+                        className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-1 py-0.5 align-middle"
                         style={{ borderLeftColor: color }}
                       >
                         <button
@@ -1878,13 +1846,13 @@ export function TimeReportPageClient({
                       </td>
                       <td colSpan={4} className="px-1.5 py-1">
                         <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
-                          <span className="time-report-customer-name min-w-0 truncate">{name}</span>
+                          <span className="min-w-0 truncate">{name}</span>
                         </div>
                       </td>
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
-                          className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                          className={`w-[3rem] min-w-[3rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className="text-xs tabular-nums text-text-primary">
@@ -1893,7 +1861,7 @@ export function TimeReportPageClient({
                           </div>
                         </td>
                       ))}
-                      <td className="w-[3rem] min-w-[3rem] px-1 py-0.5 align-middle">
+                      <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-0.5 align-middle">
                         <div className="flex h-full w-full items-center justify-center">
                           <span className="text-xs font-medium tabular-nums text-text-primary">
                             {customerWeekTotal > 0 ? String(customerWeekTotal) : ""}
@@ -1907,7 +1875,7 @@ export function TimeReportPageClient({
                           className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                         >
                           <td
-                            className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-1"
+                            className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-1 py-1"
                             style={{ borderLeftColor: color }}
                           >
                             <div className="flex items-center justify-center gap-0.5">
@@ -1915,7 +1883,7 @@ export function TimeReportPageClient({
                                 aria-label="Add internal comment"
                                 title="Add internal comment"
                                 onClick={() => openComment(entry.id)}
-                                className={`${entryHasComment(entry) ? "text-brand-signal" : ""} time-report-icons-tight`.trim()}
+                                className={entryHasComment(entry) ? "text-brand-signal" : ""}
                               >
                                 <MessageSquare
                                   className={`h-3.5 w-3.5 ${entryHasComment(entry) ? "fill-brand-signal stroke-brand-signal" : ""}`}
@@ -1937,7 +1905,6 @@ export function TimeReportPageClient({
                                   (year === initialYear && week === initialWeek) ||
                                   copyToWeekState === "copying"
                                 }
-                                className="time-report-icons-tight"
                               >
                                 {copyToWeekState === "copying" ? (
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -1949,9 +1916,15 @@ export function TimeReportPageClient({
                                 aria-label="Duplicate row"
                                 title="Duplicate row (Project + Role)"
                                 onClick={() => duplicateRow(group.customerId, entry.id)}
-                                className="time-report-icons-tight"
                               >
                                 <CopyPlus className="h-3.5 w-3.5" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Delete entire row"
+                                title="Delete entire row"
+                                onClick={() => removeEntry(group.customerId, entry.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
                               </IconButton>
                             </div>
                           </td>
@@ -2002,7 +1975,7 @@ export function TimeReportPageClient({
                               />
                             </div>
                           </td>
-                          <td className="w-[clamp(8.5rem,15vw,11.25rem)] min-w-[8.5rem] max-w-[11.25rem] px-1.5 py-1">
+                          <td className="w-[200px] min-w-[200px] max-w-[200px] px-1.5 py-1">
                             <input
                               type="text"
                               value={entry.task ?? ""}
@@ -2014,17 +1987,17 @@ export function TimeReportPageClient({
                               className="h-7 w-full min-w-0 rounded border border-form bg-bg-default px-1.5 py-0.5 text-xs text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
                             />
                           </td>
-                          <td className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1 align-middle">
+                          <td className="w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] px-1 py-1 align-middle">
                             {entry.jiraDevOpsValue ? (() => {
+                              const displayKey = entry.jiraDevOpsValue.replace(
+                                /^(jira|devops):/,
+                                ""
+                              );
                               const opt = entry.projectId
                                 ? jiraOptionByProjectAndValue.get(
                                     `${entry.projectId}|${entry.jiraDevOpsValue}`
                                   )
                                 : undefined;
-                              const displayLabel = jiraDevOpsDisplayLabel(
-                                entry.jiraDevOpsValue,
-                                opt
-                              );
                               const desc = opt?.description?.trim();
                               return (
                               <div className="flex items-center gap-0.5 min-w-0">
@@ -2043,9 +2016,9 @@ export function TimeReportPageClient({
                                       ? "text-text-primary"
                                       : "text-brand-signal"
                                   } hover:bg-bg-muted`}
-                                  title={jiraDevOpsKeyTooltipTitle(displayLabel, opt?.description)}
+                                  title={jiraDevOpsKeyTooltipTitle(displayKey, opt?.description)}
                                 >
-                                  {displayLabel}
+                                  {displayKey}
                                 </button>
                                 {entry.jiraDevOpsValue.startsWith("jira:") && (() => {
                                   const url = opt?.url?.trim();
@@ -2119,23 +2092,7 @@ export function TimeReportPageClient({
                               onBlur={() => setEditingCell(null)}
                             />
                           ))}
-                          <td className="w-[3rem] min-w-[3rem] px-1 py-1 align-middle">
-                            <div className="flex h-full w-full items-center justify-center">
-                              <IconButton
-                                aria-label="Delete entire row"
-                                title="Delete entire row"
-                                onClick={() => {
-                                  setPendingRowDelete({
-                                    customerId: group.customerId,
-                                    entryId: entry.id,
-                                  });
-                                }}
-                                className="time-report-icons-tight !opacity-100 text-brand-signal hover:text-brand-signal"
-                              >
-                                <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
-                              </IconButton>
-                            </div>
-                          </td>
+                          <td className="w-[4.5rem] min-w-[4.5rem] px-1 py-1" />
                         </tr>
                       ))}
                     <tr aria-hidden>
@@ -2149,21 +2106,21 @@ export function TimeReportPageClient({
             </tbody>
           </table>
           ) : (
-          <table className="w-full min-w-[62rem] table-fixed border-collapse text-[9px]">
+          <table className="w-full table-fixed border-collapse text-[9px]">
             <colgroup>
-              <col style={{ width: "4.75rem" }} />
+              <col style={{ width: "4.5rem" }} />
               <col style={{ width: "8%" }} />
               <col style={{ width: "7%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "clamp(8rem,12vw,12rem)" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "calc(7ch + 1.25rem)" }} />
               {monthCalendarDates.map((d) => (
-                <col key={d} style={{ width: "clamp(1rem,1.8vw,1.28rem)" }} />
+                <col key={d} style={{ width: "1.28rem" }} />
               ))}
-              <col style={{ width: "3rem" }} />
+              <col style={{ width: "4.5rem" }} />
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5" aria-hidden />
+                <th className="w-[4.5rem] min-w-[4.5rem] px-1 py-1.5" aria-hidden />
                 <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
@@ -2174,7 +2131,7 @@ export function TimeReportPageClient({
                   Description
                 </th>
                 <th
-                  className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-1 py-1.5 text-left font-medium text-text-secondary"
+                  className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-1 py-1.5 text-center font-medium text-text-secondary"
                   scope="col"
                   title="Jira / DevOps"
                 >
@@ -2267,7 +2224,7 @@ export function TimeReportPageClient({
                         )}
                         <tr className="border-b border-border-subtle bg-bg-muted/40">
                           <td
-                            className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
+                            className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-0.5 py-0.5 align-middle"
                             style={{ borderLeftColor: color }}
                           >
                             <button
@@ -2282,7 +2239,7 @@ export function TimeReportPageClient({
                           </td>
                           <td colSpan={4} className="px-1 py-0.5">
                             <div className="flex w-full min-w-0 items-center font-medium text-text-primary">
-                              <span className="time-report-customer-name min-w-0 truncate">{name}</span>
+                              <span className="min-w-0 truncate text-[10px]">{name}</span>
                             </div>
                           </td>
                           {monthCalendarDates.map((dateStr, dateIdx) => (
@@ -2314,7 +2271,7 @@ export function TimeReportPageClient({
                               className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                             >
                               <td
-                                className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5"
+                                className="w-[4.5rem] min-w-[4.5rem] border-l-[4px] border-solid px-0.5 py-0.5"
                                 style={{ borderLeftColor: color }}
                               >
                                 <div className="flex items-center justify-center gap-0.5">
@@ -2324,8 +2281,8 @@ export function TimeReportPageClient({
                                     onClick={() => openCommentMonth(row.id)}
                                     className={
                                       Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "")
-                                        ? "text-brand-signal time-report-icons-tight"
-                                        : "time-report-icons-tight"
+                                        ? "text-brand-signal"
+                                        : ""
                                     }
                                   >
                                     <MessageSquare
@@ -2339,7 +2296,6 @@ export function TimeReportPageClient({
                                     disabled={
                                       !row.projectId || !row.roleId || copyToNextMonthState === "copying"
                                     }
-                                    className="time-report-icons-tight"
                                   >
                                     {copyToNextMonthState === "copying" ? (
                                       <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -2351,9 +2307,15 @@ export function TimeReportPageClient({
                                     aria-label="Duplicate row"
                                     title="Duplicate row (Project + Role)"
                                     onClick={() => duplicateRow(row.customerId, row.id)}
-                                    className="time-report-icons-tight"
                                   >
                                     <CopyPlus className="h-3 w-3" />
+                                  </IconButton>
+                                  <IconButton
+                                    aria-label="Delete entire row"
+                                    title="Delete entire row"
+                                    onClick={() => removeEntry(row.customerId, row.id)}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
                                   </IconButton>
                                 </div>
                               </td>
@@ -2418,17 +2380,17 @@ export function TimeReportPageClient({
                                   className="h-6 w-full min-w-0 rounded border border-form bg-bg-default px-1 py-0.5 text-[10px] text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
                                 />
                               </td>
-                              <td className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-0.5 py-0.5 align-middle">
+                              <td className="w-[calc(7ch+1.25rem)] min-w-[calc(7ch+1.25rem)] max-w-[calc(7ch+1.25rem)] px-0.5 py-0.5 align-middle">
                                 {row.jiraDevOpsValue ? (() => {
+                                  const displayKey = row.jiraDevOpsValue.replace(
+                                    /^(jira|devops):/,
+                                    ""
+                                  );
                                   const opt = row.projectId
                                     ? jiraOptionByProjectAndValue.get(
                                         `${row.projectId}|${row.jiraDevOpsValue}`
                                       )
                                     : undefined;
-                                  const displayLabel = jiraDevOpsDisplayLabel(
-                                    row.jiraDevOpsValue,
-                                    opt
-                                  );
                                   const desc = opt?.description?.trim();
                                   return (
                                   <div className="flex min-w-0 items-center gap-0.5">
@@ -2450,9 +2412,9 @@ export function TimeReportPageClient({
                                           ? "text-text-primary"
                                           : "text-brand-signal"
                                       } hover:bg-bg-muted`}
-                                      title={jiraDevOpsKeyTooltipTitle(displayLabel, opt?.description)}
+                                      title={jiraDevOpsKeyTooltipTitle(displayKey, opt?.description)}
                                     >
-                                      {displayLabel}
+                                      {displayKey}
                                     </button>
                                     {row.jiraDevOpsValue.startsWith("jira:") && (() => {
                                       const url = opt?.url?.trim();
@@ -2541,23 +2503,7 @@ export function TimeReportPageClient({
                                   onBlur={() => setEditingCell(null)}
                                 />
                               ))}
-                              <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                                <div className="flex h-full w-full items-center justify-center">
-                                  <IconButton
-                                    aria-label="Delete entire row"
-                                    title="Delete entire row"
-                                    onClick={() => {
-                                      setPendingRowDelete({
-                                        customerId: row.customerId,
-                                        entryId: row.id,
-                                      });
-                                    }}
-                                    className="time-report-icons-tight !opacity-100 text-brand-signal hover:text-brand-signal"
-                                  >
-                                    <Trash2 className="h-3 w-3 stroke-[1.5]" />
-                                  </IconButton>
-                                </div>
-                              </td>
+                              <td className="min-w-0 px-0.5 py-0.5" />
                             </tr>
                           );
                         })}
@@ -2852,20 +2798,6 @@ export function TimeReportPageClient({
             })()
           : null}
       </Dialog>
-
-      <ConfirmModal
-        isOpen={pendingRowDelete !== null}
-        title="Delete row"
-        message="Are you sure you want to delete this row?"
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setPendingRowDelete(null)}
-        onConfirm={() => {
-          if (!pendingRowDelete) return;
-          removeEntry(pendingRowDelete.customerId, pendingRowDelete.entryId);
-          setPendingRowDelete(null);
-        }}
-      />
     </div>
   );
 }
