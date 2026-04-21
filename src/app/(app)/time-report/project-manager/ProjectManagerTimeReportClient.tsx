@@ -728,19 +728,26 @@ export function ProjectManagerTimeReportClient({
         ) : null}
       </div>
 
+      {projects.length === 0 ? (
+        <div className="rounded-lg border border-border-subtle bg-bg-default p-6 text-sm text-text-secondary">
+          No projects to manage.
+        </div>
+      ) : null}
+
       {error && (
         <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger" role="alert">
           {error}
         </div>
       )}
 
-      <div className="rounded-lg border border-border-subtle bg-bg-default p-3">
-        {loading && entries.length === 0 ? (
-          <div className="py-8 text-sm text-text-secondary">Loading…</div>
-        ) : entries.length === 0 ? (
-          <div className="py-8 text-sm text-text-secondary">No reported time entries.</div>
-        ) : (
-          <div className="space-y-2">
+      {projects.length > 0 ? (
+        <div className="rounded-lg border border-border-subtle bg-bg-default p-3">
+          {loading && entries.length === 0 ? (
+            <div className="py-8 text-sm text-text-secondary">Loading…</div>
+          ) : entries.length === 0 ? (
+            <div className="py-8 text-sm text-text-secondary">No reported time entries.</div>
+          ) : (
+            <div className="space-y-2">
             <div className="flex flex-wrap items-start gap-3 border-b border-border-subtle/80 pb-3">
               <EntryFilterMultiSelect
                 id="pm-entry-filter-consultant"
@@ -1109,9 +1116,10 @@ export function ProjectManagerTimeReportClient({
               </table>
             </div>
             )}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

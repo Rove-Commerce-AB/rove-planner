@@ -158,6 +158,14 @@ textarea.border-form {
   background: var(--color-brand-signal);
 }
 
+/* Time report tables: freeze top row like Excel. */
+.time-report-tables thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-muted);
+}
+
 /* Current week column: orange border (same as Add allocation button). Width 2px so it wins over adjacent 1px borders in border-collapse. */
 .allocation-tables td.current-week-cell {
   border-left-width: 2px !important;
@@ -355,4 +363,32 @@ body.allocation-project-row-dragging * {
 
 .animate-week-strip-out-to-right {
   animation: weekStripOutToRight 280ms ease-in;
+}
+
+/* Temporary UI test: force compact typography in Time Report content. */
+.time-report-font-10,
+.time-report-font-10 * {
+  font-size: 12px !important;
+}
+
+/* Keep customer group labels slightly larger for readability. */
+.time-report-font-10 .time-report-customer-name {
+  font-size: 12px !important;
+}
+
+/* Table headers can stay slightly larger for scanability. */
+.time-report-font-10 th {
+  font-size: 12px !important;
+}
+
+/* Ensure portal-rendered dropdowns on Time Report also use 12px. */
+body.time-report-font-12 [data-combobox-list] li,
+body.time-report-font-12 [data-radix-select-viewport] [role="option"],
+body.time-report-font-12 [data-radix-select-viewport] [data-state] {
+  font-size: 12px !important;
+}
+
+/* Time Report: tighter icon buttons so all row icons fit. */
+body.time-report-font-12 .time-report-icons-tight {
+  padding: 4px !important;
 }
