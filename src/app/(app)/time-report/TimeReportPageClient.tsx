@@ -2149,7 +2149,7 @@ export function TimeReportPageClient({
             </tbody>
           </table>
           ) : (
-          <table className="w-full min-w-[62rem] table-fixed border-collapse text-[9px]">
+          <table className="w-full min-w-[62rem] table-fixed border-collapse text-[12px]">
             <colgroup>
               <col style={{ width: "4.75rem" }} />
               <col style={{ width: "8%" }} />
@@ -2201,8 +2201,8 @@ export function TimeReportPageClient({
                       }
                     >
                       <div className="flex flex-col items-center justify-center gap-0.5 px-0.5 py-0.5">
-                        <span className="text-[8px] leading-tight">{label}</span>
-                        <span className="text-[9px] leading-tight text-text-muted tabular-nums">{dom}</span>
+                        <span className="text-[12px] leading-tight">{label}</span>
+                        <span className="text-[12px] leading-tight text-text-muted tabular-nums">{dom}</span>
                       </div>
                     </th>
                   );
@@ -2232,7 +2232,7 @@ export function TimeReportPageClient({
                           className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
-                            <span className="truncate text-[9px] tabular-nums text-text-primary">
+                            <span className="truncate text-[12px] tabular-nums text-text-primary">
                               {h > 0 ? String(h) : ""}
                             </span>
                           </div>
@@ -2241,7 +2241,7 @@ export function TimeReportPageClient({
                     })}
                     <td className="min-w-0 px-0.5 py-0.5 align-middle">
                       <div className="flex h-full w-full items-center justify-center">
-                        <span className="text-[9px] font-medium tabular-nums text-text-primary">
+                        <span className="text-[12px] font-medium tabular-nums text-text-primary">
                           {monthGridTotalDisplay}
                         </span>
                       </div>
@@ -2291,7 +2291,7 @@ export function TimeReportPageClient({
                               className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                             >
                               <div className="flex h-full w-full items-center justify-center">
-                                <span className="truncate text-[9px] tabular-nums text-text-primary">
+                                <span className="truncate text-[12px] tabular-nums text-text-primary">
                                   {(customerMonthDayTotals[dateIdx] ?? 0) > 0
                                     ? String(customerMonthDayTotals[dateIdx])
                                     : ""}
@@ -2301,7 +2301,7 @@ export function TimeReportPageClient({
                           ))}
                           <td className="min-w-0 px-0.5 py-0.5 align-middle">
                             <div className="flex h-full w-full items-center justify-center">
-                              <span className="text-[9px] font-medium tabular-nums text-text-primary">
+                              <span className="text-[12px] font-medium tabular-nums text-text-primary">
                                 {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
                               </span>
                             </div>
