@@ -56,4 +56,23 @@ function buildCloudSqlPoolConfig(): PoolConfig {
   return config;
 }
 
-export const cloudSqlPool = new Pool(buildCloudSqlPoolConfig());
+let poolSingleton: Pool | null = null;
+
+function getCloudSqlPool(): Pool {
+  if (poolSingleton) {
+    return poolSingleton;
+  }
+
+  poolSingleton = new Pool(buildCloudSqlPoolConfig());
+  return poolSingleton;
+}
+
+/**
+ * Keep the existing import surface (`cloudSqlPool.query(...)`) but avoid
+ * constructing the DB pool at module-load time, which can happen during build.
+ */
+export const cloudSqlPool = new Proxy({} as Pool, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getCloudSqlPool(), prop, receiver);
+  },
+});
