@@ -7,6 +7,7 @@ import { getCustomerRates } from "@/lib/customerRates";
 import { ProjectDetailClient } from "@/components/ProjectDetailClient";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { debugLog, timedDebug } from "@/lib/debugLogs";
 
 const PLANNING_WEEKS = 30;
 /** Weeks to show to the left of current week (default view: past, then current, then future). */
@@ -18,6 +19,7 @@ type Props = {
 };
 
 export default async function ProjectPage({ params, searchParams }: Props) {
+  const pageStart = Date.now();
   await redirectSubcontractorToAccessDenied();
 
   const { id } = await params;
@@ -38,27 +40,51 @@ export default async function ProjectPage({ params, searchParams }: Props) {
   let allocationData = null;
   let allocationError: string | null = null;
   try {
-    allocationData = await getAllocationPageDataForProject(
-      project.id,
-      project.customer_id,
-      year,
-      weekFrom,
-      weekTo
+    allocationData = await timedDebug(
+      "projects-page",
+      "load allocation data",
+      () =>
+        getAllocationPageDataForProject(
+          project.id,
+          project.customer_id,
+          year,
+          weekFrom,
+          weekTo
+        ),
+      { projectId: project.id, year, weekFrom, weekTo }
     );
   } catch (e) {
     allocationError =
       e instanceof Error ? e.message : "Could not load planning data";
+    debugLog(
+      "projects-page",
+      "allocation load failed",
+      { projectId: project.id, allocationError },
+      "error"
+    );
   }
 
-  const [projectRates, customerRates, appUser] = await Promise.all([
-    getProjectRates(project.id),
-    project.customer_id ? getCustomerRates(project.customer_id) : Promise.resolve([]),
-    getCurrentAppUser(),
-  ]);
+  const [projectRates, customerRates, appUser] = await timedDebug(
+    "projects-page",
+    "load rates and user",
+    () =>
+      Promise.all([
+        getProjectRates(project.id),
+        project.customer_id ? getCustomerRates(project.customer_id) : Promise.resolve([]),
+        getCurrentAppUser(),
+      ]),
+    { projectId: project.id }
+  );
   const isAdmin = appUser?.role === "admin";
   const allocationRates: Record<string, number> = {};
   for (const r of customerRates) allocationRates[r.role_id] = r.rate_per_hour;
   for (const r of projectRates) allocationRates[r.role_id] = r.rate_per_hour;
+  debugLog("projects-page", "page rendered", {
+    projectId: project.id,
+    allocationLoaded: Boolean(allocationData),
+    allocationError,
+    durationMs: Date.now() - pageStart,
+  });
 
   return (
     <div className="p-6">
