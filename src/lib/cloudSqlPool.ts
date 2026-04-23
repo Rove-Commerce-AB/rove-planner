@@ -25,12 +25,23 @@ function stripSslModeQuery(url: string): string {
   }
 }
 
+function getSslMode(url: string): string | null {
+  try {
+    const u = new URL(url.replace(/^postgresql:/i, "postgres:"));
+    const mode = u.searchParams.get("sslmode");
+    return mode ? mode.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildCloudSqlPoolConfig(): PoolConfig {
   const connectionString = process.env.CLOUD_SQL_URL;
   if (!connectionString) {
     throw new Error("CLOUD_SQL_URL is not set");
   }
 
+  const sslMode = getSslMode(connectionString);
   const parsed = parse(stripSslModeQuery(connectionString));
   const { ssl: _parsedSsl, ...rest } = parsed;
 
@@ -42,6 +53,8 @@ function buildCloudSqlPoolConfig(): PoolConfig {
 
   const rejectUnauthorized =
     process.env.CLOUD_SQL_SSL_REJECT_UNAUTHORIZED === "true";
+  const isUnixSocket = (rest.host ?? "").startsWith("/cloudsql/");
+  const useSsl = sslMode !== "disable" && !isUnixSocket;
 
   const config: PoolConfig = {
     user: rest.user,
@@ -50,7 +63,7 @@ function buildCloudSqlPoolConfig(): PoolConfig {
     database: rest.database ?? undefined,
     ...(portNum !== undefined && !Number.isNaN(portNum) ? { port: portNum } : {}),
     application_name: rest.application_name,
-    ssl: { rejectUnauthorized },
+    ...(useSsl ? { ssl: { rejectUnauthorized } } : {}),
   };
 
   return config;
