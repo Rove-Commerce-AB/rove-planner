@@ -29,6 +29,14 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - Production enforces unix socket by default. If you need to bypass temporarily, set:
   - `CLOUD_SQL_ENFORCE_UNIX_SOCKET=false`
 
+### Optional Cloud SQL pool tuning env vars
+
+- `CLOUD_SQL_POOL_MAX` (default in production: `5`)
+- `CLOUD_SQL_IDLE_TIMEOUT_MS` (default in production: `20000`)
+- `CLOUD_SQL_CONNECTION_TIMEOUT_MS` (default in production: `5000`)
+- `CLOUD_SQL_KEEP_ALIVE` (default: `true`)
+- `CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS` (default: `10000`)
+
 You can start editing the page by modifying `src/app/(app)/page.tsx`. The page auto-updates as you edit the file.
 
 ## Learn More

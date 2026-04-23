@@ -36,6 +36,14 @@ function getSslMode(url: string): string | null {
   }
 }
 
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  if (n <= 0) return undefined;
+  return Math.floor(n);
+}
+
 function buildCloudSqlPoolConfig(): PoolConfig {
   const connectionString = process.env.CLOUD_SQL_URL;
   if (!connectionString) {
@@ -64,6 +72,19 @@ function buildCloudSqlPoolConfig(): PoolConfig {
     );
   }
   const useSsl = sslMode !== "disable" && !isUnixSocket;
+  const isProd = process.env.NODE_ENV === "production";
+  const max = parsePositiveInt(process.env.CLOUD_SQL_POOL_MAX) ?? (isProd ? 5 : undefined);
+  const idleTimeoutMillis =
+    parsePositiveInt(process.env.CLOUD_SQL_IDLE_TIMEOUT_MS) ??
+    (isProd ? 20_000 : undefined);
+  const connectionTimeoutMillis =
+    parsePositiveInt(process.env.CLOUD_SQL_CONNECTION_TIMEOUT_MS) ??
+    (isProd ? 5_000 : undefined);
+  const keepAliveEnabled =
+    process.env.CLOUD_SQL_KEEP_ALIVE === "false" ? false : true;
+  const keepAliveInitialDelayMillis =
+    parsePositiveInt(process.env.CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS) ??
+    10_000;
 
   const config: PoolConfig = {
     user: rest.user,
@@ -73,6 +94,11 @@ function buildCloudSqlPoolConfig(): PoolConfig {
     ...(portNum !== undefined && !Number.isNaN(portNum) ? { port: portNum } : {}),
     application_name: rest.application_name,
     ...(useSsl ? { ssl: { rejectUnauthorized } } : {}),
+    ...(max !== undefined ? { max } : {}),
+    ...(idleTimeoutMillis !== undefined ? { idleTimeoutMillis } : {}),
+    ...(connectionTimeoutMillis !== undefined ? { connectionTimeoutMillis } : {}),
+    keepAlive: keepAliveEnabled,
+    keepAliveInitialDelayMillis,
   };
 
   return config;
