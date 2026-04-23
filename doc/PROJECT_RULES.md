@@ -21,7 +21,7 @@ Styling: Tailwind CSS
 Backend: Next.js (Server Components, server actions) + `src/lib/` med `pg` mot PostgreSQL
 Databas: PostgreSQL (Google Cloud SQL)
 Auth: Auth.js (NextAuth) med Google; `app_users` i samma databas
-Hosting: Vercel
+Hosting: Google Cloud Run
 Versionering: Git + GitHub
 
 3. Arkitekturprinciper

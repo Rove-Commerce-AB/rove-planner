@@ -54,6 +54,14 @@ function buildCloudSqlPoolConfig(): PoolConfig {
   const rejectUnauthorized =
     process.env.CLOUD_SQL_SSL_REJECT_UNAUTHORIZED === "true";
   const isUnixSocket = (rest.host ?? "").startsWith("/cloudsql/");
+  const mustUseUnixSocket =
+    process.env.NODE_ENV === "production" &&
+    process.env.CLOUD_SQL_ENFORCE_UNIX_SOCKET !== "false";
+  if (mustUseUnixSocket && !isUnixSocket) {
+    throw new Error(
+      "CLOUD_SQL_URL must use Cloud SQL unix socket host=/cloudsql/<project:region:instance> in production"
+    );
+  }
   const useSsl = sslMode !== "disable" && !isUnixSocket;
 
   const config: PoolConfig = {
