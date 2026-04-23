@@ -3,7 +3,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
-const CACHE_REVALIDATE = 60;
+const CACHE_REVALIDATE = 2 * 60;
 
 /** Shared consultant list for allocation page and consultants roster (stable cache key). */
 export async function getCachedConsultantsRaw() {

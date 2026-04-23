@@ -30,13 +30,17 @@ import { getRoles } from "./roles";
 import { getTeams } from "./teams";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
 
-const CACHE_REVALIDATE = 60;
+// Stagger cache TTLs to avoid synchronized cache stampedes.
+const ROLES_CACHE_REVALIDATE = 10 * 60;
+const TEAMS_CACHE_REVALIDATE = 10 * 60;
+const CALENDARS_CACHE_REVALIDATE = 10 * 60;
+const HOLIDAYS_CACHE_REVALIDATE = 5 * 60;
 
 async function getCachedRoles() {
   return unstable_cache(
     async () => rolesQueries.fetchRoles(),
     ["allocation-roles"],
-    { revalidate: CACHE_REVALIDATE }
+    { revalidate: ROLES_CACHE_REVALIDATE }
   )();
 }
 
@@ -44,7 +48,7 @@ async function getCachedTeams() {
   return unstable_cache(
     async () => teamsQueries.fetchTeams(),
     ["allocation-teams"],
-    { revalidate: CACHE_REVALIDATE }
+    { revalidate: TEAMS_CACHE_REVALIDATE }
   )();
 }
 
@@ -58,7 +62,7 @@ async function getCachedCalendars() {
       return rows;
     },
     ["allocation-calendars"],
-    { revalidate: CACHE_REVALIDATE }
+    { revalidate: CALENDARS_CACHE_REVALIDATE }
   )();
 }
 
@@ -66,7 +70,7 @@ async function getCachedCalendarHolidays(calendarId: string) {
   return unstable_cache(
     async () => fetchCalendarHolidays(calendarId),
     ["allocation-holidays", calendarId],
-    { revalidate: CACHE_REVALIDATE }
+    { revalidate: HOLIDAYS_CACHE_REVALIDATE }
   )();
 }
 

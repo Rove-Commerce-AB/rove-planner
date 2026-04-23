@@ -8,7 +8,7 @@ import { getConsultantForCurrentUser } from "./consultants";
 import { getAllocationsForWeeks } from "./allocations";
 import { getRoles } from "./roles";
 
-const DASHBOARD_CACHE_REVALIDATE = 60;
+const DASHBOARD_CACHE_REVALIDATE = 2 * 60;
 
 export type PersonalAllocationRow = {
   year: number;
