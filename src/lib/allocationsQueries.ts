@@ -1,6 +1,7 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { notifyAllocationInserts } from "@/lib/userNotifications";
 import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
+import { timedDebug } from "@/lib/debugLogs";
 
 export type AllocationRecord = {
   id: string;
@@ -77,10 +78,16 @@ export async function getAllocationsByProjectIds(
 export async function getAllocationsForProjectWithWeeks(
   projectId: string
 ): Promise<AllocationRecord[]> {
-  const { rows } = await cloudSqlPool.query(
-    `SELECT id, consultant_id, project_id, role_id, year, week, hours
-     FROM allocations WHERE project_id = $1`,
-    [projectId]
+  const { rows } = await timedDebug(
+    "allocations-query",
+    "getAllocationsForProjectWithWeeks",
+    () =>
+      cloudSqlPool.query(
+        `SELECT id, consultant_id, project_id, role_id, year, week, hours
+         FROM allocations WHERE project_id = $1`,
+        [projectId]
+      ),
+    { projectId }
   );
   return rows.map(mapAllocation);
 }
@@ -97,13 +104,19 @@ async function getAllocationsForOneYear(
   let offset = 0;
   let pageLen: number;
   do {
-    const { rows } = await cloudSqlPool.query(
-      `SELECT id, consultant_id, project_id, role_id, year, week, hours
-       FROM allocations
-       WHERE year = $1 AND week >= $2 AND week <= $3
-       ORDER BY year, week, consultant_id, project_id, id
-       LIMIT $4 OFFSET $5`,
-      [year, minWeek, maxWeek, ALLOCATIONS_PAGE_SIZE, offset]
+    const { rows } = await timedDebug(
+      "allocations-query",
+      "getAllocationsForOneYear page",
+      () =>
+        cloudSqlPool.query(
+          `SELECT id, consultant_id, project_id, role_id, year, week, hours
+           FROM allocations
+           WHERE year = $1 AND week >= $2 AND week <= $3
+           ORDER BY year, week, consultant_id, project_id, id
+           LIMIT $4 OFFSET $5`,
+          [year, minWeek, maxWeek, ALLOCATIONS_PAGE_SIZE, offset]
+        ),
+      { year, minWeek, maxWeek, offset, pageSize: ALLOCATIONS_PAGE_SIZE }
     );
     pageLen = rows.length;
     results.push(...rows.map(mapAllocation));

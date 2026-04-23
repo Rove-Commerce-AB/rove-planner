@@ -1,6 +1,7 @@
 import "server-only";
 import { Pool, type PoolConfig } from "pg";
 import { parse } from "pg-connection-string";
+import { debugLog } from "@/lib/debugLogs";
 
 /**
  * pg merges `parse(connectionString)` *after* top-level options, so
@@ -85,6 +86,19 @@ function getCloudSqlPool(): Pool {
   }
 
   poolSingleton = new Pool(buildCloudSqlPoolConfig());
+  poolSingleton.on("error", (error) => {
+    debugLog(
+      "db-pool",
+      "pool error",
+      { error: error.message, totalCount: poolSingleton?.totalCount ?? 0 },
+      "error"
+    );
+  });
+  debugLog("db-pool", "pool initialized", {
+    totalCount: poolSingleton.totalCount,
+    idleCount: poolSingleton.idleCount,
+    waitingCount: poolSingleton.waitingCount,
+  });
   return poolSingleton;
 }
 

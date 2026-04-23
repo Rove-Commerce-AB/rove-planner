@@ -28,6 +28,7 @@ import { getISOWeekDateRange, isoWeeksInYear } from "./dateUtils";
 import { getProjectsWithCustomer } from "./projects";
 import { getRoles } from "./roles";
 import { getTeams } from "./teams";
+import { debugLog, timedDebug } from "@/lib/debugLogs";
 
 const CACHE_REVALIDATE = 60;
 
@@ -280,26 +281,48 @@ export async function getAllocationPageDataForProject(
   weekFrom: number,
   weekTo: number
 ): Promise<AllocationPageData> {
+  const startedAt = Date.now();
+  debugLog("allocation-project", "start", { projectId, customerId, year, weekFrom, weekTo });
   const weeks = buildWeeksArray(year, weekFrom, weekTo);
 
-  const customerConsultants = await getConsultantsByCustomerId(customerId);
+  const customerConsultants = await timedDebug(
+    "allocation-project",
+    "load customer consultants",
+    () => getConsultantsByCustomerId(customerId),
+    { projectId, customerId }
+  );
   const consultantIds = customerConsultants.map((c) => c.id);
-  const consultantsRaw = await getConsultantsRawByIds(consultantIds);
+  const consultantsRaw = await timedDebug(
+    "allocation-project",
+    "load consultants raw",
+    () => getConsultantsRawByIds(consultantIds),
+    { projectId, consultantCount: consultantIds.length }
+  );
 
   const [rolesData, teamsData, allocationsData, calendarsData, projectsAll] =
-    await Promise.all([
-      getCachedRoles(),
-      getCachedTeams(),
-      getAllocationsForWeeks(weeks),
-      getCachedCalendars(),
-      getProjectsWithCustomer([projectId]),
-    ]);
+    await timedDebug(
+      "allocation-project",
+      "load role/team/allocation/calendar/project datasets",
+      () =>
+        Promise.all([
+          getCachedRoles(),
+          getCachedTeams(),
+          getAllocationsForWeeks(weeks),
+          getCachedCalendars(),
+          getProjectsWithCustomer([projectId]),
+        ]),
+      { projectId, weekCount: weeks.length }
+    );
 
   const allocations = allocationsData.filter((a) => a.project_id === projectId);
   const projects = projectsAll;
 
-  const allProjectAllocations =
-    await getAllocationsForProjectWithWeeks(projectId);
+  const allProjectAllocations = await timedDebug(
+    "allocation-project",
+    "load all allocations for project",
+    () => getAllocationsForProjectWithWeeks(projectId),
+    { projectId }
+  );
   const consultantTotalHours: Record<string, number> = {};
   const seenSlot = new Set<string>();
   for (const a of allProjectAllocations) {
@@ -408,7 +431,7 @@ export async function getAllocationPageDataForProject(
     ([id, { name, color }]) => ({ id, name, color })
   );
 
-  return {
+  const result = {
     consultants,
     projects,
     customers: customers.sort((a, b) => a.name.localeCompare(b.name)),
@@ -421,4 +444,12 @@ export async function getAllocationPageDataForProject(
     weeks,
     consultantTotalHours,
   };
+  debugLog("allocation-project", "done", {
+    projectId,
+    durationMs: Date.now() - startedAt,
+    consultants: result.consultants.length,
+    allocations: result.allocations.length,
+    projectRows: result.projects.length,
+  });
+  return result;
 }
