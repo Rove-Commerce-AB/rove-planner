@@ -532,14 +532,15 @@ export async function saveTimeReportEntries(
     }
   }
 
+  const client = await cloudSqlPool.connect();
   try {
-    await cloudSqlPool.query("BEGIN");
-    await cloudSqlPool.query(
+    await client.query("BEGIN");
+    await client.query(
       `DELETE FROM time_report_entries WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
       [consultantId, weekDates]
     );
     for (const row of rows) {
-      await cloudSqlPool.query(
+      await client.query(
         `INSERT INTO time_report_entries (
            consultant_id, customer_id, project_id, role_id, jira_devops_key,
            description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
@@ -559,14 +560,16 @@ export async function saveTimeReportEntries(
         ]
       );
     }
-    await cloudSqlPool.query("COMMIT");
+    await client.query("COMMIT");
   } catch (e) {
     try {
-      await cloudSqlPool.query("ROLLBACK");
+      await client.query("ROLLBACK");
     } catch {
       // Ignore rollback errors and return the original failure.
     }
     return { error: e instanceof Error ? e.message : "Save failed" };
+  } finally {
+    client.release();
   }
 
   return {};

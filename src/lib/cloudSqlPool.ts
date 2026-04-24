@@ -137,3 +137,18 @@ export const cloudSqlPool = new Proxy({} as Pool, {
     return Reflect.get(getCloudSqlPool(), prop, receiver);
   },
 });
+
+export type CloudSqlPoolStats = {
+  totalCount: number;
+  idleCount: number;
+  waitingCount: number;
+};
+
+export function getCloudSqlPoolStats(): CloudSqlPoolStats {
+  const pool = getCloudSqlPool();
+  return {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  };
+}

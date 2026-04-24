@@ -20,7 +20,7 @@ import {
 import { fetchCalendarHolidays } from "./calendarHolidaysQueries";
 import * as rolesQueries from "./rolesQueries";
 import * as teamsQueries from "./teamsQueries";
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { cloudSqlPool, getCloudSqlPoolStats } from "@/lib/cloudSqlPool";
 import { getCachedConsultantsRaw } from "./consultantsCache";
 import { getConsultantsByCustomerId } from "./customerConsultants";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
@@ -35,6 +35,7 @@ const ROLES_CACHE_REVALIDATE = 10 * 60;
 const TEAMS_CACHE_REVALIDATE = 10 * 60;
 const CALENDARS_CACHE_REVALIDATE = 10 * 60;
 const HOLIDAYS_CACHE_REVALIDATE = 5 * 60;
+const HOLIDAYS_FETCH_CONCURRENCY = 4;
 
 async function getCachedRoles() {
   return unstable_cache(
@@ -72,6 +73,19 @@ async function getCachedCalendarHolidays(calendarId: string) {
     ["allocation-holidays", calendarId],
     { revalidate: HOLIDAYS_CACHE_REVALIDATE }
   )();
+}
+
+async function runWithConcurrencyLimit<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+) {
+  if (items.length === 0) return;
+  const boundedLimit = Math.max(1, limit);
+  for (let i = 0; i < items.length; i += boundedLimit) {
+    const chunk = items.slice(i, i + boundedLimit);
+    await Promise.all(chunk.map((item) => worker(item)));
+  }
 }
 
 const HOURS_PER_HOLIDAY = 8;
@@ -127,6 +141,13 @@ export async function getAllocationPageData(
   let allocations: AllocationPageData["allocations"] = [];
 
   try {
+    debugLog("allocation-page", "dataset load pool before", {
+      pool: getCloudSqlPoolStats(),
+      year,
+      weekFrom,
+      weekTo,
+      weekCount: weeks.length,
+    });
     const [consultantsRaw, rolesData, teamsData, allocationsData, calendarsData] =
       await Promise.all([
         getCachedConsultantsRaw(),
@@ -135,6 +156,15 @@ export async function getAllocationPageData(
         getAllocationsForWeeks(weeks),
         getCachedCalendars(),
       ]);
+    debugLog("allocation-page", "dataset load pool after", {
+      pool: getCloudSqlPoolStats(),
+      year,
+      weekFrom,
+      weekTo,
+      weekCount: weeks.length,
+      consultantRows: consultantsRaw.length,
+      allocationRows: allocationsData.length,
+    });
 
     roles = rolesData;
     teams = teamsData;
@@ -151,15 +181,17 @@ export async function getAllocationPageData(
       ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
     ];
     const holidaysByCalendar = new Map<string, CalendarHoliday[]>();
-    await Promise.all(
-      calendarIds.map(async (calId) => {
+    await runWithConcurrencyLimit(
+      calendarIds,
+      HOLIDAYS_FETCH_CONCURRENCY,
+      async (calId) => {
         try {
           const h = await getCachedCalendarHolidays(calId);
           holidaysByCalendar.set(calId, h);
         } catch {
           holidaysByCalendar.set(calId, []);
         }
-      })
+      }
     );
 
     consultants = consultantsRaw.map((c) => {
@@ -303,6 +335,11 @@ export async function getAllocationPageDataForProject(
     { projectId, consultantCount: consultantIds.length }
   );
 
+  debugLog("allocation-project", "dataset load pool before", {
+    projectId,
+    pool: getCloudSqlPoolStats(),
+    weekCount: weeks.length,
+  });
   const [rolesData, teamsData, allocationsData, calendarsData, projectsAll] =
     await timedDebug(
       "allocation-project",
@@ -317,6 +354,12 @@ export async function getAllocationPageDataForProject(
         ]),
       { projectId, weekCount: weeks.length }
     );
+  debugLog("allocation-project", "dataset load pool after", {
+    projectId,
+    pool: getCloudSqlPoolStats(),
+    allocationRows: allocationsData.length,
+    projectRows: projectsAll.length,
+  });
 
   const allocations = allocationsData.filter((a) => a.project_id === projectId);
   const projects = projectsAll;
@@ -350,15 +393,17 @@ export async function getAllocationPageDataForProject(
     ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
   ];
   const holidaysByCalendar = new Map<string, CalendarHoliday[]>();
-  await Promise.all(
-    calendarIds.map(async (calId) => {
+  await runWithConcurrencyLimit(
+    calendarIds,
+    HOLIDAYS_FETCH_CONCURRENCY,
+    async (calId) => {
       try {
         const h = await getCachedCalendarHolidays(calId);
         holidaysByCalendar.set(calId, h);
       } catch {
         holidaysByCalendar.set(calId, []);
       }
-    })
+    }
   );
 
   let consultants: AllocationConsultant[] = consultantsRaw.map((c) => {

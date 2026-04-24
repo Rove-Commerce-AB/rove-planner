@@ -143,7 +143,9 @@ export async function createBoardWithCreatorMember(
     await client.query("COMMIT");
     return boardId;
   } catch (e) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();
@@ -418,7 +420,9 @@ export async function setTodoDoneState(
     await client.query("COMMIT");
     return true;
   } catch (e) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();
@@ -488,7 +492,9 @@ export async function removeMemberAsCreator(
     await client.query("COMMIT");
     return (rowCount ?? 0) > 0;
   } catch (e) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     throw e;
   } finally {
     client.release();

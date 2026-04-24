@@ -1,7 +1,7 @@
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { cloudSqlPool, getCloudSqlPoolStats } from "@/lib/cloudSqlPool";
 import { notifyAllocationInserts } from "@/lib/userNotifications";
 import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
-import { timedDebug } from "@/lib/debugLogs";
+import { debugLog, timedDebug } from "@/lib/debugLogs";
 
 export type AllocationRecord = {
   id: string;
@@ -103,7 +103,9 @@ async function getAllocationsForOneYear(
   const results: AllocationRecord[] = [];
   let offset = 0;
   let pageLen: number;
+  let pageIndex = 0;
   do {
+    const beforeStats = getCloudSqlPoolStats();
     const { rows } = await timedDebug(
       "allocations-query",
       "getAllocationsForOneYear page",
@@ -116,11 +118,29 @@ async function getAllocationsForOneYear(
            LIMIT $4 OFFSET $5`,
           [year, minWeek, maxWeek, ALLOCATIONS_PAGE_SIZE, offset]
         ),
-      { year, minWeek, maxWeek, offset, pageSize: ALLOCATIONS_PAGE_SIZE }
+      {
+        year,
+        minWeek,
+        maxWeek,
+        offset,
+        pageSize: ALLOCATIONS_PAGE_SIZE,
+        pageIndex,
+        poolBefore: beforeStats,
+      }
     );
+    const afterStats = getCloudSqlPoolStats();
+    debugLog("allocations-query", "getAllocationsForOneYear pool snapshot", {
+      year,
+      minWeek,
+      maxWeek,
+      pageIndex,
+      rows: rows.length,
+      poolAfter: afterStats,
+    });
     pageLen = rows.length;
     results.push(...rows.map(mapAllocation));
     offset += ALLOCATIONS_PAGE_SIZE;
+    pageIndex += 1;
   } while (pageLen === ALLOCATIONS_PAGE_SIZE);
   return results;
 }
@@ -130,11 +150,16 @@ export async function getAllocationsForWeeks(
 ): Promise<AllocationRecord[]> {
   if (weeks.length === 0) return [];
   const uniqueYears = [...new Set(weeks.map((w) => w.year))].sort((a, b) => a - b);
-  const yearResults = await Promise.all(
-    uniqueYears.map((y) =>
-      getAllocationsForOneYear(y, weeks.filter((w) => w.year === y))
-    )
-  );
+  const yearResults: AllocationRecord[][] = [];
+  for (const y of uniqueYears) {
+    // Keep per-request DB concurrency bounded to avoid pool bursts on cache revalidation.
+    yearResults.push(
+      await getAllocationsForOneYear(
+        y,
+        weeks.filter((w) => w.year === y)
+      )
+    );
+  }
   const weekSet = new Set(weeks.map((w) => `${w.year}-${w.week}`));
   return yearResults.flat().filter((r) => weekSet.has(`${r.year}-${r.week}`));
 }
