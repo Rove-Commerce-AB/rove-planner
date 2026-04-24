@@ -112,6 +112,7 @@ function getCloudSqlPool(): Pool {
   }
 
   poolSingleton = new Pool(buildCloudSqlPoolConfig());
+  instrumentPool(poolSingleton);
   poolSingleton.on("error", (error) => {
     debugLog(
       "db-pool",
@@ -144,11 +145,87 @@ export type CloudSqlPoolStats = {
   waitingCount: number;
 };
 
-export function getCloudSqlPoolStats(): CloudSqlPoolStats {
-  const pool = getCloudSqlPool();
+function readPoolStats(pool: Pool): CloudSqlPoolStats {
   return {
     totalCount: pool.totalCount,
     idleCount: pool.idleCount,
     waitingCount: pool.waitingCount,
   };
+}
+
+function instrumentPool(pool: Pool) {
+  const marker = pool as Pool & { __instrumented?: boolean };
+  if (marker.__instrumented) return;
+  marker.__instrumented = true;
+
+  const anyPool = pool as any;
+  const rawQuery = anyPool.query.bind(pool) as (...args: any[]) => Promise<any>;
+  const rawConnect = anyPool.connect.bind(pool) as (...args: any[]) => Promise<any>;
+
+  anyPool.query = async (...args: any[]) => {
+    const before = readPoolStats(pool);
+    const start = Date.now();
+    try {
+      const result = await rawQuery(...args);
+      const durationMs = Date.now() - start;
+      const after = readPoolStats(pool);
+      if (before.waitingCount > 0 || after.waitingCount > 0 || durationMs >= 1000) {
+        debugLog("db-pool", "query snapshot", {
+          durationMs,
+          poolBefore: before,
+          poolAfter: after,
+        });
+      }
+      return result;
+    } catch (error) {
+      debugLog(
+        "db-pool",
+        "query failed",
+        {
+          durationMs: Date.now() - start,
+          poolBefore: before,
+          poolAfter: readPoolStats(pool),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "error"
+      );
+      throw error;
+    }
+  };
+
+  anyPool.connect = async (...args: any[]) => {
+    const before = readPoolStats(pool);
+    const start = Date.now();
+    try {
+      const client = await rawConnect(...args);
+      const durationMs = Date.now() - start;
+      const after = readPoolStats(pool);
+      if (before.waitingCount > 0 || after.waitingCount > 0 || durationMs >= 500) {
+        debugLog("db-pool", "connect snapshot", {
+          durationMs,
+          poolBefore: before,
+          poolAfter: after,
+        });
+      }
+      return client;
+    } catch (error) {
+      debugLog(
+        "db-pool",
+        "connect failed",
+        {
+          durationMs: Date.now() - start,
+          poolBefore: before,
+          poolAfter: readPoolStats(pool),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "error"
+      );
+      throw error;
+    }
+  };
+}
+
+export function getCloudSqlPoolStats(): CloudSqlPoolStats {
+  const pool = getCloudSqlPool();
+  return readPoolStats(pool);
 }
