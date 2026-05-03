@@ -4,11 +4,15 @@ import {
   useState,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   Fragment,
   useMemo,
   memo,
+  type Dispatch,
   type HTMLAttributes,
+  type MutableRefObject,
+  type SetStateAction,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -130,6 +134,17 @@ function formatReportHoursTotal(
   return String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
 }
 
+/** Ref must update synchronously: month save loops multiple ISO weeks in one run; the next `expected` revision must not lag React state. */
+function syncWeekRevisionAfterSave(
+  setWeekRevisionsByKey: Dispatch<SetStateAction<Record<string, number>>>,
+  weekRevisionsByKeyRef: MutableRefObject<Record<string, number>>,
+  sk: string,
+  revision: number
+) {
+  weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, [sk]: revision };
+  setWeekRevisionsByKey((prev) => ({ ...prev, [sk]: revision }));
+}
+
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = {
   id: string;
@@ -217,7 +232,8 @@ function buildMergedMonthRows(
       commentsByDate,
     });
   }
-  return rows;
+  // Omit rows that only have hours/comments outside this calendar month (e.g. ISO week spills April→May).
+  return rows.filter(mergedRowHasContent);
 }
 
 function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): MonthMergedRow {
@@ -489,6 +505,7 @@ export function TimeReportPageClient({
   const savePausedForRevisionConflictRef = useRef(false);
   const lastVisibilityRevalidateAtRef = useRef(0);
   const saveStateRef = useRef(saveState);
+  const loadStateRef = useRef(loadState);
   const weekLoadRequestIdRef = useRef(0);
   const customerGroupsRef = useRef(customerGroups);
   const isDirtyRef = useRef(isDirty);
@@ -510,6 +527,13 @@ export function TimeReportPageClient({
   const [monthMergedRows, setMonthMergedRows] = useState<MonthMergedRow[]>([]);
   const monthLoadRequestIdRef = useRef(0);
   const viewModeRef = useRef(viewMode);
+  /** Serialize server saves so concurrent requests never reuse a stale expectedRevision (revision_conflict). */
+  const saveQueueTailRef = useRef(Promise.resolve());
+  const enqueueTimeReportSave = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const run = saveQueueTailRef.current.then(fn);
+    saveQueueTailRef.current = run.then(() => {}).catch(() => {});
+    return run;
+  }, []);
 
   useEffect(() => {
     try {
@@ -570,6 +594,9 @@ export function TimeReportPageClient({
   useEffect(() => {
     saveStateRef.current = saveState;
   }, [saveState]);
+  useLayoutEffect(() => {
+    loadStateRef.current = loadState;
+  }, [loadState]);
 
   const runBatchHydrate = useCallback(async (groups: CustomerGroup[]) => {
     const { customerIds, taskOptionPairs } = collectTimeReportHydratePayload(groups);
@@ -630,6 +657,7 @@ export function TimeReportPageClient({
   useEffect(() => {
     if (!consultant || viewMode !== "week") return;
 
+    loadStateRef.current = "loading";
     setLoadState("loading");
     // Clear old week view immediately to avoid showing stale rows during week switch.
     setCustomerGroups([]);
@@ -640,12 +668,7 @@ export function TimeReportPageClient({
         const sliceKey = weekSliceKey(year, week);
         setCustomerGroups(data.groups);
         weekRevisionRef.current = data.revision;
-        weekRevisionRef.current = data.revision;
-        setWeekRevisionsByKey((prev) => {
-          const next = { ...prev, [sliceKey]: data.revision };
-          weekRevisionsByKeyRef.current = next;
-          return next;
-        });
+        syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
         setLoadState("loaded");
         setIsDirty(false);
         savePausedForRevisionConflictRef.current = false;
@@ -661,6 +684,7 @@ export function TimeReportPageClient({
   useEffect(() => {
     if (!consultant || viewMode !== "month") return;
 
+    loadStateRef.current = "loading";
     setLoadState("loading");
     setMonthMergedRows([]);
     const weeks = getWeeksInMonthLocal(displayMonth, displayYear);
@@ -705,6 +729,7 @@ export function TimeReportPageClient({
     saveDebounceRef.current = setTimeout(() => {
       const saveStart = performance.now();
       const requestId = ++saveRequestIdRef.current;
+      saveStateRef.current = "saving";
       setSaveState("saving");
       setSaveError(null);
       const cid = consultant.id;
@@ -712,6 +737,7 @@ export function TimeReportPageClient({
 
       const finishOk = () => {
         if (requestId !== saveRequestIdRef.current) return;
+        saveStateRef.current = "idle";
         setSaveState("idle");
         setIsDirty(false);
         isDirtyRef.current = false;
@@ -720,6 +746,7 @@ export function TimeReportPageClient({
       const finishErr = (msg: string, validation?: boolean) => {
         if (requestId !== saveRequestIdRef.current) return;
         setSaveError(msg);
+        saveStateRef.current = "error";
         setSaveState("error");
         if (validation && msg.includes("Project and Role")) {
           setShowValidationHighlights(true);
@@ -727,19 +754,21 @@ export function TimeReportPageClient({
       };
 
       if (mode === "week") {
-        saveTimeReportEntries(
-          cid,
-          yearRef.current,
-          weekRef.current,
-          customerGroupsRef.current,
-          weekRevisionRef.current
-        )
-          .then((result) => {
+        void enqueueTimeReportSave(async () => {
+          try {
+            const result = await saveTimeReportEntries(
+              cid,
+              yearRef.current,
+              weekRef.current,
+              customerGroupsRef.current,
+              weekRevisionRef.current
+            );
             if (requestId !== saveRequestIdRef.current) return;
             if (!result.success) {
               if (result.code === "revision_conflict") {
                 savePausedForRevisionConflictRef.current = true;
                 setRevisionConflictOpen(true);
+                saveStateRef.current = "idle";
                 setSaveState("idle");
                 return;
               }
@@ -748,12 +777,7 @@ export function TimeReportPageClient({
             }
             const sk = weekSliceKey(yearRef.current, weekRef.current);
             weekRevisionRef.current = result.revision;
-            weekRevisionRef.current = result.revision;
-            setWeekRevisionsByKey((prev) => {
-              const next = { ...prev, [sk]: result.revision };
-              weekRevisionsByKeyRef.current = next;
-              return next;
-            });
+            syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
             finishOk();
             if (ENABLE_PERF_DEBUG) {
               fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
@@ -779,39 +803,41 @@ export function TimeReportPageClient({
                 }),
               }).catch(() => {});
             }
-          })
-          .catch(() => {
+          } catch {
             if (requestId !== saveRequestIdRef.current) return;
+            saveStateRef.current = "error";
             setSaveState("error");
             setSaveError("Save failed");
-          });
+          }
+        });
         return;
       }
 
-      void (async () => {
+      void enqueueTimeReportSave(async () => {
         const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
         const rows = monthMergedRowsRef.current;
+        const monthScope = {
+          year: displayYearRef.current,
+          month: displayMonthRef.current,
+        };
         for (const { year: y, week: w } of weeks) {
           const sk = weekSliceKey(y, w);
           const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
           const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
-          const result = await saveTimeReportEntries(cid, y, w, groups, expected);
+          const result = await saveTimeReportEntries(cid, y, w, groups, expected, monthScope);
           if (requestId !== saveRequestIdRef.current) return;
           if (!result.success) {
             if (result.code === "revision_conflict") {
               savePausedForRevisionConflictRef.current = true;
               setRevisionConflictOpen(true);
+              saveStateRef.current = "idle";
               setSaveState("idle");
               return;
             }
             finishErr(result.error, true);
             return;
           }
-          setWeekRevisionsByKey((prev) => {
-            const next = { ...prev, [sk]: result.revision };
-            weekRevisionsByKeyRef.current = next;
-            return next;
-          });
+          syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
         }
         finishOk();
         if (ENABLE_PERF_DEBUG) {
@@ -835,7 +861,7 @@ export function TimeReportPageClient({
             }),
           }).catch(() => {});
         }
-      })();
+      });
     }, 700);
 
     return () => {
@@ -844,7 +870,18 @@ export function TimeReportPageClient({
         saveDebounceRef.current = null;
       }
     };
-  }, [isDirty, customerGroups, monthMergedRows, viewMode, year, week, consultant?.id, displayMonth, displayYear]);
+  }, [
+    isDirty,
+    customerGroups,
+    monthMergedRows,
+    viewMode,
+    year,
+    week,
+    consultant?.id,
+    displayMonth,
+    displayYear,
+    enqueueTimeReportSave,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -891,95 +928,99 @@ export function TimeReportPageClient({
       saveDebounceRef.current = null;
     }
 
-    if (typeof document !== "undefined") {
-      const activeElement = document.activeElement as HTMLElement | null;
-      if (activeElement && typeof activeElement.blur === "function") {
-        activeElement.blur();
-      }
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    }
-
     const activeConsultant = consultantRef.current;
     if (!isDirtyRef.current || !activeConsultant) return true;
 
-    const requestId = ++saveRequestIdRef.current;
-    setSaveState("saving");
-    setSaveError(null);
-    try {
-      if (viewModeRef.current === "week") {
-        const result = await saveTimeReportEntries(
-          activeConsultant.id,
-          yearRef.current,
-          weekRef.current,
-          customerGroupsRef.current,
-          weekRevisionRef.current
-        );
-        if (requestId !== saveRequestIdRef.current) return false;
-        if (!result.success) {
-          if (result.code === "revision_conflict") {
-            savePausedForRevisionConflictRef.current = true;
-            setRevisionConflictOpen(true);
-            setSaveState("idle");
-            return false;
-          }
-          setSaveError(result.error);
-          setSaveState("error");
-          if (result.error.includes("Project and Role")) {
-            setShowValidationHighlights(true);
-          }
-          return false;
+    return enqueueTimeReportSave(async (): Promise<boolean> => {
+      const requestId = ++saveRequestIdRef.current;
+      saveStateRef.current = "saving";
+      setSaveState("saving");
+      setSaveError(null);
+
+      if (typeof document !== "undefined") {
+        const activeElement = document.activeElement as HTMLElement | null;
+        if (activeElement && typeof activeElement.blur === "function") {
+          activeElement.blur();
         }
-        const sk = weekSliceKey(yearRef.current, weekRef.current);
-        weekRevisionRef.current = result.revision;
-        weekRevisionRef.current = result.revision;
-        setWeekRevisionsByKey((prev) => {
-          const next = { ...prev, [sk]: result.revision };
-          weekRevisionsByKeyRef.current = next;
-          return next;
-        });
-      } else {
-        const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
-        const rows = monthMergedRowsRef.current;
-        for (const { year: y, week: w } of weeks) {
-          const sk = weekSliceKey(y, w);
-          const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
-          const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
-          const result = await saveTimeReportEntries(activeConsultant.id, y, w, groups, expected);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      }
+      try {
+        if (viewModeRef.current === "week") {
+          const result = await saveTimeReportEntries(
+            activeConsultant.id,
+            yearRef.current,
+            weekRef.current,
+            customerGroupsRef.current,
+            weekRevisionRef.current
+          );
           if (requestId !== saveRequestIdRef.current) return false;
           if (!result.success) {
             if (result.code === "revision_conflict") {
               savePausedForRevisionConflictRef.current = true;
               setRevisionConflictOpen(true);
+              saveStateRef.current = "idle";
               setSaveState("idle");
               return false;
             }
             setSaveError(result.error);
+            saveStateRef.current = "error";
             setSaveState("error");
             if (result.error.includes("Project and Role")) {
               setShowValidationHighlights(true);
             }
             return false;
           }
-          setWeekRevisionsByKey((prev) => {
-            const next = { ...prev, [sk]: result.revision };
-            weekRevisionsByKeyRef.current = next;
-            return next;
-          });
+          const sk = weekSliceKey(yearRef.current, weekRef.current);
+          weekRevisionRef.current = result.revision;
+          syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+        } else {
+          const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+          const rows = monthMergedRowsRef.current;
+          const monthScope = {
+            year: displayYearRef.current,
+            month: displayMonthRef.current,
+          };
+          for (const { year: y, week: w } of weeks) {
+            const sk = weekSliceKey(y, w);
+            const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
+            const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
+            const result = await saveTimeReportEntries(activeConsultant.id, y, w, groups, expected, monthScope);
+            if (requestId !== saveRequestIdRef.current) return false;
+            if (!result.success) {
+              if (result.code === "revision_conflict") {
+                savePausedForRevisionConflictRef.current = true;
+                setRevisionConflictOpen(true);
+                saveStateRef.current = "idle";
+                setSaveState("idle");
+                return false;
+              }
+              setSaveError(result.error);
+              saveStateRef.current = "error";
+              setSaveState("error");
+              if (result.error.includes("Project and Role")) {
+                setShowValidationHighlights(true);
+              }
+              return false;
+            }
+            syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+          }
         }
+        if (requestId !== saveRequestIdRef.current) return false;
+        saveStateRef.current = "idle";
+        setSaveState("idle");
+        setIsDirty(false);
+        isDirtyRef.current = false;
+        setShowValidationHighlights(false);
+        return true;
+      } catch {
+        if (requestId !== saveRequestIdRef.current) return false;
+        saveStateRef.current = "error";
+        setSaveState("error");
+        setSaveError("Save failed");
+        return false;
       }
-      if (requestId !== saveRequestIdRef.current) return false;
-      setSaveState("idle");
-      setIsDirty(false);
-      isDirtyRef.current = false;
-      setShowValidationHighlights(false);
-      return true;
-    } catch {
-      if (requestId !== saveRequestIdRef.current) return false;
-      setSaveState("error");
-      setSaveError("Save failed");
-      return false;
-    }
-  }, []);
+    });
+  }, [enqueueTimeReportSave]);
 
   const reloadWeekFromServer = useCallback(() => {
     const c = consultantRef.current;
@@ -987,18 +1028,14 @@ export function TimeReportPageClient({
     const y = yearRef.current;
     const w = weekRef.current;
     const requestId = ++weekLoadRequestIdRef.current;
+    loadStateRef.current = "loading";
     setLoadState("loading");
     getTimeReportEntries(c.id, y, w).then((data) => {
       if (requestId !== weekLoadRequestIdRef.current) return;
       const sliceKey = weekSliceKey(y, w);
       setCustomerGroups(data.groups);
       weekRevisionRef.current = data.revision;
-      weekRevisionRef.current = data.revision;
-      setWeekRevisionsByKey((prev) => {
-        const next = { ...prev, [sliceKey]: data.revision };
-        weekRevisionsByKeyRef.current = next;
-        return next;
-      });
+      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
       setLoadState("loaded");
       setIsDirty(false);
       isDirtyRef.current = false;
@@ -1014,6 +1051,7 @@ export function TimeReportPageClient({
     const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
     const calDates = getCalendarDatesInMonth(displayYearRef.current, displayMonthRef.current);
     const requestId = ++monthLoadRequestIdRef.current;
+    loadStateRef.current = "loading";
     setLoadState("loading");
     Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(c.id, y, w))).then((allData) => {
       if (requestId !== monthLoadRequestIdRef.current) return;
@@ -1045,6 +1083,8 @@ export function TimeReportPageClient({
       if (now - lastVisibilityRevalidateAtRef.current < 2500) return;
       lastVisibilityRevalidateAtRef.current = now;
       if (saveStateRef.current === "saving") return;
+      // Avoid false positives while month/week slices fetch — client rev map may not match yet.
+      if (loadStateRef.current === "loading") return;
       const c = consultantRef.current;
       if (!c) return;
       if (viewModeRef.current === "week") {
@@ -1504,12 +1544,7 @@ export function TimeReportPageClient({
         const sk = weekSliceKey(yearRef.current, weekRef.current);
         setCustomerGroups(data.groups);
         weekRevisionRef.current = data.revision;
-        weekRevisionRef.current = data.revision;
-        setWeekRevisionsByKey((prev) => {
-          const next = { ...prev, [sk]: data.revision };
-          weekRevisionsByKeyRef.current = next;
-          return next;
-        });
+        syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, data.revision);
         void runBatchHydrate(data.groups);
       });
     }
@@ -1557,11 +1592,7 @@ export function TimeReportPageClient({
       setSaveError(result.error);
       return;
     }
-    setWeekRevisionsByKey((prev) => {
-      const next = { ...prev, [targetKey]: result.revision };
-      weekRevisionsByKeyRef.current = next;
-      return next;
-    });
+    syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, targetKey, result.revision);
     setCopyToWeekState("idle");
     refreshAfterCopyToCurrentWeek();
   };
@@ -1635,11 +1666,7 @@ export function TimeReportPageClient({
         setSaveError(result.error);
         return;
       }
-      setWeekRevisionsByKey((prev) => {
-        const next = { ...prev, [sk]: result.revision };
-        weekRevisionsByKeyRef.current = next;
-        return next;
-      });
+      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
     }
     setCopyToNextMonthState("idle");
   };
@@ -2871,16 +2898,21 @@ export function TimeReportPageClient({
                                   }
                                   onCommit={(v) => {
                                     setIsDirty(true);
-                                    setMonthMergedRows((prev) =>
-                                      prev.map((r) =>
+                                    setMonthMergedRows((prev) => {
+                                      const next = prev.map((r) =>
                                         r.id !== row.id
                                           ? r
                                           : {
                                               ...r,
                                               hoursByDate: { ...r.hoursByDate, [dateStr]: v },
                                             }
-                                      )
-                                    );
+                                      );
+                                      const u = next.find((rr) => rr.id === row.id);
+                                      if (u && !mergedRowHasContent(u)) {
+                                        return next.filter((rr) => rr.id !== row.id);
+                                      }
+                                      return next;
+                                    });
                                   }}
                                   onBlur={() => setEditingCell(null)}
                                   hasInternalComment={
@@ -2983,12 +3015,12 @@ export function TimeReportPageClient({
           setRevisionConflictOpen(open);
           if (!open) savePausedForRevisionConflictRef.current = false;
         }}
-        title="Tidrapporten har ändrats"
+        title="Time report changed elsewhere"
       >
         <div className="flex flex-col gap-3 pt-2">
           <p className="text-sm text-text-secondary">
-            Rapporten har uppdaterats i en annan flik eller session. Ladda om för att se senaste
-            versionen innan du fortsätter redigera.
+            This report was updated in another tab or session. Reload to load the latest version before
+            you continue editing.
           </p>
           <div className="flex justify-end gap-2">
             <Button
@@ -2999,7 +3031,7 @@ export function TimeReportPageClient({
                 else reloadMonthFromServer();
               }}
             >
-              Ladda om
+              Reload
             </Button>
           </div>
         </div>

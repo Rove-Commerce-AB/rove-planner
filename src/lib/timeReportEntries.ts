@@ -65,6 +65,22 @@ function isSubcontractorRole(role: string | undefined): boolean {
   return role === "subcontractor";
 }
 
+/** When saving month view, only cells and deletes inside this calendar month are applied (ISO weeks may spill outside). */
+export type SaveTimeReportCalendarMonthScope = { year: number; month: number };
+
+function calendarMonthDateBounds(y: number, m: number): { start: string; end: string } {
+  const start = `${y}-${String(m).padStart(2, "0")}-01`;
+  const monthEnd = new Date(y, m, 0);
+  const end = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(
+    monthEnd.getDate()
+  ).padStart(2, "0")}`;
+  return { start, end };
+}
+
+function dateStrInInclusiveBounds(dateStr: string, start: string, end: string): boolean {
+  return dateStr >= start && dateStr <= end;
+}
+
 export async function getActiveProjectsForCustomer(
   customerId: string
 ): Promise<ProjectOption[]> {
@@ -550,7 +566,8 @@ export async function saveTimeReportEntries(
   year: number,
   week: number,
   customerGroups: TimeReportCustomerGroup[],
-  expectedRevision: number
+  expectedRevision: number,
+  calendarMonthScope?: SaveTimeReportCalendarMonthScope | null
 ): Promise<SaveTimeReportEntriesResult> {
   const ctx = await getTimeReportAccessContext();
   const consultant = ctx.consultant;
@@ -560,6 +577,9 @@ export async function saveTimeReportEntries(
 
   const isSubcontractor = isSubcontractorRole(ctx.appUser?.role);
   const weekDates = getISOWeekDateStrings(year, week);
+  const scopeBounds = calendarMonthScope
+    ? calendarMonthDateBounds(calendarMonthScope.year, calendarMonthScope.month)
+    : null;
 
   const desired: DesiredCell[] = [];
 
@@ -627,6 +647,13 @@ export async function saveTimeReportEntries(
       const entryLineId = (entry.id && entry.id.trim() !== "" ? entry.id : randomUUID()) as string;
 
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        const entryDate = weekDates[dayIndex]!;
+        if (
+          scopeBounds &&
+          !dateStrInInclusiveBounds(entryDate, scopeBounds.start, scopeBounds.end)
+        ) {
+          continue;
+        }
         const hours = entry.hours[dayIndex] ?? 0;
         const comment = entry.comments[dayIndex]?.trim() ?? "";
         if (hours > 0 || comment !== "") {
@@ -638,7 +665,7 @@ export async function saveTimeReportEntries(
             role_id: entry.roleId,
             jira_devops_key: entry.jiraDevOpsValue || null,
             description: (entry.task ?? "").trim() || null,
-            entry_date: weekDates[dayIndex]!,
+            entry_date: entryDate,
             hours,
             internal_comment: comment || null,
             rate_snapshot: rateSnapshot,
@@ -700,6 +727,12 @@ export async function saveTimeReportEntries(
 
     for (const [key, ex] of existingByKey) {
       if (!desiredByKey.has(key)) {
+        if (
+          scopeBounds &&
+          !dateStrInInclusiveBounds(ex.entry_date, scopeBounds.start, scopeBounds.end)
+        ) {
+          continue;
+        }
         await writeEntryHistory(client, {
           timeReportEntryId: ex.id,
           entryLineId: ex.entry_line_id,

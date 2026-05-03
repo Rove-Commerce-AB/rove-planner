@@ -1,18 +1,33 @@
-Release notes — time reporting (ready to paste in Slack)
+Release notes — Rove Planner (Done → Communicate) — paste into Slack (English)
 
 ---
 
+*Rove Planner — what’s shipping*
+
+*Time reporting*
+• *Row totals* — Each time-report row can show total hours (aligned with day and customer targets), so you can compare time spent on a task to the estimate in one place.
+• *See which week you’re on* — When there are many rows, it’s easier to see which week you’re working in: clearer focus when you move through the grid (incl. hover / column context).
+
+*Allocation & project planning*
+• *Internal vs external consultants* — After you change a consultant from internal to external, their row now moves to the correct table in Allocation as expected (no stuck / outdated placement).
+• *Remove allocations* — You can remove an allocation from the project *Planning* tab when you need to clear a plan line.
+• *Project view & teams* — In project view (e.g. vacation planning), you can filter the list with a team combobox so the right people are quicker to find.
+
+*Internal refs (Linear)*: ROV-41, ROV-45, ROV-46, ROV-47, ROV-48
+
+---
+
+*Plain copy (no Slack markdown) — same content*
+
+Rove Planner — what’s shipping
+
 Time reporting
+- Row totals: each row can show total hours so you can compare time on a task to the estimate.
+- Clearer week context in dense grids (including time planning), so you know which week you’re changing.
 
-Concurrency and data integrity
-• The time report now uses a version check so an old browser tab with an outdated view cannot overwrite newer entries you saved in another tab or session.
+Allocation & project planning
+- Switching a consultant from internal to external now moves the row to the correct allocation table.
+- You can remove an allocation from the project Planning tab.
+- Project view: team filter (combobox) for faster vacation / planning workflows.
 
-Defaults and what we remember
-• The time reporting page opens on the current month by default.
-• Whether you last used week view or month view is remembered for your next visit (no separate setting screen—your last choice is restored).
-
-Input and feedback
-• Hour fields accept a comma as decimal separator (e.g. 1,5 hours), not only a full stop, so locale and typing habits are less likely to turn 1,5 into 15 by mistake.
-• Cells that have an internal comment show a small indicator so you can see annotated entries at a glance.
-
-Issue keys for internal use only: ROV-43, ROV-52, ROV-37, ROV-39, ROV-51
+Linear: ROV-41, ROV-45, ROV-46, ROV-47, ROV-48
