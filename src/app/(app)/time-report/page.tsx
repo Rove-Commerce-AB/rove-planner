@@ -2,7 +2,7 @@ import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { getCustomersByIds, getInternalRoveCustomerId } from "@/lib/customers";
-import { getCurrentYearWeek } from "@/lib/dateUtils";
+import { getCurrentCalendarYearMonth, getCurrentYearWeek } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui";
 import { TimeReportPageClient } from "./TimeReportPageClient";
 import { getHolidayDatesForWeek } from "./actions";
@@ -13,6 +13,8 @@ export default async function TimeReportPage() {
   const consultant = await getConsultantForCurrentUser();
   const appUser = await getCurrentAppUser();
   const { year: initialYear, week: initialWeek } = getCurrentYearWeek();
+  const { year: initialDisplayYear, month: initialDisplayMonth } =
+    getCurrentCalendarYearMonth();
   const [rawCustomerIds, initialHolidayDates] = consultant
     ? await Promise.all([
         getCustomerIdsForConsultant(consultant.id),
@@ -48,6 +50,8 @@ export default async function TimeReportPage() {
         }))}
         initialYear={initialYear}
         initialWeek={initialWeek}
+        initialDisplayYear={initialDisplayYear}
+        initialDisplayMonth={initialDisplayMonth}
         calendarId={consultant?.calendar_id ?? null}
         initialHolidayDates={initialHolidayDates}
       />

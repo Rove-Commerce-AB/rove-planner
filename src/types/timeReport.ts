@@ -41,3 +41,16 @@ export type TimeReportEntryCopyPayload = {
    */
   copyHours?: boolean;
 };
+
+/** Result of loading one ISO week of time report data (includes revision for optimistic locking). */
+export type TimeReportWeekData = {
+  groups: TimeReportCustomerGroup[];
+  /** Increments on every successful write to this consultant/week. */
+  revision: number;
+};
+
+export type SaveTimeReportEntriesResult =
+  | { success: true; revision: number }
+  | { success: false; error: string; code?: "revision_conflict"; currentRevision?: number };
+
+export type CopyEntryToWeekResult = SaveTimeReportEntriesResult;

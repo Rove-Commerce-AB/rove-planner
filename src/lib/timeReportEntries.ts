@@ -1,5 +1,8 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
+
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getProjectsByCustomerIds } from "@/lib/projects";
 import {
@@ -14,12 +17,15 @@ import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getInternalRoveCustomerId } from "@/lib/customers";
 import type {
+  CopyEntryToWeekResult,
   JiraDevOpsOption,
   ProjectOption,
+  SaveTimeReportEntriesResult,
   TaskOption,
   TimeReportCustomerGroup,
   TimeReportEntry,
   TimeReportEntryCopyPayload,
+  TimeReportWeekData,
 } from "@/types";
 
 async function getTimeReportAccessContext() {
@@ -286,8 +292,9 @@ async function getEffectiveRateSnapshot(
   return null;
 }
 
-type TimeReportRow = {
+type TimeReportRowDb = {
   id: string;
+  entry_line_id: string;
   customer_id: string;
   project_id: string;
   role_id: string;
@@ -300,58 +307,174 @@ type TimeReportRow = {
   display_order: string | number | null;
 };
 
+async function getAppUserIdForAudit(): Promise<string | null> {
+  const u = await getCurrentAppUser();
+  if (!u?.email) return null;
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM app_users WHERE lower(trim(email)) = lower(trim($1)) LIMIT 1`,
+    [u.email]
+  );
+  return rows[0]?.id ?? null;
+}
+
+function snapshotRowDb(r: TimeReportRowDb): Record<string, unknown> {
+  return {
+    id: r.id,
+    entry_line_id: r.entry_line_id,
+    customer_id: r.customer_id,
+    project_id: r.project_id,
+    role_id: r.role_id,
+    jira_devops_key: r.jira_devops_key,
+    description: r.description,
+    entry_date: r.entry_date,
+    hours: Number(r.hours ?? 0),
+    internal_comment: r.internal_comment,
+    rate_snapshot: r.rate_snapshot != null ? Number(r.rate_snapshot) : null,
+    display_order: Number(r.display_order ?? 0),
+  };
+}
+
+type DesiredCell = {
+  entry_line_id: string;
+  consultant_id: string;
+  customer_id: string;
+  project_id: string;
+  role_id: string;
+  jira_devops_key: string | null;
+  description: string | null;
+  entry_date: string;
+  hours: number;
+  internal_comment: string | null;
+  rate_snapshot: number | null;
+  display_order: number;
+};
+
+function desiredCellSnapshot(d: DesiredCell, dbId?: string): Record<string, unknown> {
+  return {
+    id: dbId,
+    entry_line_id: d.entry_line_id,
+    customer_id: d.customer_id,
+    project_id: d.project_id,
+    role_id: d.role_id,
+    jira_devops_key: d.jira_devops_key,
+    description: d.description,
+    entry_date: d.entry_date,
+    hours: d.hours,
+    internal_comment: d.internal_comment,
+    rate_snapshot: d.rate_snapshot,
+    display_order: d.display_order,
+  };
+}
+
+function cellDiffers(db: TimeReportRowDb, d: DesiredCell): boolean {
+  return (
+    db.customer_id !== d.customer_id ||
+    db.project_id !== d.project_id ||
+    db.role_id !== d.role_id ||
+    (db.jira_devops_key ?? "") !== (d.jira_devops_key ?? "") ||
+    (db.description ?? "") !== (d.description ?? "") ||
+    Number(db.hours ?? 0) !== d.hours ||
+    (db.internal_comment ?? "") !== (d.internal_comment ?? "") ||
+    Number(db.rate_snapshot ?? 0) !== Number(d.rate_snapshot ?? 0) ||
+    Number(db.display_order ?? 0) !== d.display_order
+  );
+}
+
+async function writeEntryHistory(
+  client: PoolClient,
+  args: {
+    timeReportEntryId: string | null;
+    entryLineId: string;
+    consultantId: string;
+    operation: "insert" | "update" | "delete";
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    sourceRevision: number;
+    changedByAppUserId: string | null;
+  }
+) {
+  await client.query(
+    `INSERT INTO time_report_entries_history (
+       time_report_entry_id, entry_line_id, consultant_id, operation,
+       before_json, after_json, changed_by_app_user_id, source_revision
+     ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8::bigint)`,
+    [
+      args.timeReportEntryId,
+      args.entryLineId,
+      args.consultantId,
+      args.operation,
+      args.before ? JSON.stringify(args.before) : null,
+      args.after ? JSON.stringify(args.after) : null,
+      args.changedByAppUserId,
+      args.sourceRevision,
+    ]
+  );
+}
+
 export async function getTimeReportEntries(
   consultantId: string,
   year: number,
   week: number
-): Promise<TimeReportCustomerGroup[]> {
+): Promise<TimeReportWeekData> {
   const consultant = await getConsultantForCurrentUser();
-  if (!consultant || consultant.id !== consultantId) return [];
+  if (!consultant || consultant.id !== consultantId) {
+    return { groups: [], revision: 0 };
+  }
 
   const weekDates = getISOWeekDateStrings(year, week);
 
-  let { rows } = await cloudSqlPool.query<TimeReportRow>(
-    `SELECT id, customer_id, project_id, role_id, jira_devops_key, description,
-            entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
-     FROM time_report_entries
-     WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
-     ORDER BY display_order ASC NULLS LAST, entry_date ASC`,
-    [consultantId, weekDates]
-  );
+  const [{ rows: revRows }, { rows }] = await Promise.all([
+    cloudSqlPool.query<{ revision: string | null }>(
+      `SELECT revision::text FROM time_report_week_revisions
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
+      [consultantId, year, week]
+    ),
+    cloudSqlPool.query<TimeReportRowDb>(
+      `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
+              entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
+       FROM time_report_entries
+       WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
+       ORDER BY display_order ASC NULLS LAST, entry_date ASC`,
+      [consultantId, weekDates]
+    ),
+  ]);
 
+  const revision = Number(revRows[0]?.revision ?? 0);
+
+  let filteredRows = rows;
   const appUser = await getCurrentAppUser();
   if (isSubcontractorRole(appUser?.role)) {
     const roveId = await getInternalRoveCustomerId();
-    if (roveId) rows = rows.filter((r) => r.customer_id !== roveId);
+    if (roveId) filteredRows = filteredRows.filter((r) => r.customer_id !== roveId);
   }
 
-  if (!rows.length) return [];
+  if (!filteredRows.length) return { groups: [], revision };
 
-  const groupKey = (r: TimeReportRow) =>
-    `${r.customer_id}|${r.project_id}|${r.role_id}|${r.jira_devops_key ?? ""}|${Number(r.display_order ?? 0)}`;
-  const byGroup = new Map<string, TimeReportRow[]>();
-  for (const r of rows) {
-    const key = groupKey(r);
-    if (!byGroup.has(key)) byGroup.set(key, []);
-    byGroup.get(key)!.push(r);
+  const byLineId = new Map<string, TimeReportRowDb[]>();
+  for (const r of filteredRows) {
+    if (!byLineId.has(r.entry_line_id)) byLineId.set(r.entry_line_id, []);
+    byLineId.get(r.entry_line_id)!.push(r);
   }
 
-  const byCustomer = new Map<string, { key: string; dayRows: TimeReportRow[] }[]>();
-  for (const [, dayRows] of byGroup) {
-    const first = dayRows[0];
-    const customerId = first.customer_id;
+  const lineGroups = [...byLineId.values()].sort(
+    (a, b) =>
+      Number(a[0]?.display_order ?? 0) - Number(b[0]?.display_order ?? 0)
+  );
+
+  const byCustomer = new Map<string, TimeReportRowDb[][]>();
+  for (const dayRows of lineGroups) {
+    const customerId = dayRows[0]!.customer_id;
     if (!byCustomer.has(customerId)) byCustomer.set(customerId, []);
-    byCustomer.get(customerId)!.push({ key: groupKey(first), dayRows });
+    byCustomer.get(customerId)!.push(dayRows);
   }
 
   const result: TimeReportCustomerGroup[] = [];
   for (const [customerId, groups] of byCustomer) {
-    groups.sort((a, b) => {
-      const orderA = Number(a.dayRows[0]?.display_order ?? 0);
-      const orderB = Number(b.dayRows[0]?.display_order ?? 0);
-      return orderA - orderB;
-    });
-    const entries: TimeReportEntry[] = groups.map(({ dayRows }) => {
+    groups.sort(
+      (a, b) =>
+        Number(a[0]?.display_order ?? 0) - Number(b[0]?.display_order ?? 0)
+    );
+    const entries: TimeReportEntry[] = groups.map((dayRows) => {
       const hours: number[] = [0, 0, 0, 0, 0, 0, 0];
       const comments: Record<number, string> = {};
       for (const row of dayRows) {
@@ -361,9 +484,9 @@ export async function getTimeReportEntries(
           if (row.internal_comment) comments[dayIndex] = row.internal_comment;
         }
       }
-      const first = dayRows[0];
+      const first = dayRows[0]!;
       return {
-        id: first.id,
+        id: first.entry_line_id,
         projectId: first.project_id,
         roleId: first.role_id,
         jiraDevOpsValue: first.jira_devops_key ?? "",
@@ -375,12 +498,12 @@ export async function getTimeReportEntries(
     result.push({ customerId, entries });
   }
 
-  const customerOrder = [...new Set(rows.map((r) => r.customer_id))];
+  const customerOrder = [...new Set(filteredRows.map((r) => r.customer_id))];
   result.sort(
     (a, b) => customerOrder.indexOf(a.customerId) - customerOrder.indexOf(b.customerId)
   );
 
-  return result;
+  return { groups: result, revision };
 }
 
 export async function getTimeReportMonthTotalHours(
@@ -426,41 +549,30 @@ export async function saveTimeReportEntries(
   consultantId: string,
   year: number,
   week: number,
-  customerGroups: TimeReportCustomerGroup[]
-): Promise<{ error?: string }> {
+  customerGroups: TimeReportCustomerGroup[],
+  expectedRevision: number
+): Promise<SaveTimeReportEntriesResult> {
   const ctx = await getTimeReportAccessContext();
   const consultant = ctx.consultant;
   if (!consultant || consultant.id !== consultantId) {
-    return { error: "Unauthorized" };
+    return { success: false, error: "Unauthorized" };
   }
 
   const isSubcontractor = isSubcontractorRole(ctx.appUser?.role);
   const weekDates = getISOWeekDateStrings(year, week);
 
-  const rows: {
-    consultant_id: string;
-    customer_id: string;
-    project_id: string;
-    role_id: string;
-    jira_devops_key: string | null;
-    description: string | null;
-    entry_date: string;
-    hours: number;
-    internal_comment: string | null;
-    rate_snapshot: number | null;
-    display_order: number;
-  }[] = [];
+  const desired: DesiredCell[] = [];
 
   const projectIds = new Set<string>();
   const customerIds = new Set<string>();
   for (const group of customerGroups) {
     if (!ctx.allowedCustomerIds.has(group.customerId)) {
-      return { error: "Unauthorized customer." };
+      return { success: false, error: "Unauthorized customer." };
     }
     customerIds.add(group.customerId);
     for (const entry of group.entries) {
       if (isSubcontractor && entry.projectId && !ctx.bookedProjectIds.has(entry.projectId)) {
-        return { error: "Unauthorized project for subcontractor." };
+        return { success: false, error: "Unauthorized project for subcontractor." };
       }
       if (entry.projectId) projectIds.add(entry.projectId);
     }
@@ -499,29 +611,34 @@ export async function saveTimeReportEntries(
   for (let cgIndex = 0; cgIndex < customerGroups.length; cgIndex++) {
     const group = customerGroups[cgIndex];
     for (let eIndex = 0; eIndex < group.entries.length; eIndex++) {
-      const entry = group.entries[eIndex];
+      const entry = group.entries[eIndex]!;
       const hasContent =
         (entry.hours?.some((h) => (h ?? 0) > 0) ?? false) ||
         Object.values(entry.comments ?? {}).some((c) => (c ?? "").trim() !== "");
       if (hasContent && (!entry.projectId || !entry.roleId)) {
-        return { error: "Project and Role are required for all rows with hours or comments." };
+        return {
+          success: false,
+          error: "Project and Role are required for all rows with hours or comments.",
+        };
       }
       if (!entry.projectId || !entry.roleId) continue;
       const displayOrder = cgIndex * 1000 + eIndex;
       const rateSnapshot = resolveRateSnapshot(entry.projectId, group.customerId, entry.roleId);
+      const entryLineId = (entry.id && entry.id.trim() !== "" ? entry.id : randomUUID()) as string;
 
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
         const hours = entry.hours[dayIndex] ?? 0;
         const comment = entry.comments[dayIndex]?.trim() ?? "";
         if (hours > 0 || comment !== "") {
-          rows.push({
+          desired.push({
+            entry_line_id: entryLineId,
             consultant_id: consultantId,
             customer_id: group.customerId,
             project_id: entry.projectId,
             role_id: entry.roleId,
             jira_devops_key: entry.jiraDevOpsValue || null,
             description: (entry.task ?? "").trim() || null,
-            entry_date: weekDates[dayIndex],
+            entry_date: weekDates[dayIndex]!,
             hours,
             internal_comment: comment || null,
             rate_snapshot: rateSnapshot,
@@ -532,47 +649,170 @@ export async function saveTimeReportEntries(
     }
   }
 
+  const appUserId = await getAppUserIdForAudit();
   const client = await cloudSqlPool.connect();
   try {
     await client.query("BEGIN");
     await client.query(
-      `DELETE FROM time_report_entries WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
+      `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
+       VALUES ($1, $2, $3, 0)
+       ON CONFLICT (consultant_id, iso_year, iso_week) DO NOTHING`,
+      [consultantId, year, week]
+    );
+
+    const { rows: revLock } = await client.query<{ revision: string }>(
+      `SELECT revision::text FROM time_report_week_revisions
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+       FOR UPDATE`,
+      [consultantId, year, week]
+    );
+    const currentRev = Number(revLock[0]?.revision ?? 0);
+    if (currentRev !== expectedRevision) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: "Tidrapporten har uppdaterats någon annanstans. Ladda om innan du sparar igen.",
+        code: "revision_conflict",
+        currentRevision: currentRev,
+      };
+    }
+
+    const newRevision = currentRev + 1;
+
+    const { rows: existingRows } = await client.query<TimeReportRowDb>(
+      `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
+              entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
+       FROM time_report_entries
+       WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
+       FOR UPDATE`,
       [consultantId, weekDates]
     );
-    for (const row of rows) {
-      await client.query(
-        `INSERT INTO time_report_entries (
-           consultant_id, customer_id, project_id, role_id, jira_devops_key,
-           description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11)`,
-        [
-          row.consultant_id,
-          row.customer_id,
-          row.project_id,
-          row.role_id,
-          row.jira_devops_key,
-          row.description,
-          row.entry_date,
-          row.hours,
-          row.internal_comment,
-          row.rate_snapshot,
-          row.display_order,
-        ]
-      );
+
+    const existingByKey = new Map<string, TimeReportRowDb>();
+    for (const r of existingRows) {
+      existingByKey.set(`${r.entry_line_id}|${r.entry_date}`, r);
     }
+
+    const desiredByKey = new Map<string, DesiredCell>();
+    for (const d of desired) {
+      desiredByKey.set(`${d.entry_line_id}|${d.entry_date}`, d);
+    }
+
+    for (const [key, ex] of existingByKey) {
+      if (!desiredByKey.has(key)) {
+        await writeEntryHistory(client, {
+          timeReportEntryId: ex.id,
+          entryLineId: ex.entry_line_id,
+          consultantId,
+          operation: "delete",
+          before: snapshotRowDb(ex),
+          after: null,
+          sourceRevision: newRevision,
+          changedByAppUserId: appUserId,
+        });
+        await client.query(`DELETE FROM time_report_entries WHERE id = $1`, [ex.id]);
+      }
+    }
+
+    for (const [key, de] of desiredByKey) {
+      const ex = existingByKey.get(key);
+      if (!ex) {
+        const ins = await client.query<{ id: string }>(
+          `INSERT INTO time_report_entries (
+             consultant_id, customer_id, project_id, role_id, jira_devops_key,
+             description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order,
+             entry_line_id
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12)
+           RETURNING id`,
+          [
+            de.consultant_id,
+            de.customer_id,
+            de.project_id,
+            de.role_id,
+            de.jira_devops_key,
+            de.description,
+            de.entry_date,
+            de.hours,
+            de.internal_comment,
+            de.rate_snapshot,
+            de.display_order,
+            de.entry_line_id,
+          ]
+        );
+        const newId = ins.rows[0]?.id;
+        await writeEntryHistory(client, {
+          timeReportEntryId: newId ?? null,
+          entryLineId: de.entry_line_id,
+          consultantId,
+          operation: "insert",
+          before: null,
+          after: desiredCellSnapshot(de, newId),
+          sourceRevision: newRevision,
+          changedByAppUserId: appUserId,
+        });
+      } else if (cellDiffers(ex, de)) {
+        await client.query(
+          `UPDATE time_report_entries SET
+             customer_id = $2,
+             project_id = $3,
+             role_id = $4,
+             jira_devops_key = $5,
+             description = $6,
+             hours = $7,
+             pm_edited_hours = $7,
+             internal_comment = $8,
+             rate_snapshot = $9,
+             display_order = $10,
+             entry_line_id = $11
+           WHERE id = $1`,
+          [
+            ex.id,
+            de.customer_id,
+            de.project_id,
+            de.role_id,
+            de.jira_devops_key,
+            de.description,
+            de.hours,
+            de.internal_comment,
+            de.rate_snapshot,
+            de.display_order,
+            de.entry_line_id,
+          ]
+        );
+        await writeEntryHistory(client, {
+          timeReportEntryId: ex.id,
+          entryLineId: de.entry_line_id,
+          consultantId,
+          operation: "update",
+          before: snapshotRowDb(ex),
+          after: desiredCellSnapshot(de, ex.id),
+          sourceRevision: newRevision,
+          changedByAppUserId: appUserId,
+        });
+      }
+    }
+
+    await client.query(
+      `UPDATE time_report_week_revisions
+       SET revision = $1::bigint,
+           updated_at = now(),
+           updated_by_app_user_id = $2
+       WHERE consultant_id = $3 AND iso_year = $4 AND iso_week = $5`,
+      [newRevision, appUserId, consultantId, year, week]
+    );
+
     await client.query("COMMIT");
+    return { success: true, revision: newRevision };
   } catch (e) {
     try {
       await client.query("ROLLBACK");
     } catch {
       // Ignore rollback errors and return the original failure.
     }
-    return { error: e instanceof Error ? e.message : "Save failed" };
+    return { success: false, error: e instanceof Error ? e.message : "Save failed" };
   } finally {
     client.release();
   }
-
-  return {};
 }
 
 export async function copyEntryToWeek(
@@ -580,37 +820,25 @@ export async function copyEntryToWeek(
   targetYear: number,
   targetWeek: number,
   customerId: string,
-  entry: TimeReportEntryCopyPayload
-): Promise<{ error?: string }> {
+  entry: TimeReportEntryCopyPayload,
+  expectedRevision: number
+): Promise<CopyEntryToWeekResult> {
   const ctx = await getTimeReportAccessContext();
   const consultant = ctx.consultant;
   if (!consultant || consultant.id !== consultantId) {
-    return { error: "Unauthorized" };
+    return { success: false, error: "Unauthorized" };
   }
   if (!ctx.allowedCustomerIds.has(customerId)) {
-    return { error: "Unauthorized customer." };
+    return { success: false, error: "Unauthorized customer." };
   }
   if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(entry.projectId)) {
-    return { error: "Unauthorized project for subcontractor." };
+    return { success: false, error: "Unauthorized project for subcontractor." };
   }
   if (!entry.projectId || !entry.roleId) {
-    return { error: "Project and Role are required." };
+    return { success: false, error: "Project and Role are required." };
   }
 
   const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
-
-  const { rows: existing } = await cloudSqlPool.query<{ display_order: number | null }>(
-    `SELECT display_order FROM time_report_entries
-     WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
-    [consultantId, weekDates]
-  );
-
-  const maxOrder =
-    existing.length && existing.every((r) => r.display_order != null)
-      ? Math.max(...existing.map((r) => Number(r.display_order)))
-      : 0;
-  const displayOrder = maxOrder + 1000;
-
   const rateSnapshot = await getEffectiveRateSnapshot(
     entry.projectId,
     customerId,
@@ -619,26 +847,17 @@ export async function copyEntryToWeek(
 
   const copyHours = entry.copyHours !== false;
 
-  const rows: {
-    consultant_id: string;
-    customer_id: string;
-    project_id: string;
-    role_id: string;
-    jira_devops_key: string | null;
-    description: string | null;
-    entry_date: string;
-    hours: number;
-    internal_comment: string | null;
-    rate_snapshot: number | null;
-    display_order: number;
-  }[] = [];
+  const toInsert: DesiredCell[] = [];
+  const entryLineId = randomUUID();
+  const displayOrderPlaceholder = 0;
 
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     const hours = copyHours ? (entry.hours[dayIndex] ?? 0) : 0;
     const comment = copyHours ? (entry.comments[dayIndex]?.trim() ?? "") : "";
     if (copyHours) {
       if (hours > 0 || comment !== "") {
-        rows.push({
+        toInsert.push({
+          entry_line_id: entryLineId,
           consultant_id: consultantId,
           customer_id: customerId,
           project_id: entry.projectId,
@@ -649,11 +868,12 @@ export async function copyEntryToWeek(
           hours,
           internal_comment: comment || null,
           rate_snapshot: rateSnapshot,
-          display_order: displayOrder,
+          display_order: displayOrderPlaceholder,
         });
       }
     } else {
-      rows.push({
+      toInsert.push({
+        entry_line_id: entryLineId,
         consultant_id: consultantId,
         customer_id: customerId,
         project_id: entry.projectId,
@@ -664,39 +884,165 @@ export async function copyEntryToWeek(
         hours: 0,
         internal_comment: null,
         rate_snapshot: rateSnapshot,
-        display_order: displayOrder,
+        display_order: displayOrderPlaceholder,
       });
     }
   }
 
-  if (rows.length === 0) {
-    return { error: "Entry has no hours or comments to copy." };
+  if (toInsert.length === 0) {
+    return { success: false, error: "Entry has no hours or comments to copy." };
   }
 
-  for (const row of rows) {
-    try {
-      await cloudSqlPool.query(
+  const appUserId = await getAppUserIdForAudit();
+  const client = await cloudSqlPool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: ordRows } = await client.query<{ display_order: string | number | null }>(
+      `SELECT display_order FROM time_report_entries
+       WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
+      [consultantId, weekDates]
+    );
+    const maxOrder =
+      ordRows.length && ordRows.every((r) => r.display_order != null)
+        ? Math.max(...ordRows.map((r) => Number(r.display_order)))
+        : 0;
+    const displayOrder = maxOrder + 1000;
+    for (const r of toInsert) {
+      r.display_order = displayOrder;
+    }
+
+    await client.query(
+      `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
+       VALUES ($1, $2, $3, 0)
+       ON CONFLICT (consultant_id, iso_year, iso_week) DO NOTHING`,
+      [consultantId, targetYear, targetWeek]
+    );
+
+    const { rows: revLock } = await client.query<{ revision: string }>(
+      `SELECT revision::text FROM time_report_week_revisions
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+       FOR UPDATE`,
+      [consultantId, targetYear, targetWeek]
+    );
+    const currentRev = Number(revLock[0]?.revision ?? 0);
+    if (currentRev !== expectedRevision) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: "Tidrapporten har uppdaterats någon annanstans. Ladda om innan du kopierar igen.",
+        code: "revision_conflict",
+        currentRevision: currentRev,
+      };
+    }
+
+    const newRevision = currentRev + 1;
+
+    for (const de of toInsert) {
+      const ins = await client.query<{ id: string }>(
         `INSERT INTO time_report_entries (
            consultant_id, customer_id, project_id, role_id, jira_devops_key,
-           description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11)`,
+           description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order,
+           entry_line_id
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12)
+         RETURNING id`,
         [
-          row.consultant_id,
-          row.customer_id,
-          row.project_id,
-          row.role_id,
-          row.jira_devops_key,
-          row.description,
-          row.entry_date,
-          row.hours,
-          row.internal_comment,
-          row.rate_snapshot,
-          row.display_order,
+          de.consultant_id,
+          de.customer_id,
+          de.project_id,
+          de.role_id,
+          de.jira_devops_key,
+          de.description,
+          de.entry_date,
+          de.hours,
+          de.internal_comment,
+          de.rate_snapshot,
+          de.display_order,
+          de.entry_line_id,
         ]
       );
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : "Insert failed" };
+      const newId = ins.rows[0]?.id;
+      await writeEntryHistory(client, {
+        timeReportEntryId: newId ?? null,
+        entryLineId: de.entry_line_id,
+        consultantId,
+        operation: "insert",
+        before: null,
+        after: desiredCellSnapshot(de, newId),
+        sourceRevision: newRevision,
+        changedByAppUserId: appUserId,
+      });
     }
+
+    await client.query(
+      `UPDATE time_report_week_revisions
+       SET revision = $1::bigint,
+           updated_at = now(),
+           updated_by_app_user_id = $2
+       WHERE consultant_id = $3 AND iso_year = $4 AND iso_week = $5`,
+      [newRevision, appUserId, consultantId, targetYear, targetWeek]
+    );
+
+    await client.query("COMMIT");
+    return { success: true, revision: newRevision };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Ignore rollback errors and return the original failure.
+    }
+    return { success: false, error: e instanceof Error ? e.message : "Insert failed" };
+  } finally {
+    client.release();
   }
-  return {};
+}
+
+/** Lightweight revision check for visibility refresh (same semantics as load). */
+export async function getTimeReportWeekRevision(
+  consultantId: string,
+  year: number,
+  week: number
+): Promise<number | null> {
+  const consultant = await getConsultantForCurrentUser();
+  if (!consultant || consultant.id !== consultantId) return null;
+  const { rows } = await cloudSqlPool.query<{ revision: string | null }>(
+    `SELECT revision::text FROM time_report_week_revisions
+     WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
+    [consultantId, year, week]
+  );
+  return Number(rows[0]?.revision ?? 0);
+}
+
+/** Batch revision lookup for month view (`${year}-W${week}` keys, missing weeks → 0). */
+export async function getTimeReportWeekRevisions(
+  consultantId: string,
+  weeks: { year: number; week: number }[]
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const w of weeks) {
+    out[`${w.year}-W${w.week}`] = 0;
+  }
+
+  const consultant = await getConsultantForCurrentUser();
+  if (!consultant || consultant.id !== consultantId || weeks.length === 0) {
+    return out;
+  }
+
+  const years = weeks.map((w) => w.year);
+  const wks = weeks.map((w) => w.week);
+  const { rows } = await cloudSqlPool.query<{
+    iso_year: number;
+    iso_week: number;
+    revision: string;
+  }>(
+    `SELECT iso_year, iso_week, revision::text
+     FROM time_report_week_revisions
+     WHERE consultant_id = $1
+       AND (iso_year, iso_week) IN (SELECT * FROM unnest($2::int[], $3::int[]) AS t(y, wk))`,
+    [consultantId, years, wks]
+  );
+  for (const r of rows) {
+    out[`${r.iso_year}-W${r.iso_week}`] = Number(r.revision);
+  }
+  return out;
 }
