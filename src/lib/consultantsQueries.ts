@@ -78,10 +78,11 @@ export async function createConsultantQuery(
   return rows[0];
 }
 
+/** Returns whether any column was updated (false when input had no fields). */
 export async function updateConsultantQuery(
   id: string,
   input: UpdateConsultantInput
-): Promise<void> {
+): Promise<boolean> {
   const sets: string[] = [];
   const values: unknown[] = [];
   let i = 1;
@@ -129,7 +130,7 @@ export async function updateConsultantQuery(
     sets.push(`birth_date = $${i++}`);
     values.push(input.birth_date ?? null);
   }
-  if (sets.length === 0) return;
+  if (sets.length === 0) return false;
   sets.push(`updated_at = now()`);
   values.push(id);
   await cloudSqlPool.query(
@@ -150,6 +151,7 @@ export async function updateConsultantQuery(
       );
     }
   }
+  return true;
 }
 
 export async function deleteConsultantQuery(id: string): Promise<void> {

@@ -38,6 +38,10 @@ import {
 import { useAllocationWeekNavigation } from "@/lib/hooks/useAllocationWeekNavigation";
 import { useAllocationFilteredData } from "@/lib/hooks/useAllocationFilteredData";
 import { AllocationConsultantTables } from "@/components/allocation/AllocationConsultantTables";
+import {
+  TimeGridColumnHighlightProvider,
+  useTimeGridColumnHighlight,
+} from "@/components/TimeGridColumnHighlight";
 
 export type {
   ProbabilityDisplay,
@@ -93,9 +97,19 @@ type Props = {
   onWeekRangeChange?: (year: number, weekFrom: number, weekTo: number) => void | Promise<void>;
   /** When true (embed), show loading state on week nav (e.g. disabled arrows or spinner). */
   embedWeekNavLoading?: boolean;
+  /** In embed mode (e.g. project Planning panel), show team filter above the table — same behavior as full Allocation page. */
+  embedShowTeamFilter?: boolean;
 };
 
-export function AllocationPageClient({
+export function AllocationPageClient(props: Props) {
+  return (
+    <TimeGridColumnHighlightProvider>
+      <AllocationPageClientImpl {...props} />
+    </TimeGridColumnHighlightProvider>
+  );
+}
+
+function AllocationPageClientImpl({
   data,
   error,
   year,
@@ -106,7 +120,9 @@ export function AllocationPageClient({
   embedMode,
   onWeekRangeChange,
   embedWeekNavLoading = false,
+  embedShowTeamFilter = false,
 }: Props) {
+  const { highlightedColumnIndex } = useTimeGridColumnHighlight();
   const router = useRouter();
   const { getPreviousUrl, getNextUrl, goToPreviousWeeks, goToNextWeeks } =
     useAllocationWeekNavigation(
@@ -577,17 +593,17 @@ export function AllocationPageClient({
 
   const renderWeekHeaderCells = useCallback(
     (tableKey: string, borderClass = "border-grid-subtle") =>
-      (data?.weeks ?? []).map((w) => (
+      (data?.weeks ?? []).map((w, idx) => (
         <th
           key={`${tableKey}-${w.year}-${w.week}`}
           className={`border-r ${borderClass} px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
             isCurrentWeekHeader(w) ? "current-week-header bg-brand-signal/20 border-l border-r" : ""
-          }`}
+          } ${highlightedColumnIndex === idx ? "time-grid-header-column-active" : ""}`}
         >
           v{w.week}
         </th>
       )),
-    [data?.weeks, isCurrentWeekHeader]
+    [data?.weeks, isCurrentWeekHeader, highlightedColumnIndex]
   );
 
   if (error) {
@@ -953,6 +969,25 @@ export function AllocationPageClient({
               </span>
             </label>
           )}
+        </div>
+      )}
+
+      {embedMode && embedShowTeamFilter && data.teams.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+            Filter
+          </span>
+          <Select
+            variant="filter"
+            value={teamFilterId ?? ""}
+            onValueChange={(v) => setTeamFilterId(v ? v : null)}
+            options={[
+              { value: "", label: "All teams" },
+              ...data.teams.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+            className="w-auto min-w-0"
+            triggerClassName="min-w-[160px]"
+          />
         </div>
       )}
 

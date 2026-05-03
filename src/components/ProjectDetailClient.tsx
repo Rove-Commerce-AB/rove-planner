@@ -1052,6 +1052,7 @@ export function ProjectDetailClient({
             embedMode={{ projectId: initial.id, rates: allocationRates, budgetHours: budgetHours ?? undefined, budgetMoney: budgetMoney ?? undefined }}
             onWeekRangeChange={handleWeekRangeChange}
             embedWeekNavLoading={planningLoading}
+            embedShowTeamFilter
           />
           ) : (
             <div className="flex items-center justify-center py-12">

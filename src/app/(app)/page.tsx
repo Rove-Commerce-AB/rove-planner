@@ -5,6 +5,7 @@ import { getPersonalDashboardData } from "@/lib/dashboard";
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import { PageHeader, Panel, PanelSectionTitle } from "@/components/ui";
+import { PersonalNextWeeksTable } from "@/components/PersonalNextWeeksTable";
 import type { PersonalAllocationRow } from "@/lib/dashboard";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { listOpenTodosAssignedToUser } from "@/lib/taskBoardQueries";
@@ -125,111 +126,20 @@ export default async function DashboardPage() {
       </Panel>
     );
   } else {
-    const { rowKeys, rowInfoMap, hoursMap, keyStr } = buildTableData(rows);
-    const isCurrentWeek = (w: { year: number; week: number }) =>
-      w.year === currentYear && w.week === currentWeek;
+    const { rowKeys, rowInfoMap, hoursMap } = buildTableData(rows);
 
     mainContent = (
       <Panel>
         <PanelSectionTitle>NEXT 10 WEEKS</PanelSectionTitle>
-        <div className="allocation-tables overflow-x-auto p-2 pt-0">
-          <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
-            <colgroup>
-              <col style={{ width: 280 }} />
-              {weeks.map((w) => (
-                <col key={`${w.year}-${w.week}`} className="w-[1.75rem]" />
-              ))}
-              <col className="w-14" />
-            </colgroup>
-            <thead>
-              <tr className="border-b border-grid-subtle">
-                <th
-                  rowSpan={2}
-                  className="border-r border-grid-subtle px-2 py-1 text-left text-[10px] font-medium text-text-primary opacity-80"
-                  style={{ width: 280, maxWidth: 280, boxSizing: "border-box" }}
-                >
-                  Customer · Project · Role
-                </th>
-                {monthSpans.map((span, i) => (
-                  <th
-                    key={i}
-                    colSpan={span.colSpan}
-                    className="border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
-                  >
-                    {span.label}
-                  </th>
-                ))}
-                <th
-                  rowSpan={2}
-                  className="border-r border-grid-subtle px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
-                >
-                  Sum
-                </th>
-              </tr>
-              <tr className="border-b border-grid-subtle">
-                {weeks.map((w) => (
-                  <th
-                    key={`${w.year}-${w.week}`}
-                    className={`border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium text-text-primary opacity-80 ${
-                      isCurrentWeek(w)
-                        ? "current-week-header bg-brand-signal/20 border-l border-r"
-                        : ""
-                    }`}
-                  >
-                    v{w.week}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rowKeys.map((key) => {
-                const info = rowInfoMap.get(keyStr(key))!;
-                let rowTotal = 0;
-                return (
-                  <tr
-                    key={keyStr(key)}
-                    className="border-b border-grid-light-subtle last:border-form bg-bg-default"
-                  >
-                    <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top text-left text-[10px] text-text-primary">
-                      <span className="opacity-90">{info.customerName}</span>
-                      <span className="mx-1.5 opacity-50">·</span>
-                      <Link
-                        href={`/projects/${key.projectId}`}
-                        className="font-medium text-text-primary hover:underline"
-                      >
-                        {info.projectName}
-                      </Link>
-                      {info.roleName !== "—" && (
-                        <>
-                          <span className="mx-1.5 opacity-50">·</span>
-                          <span className="opacity-80">{info.roleName}</span>
-                        </>
-                      )}
-                    </td>
-                    {weeks.map((w) => {
-                      const h =
-                        hoursMap.get(`${keyStr(key)}\0${w.year}\0${w.week}`) ?? 0;
-                      rowTotal += h;
-                      return (
-                        <td
-                          key={`${w.year}-${w.week}`}
-                          className={`border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary ${
-                            isCurrentWeek(w) ? "current-week-cell border-l border-r" : ""
-                          }`}
-                        >
-                          {h > 0 ? `${h}h` : "—"}
-                        </td>
-                      );
-                    })}
-                    <td className="border-r border-grid-light-subtle px-1 py-1 text-right text-[10px] tabular-nums font-medium text-text-primary">
-                      {rowTotal > 0 ? `${rowTotal}h` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <PersonalNextWeeksTable
+          weeks={weeks}
+          monthSpans={monthSpans}
+          rowKeys={rowKeys}
+          rowInfoMap={rowInfoMap}
+          hoursMap={hoursMap}
+          currentYear={currentYear}
+          currentWeek={currentWeek}
+        />
       </Panel>
     );
   }

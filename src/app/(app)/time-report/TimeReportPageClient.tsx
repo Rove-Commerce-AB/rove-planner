@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, Fragment, useMemo, memo } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  Fragment,
+  useMemo,
+  memo,
+  type HTMLAttributes,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -53,6 +62,10 @@ import {
   timeReportDayTotals as dayTotals,
 } from "./timeReportEntryModel";
 import { TimeReportHourCell } from "./TimeReportHourCell";
+import {
+  useTimeGridColumnHighlight,
+  timeGridColumnCellInteractionProps,
+} from "@/components/TimeGridColumnHighlight";
 
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 
@@ -102,6 +115,19 @@ function jiraDevOpsDisplayLabel(
   const label = option?.label?.trim();
   if (label) return label;
   return rawValue.replace(/^(jira|devops):/, "");
+}
+
+/** Compact display for footer / row hour totals (matches week vs month grid footers). */
+function formatReportHoursTotal(
+  w: number,
+  precision: "week" | "month"
+): string {
+  if (!Number.isFinite(w) || w === 0) return "";
+  if (Math.abs(w - Math.round(w)) < 1e-6) return String(Math.round(w));
+  if (precision === "week") {
+    return String(Math.round(w * 10) / 10).replace(/\.0$/, "");
+  }
+  return String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
 }
 
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
@@ -320,6 +346,10 @@ type EditableHourTdProps = {
   showLeftBorder?: boolean;
   /** Visual marker when this day has a non-empty internal comment. */
   hasInternalComment?: boolean;
+  columnInteractionProps?: Pick<
+    HTMLAttributes<HTMLTableCellElement>,
+    "onMouseEnter" | "onMouseLeave" | "onFocusCapture" | "onBlurCapture"
+  >;
 };
 
 const EditableHourTd = memo(function EditableHourTd({
@@ -336,6 +366,7 @@ const EditableHourTd = memo(function EditableHourTd({
   compact = false,
   showLeftBorder,
   hasInternalComment = false,
+  columnInteractionProps,
 }: EditableHourTdProps) {
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
   const cellW = compact
@@ -345,6 +376,7 @@ const EditableHourTd = memo(function EditableHourTd({
   const grayBg = isGray ? (grayWeekend ? "bg-bg-muted/60" : "bg-bg-muted/51") : "";
   return (
     <td
+      {...columnInteractionProps}
       className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
     >
       <div
@@ -396,6 +428,8 @@ export function TimeReportPageClient({
   calendarId,
   initialHolidayDates,
 }: Props) {
+  const { highlightedColumnIndex, setHighlightedColumnIndex } =
+    useTimeGridColumnHighlight();
   const [year, setYear] = useState(initialYear);
   const [week, setWeek] = useState(initialWeek);
   const [holidayDates, setHolidayDates] = useState<string[]>(initialHolidayDates);
@@ -1786,13 +1820,10 @@ export function TimeReportPageClient({
     [customerGroups]
   );
 
-  const weekTotalDisplay = useMemo(() => {
-    const w = weekTotalHours;
-    if (!Number.isFinite(w) || w === 0) return "";
-    return Math.abs(w - Math.round(w)) < 1e-6
-      ? String(Math.round(w))
-      : String(Math.round(w * 10) / 10).replace(/\.0$/, "");
-  }, [weekTotalHours]);
+  const weekTotalDisplay = useMemo(
+    () => formatReportHoursTotal(weekTotalHours, "week"),
+    [weekTotalHours]
+  );
 
   const calendarMonthValue = `${displayYear}-${String(displayMonth).padStart(2, "0")}`;
 
@@ -1851,13 +1882,10 @@ export function TimeReportPageClient({
     () => monthDateDayTotals.reduce((a, b) => a + b, 0),
     [monthDateDayTotals]
   );
-  const monthGridTotalDisplay = useMemo(() => {
-    const w = monthGridTotalHours;
-    if (!Number.isFinite(w) || w === 0) return "";
-    return Math.abs(w - Math.round(w)) < 1e-6
-      ? String(Math.round(w))
-      : String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
-  }, [monthGridTotalHours]);
+  const monthGridTotalDisplay = useMemo(
+    () => formatReportHoursTotal(monthGridTotalHours, "month"),
+    [monthGridTotalHours]
+  );
 
   const monthTableColSpan = 5 + monthCalendarDates.length + 1;
 
@@ -2079,7 +2107,7 @@ export function TimeReportPageClient({
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
-                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""} ${highlightedColumnIndex === i ? "time-grid-header-column-active" : ""}`}
                     title={isTodayColumn(i) ? "Idag" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
@@ -2090,7 +2118,9 @@ export function TimeReportPageClient({
                     </div>
                   </th>
                 ))}
-                <th className="w-[3rem] min-w-[3rem] px-1 py-1.5" aria-hidden />
+                <th className="w-[3.5rem] min-w-[3.5rem] px-0.5 py-1.5">
+                  <span className="sr-only">Row total</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -2110,6 +2140,10 @@ export function TimeReportPageClient({
                     {totalHoursPerDay.map((h, i) => (
                       <td
                         key={i}
+                        {...timeGridColumnCellInteractionProps(
+                          i,
+                          setHighlightedColumnIndex
+                        )}
                         className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
@@ -2119,9 +2153,9 @@ export function TimeReportPageClient({
                         </div>
                       </td>
                     ))}
-                    <td className="w-[3rem] min-w-[3rem] px-1 py-1 align-middle">
-                      <div className="flex h-full w-full items-center justify-center">
-                        <span className="text-xs font-medium tabular-nums text-text-primary">
+                    <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
+                      <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                        <span className="text-center text-xs font-medium tabular-nums text-text-primary">
                           {weekTotalDisplay}
                         </span>
                       </div>
@@ -2164,6 +2198,10 @@ export function TimeReportPageClient({
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
+                          {...timeGridColumnCellInteractionProps(
+                            i,
+                            setHighlightedColumnIndex
+                          )}
                           className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
@@ -2173,9 +2211,9 @@ export function TimeReportPageClient({
                           </div>
                         </td>
                       ))}
-                      <td className="w-[3rem] min-w-[3rem] px-1 py-0.5 align-middle">
-                        <div className="flex h-full w-full items-center justify-center">
-                          <span className="text-xs font-medium tabular-nums text-text-primary">
+                      <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                        <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                          <span className="text-center text-xs font-medium tabular-nums text-text-primary">
                             {customerWeekTotal > 0 ? String(customerWeekTotal) : ""}
                           </span>
                         </div>
@@ -2400,24 +2438,37 @@ export function TimeReportPageClient({
                               hasInternalComment={
                                 (entry.comments[dayIndex] ?? "").trim() !== ""
                               }
+                              columnInteractionProps={timeGridColumnCellInteractionProps(
+                                dayIndex,
+                                setHighlightedColumnIndex
+                              )}
                             />
                           ))}
-                          <td className="w-[3rem] min-w-[3rem] px-1 py-1 align-middle">
-                            <div className="flex h-full w-full items-center justify-center">
-                              <IconButton
-                                aria-label="Delete entire row"
-                                title="Delete entire row"
-                                onClick={() => {
-                                  setPendingRowDelete({
-                                    customerId: group.customerId,
-                                    entryId: entry.id,
-                                  });
-                                }}
-                                className="time-report-icons-tight !opacity-100 text-brand-signal hover:text-brand-signal"
+                          <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
+                            <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                              <span
+                                className="text-center text-xs font-medium tabular-nums text-text-primary"
+                                title="Total hours this week on this row"
                               >
-                                <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
-                              </IconButton>
+                                {formatReportHoursTotal(
+                                  entry.hours.reduce((s, h) => s + (h ?? 0), 0),
+                                  "week"
+                                )}
+                              </span>
                             </div>
+                            <IconButton
+                              aria-label="Delete entire row"
+                              title="Delete entire row"
+                              onClick={() => {
+                                setPendingRowDelete({
+                                  customerId: group.customerId,
+                                  entryId: entry.id,
+                                });
+                              }}
+                              className="time-report-icons-tight absolute top-1/2 right-0 z-[1] -translate-y-1/2 !opacity-100 text-brand-signal hover:text-brand-signal"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
+                            </IconButton>
                           </td>
                         </tr>
                       ))}
@@ -2442,7 +2493,7 @@ export function TimeReportPageClient({
               {monthCalendarDates.map((d) => (
                 <col key={d} style={{ width: "clamp(1rem,1.8vw,1.28rem)" }} />
               ))}
-              <col style={{ width: "3rem" }} />
+              <col style={{ width: "3.5rem" }} />
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
@@ -2476,7 +2527,7 @@ export function TimeReportPageClient({
                   return (
                     <th
                       key={dateStr}
-                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
+                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""} ${highlightedColumnIndex === dateIdx ? "time-grid-header-column-active" : ""}`}
                       title={
                         isTodayHeader
                           ? `Idag — ${longDow} ${dom} (${dateStr})`
@@ -2490,7 +2541,9 @@ export function TimeReportPageClient({
                     </th>
                   );
                 })}
-                <th className="min-w-0 px-1 py-1.5" aria-hidden />
+                <th className="w-[3.5rem] min-w-[3.5rem] px-0.5 py-1.5">
+                  <span className="sr-only">Row total</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -2512,6 +2565,10 @@ export function TimeReportPageClient({
                       return (
                         <td
                           key={dateStr}
+                          {...timeGridColumnCellInteractionProps(
+                            dateIdx,
+                            setHighlightedColumnIndex
+                          )}
                           className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
@@ -2522,9 +2579,9 @@ export function TimeReportPageClient({
                         </td>
                       );
                     })}
-                    <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                      <div className="flex h-full w-full items-center justify-center">
-                        <span className="text-[12px] font-medium tabular-nums text-text-primary">
+                    <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                      <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                        <span className="text-center text-[12px] font-medium tabular-nums text-text-primary">
                           {monthGridTotalDisplay}
                         </span>
                       </div>
@@ -2571,6 +2628,10 @@ export function TimeReportPageClient({
                           {monthCalendarDates.map((dateStr, dateIdx) => (
                             <td
                               key={dateStr}
+                              {...timeGridColumnCellInteractionProps(
+                                dateIdx,
+                                setHighlightedColumnIndex
+                              )}
                               className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                             >
                               <div className="flex h-full w-full items-center justify-center">
@@ -2582,9 +2643,9 @@ export function TimeReportPageClient({
                               </div>
                             </td>
                           ))}
-                          <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                            <div className="flex h-full w-full items-center justify-center">
-                              <span className="text-[12px] font-medium tabular-nums text-text-primary">
+                          <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                            <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                              <span className="text-center text-[12px] font-medium tabular-nums text-text-primary">
                                 {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
                               </span>
                             </div>
@@ -2825,24 +2886,40 @@ export function TimeReportPageClient({
                                   hasInternalComment={
                                     (row.commentsByDate[dateStr] ?? "").trim() !== ""
                                   }
+                                  columnInteractionProps={timeGridColumnCellInteractionProps(
+                                    dateIdx,
+                                    setHighlightedColumnIndex
+                                  )}
                                 />
                               ))}
-                              <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                                <div className="flex h-full w-full items-center justify-center">
-                                  <IconButton
-                                    aria-label="Delete entire row"
-                                    title="Delete entire row"
-                                    onClick={() => {
-                                      setPendingRowDelete({
-                                        customerId: row.customerId,
-                                        entryId: row.id,
-                                      });
-                                    }}
-                                    className="time-report-icons-tight !opacity-100 text-brand-signal hover:text-brand-signal"
+                              <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                                <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                                  <span
+                                    className="text-center text-[12px] font-medium tabular-nums text-text-primary"
+                                    title="Total hours this month on this row"
                                   >
-                                    <Trash2 className="h-3 w-3 stroke-[1.5]" />
-                                  </IconButton>
+                                    {formatReportHoursTotal(
+                                      monthCalendarDates.reduce(
+                                        (s, d) => s + (row.hoursByDate[d] ?? 0),
+                                        0
+                                      ),
+                                      "month"
+                                    )}
+                                  </span>
                                 </div>
+                                <IconButton
+                                  aria-label="Delete entire row"
+                                  title="Delete entire row"
+                                  onClick={() => {
+                                    setPendingRowDelete({
+                                      customerId: row.customerId,
+                                      entryId: row.id,
+                                    });
+                                  }}
+                                  className="time-report-icons-tight absolute top-1/2 right-0 z-[1] -translate-y-1/2 !opacity-100 text-brand-signal hover:text-brand-signal"
+                                >
+                                  <Trash2 className="h-3 w-3 stroke-[1.5]" />
+                                </IconButton>
                               </td>
                             </tr>
                           );

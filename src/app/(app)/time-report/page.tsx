@@ -4,7 +4,7 @@ import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { getCustomersByIds, getInternalRoveCustomerId } from "@/lib/customers";
 import { getCurrentCalendarYearMonth, getCurrentYearWeek } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui";
-import { TimeReportPageClient } from "./TimeReportPageClient";
+import { TimeReportWithColumnHighlight } from "./TimeReportWithColumnHighlight";
 import { getHolidayDatesForWeek } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ export default async function TimeReportPage() {
   return (
     <div className="p-6">
       <PageHeader title="Time report" className="mb-6" />
-      <TimeReportPageClient
+      <TimeReportWithColumnHighlight
         consultant={consultant}
         customers={customers.map((c) => ({
           id: c.id,

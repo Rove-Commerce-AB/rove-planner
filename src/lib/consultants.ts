@@ -1,5 +1,7 @@
 import "server-only";
 
+import { revalidatePath, revalidateTag } from "next/cache";
+
 import { getCurrentAppUser } from "./appUsers";
 import { addConsultantToCustomer } from "./customerConsultants";
 import { getCustomerIdByName } from "./customers";
@@ -35,7 +37,11 @@ export async function createConsultant(input: q.CreateConsultantInput) {
 }
 
 export async function updateConsultant(id: string, input: q.UpdateConsultantInput) {
-  return q.updateConsultantQuery(id, input);
+  const updated = await q.updateConsultantQuery(id, input);
+  if (!updated) return;
+  revalidateTag("allocation-consultants", "max");
+  revalidatePath("/consultants");
+  revalidatePath("/allocation");
 }
 
 export async function deleteConsultant(id: string) {
