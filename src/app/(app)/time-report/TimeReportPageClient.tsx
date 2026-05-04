@@ -188,7 +188,9 @@ function buildMergedMonthRows(
         }
         // Do not include per-day comments in the merge key.
         // Comments are date-specific and should merge into the same logical month row.
-        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
+        // Keep entry-line identity in month rows so save payload cannot collapse
+        // multiple distinct lines into one and accidentally trigger deletes.
+        const mergeKey = `${e.id}|${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
         sources.push({ mergeKey, customerId: g.customerId, entry: e, hoursByDate, commentsByDate });
       }
     }
