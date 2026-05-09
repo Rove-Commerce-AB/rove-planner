@@ -30,8 +30,11 @@ export function TimeReportHourCell({
   }, [isEditing, value]);
 
   const handleCommit = () => {
+    const trimmed = localValue.trim();
     const num =
-      localValue === "" ? 0 : Math.max(0, Math.min(24, parseFloat(localValue) || 0));
+      trimmed === ""
+        ? 0
+        : Math.max(0, Math.min(24, parseFloat(trimmed.replace(",", ".")) || 0));
     onCommit(num);
     setLocalValue(num === 0 ? "" : String(num));
     onBlur();
@@ -40,10 +43,8 @@ export function TimeReportHourCell({
   if (isEditing) {
     return (
       <input
-        type="number"
-        min={0}
-        max={24}
-        step={0.5}
+        type="text"
+        inputMode="decimal"
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onFocus={(e) => e.target.select()}
@@ -56,7 +57,7 @@ export function TimeReportHourCell({
           }
         }}
         autoFocus
-        className={`rounded border border-form bg-bg-default px-0.5 text-right tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+        className={`rounded border border-form bg-bg-default px-0.5 text-right tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal ${
           compact ? "h-5 w-full min-w-0 max-w-full text-[9px]" : "h-6 w-9 text-xs"
         }`}
       />

@@ -1,6 +1,10 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type FocusEvent } from "react";
+import {
+  useTimeGridColumnHighlight,
+  timeGridColumnCellInteractionProps,
+} from "@/components/TimeGridColumnHighlight";
 import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ChevronLeft, Percent, ExternalLink } from "lucide-react";
@@ -113,6 +117,27 @@ const weekNav = (p: AllocationCustomerProjectTabsProps) => (
 export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTabsProps) {
   const p = props;
   const { data, tab } = p;
+  const { highlightedColumnIndex, setHighlightedColumnIndex } =
+    useTimeGridColumnHighlight();
+  const [hoverRowKey, setHoverRowKey] = useState<string | null>(null);
+
+  const allocationRowHoverHandlers = (rowKey: string) => ({
+    onMouseEnter: () => setHoverRowKey(rowKey),
+    onMouseLeave: () => setHoverRowKey(null),
+    onFocusCapture: () => setHoverRowKey(rowKey),
+    onBlurCapture: (e: FocusEvent<HTMLTableRowElement>) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && e.currentTarget.contains(next)) return;
+      setHoverRowKey(null);
+    },
+  });
+
+  const allocationRowHoverClass = (rowKey: string) =>
+    hoverRowKey === rowKey ? "time-grid-row-hover" : "";
+
+  const allocColHoverClass = (weekIndex: number) =>
+    highlightedColumnIndex === weekIndex ? "time-grid-column-hover" : "";
+
   const [customerDragState, setCustomerDragState] = useState<{
     mode: "consultant" | "project";
     customerId: string;
@@ -135,7 +160,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
   const [preventNextConsultantCellClick, setPreventNextConsultantCellClick] = useState(false);
 
   useEffect(() => {
-    if (tab !== "customer" || customerDragState === null) return;
+    if ((tab !== "customer" && tab !== "project") || customerDragState === null) return;
     const onMouseUp = () => {
       const drag = customerDragState;
       const lo = Math.min(drag.weekIndexStart, drag.weekIndexEnd);
@@ -263,7 +288,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               const hasProjects = row.projectGroups.length > 0;
               return (
                 <Fragment key={row.customer.id}>
-                  <tr className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}>
+                  <tr
+                    className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`cust-name-${row.customer.id}`)}`}
+                    {...allocationRowHoverHandlers(`cust-name-${row.customer.id}`)}
+                  >
                     <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                       <div className="flex items-center justify-between gap-1 w-full">
                         <button
@@ -300,7 +328,11 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       return (
                         <td
                           key={`${w.year}-${w.week}`}
-                          className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
+                          {...timeGridColumnCellInteractionProps(
+                            i,
+                            setHighlightedColumnIndex
+                          )}
+                          className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${allocColHoverClass(i)}`}
                         >
                           {hasBooking ? `${total}h` : null}
                         </td>
@@ -310,7 +342,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                   {expanded &&
                     row.projectGroups.map((pg) => (
                       <Fragment key={pg.project.id}>
-                        <tr className="border-b border-grid-light-subtle bg-bg-muted/30">
+                        <tr
+                          className={`border-b border-grid-light-subtle bg-bg-muted/30 ${allocationRowHoverClass(`cust-proj-${row.customer.id}-${pg.project.id}`)}`}
+                          {...allocationRowHoverHandlers(`cust-proj-${row.customer.id}-${pg.project.id}`)}
+                        >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                             <span className="flex items-center gap-1 whitespace-nowrap font-medium text-text-primary">
                               {pg.project.name}
@@ -356,10 +391,14 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                 : -1;
                             const isDragLeft = isProjectDragRange && i === dragMin;
                             const isDragRight = isProjectDragRange && i === dragMax;
+                            const colHl = timeGridColumnCellInteractionProps(
+                              i,
+                              setHighlightedColumnIndex
+                            );
                             return (
                               <td
                                 key={`${w.year}-${w.week}`}
-                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} cursor-crosshair select-none px-1 py-1 text-center text-[9px] tabular-nums text-text-primary hover:bg-brand-blue/50 ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} cursor-crosshair select-none px-1 py-1 text-center text-[9px] tabular-nums text-text-primary hover:bg-brand-blue/50 ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   setCustomerDragState({
@@ -375,7 +414,11 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                   });
                                   setCustomerDragMoved(false);
                                 }}
-                                onMouseEnter={() => {
+                                onMouseLeave={colHl.onMouseLeave}
+                                onFocusCapture={colHl.onFocusCapture}
+                                onBlurCapture={colHl.onBlurCapture}
+                                onMouseEnter={(e) => {
+                                  colHl.onMouseEnter?.(e);
                                   if (
                                     customerDragState?.mode === "project" &&
                                     customerDragState.customerId === row.customer.id &&
@@ -396,7 +439,8 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         {pg.consultantRows.map((cr) => (
                       <tr
                         key={`${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`}
-                        className="border-b border-grid-light-subtle last:border-form"
+                        className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`cust-cell-${row.customer.id}-${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}`}
+                        {...allocationRowHoverHandlers(`cust-cell-${row.customer.id}-${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}
                       >
                         <td className="border-r border-grid-light-subtle px-2 py-1 pl-14 text-text-primary">
                           <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
@@ -421,10 +465,14 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                             editingCell?.consultantId === cr.consultantId &&
                             editingCell?.roleId === cr.roleId &&
                             editingCell?.weekIndex === i;
+                          const colHl = timeGridColumnCellInteractionProps(
+                            i,
+                            setHighlightedColumnIndex
+                          );
                           return (
                             <td
                               key={`${weekInfo.year}-${weekInfo.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums cursor-crosshair select-none ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""} ${customerDragState?.mode === "consultant" && customerDragState.customerId === row.customer.id && customerDragState.projectId === pg.project.id && customerDragState.consultantId === cr.consultantId && i >= Math.min(customerDragState.weekIndexStart, customerDragState.weekIndexEnd) && i <= Math.max(customerDragState.weekIndexStart, customerDragState.weekIndexEnd) ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums cursor-crosshair select-none ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""} ${customerDragState?.mode === "consultant" && customerDragState.customerId === row.customer.id && customerDragState.projectId === pg.project.id && customerDragState.consultantId === cr.consultantId && i >= Math.min(customerDragState.weekIndexStart, customerDragState.weekIndexEnd) && i <= Math.max(customerDragState.weekIndexStart, customerDragState.weekIndexEnd) ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${allocColHoverClass(i)}`}
                               onMouseDown={(e) => {
                                 if (isEditing) return;
                                 e.preventDefault();
@@ -452,7 +500,11 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                                 });
                                 setCustomerDragMoved(false);
                               }}
-                              onMouseEnter={() => {
+                              onMouseLeave={colHl.onMouseLeave}
+                              onFocusCapture={colHl.onFocusCapture}
+                              onBlurCapture={colHl.onBlurCapture}
+                              onMouseEnter={(e) => {
+                                colHl.onMouseEnter?.(e);
                                 if (
                                   customerDragState?.mode === "consultant" &&
                                   customerDragState.customerId === row.customer.id &&
@@ -467,25 +519,30 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                               }}
                             >
                               {isEditing ? (
-                                <div className="flex flex-col min-w-0">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={p.editingCellValue}
-                                    onChange={(e) => p.setEditingCellValue(e.target.value)}
-                                    onFocus={(e) => e.target.select()}
-                                    onBlur={p.handleCellInputBlur}
-                                    onKeyDown={p.handleCellInputKeyDown}
-                                    disabled={p.savingCell}
-                                    className="w-full min-w-0 max-w-[3rem] min-h-[1.5rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[9px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal focus:ring-inset [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    onClick={(e) => e.stopPropagation()}
-                                    autoFocus
-                                  />
-                                  <div className="min-h-[0.75rem] shrink-0 text-[9px] leading-tight text-danger">
-                                    {p.savingCell ? "Saving…" : p.cellError ?? "\u00A0"}
-                                  </div>
-                                </div>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={p.editingCellValue}
+                                  onChange={(e) => p.setEditingCellValue(e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onBlur={p.handleCellInputBlur}
+                                  onKeyDown={p.handleCellInputKeyDown}
+                                  disabled={p.savingCell}
+                                  aria-invalid={!!p.cellError}
+                                  title={
+                                    p.savingCell
+                                      ? "Saving…"
+                                      : p.cellError ?? undefined
+                                  }
+                                  className={`box-border block min-h-[1.5rem] w-full min-w-0 max-w-[3rem] rounded border bg-bg-default px-1 py-0.5 text-center text-[9px] text-text-primary focus:outline-none focus:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                    p.cellError
+                                      ? "border-danger focus:ring-danger"
+                                      : "border-brand-signal focus:ring-brand-signal"
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  autoFocus
+                                />
                               ) : (
                                 <button
                                   type="button"
@@ -538,13 +595,29 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
 
   // tab === "project"
   const perProject = p.perProject as Array<{
-    project: { id: string; customer_id: string; label: string; showProbabilitySymbol?: boolean };
+    project: {
+      id: string;
+      customer_id: string;
+      customerName: string;
+      name: string;
+      label: string;
+      showProbabilitySymbol?: boolean;
+    };
     consultantRows: Array<{
       consultantId: string;
       consultantName: string;
       roleId: string | null;
       roleName: string;
-      weeks: { week: number; cells: { id: string; hours: number; displayHours: number; isHidden: boolean }[] }[];
+      weeks: {
+        week: number;
+        cells: {
+          id: string;
+          hours: number;
+          displayHours: number;
+          isHidden: boolean;
+          projectId?: string;
+        }[];
+      }[];
       unavailableByWeek: boolean[];
     }>;
     totalByWeek: Map<string, number>;
@@ -596,7 +669,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
             const hasConsultants = row.consultantRows.length > 0;
             return (
               <Fragment key={row.project.id}>
-                <tr className={`border-b border-grid-light-subtle last:border-form ${expanded && hasConsultants ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}>
+                <tr
+                  className={`border-b border-grid-light-subtle last:border-form ${expanded && hasConsultants ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`proj-head-${row.project.id}`)}`}
+                  {...allocationRowHoverHandlers(`proj-head-${row.project.id}`)}
+                >
                   <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                     <div className="flex items-center justify-between gap-1 w-full">
                       <button
@@ -641,7 +717,11 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                     return (
                       <td
                         key={`${w.year}-${w.week}`}
-                        className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""}`}
+                        {...timeGridColumnCellInteractionProps(
+                          i,
+                          setHighlightedColumnIndex
+                        )}
+                        className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${allocColHoverClass(i)}`}
                       >
                         {hasBooking ? `${total}h` : null}
                       </td>
@@ -661,7 +741,8 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                   row.consultantRows.map((cr) => (
                     <tr
                       key={`${cr.consultantId}-${cr.roleId ?? "none"}`}
-                      className="border-b border-grid-light-subtle last:border-form"
+                      className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`proj-row-${row.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}`}
+                      {...allocationRowHoverHandlers(`proj-row-${row.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                         <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
@@ -682,43 +763,116 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                             : 0;
                         const showLeftBorder = hasBooking && (i === 0 || prevHours === 0);
                         const weekInfo = data.weeks[i];
-                        const editingCell = p.editingCell as { projectId: string; consultantId: string; roleId: string | null; weekIndex: number } | null;
+                        const editingCell = p.editingCell as {
+                          projectId: string;
+                          consultantId: string;
+                          roleId: string | null;
+                          weekIndex: number;
+                        } | null;
                         const isEditing =
                           editingCell?.projectId === row.project.id &&
                           editingCell?.consultantId === cr.consultantId &&
                           editingCell?.roleId === cr.roleId &&
                           editingCell?.weekIndex === i;
+                        const colHl = timeGridColumnCellInteractionProps(
+                          i,
+                          setHighlightedColumnIndex
+                        );
+                        const isDragRange =
+                          customerDragState?.mode === "consultant" &&
+                          customerDragState.customerId === row.project.customer_id &&
+                          customerDragState.projectId === row.project.id &&
+                          customerDragState.consultantId === cr.consultantId &&
+                          i >=
+                            Math.min(
+                              customerDragState.weekIndexStart,
+                              customerDragState.weekIndexEnd
+                            ) &&
+                          i <=
+                            Math.max(
+                              customerDragState.weekIndexStart,
+                              customerDragState.weekIndexEnd
+                            );
                         return (
                           <td
                             key={`${weekInfo.year}-${weekInfo.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} p-0 py-1 text-center text-[9px] tabular-nums cursor-crosshair select-none ${cr.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${p.isCurrentWeek(weekInfo) && !cr.unavailableByWeek[i] ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${p.isCurrentWeek(weekInfo) && cr.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditing ? "align-middle" : ""} ${isDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${allocColHoverClass(i)}`}
+                            onMouseDown={(e) => {
+                              if (isEditing) return;
+                              e.preventDefault();
+                              setCustomerDragState({
+                                mode: "consultant",
+                                customerId: row.project.customer_id,
+                                customerName: row.project.customerName,
+                                projectId: row.project.id,
+                                projectName: row.project.name,
+                                consultantId: cr.consultantId,
+                                consultantName: cr.consultantName,
+                                roleId: cr.roleId,
+                                weekIndexStart: i,
+                                weekIndexEnd: i,
+                                startWeek: w.week,
+                                startYear: weekInfo.year,
+                                startTotalHours: totalHours,
+                                startAllocationId: cells[0]?.id ?? null,
+                                startOtherAllocationIds: cells.slice(1).map((c) => c.id),
+                                startProjectId: cells[0]?.projectId ?? row.project.id,
+                              });
+                              setCustomerDragMoved(false);
+                            }}
+                            onMouseLeave={colHl.onMouseLeave}
+                            onFocusCapture={colHl.onFocusCapture}
+                            onBlurCapture={colHl.onBlurCapture}
+                            onMouseEnter={(e) => {
+                              colHl.onMouseEnter?.(e);
+                              if (
+                                customerDragState?.mode === "consultant" &&
+                                customerDragState.customerId === row.project.customer_id &&
+                                customerDragState.projectId === row.project.id &&
+                                customerDragState.consultantId === cr.consultantId
+                              ) {
+                                setCustomerDragState((prev) =>
+                                  prev ? { ...prev, weekIndexEnd: i } : null
+                                );
+                                setCustomerDragMoved(true);
+                              }
+                            }}
                           >
                             {isEditing ? (
-                              <div className="flex flex-col min-w-0">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={p.editingCellValue}
-                                  onChange={(e) => p.setEditingCellValue(e.target.value)}
-                                  onFocus={(e) => e.target.select()}
-                                  onBlur={p.handleCellInputBlur}
-                                  onKeyDown={p.handleCellInputKeyDown}
-                                  disabled={p.savingCell}
-                                  className="w-full min-w-0 max-w-[3rem] rounded border border-brand-signal bg-bg-default px-1 py-0.5 text-center text-[9px] text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-signal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  onClick={(e) => e.stopPropagation()}
-                                  autoFocus
-                                />
-                                <div className="min-h-[0.75rem] shrink-0 text-[9px] leading-tight text-danger">
-                                  {p.savingCell ? "Saving…" : p.cellError ?? "\u00A0"}
-                                </div>
-                              </div>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={p.editingCellValue}
+                                onChange={(e) => p.setEditingCellValue(e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                onBlur={p.handleCellInputBlur}
+                                onKeyDown={p.handleCellInputKeyDown}
+                                disabled={p.savingCell}
+                                aria-invalid={!!p.cellError}
+                                title={
+                                  p.savingCell
+                                    ? "Saving…"
+                                    : p.cellError ?? undefined
+                                }
+                                className={`box-border block min-h-[1.5rem] w-full min-w-0 max-w-[3rem] rounded border bg-bg-default px-1 py-0.5 text-center text-[9px] text-text-primary focus:outline-none focus:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                  p.cellError
+                                    ? "border-danger focus:ring-danger"
+                                    : "border-brand-signal focus:ring-brand-signal"
+                                }`}
+                                onClick={(e) => e.stopPropagation()}
+                                autoFocus
+                              />
                             ) : (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
+                                  if (preventNextConsultantCellClick) {
+                                    setPreventNextConsultantCellClick(false);
+                                    return;
+                                  }
                                   p.setEditingCell({
                                     customerId: row.project.customer_id,
                                     consultantId: cr.consultantId,

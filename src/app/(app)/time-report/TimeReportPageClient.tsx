@@ -1,6 +1,19 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, Fragment, useMemo, memo } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  Fragment,
+  useMemo,
+  memo,
+  type Dispatch,
+  type HTMLAttributes,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -25,6 +38,8 @@ import {
   saveTimeReportEntries,
   copyEntryToWeek,
   batchHydrateTimeReport,
+  getTimeReportWeekRevision,
+  getTimeReportWeekRevisions,
 } from "./actions";
 import type { ProjectOption, JiraDevOpsOption, TaskOption } from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
@@ -39,6 +54,7 @@ import {
 import {
   TIME_REPORT_DAY_LABELS,
   TIME_REPORT_MONTH_GRID_DOW,
+  TIME_REPORT_VIEW_MODE_STORAGE_KEY,
 } from "./timeReportShared";
 import {
   type TimeReportEntry as Entry,
@@ -50,6 +66,10 @@ import {
   timeReportDayTotals as dayTotals,
 } from "./timeReportEntryModel";
 import { TimeReportHourCell } from "./TimeReportHourCell";
+import {
+  useTimeGridColumnHighlight,
+  timeGridColumnCellInteractionProps,
+} from "@/components/TimeGridColumnHighlight";
 
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 
@@ -101,6 +121,30 @@ function jiraDevOpsDisplayLabel(
   return rawValue.replace(/^(jira|devops):/, "");
 }
 
+/** Compact display for footer / row hour totals (matches week vs month grid footers). */
+function formatReportHoursTotal(
+  w: number,
+  precision: "week" | "month"
+): string {
+  if (!Number.isFinite(w) || w === 0) return "";
+  if (Math.abs(w - Math.round(w)) < 1e-6) return String(Math.round(w));
+  if (precision === "week") {
+    return String(Math.round(w * 10) / 10).replace(/\.0$/, "");
+  }
+  return String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
+}
+
+/** Ref must update synchronously: month save loops multiple ISO weeks in one run; the next `expected` revision must not lag React state. */
+function syncWeekRevisionAfterSave(
+  setWeekRevisionsByKey: Dispatch<SetStateAction<Record<string, number>>>,
+  weekRevisionsByKeyRef: MutableRefObject<Record<string, number>>,
+  sk: string,
+  revision: number
+) {
+  weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, [sk]: revision };
+  setWeekRevisionsByKey((prev) => ({ ...prev, [sk]: revision }));
+}
+
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = {
   id: string;
@@ -144,7 +188,9 @@ function buildMergedMonthRows(
         }
         // Do not include per-day comments in the merge key.
         // Comments are date-specific and should merge into the same logical month row.
-        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
+        // Keep entry-line identity in month rows so save payload cannot collapse
+        // multiple distinct lines into one and accidentally trigger deletes.
+        const mergeKey = `${e.id}|${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
         sources.push({ mergeKey, customerId: g.customerId, entry: e, hoursByDate, commentsByDate });
       }
     }
@@ -178,7 +224,7 @@ function buildMergedMonthRows(
       }
     }
     rows.push({
-      id: crypto.randomUUID(),
+      id: first.entry.id,
       customerId: first.customerId,
       projectId: first.entry.projectId,
       roleId: first.entry.roleId,
@@ -188,7 +234,8 @@ function buildMergedMonthRows(
       commentsByDate,
     });
   }
-  return rows;
+  // Omit rows that only have hours/comments outside this calendar month (e.g. ISO week spills April→May).
+  return rows.filter(mergedRowHasContent);
 }
 
 function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): MonthMergedRow {
@@ -294,6 +341,8 @@ type Props = {
   customers: CustomerOption[];
   initialYear: number;
   initialWeek: number;
+  initialDisplayYear: number;
+  initialDisplayMonth: number;
   calendarId: string | null;
   initialHolidayDates: string[];
 };
@@ -313,6 +362,12 @@ type EditableHourTdProps = {
   compact?: boolean;
   /** When set, overrides default `dayIndex === 0` for left border (month grid). */
   showLeftBorder?: boolean;
+  /** Visual marker when this day has a non-empty internal comment. */
+  hasInternalComment?: boolean;
+  columnInteractionProps?: Pick<
+    HTMLAttributes<HTMLTableCellElement>,
+    "onMouseEnter" | "onMouseLeave" | "onFocusCapture" | "onBlurCapture"
+  >;
 };
 
 const EditableHourTd = memo(function EditableHourTd({
@@ -328,6 +383,8 @@ const EditableHourTd = memo(function EditableHourTd({
   onBlur,
   compact = false,
   showLeftBorder,
+  hasInternalComment = false,
+  columnInteractionProps,
 }: EditableHourTdProps) {
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
   const cellW = compact
@@ -337,6 +394,7 @@ const EditableHourTd = memo(function EditableHourTd({
   const grayBg = isGray ? (grayWeekend ? "bg-bg-muted/60" : "bg-bg-muted/51") : "";
   return (
     <td
+      {...columnInteractionProps}
       className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
     >
       <div
@@ -365,6 +423,15 @@ const EditableHourTd = memo(function EditableHourTd({
           compact={compact}
         />
       </div>
+      {hasInternalComment ? (
+        <svg
+          className={`pointer-events-none absolute top-0 right-0 z-10 text-brand-signal ${compact ? "h-2 w-2" : "h-2.5 w-2.5"}`}
+          viewBox="0 0 8 8"
+          aria-hidden
+        >
+          <polygon points="8 0 8 8 0 0" className="fill-current" />
+        </svg>
+      ) : null}
     </td>
   );
 });
@@ -374,9 +441,13 @@ export function TimeReportPageClient({
   customers,
   initialYear,
   initialWeek,
+  initialDisplayYear,
+  initialDisplayMonth,
   calendarId,
   initialHolidayDates,
 }: Props) {
+  const { highlightedColumnIndex, setHighlightedColumnIndex } =
+    useTimeGridColumnHighlight();
   const [year, setYear] = useState(initialYear);
   const [week, setWeek] = useState(initialWeek);
   const [holidayDates, setHolidayDates] = useState<string[]>(initialHolidayDates);
@@ -429,20 +500,22 @@ export function TimeReportPageClient({
   const [showValidationHighlights, setShowValidationHighlights] = useState(false);
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRequestIdRef = useRef(0);
+  const weekRevisionRef = useRef(0);
+  const [weekRevisionsByKey, setWeekRevisionsByKey] = useState<Record<string, number>>({});
+  const weekRevisionsByKeyRef = useRef<Record<string, number>>({});
+  const [revisionConflictOpen, setRevisionConflictOpen] = useState(false);
+  const savePausedForRevisionConflictRef = useRef(false);
+  const lastVisibilityRevalidateAtRef = useRef(0);
+  const saveStateRef = useRef(saveState);
+  const loadStateRef = useRef(loadState);
   const weekLoadRequestIdRef = useRef(0);
   const customerGroupsRef = useRef(customerGroups);
   const isDirtyRef = useRef(isDirty);
   const yearRef = useRef(year);
   const weekRef = useRef(week);
   const consultantRef = useRef(consultant);
-  const [displayMonth, setDisplayMonth] = useState(() => {
-    const { start } = getISOWeekDateRangeLocal(initialYear, initialWeek);
-    return parseInt(start.slice(5, 7), 10);
-  });
-  const [displayYear, setDisplayYear] = useState(() => {
-    const { start } = getISOWeekDateRangeLocal(initialYear, initialWeek);
-    return parseInt(start.slice(0, 4), 10);
-  });
+  const [displayMonth, setDisplayMonth] = useState(initialDisplayMonth);
+  const [displayYear, setDisplayYear] = useState(initialDisplayYear);
   const [weekStripAnimClass, setWeekStripAnimClass] = useState<
     ""
     | "animate-week-strip-out-to-left"
@@ -452,9 +525,39 @@ export function TimeReportPageClient({
   >("");
   const [isWeekStripTransitioning, setIsWeekStripTransitioning] = useState(false);
   const [viewMode, setViewMode] = useState<"week" | "month">("month");
+  const [viewModeStorageReady, setViewModeStorageReady] = useState(false);
   const [monthMergedRows, setMonthMergedRows] = useState<MonthMergedRow[]>([]);
   const monthLoadRequestIdRef = useRef(0);
   const viewModeRef = useRef(viewMode);
+  /** Serialize server saves so concurrent requests never reuse a stale expectedRevision (revision_conflict). */
+  const saveQueueTailRef = useRef(Promise.resolve());
+  const enqueueTimeReportSave = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const run = saveQueueTailRef.current.then(fn);
+    saveQueueTailRef.current = run.then(() => {}).catch(() => {});
+    return run;
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TIME_REPORT_VIEW_MODE_STORAGE_KEY);
+      if (raw === "week" || raw === "month") {
+        setViewMode(raw);
+      }
+    } catch {
+      // private mode / blocked storage
+    } finally {
+      setViewModeStorageReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!viewModeStorageReady) return;
+    try {
+      localStorage.setItem(TIME_REPORT_VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch {
+      // ignore
+    }
+  }, [viewMode, viewModeStorageReady]);
   const monthMergedRowsRef = useRef(monthMergedRows);
   const displayMonthRef = useRef(displayMonth);
   const displayYearRef = useRef(displayYear);
@@ -487,6 +590,15 @@ export function TimeReportPageClient({
   useEffect(() => {
     consultantRef.current = consultant;
   }, [consultant]);
+  useEffect(() => {
+    weekRevisionsByKeyRef.current = weekRevisionsByKey;
+  }, [weekRevisionsByKey]);
+  useEffect(() => {
+    saveStateRef.current = saveState;
+  }, [saveState]);
+  useLayoutEffect(() => {
+    loadStateRef.current = loadState;
+  }, [loadState]);
 
   const runBatchHydrate = useCallback(async (groups: CustomerGroup[]) => {
     const { customerIds, taskOptionPairs } = collectTimeReportHydratePayload(groups);
@@ -547,17 +659,23 @@ export function TimeReportPageClient({
   useEffect(() => {
     if (!consultant || viewMode !== "week") return;
 
+    loadStateRef.current = "loading";
     setLoadState("loading");
     // Clear old week view immediately to avoid showing stale rows during week switch.
     setCustomerGroups([]);
     const requestId = ++weekLoadRequestIdRef.current;
     getTimeReportEntries(consultant.id, year, week)
-      .then((groups) => {
+      .then((data) => {
         if (requestId !== weekLoadRequestIdRef.current) return;
-        setCustomerGroups(groups);
+        const sliceKey = weekSliceKey(year, week);
+        setCustomerGroups(data.groups);
+        weekRevisionRef.current = data.revision;
+        syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
         setLoadState("loaded");
         setIsDirty(false);
-        void runBatchHydrate(groups);
+        savePausedForRevisionConflictRef.current = false;
+        setRevisionConflictOpen(false);
+        void runBatchHydrate(data.groups);
       })
       .catch(() => {
         if (requestId !== weekLoadRequestIdRef.current) return;
@@ -568,22 +686,31 @@ export function TimeReportPageClient({
   useEffect(() => {
     if (!consultant || viewMode !== "month") return;
 
+    loadStateRef.current = "loading";
     setLoadState("loading");
     setMonthMergedRows([]);
     const weeks = getWeeksInMonthLocal(displayMonth, displayYear);
     const requestId = ++monthLoadRequestIdRef.current;
     const calDates = getCalendarDatesInMonth(displayYear, displayMonth);
     Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(consultant.id, y, w)))
-      .then((allGroups) => {
+      .then((allData) => {
         if (requestId !== monthLoadRequestIdRef.current) return;
         const slices: Record<string, CustomerGroup[]> = {};
+        const revMap: Record<string, number> = {};
         weeks.forEach(({ year: y, week: w }, i) => {
-          slices[weekSliceKey(y, w)] = allGroups[i] ?? [];
+          const payload = allData[i];
+          const key = weekSliceKey(y, w);
+          slices[key] = payload?.groups ?? [];
+          revMap[key] = payload?.revision ?? 0;
         });
+        weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
+        setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
         const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
         setMonthMergedRows(mergedRows);
         setLoadState("loaded");
         setIsDirty(false);
+        savePausedForRevisionConflictRef.current = false;
+        setRevisionConflictOpen(false);
         void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
       })
       .catch(() => {
@@ -598,11 +725,13 @@ export function TimeReportPageClient({
       saveDebounceRef.current = null;
     }
     if (!isDirty || !consultant) return;
+    if (savePausedForRevisionConflictRef.current) return;
 
     // Debounce autosave to avoid one request per keystroke.
     saveDebounceRef.current = setTimeout(() => {
       const saveStart = performance.now();
       const requestId = ++saveRequestIdRef.current;
+      saveStateRef.current = "saving";
       setSaveState("saving");
       setSaveError(null);
       const cid = consultant.id;
@@ -610,6 +739,7 @@ export function TimeReportPageClient({
 
       const finishOk = () => {
         if (requestId !== saveRequestIdRef.current) return;
+        saveStateRef.current = "idle";
         setSaveState("idle");
         setIsDirty(false);
         isDirtyRef.current = false;
@@ -618,6 +748,7 @@ export function TimeReportPageClient({
       const finishErr = (msg: string, validation?: boolean) => {
         if (requestId !== saveRequestIdRef.current) return;
         setSaveError(msg);
+        saveStateRef.current = "error";
         setSaveState("error");
         if (validation && msg.includes("Project and Role")) {
           setShowValidationHighlights(true);
@@ -625,14 +756,31 @@ export function TimeReportPageClient({
       };
 
       if (mode === "week") {
-        saveTimeReportEntries(cid, yearRef.current, weekRef.current, customerGroupsRef.current)
-          .then((result) => {
+        void enqueueTimeReportSave(async () => {
+          try {
+            const result = await saveTimeReportEntries(
+              cid,
+              yearRef.current,
+              weekRef.current,
+              customerGroupsRef.current,
+              weekRevisionRef.current
+            );
             if (requestId !== saveRequestIdRef.current) return;
-            if (result.error) {
+            if (!result.success) {
+              if (result.code === "revision_conflict") {
+                savePausedForRevisionConflictRef.current = true;
+                setRevisionConflictOpen(true);
+                saveStateRef.current = "idle";
+                setSaveState("idle");
+                return;
+              }
               finishErr(result.error, true);
-            } else {
-              finishOk();
+              return;
             }
+            const sk = weekSliceKey(yearRef.current, weekRef.current);
+            weekRevisionRef.current = result.revision;
+            syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+            finishOk();
             if (ENABLE_PERF_DEBUG) {
               fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
                 method: "POST",
@@ -651,32 +799,47 @@ export function TimeReportPageClient({
                     week: weekRef.current,
                     year: yearRef.current,
                     groups: customerGroupsRef.current.length,
-                    error: result.error ?? null,
+                    error: null,
                   },
                   timestamp: Date.now(),
                 }),
               }).catch(() => {});
             }
-          })
-          .catch(() => {
+          } catch {
             if (requestId !== saveRequestIdRef.current) return;
+            saveStateRef.current = "error";
             setSaveState("error");
             setSaveError("Save failed");
-          });
+          }
+        });
         return;
       }
 
-      void (async () => {
+      void enqueueTimeReportSave(async () => {
         const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
         const rows = monthMergedRowsRef.current;
+        const monthScope = {
+          year: displayYearRef.current,
+          month: displayMonthRef.current,
+        };
         for (const { year: y, week: w } of weeks) {
+          const sk = weekSliceKey(y, w);
+          const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
           const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
-          const result = await saveTimeReportEntries(cid, y, w, groups);
+          const result = await saveTimeReportEntries(cid, y, w, groups, expected, monthScope);
           if (requestId !== saveRequestIdRef.current) return;
-          if (result.error) {
+          if (!result.success) {
+            if (result.code === "revision_conflict") {
+              savePausedForRevisionConflictRef.current = true;
+              setRevisionConflictOpen(true);
+              saveStateRef.current = "idle";
+              setSaveState("idle");
+              return;
+            }
             finishErr(result.error, true);
             return;
           }
+          syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
         }
         finishOk();
         if (ENABLE_PERF_DEBUG) {
@@ -700,7 +863,7 @@ export function TimeReportPageClient({
             }),
           }).catch(() => {});
         }
-      })();
+      });
     }, 700);
 
     return () => {
@@ -709,7 +872,18 @@ export function TimeReportPageClient({
         saveDebounceRef.current = null;
       }
     };
-  }, [isDirty, customerGroups, monthMergedRows, viewMode, year, week, consultant?.id, displayMonth, displayYear]);
+  }, [
+    isDirty,
+    customerGroups,
+    monthMergedRows,
+    viewMode,
+    year,
+    week,
+    consultant?.id,
+    displayMonth,
+    displayYear,
+    enqueueTimeReportSave,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -756,67 +930,205 @@ export function TimeReportPageClient({
       saveDebounceRef.current = null;
     }
 
-    if (typeof document !== "undefined") {
-      const activeElement = document.activeElement as HTMLElement | null;
-      if (activeElement && typeof activeElement.blur === "function") {
-        activeElement.blur();
-      }
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    }
-
     const activeConsultant = consultantRef.current;
     if (!isDirtyRef.current || !activeConsultant) return true;
 
-    const requestId = ++saveRequestIdRef.current;
-    setSaveState("saving");
-    setSaveError(null);
-    try {
-      if (viewModeRef.current === "week") {
-        const result = await saveTimeReportEntries(
-          activeConsultant.id,
-          yearRef.current,
-          weekRef.current,
-          customerGroupsRef.current
-        );
-        if (requestId !== saveRequestIdRef.current) return false;
-        if (result.error) {
-          setSaveError(result.error);
-          setSaveState("error");
-          if (result.error.includes("Project and Role")) {
-            setShowValidationHighlights(true);
-          }
-          return false;
+    return enqueueTimeReportSave(async (): Promise<boolean> => {
+      const requestId = ++saveRequestIdRef.current;
+      saveStateRef.current = "saving";
+      setSaveState("saving");
+      setSaveError(null);
+
+      if (typeof document !== "undefined") {
+        const activeElement = document.activeElement as HTMLElement | null;
+        if (activeElement && typeof activeElement.blur === "function") {
+          activeElement.blur();
         }
-      } else {
-        const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
-        const rows = monthMergedRowsRef.current;
-        for (const { year: y, week: w } of weeks) {
-          const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
-          const result = await saveTimeReportEntries(activeConsultant.id, y, w, groups);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      }
+      try {
+        if (viewModeRef.current === "week") {
+          const result = await saveTimeReportEntries(
+            activeConsultant.id,
+            yearRef.current,
+            weekRef.current,
+            customerGroupsRef.current,
+            weekRevisionRef.current
+          );
           if (requestId !== saveRequestIdRef.current) return false;
-          if (result.error) {
+          if (!result.success) {
+            if (result.code === "revision_conflict") {
+              savePausedForRevisionConflictRef.current = true;
+              setRevisionConflictOpen(true);
+              saveStateRef.current = "idle";
+              setSaveState("idle");
+              return false;
+            }
             setSaveError(result.error);
+            saveStateRef.current = "error";
             setSaveState("error");
             if (result.error.includes("Project and Role")) {
               setShowValidationHighlights(true);
             }
             return false;
           }
+          const sk = weekSliceKey(yearRef.current, weekRef.current);
+          weekRevisionRef.current = result.revision;
+          syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+        } else {
+          const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+          const rows = monthMergedRowsRef.current;
+          const monthScope = {
+            year: displayYearRef.current,
+            month: displayMonthRef.current,
+          };
+          for (const { year: y, week: w } of weeks) {
+            const sk = weekSliceKey(y, w);
+            const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
+            const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
+            const result = await saveTimeReportEntries(activeConsultant.id, y, w, groups, expected, monthScope);
+            if (requestId !== saveRequestIdRef.current) return false;
+            if (!result.success) {
+              if (result.code === "revision_conflict") {
+                savePausedForRevisionConflictRef.current = true;
+                setRevisionConflictOpen(true);
+                saveStateRef.current = "idle";
+                setSaveState("idle");
+                return false;
+              }
+              setSaveError(result.error);
+              saveStateRef.current = "error";
+              setSaveState("error");
+              if (result.error.includes("Project and Role")) {
+                setShowValidationHighlights(true);
+              }
+              return false;
+            }
+            syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+          }
         }
+        if (requestId !== saveRequestIdRef.current) return false;
+        saveStateRef.current = "idle";
+        setSaveState("idle");
+        setIsDirty(false);
+        isDirtyRef.current = false;
+        setShowValidationHighlights(false);
+        return true;
+      } catch {
+        if (requestId !== saveRequestIdRef.current) return false;
+        saveStateRef.current = "error";
+        setSaveState("error");
+        setSaveError("Save failed");
+        return false;
       }
-      if (requestId !== saveRequestIdRef.current) return false;
-      setSaveState("idle");
+    });
+  }, [enqueueTimeReportSave]);
+
+  const reloadWeekFromServer = useCallback(() => {
+    const c = consultantRef.current;
+    if (!c || viewModeRef.current !== "week") return;
+    const y = yearRef.current;
+    const w = weekRef.current;
+    const requestId = ++weekLoadRequestIdRef.current;
+    loadStateRef.current = "loading";
+    setLoadState("loading");
+    getTimeReportEntries(c.id, y, w).then((data) => {
+      if (requestId !== weekLoadRequestIdRef.current) return;
+      const sliceKey = weekSliceKey(y, w);
+      setCustomerGroups(data.groups);
+      weekRevisionRef.current = data.revision;
+      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
+      setLoadState("loaded");
       setIsDirty(false);
       isDirtyRef.current = false;
-      setShowValidationHighlights(false);
-      return true;
-    } catch {
-      if (requestId !== saveRequestIdRef.current) return false;
-      setSaveState("error");
-      setSaveError("Save failed");
-      return false;
-    }
-  }, []);
+      savePausedForRevisionConflictRef.current = false;
+      setRevisionConflictOpen(false);
+      void runBatchHydrate(data.groups);
+    });
+  }, [runBatchHydrate]);
+
+  const reloadMonthFromServer = useCallback(() => {
+    const c = consultantRef.current;
+    if (!c || viewModeRef.current !== "month") return;
+    const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+    const calDates = getCalendarDatesInMonth(displayYearRef.current, displayMonthRef.current);
+    const requestId = ++monthLoadRequestIdRef.current;
+    loadStateRef.current = "loading";
+    setLoadState("loading");
+    Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(c.id, y, w))).then((allData) => {
+      if (requestId !== monthLoadRequestIdRef.current) return;
+      const slices: Record<string, CustomerGroup[]> = {};
+      const revMap: Record<string, number> = {};
+      weeks.forEach(({ year: y, week: w }, i) => {
+        const payload = allData[i];
+        const key = weekSliceKey(y, w);
+        slices[key] = payload?.groups ?? [];
+        revMap[key] = payload?.revision ?? 0;
+      });
+      weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
+      setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
+      const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
+      setMonthMergedRows(mergedRows);
+      setLoadState("loaded");
+      setIsDirty(false);
+      isDirtyRef.current = false;
+      savePausedForRevisionConflictRef.current = false;
+      setRevisionConflictOpen(false);
+      void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
+    });
+  }, [runBatchHydrate]);
+
+  useEffect(() => {
+    const checkStaleRevision = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastVisibilityRevalidateAtRef.current < 2500) return;
+      lastVisibilityRevalidateAtRef.current = now;
+      if (saveStateRef.current === "saving") return;
+      // Avoid false positives while month/week slices fetch — client rev map may not match yet.
+      if (loadStateRef.current === "loading") return;
+      const c = consultantRef.current;
+      if (!c) return;
+      if (viewModeRef.current === "week") {
+        void getTimeReportWeekRevision(c.id, yearRef.current, weekRef.current).then((rev) => {
+          if (rev == null) return;
+          if (rev !== weekRevisionRef.current) {
+            if (isDirtyRef.current) {
+              savePausedForRevisionConflictRef.current = true;
+              setRevisionConflictOpen(true);
+            } else {
+              reloadWeekFromServer();
+            }
+          }
+        });
+      } else {
+        const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+        void getTimeReportWeekRevisions(c.id, weeks).then((revs) => {
+          let mismatch = false;
+          for (const w of weeks) {
+            const k = weekSliceKey(w.year, w.week);
+            if ((revs[k] ?? 0) !== (weekRevisionsByKeyRef.current[k] ?? 0)) {
+              mismatch = true;
+              break;
+            }
+          }
+          if (!mismatch) return;
+          if (isDirtyRef.current) {
+            savePausedForRevisionConflictRef.current = true;
+            setRevisionConflictOpen(true);
+          } else {
+            reloadMonthFromServer();
+          }
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", checkStaleRevision);
+    window.addEventListener("focus", checkStaleRevision);
+    return () => {
+      document.removeEventListener("visibilitychange", checkStaleRevision);
+      window.removeEventListener("focus", checkStaleRevision);
+    };
+  }, [reloadWeekFromServer, reloadMonthFromServer]);
 
   const weekDates = useMemo(() => getWeekDates(year, week), [year, week]);
   const todayStr = useMemo(() => {
@@ -1211,11 +1523,17 @@ export function TimeReportPageClient({
         displayMonthRef.current
       );
       void Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(c.id, y, w))).then(
-        (allGroups) => {
+        (allData) => {
           const slices: Record<string, CustomerGroup[]> = {};
+          const revMap: Record<string, number> = {};
           weeks.forEach(({ year: y, week: w }, i) => {
-            slices[weekSliceKey(y, w)] = allGroups[i] ?? [];
+            const payload = allData[i];
+            const key = weekSliceKey(y, w);
+            slices[key] = payload?.groups ?? [];
+            revMap[key] = payload?.revision ?? 0;
           });
+          weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
+          setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
           const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
           setMonthMergedRows(mergedRows);
           void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
@@ -1224,9 +1542,12 @@ export function TimeReportPageClient({
       return;
     }
     if (yearRef.current === initialYear && weekRef.current === initialWeek) {
-      getTimeReportEntries(c.id, yearRef.current, weekRef.current).then((groups) => {
-        setCustomerGroups(groups);
-        void runBatchHydrate(groups);
+      getTimeReportEntries(c.id, yearRef.current, weekRef.current).then((data) => {
+        const sk = weekSliceKey(yearRef.current, weekRef.current);
+        setCustomerGroups(data.groups);
+        weekRevisionRef.current = data.revision;
+        syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, data.revision);
+        void runBatchHydrate(data.groups);
       });
     }
   }, [runBatchHydrate]);
@@ -1246,6 +1567,8 @@ export function TimeReportPageClient({
 
     setCopyToWeekState("copying");
     setSaveError(null);
+    const targetKey = weekSliceKey(initialYear, initialWeek);
+    const expectedRev = weekRevisionsByKeyRef.current[targetKey] ?? 0;
     const result = await copyEntryToWeek(
       consultant.id,
       initialYear,
@@ -1259,13 +1582,19 @@ export function TimeReportPageClient({
         hours: entry.hours,
         comments: entry.comments,
         copyHours,
-      }
+      },
+      expectedRev
     );
-    if (result.error) {
+    if (!result.success) {
+      if (result.code === "revision_conflict") {
+        savePausedForRevisionConflictRef.current = true;
+        setRevisionConflictOpen(true);
+      }
       setCopyToWeekState("error");
       setSaveError(result.error);
       return;
     }
+    syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, targetKey, result.revision);
     setCopyToWeekState("idle");
     refreshAfterCopyToCurrentWeek();
   };
@@ -1312,20 +1641,34 @@ export function TimeReportPageClient({
       const has = hours.some((hh) => (hh ?? 0) > 0) || Object.keys(comments).length > 0;
       if (copyHours && !has) continue;
 
-      const result = await copyEntryToWeek(consultant.id, y, w, row.customerId, {
-        projectId: row.projectId,
-        roleId: row.roleId,
-        jiraDevOpsValue: row.jiraDevOpsValue,
-        task: row.task,
-        hours,
-        comments,
-        copyHours,
-      });
-      if (result.error) {
+      const sk = weekSliceKey(y, w);
+      const expectedRev = weekRevisionsByKeyRef.current[sk] ?? 0;
+      const result = await copyEntryToWeek(
+        consultant.id,
+        y,
+        w,
+        row.customerId,
+        {
+          projectId: row.projectId,
+          roleId: row.roleId,
+          jiraDevOpsValue: row.jiraDevOpsValue,
+          task: row.task,
+          hours,
+          comments,
+          copyHours,
+        },
+        expectedRev
+      );
+      if (!result.success) {
+        if (result.code === "revision_conflict") {
+          savePausedForRevisionConflictRef.current = true;
+          setRevisionConflictOpen(true);
+        }
         setCopyToNextMonthState("error");
         setSaveError(result.error);
         return;
       }
+      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
     }
     setCopyToNextMonthState("idle");
   };
@@ -1506,13 +1849,10 @@ export function TimeReportPageClient({
     [customerGroups]
   );
 
-  const weekTotalDisplay = useMemo(() => {
-    const w = weekTotalHours;
-    if (!Number.isFinite(w) || w === 0) return "";
-    return Math.abs(w - Math.round(w)) < 1e-6
-      ? String(Math.round(w))
-      : String(Math.round(w * 10) / 10).replace(/\.0$/, "");
-  }, [weekTotalHours]);
+  const weekTotalDisplay = useMemo(
+    () => formatReportHoursTotal(weekTotalHours, "week"),
+    [weekTotalHours]
+  );
 
   const calendarMonthValue = `${displayYear}-${String(displayMonth).padStart(2, "0")}`;
 
@@ -1571,13 +1911,10 @@ export function TimeReportPageClient({
     () => monthDateDayTotals.reduce((a, b) => a + b, 0),
     [monthDateDayTotals]
   );
-  const monthGridTotalDisplay = useMemo(() => {
-    const w = monthGridTotalHours;
-    if (!Number.isFinite(w) || w === 0) return "";
-    return Math.abs(w - Math.round(w)) < 1e-6
-      ? String(Math.round(w))
-      : String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
-  }, [monthGridTotalHours]);
+  const monthGridTotalDisplay = useMemo(
+    () => formatReportHoursTotal(monthGridTotalHours, "month"),
+    [monthGridTotalHours]
+  );
 
   const monthTableColSpan = 5 + monthCalendarDates.length + 1;
 
@@ -1799,7 +2136,7 @@ export function TimeReportPageClient({
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
-                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
+                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""} ${highlightedColumnIndex === i ? "time-grid-header-column-active" : ""}`}
                     title={isTodayColumn(i) ? "Idag" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
@@ -1810,7 +2147,9 @@ export function TimeReportPageClient({
                     </div>
                   </th>
                 ))}
-                <th className="w-[3rem] min-w-[3rem] px-1 py-1.5" aria-hidden />
+                <th className="w-[3.5rem] min-w-[3.5rem] px-0.5 py-1.5">
+                  <span className="sr-only">Row total</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1830,6 +2169,10 @@ export function TimeReportPageClient({
                     {totalHoursPerDay.map((h, i) => (
                       <td
                         key={i}
+                        {...timeGridColumnCellInteractionProps(
+                          i,
+                          setHighlightedColumnIndex
+                        )}
                         className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
@@ -1839,9 +2182,9 @@ export function TimeReportPageClient({
                         </div>
                       </td>
                     ))}
-                    <td className="w-[3rem] min-w-[3rem] px-1 py-1 align-middle">
-                      <div className="flex h-full w-full items-center justify-center">
-                        <span className="text-xs font-medium tabular-nums text-text-primary">
+                    <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
+                      <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                        <span className="text-center text-xs font-medium tabular-nums text-text-primary">
                           {weekTotalDisplay}
                         </span>
                       </div>
@@ -1884,6 +2227,10 @@ export function TimeReportPageClient({
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
+                          {...timeGridColumnCellInteractionProps(
+                            i,
+                            setHighlightedColumnIndex
+                          )}
                           className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
@@ -1893,9 +2240,9 @@ export function TimeReportPageClient({
                           </div>
                         </td>
                       ))}
-                      <td className="w-[3rem] min-w-[3rem] px-1 py-0.5 align-middle">
-                        <div className="flex h-full w-full items-center justify-center">
-                          <span className="text-xs font-medium tabular-nums text-text-primary">
+                      <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                        <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                          <span className="text-center text-xs font-medium tabular-nums text-text-primary">
                             {customerWeekTotal > 0 ? String(customerWeekTotal) : ""}
                           </span>
                         </div>
@@ -2117,24 +2464,40 @@ export function TimeReportPageClient({
                                 });
                               }}
                               onBlur={() => setEditingCell(null)}
+                              hasInternalComment={
+                                (entry.comments[dayIndex] ?? "").trim() !== ""
+                              }
+                              columnInteractionProps={timeGridColumnCellInteractionProps(
+                                dayIndex,
+                                setHighlightedColumnIndex
+                              )}
                             />
                           ))}
-                          <td className="w-[3rem] min-w-[3rem] px-1 py-1 align-middle">
-                            <div className="flex h-full w-full items-center justify-center">
-                              <IconButton
-                                aria-label="Delete entire row"
-                                title="Delete entire row"
-                                onClick={() => {
-                                  setPendingRowDelete({
-                                    customerId: group.customerId,
-                                    entryId: entry.id,
-                                  });
-                                }}
-                                className="time-report-icons-tight !opacity-100 text-brand-signal hover:text-brand-signal"
+                          <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
+                            <div className="flex min-h-8 w-full items-center justify-center pr-7">
+                              <span
+                                className="text-center text-xs font-medium tabular-nums text-text-primary"
+                                title="Total hours this week on this row"
                               >
-                                <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
-                              </IconButton>
+                                {formatReportHoursTotal(
+                                  entry.hours.reduce((s, h) => s + (h ?? 0), 0),
+                                  "week"
+                                )}
+                              </span>
                             </div>
+                            <IconButton
+                              aria-label="Delete entire row"
+                              title="Delete entire row"
+                              onClick={() => {
+                                setPendingRowDelete({
+                                  customerId: group.customerId,
+                                  entryId: entry.id,
+                                });
+                              }}
+                              className="time-report-icons-tight absolute top-1/2 right-0 z-[1] -translate-y-1/2 !opacity-100 text-brand-signal hover:text-brand-signal"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
+                            </IconButton>
                           </td>
                         </tr>
                       ))}
@@ -2159,7 +2522,7 @@ export function TimeReportPageClient({
               {monthCalendarDates.map((d) => (
                 <col key={d} style={{ width: "clamp(1rem,1.8vw,1.28rem)" }} />
               ))}
-              <col style={{ width: "3rem" }} />
+              <col style={{ width: "3.5rem" }} />
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
@@ -2193,7 +2556,7 @@ export function TimeReportPageClient({
                   return (
                     <th
                       key={dateStr}
-                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
+                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""} ${highlightedColumnIndex === dateIdx ? "time-grid-header-column-active" : ""}`}
                       title={
                         isTodayHeader
                           ? `Idag — ${longDow} ${dom} (${dateStr})`
@@ -2207,7 +2570,9 @@ export function TimeReportPageClient({
                     </th>
                   );
                 })}
-                <th className="min-w-0 px-1 py-1.5" aria-hidden />
+                <th className="w-[3.5rem] min-w-[3.5rem] px-0.5 py-1.5">
+                  <span className="sr-only">Row total</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -2229,6 +2594,10 @@ export function TimeReportPageClient({
                       return (
                         <td
                           key={dateStr}
+                          {...timeGridColumnCellInteractionProps(
+                            dateIdx,
+                            setHighlightedColumnIndex
+                          )}
                           className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
@@ -2239,9 +2608,9 @@ export function TimeReportPageClient({
                         </td>
                       );
                     })}
-                    <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                      <div className="flex h-full w-full items-center justify-center">
-                        <span className="text-[12px] font-medium tabular-nums text-text-primary">
+                    <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                      <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                        <span className="text-center text-[12px] font-medium tabular-nums text-text-primary">
                           {monthGridTotalDisplay}
                         </span>
                       </div>
@@ -2288,6 +2657,10 @@ export function TimeReportPageClient({
                           {monthCalendarDates.map((dateStr, dateIdx) => (
                             <td
                               key={dateStr}
+                              {...timeGridColumnCellInteractionProps(
+                                dateIdx,
+                                setHighlightedColumnIndex
+                              )}
                               className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                             >
                               <div className="flex h-full w-full items-center justify-center">
@@ -2299,9 +2672,9 @@ export function TimeReportPageClient({
                               </div>
                             </td>
                           ))}
-                          <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                            <div className="flex h-full w-full items-center justify-center">
-                              <span className="text-[12px] font-medium tabular-nums text-text-primary">
+                          <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                            <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                              <span className="text-center text-[12px] font-medium tabular-nums text-text-primary">
                                 {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
                               </span>
                             </div>
@@ -2527,36 +2900,60 @@ export function TimeReportPageClient({
                                   }
                                   onCommit={(v) => {
                                     setIsDirty(true);
-                                    setMonthMergedRows((prev) =>
-                                      prev.map((r) =>
+                                    setMonthMergedRows((prev) => {
+                                      const next = prev.map((r) =>
                                         r.id !== row.id
                                           ? r
                                           : {
                                               ...r,
                                               hoursByDate: { ...r.hoursByDate, [dateStr]: v },
                                             }
-                                      )
-                                    );
+                                      );
+                                      const u = next.find((rr) => rr.id === row.id);
+                                      if (u && !mergedRowHasContent(u)) {
+                                        return next.filter((rr) => rr.id !== row.id);
+                                      }
+                                      return next;
+                                    });
                                   }}
                                   onBlur={() => setEditingCell(null)}
+                                  hasInternalComment={
+                                    (row.commentsByDate[dateStr] ?? "").trim() !== ""
+                                  }
+                                  columnInteractionProps={timeGridColumnCellInteractionProps(
+                                    dateIdx,
+                                    setHighlightedColumnIndex
+                                  )}
                                 />
                               ))}
-                              <td className="min-w-0 px-0.5 py-0.5 align-middle">
-                                <div className="flex h-full w-full items-center justify-center">
-                                  <IconButton
-                                    aria-label="Delete entire row"
-                                    title="Delete entire row"
-                                    onClick={() => {
-                                      setPendingRowDelete({
-                                        customerId: row.customerId,
-                                        entryId: row.id,
-                                      });
-                                    }}
-                                    className="time-report-icons-tight !opacity-100 text-brand-signal hover:text-brand-signal"
+                              <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
+                                <div className="flex min-h-7 w-full items-center justify-center pr-7">
+                                  <span
+                                    className="text-center text-[12px] font-medium tabular-nums text-text-primary"
+                                    title="Total hours this month on this row"
                                   >
-                                    <Trash2 className="h-3 w-3 stroke-[1.5]" />
-                                  </IconButton>
+                                    {formatReportHoursTotal(
+                                      monthCalendarDates.reduce(
+                                        (s, d) => s + (row.hoursByDate[d] ?? 0),
+                                        0
+                                      ),
+                                      "month"
+                                    )}
+                                  </span>
                                 </div>
+                                <IconButton
+                                  aria-label="Delete entire row"
+                                  title="Delete entire row"
+                                  onClick={() => {
+                                    setPendingRowDelete({
+                                      customerId: row.customerId,
+                                      entryId: row.id,
+                                    });
+                                  }}
+                                  className="time-report-icons-tight absolute top-1/2 right-0 z-[1] -translate-y-1/2 !opacity-100 text-brand-signal hover:text-brand-signal"
+                                >
+                                  <Trash2 className="h-3 w-3 stroke-[1.5]" />
+                                </IconButton>
                               </td>
                             </tr>
                           );
@@ -2613,6 +3010,34 @@ export function TimeReportPageClient({
           )}
         </div>
       )}
+
+      <Dialog
+        open={revisionConflictOpen}
+        onOpenChange={(open) => {
+          setRevisionConflictOpen(open);
+          if (!open) savePausedForRevisionConflictRef.current = false;
+        }}
+        title="Time report changed elsewhere"
+      >
+        <div className="flex flex-col gap-3 pt-2">
+          <p className="text-sm text-text-secondary">
+            This report was updated in another tab or session. Reload to load the latest version before
+            you continue editing.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                if (viewMode === "week") reloadWeekFromServer();
+                else reloadMonthFromServer();
+              }}
+            >
+              Reload
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog
         open={commentState !== null}

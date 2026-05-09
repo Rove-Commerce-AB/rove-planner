@@ -166,6 +166,49 @@ textarea.border-form {
   background: var(--color-bg-muted);
 }
 
+/* Week/day column: header highlight when a body cell in that column is hovered or focused.
+   Strong fill + bottom accent bar so it stays obvious on sticky headers while scrolling. */
+.allocation-tables thead th.time-grid-header-column-active {
+  background: color-mix(
+    in srgb,
+    var(--color-brand-blue) 58%,
+    var(--color-allocation-thead)
+  ) !important;
+  box-shadow:
+    inset 0 -1px 0 #9a9a9a,
+    inset 0 -5px 0 0 var(--color-brand-blue) !important;
+}
+.time-report-tables thead th.time-grid-header-column-active {
+  background: color-mix(
+    in srgb,
+    var(--color-brand-blue) 48%,
+    var(--color-bg-muted)
+  ) !important;
+  box-shadow: inset 0 -4px 0 0 var(--color-brand-blue) !important;
+}
+table thead th.time-grid-header-column-active {
+  background: color-mix(
+    in srgb,
+    var(--color-brand-blue) 45%,
+    var(--color-bg-muted)
+  ) !important;
+  box-shadow: inset 0 -4px 0 0 var(--color-brand-blue) !important;
+}
+
+/* Allocation tables: full row + column crosshair on hover (consultant + customer + project views). */
+.allocation-tables tbody tr.time-grid-row-hover > td {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-brand-blue) 24%, transparent);
+}
+.allocation-tables tbody td.time-grid-column-hover {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-brand-blue) 22%, transparent);
+}
+.allocation-tables tbody tr.time-grid-row-hover > td.time-grid-column-hover {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-brand-blue) 38%, transparent);
+}
+
 /* Current week column: orange border (same as Add allocation button). Width 2px so it wins over adjacent 1px borders in border-collapse. */
 .allocation-tables td.current-week-cell {
   border-left-width: 2px !important;

@@ -6,12 +6,15 @@ export type {
 } from "./occupancyReport";
 export type { ProjectManagerEntry } from "./projectManagerTimeReport";
 export type {
+  CopyEntryToWeekResult,
   JiraDevOpsOption,
   ProjectOption,
+  SaveTimeReportEntriesResult,
   TaskOption,
   TimeReportCustomerGroup,
   TimeReportEntry,
   TimeReportEntryCopyPayload,
+  TimeReportWeekData,
 } from "./timeReport";
 
 export type Project = {
@@ -99,6 +102,7 @@ export type CustomerWithDetails = {
   color: string;
   logoUrl: string | null;
   url: string | null;
+  isInternal: boolean;
   initials: string;
   isActive: boolean;
   activeProjectCount: number;

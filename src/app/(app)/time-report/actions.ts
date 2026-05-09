@@ -10,6 +10,8 @@ import {
   saveTimeReportEntries,
   copyEntryToWeek,
   batchHydrateTimeReport,
+  getTimeReportWeekRevision,
+  getTimeReportWeekRevisions,
 } from "@/lib/timeReportEntries";
 
 export {
@@ -22,4 +24,6 @@ export {
   saveTimeReportEntries,
   copyEntryToWeek,
   batchHydrateTimeReport,
+  getTimeReportWeekRevision,
+  getTimeReportWeekRevisions,
 };

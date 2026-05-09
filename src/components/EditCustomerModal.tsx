@@ -34,6 +34,7 @@ export function EditCustomerModal({
   const [accountManagerId, setAccountManagerId] = useState<string>("");
   const [color, setColor] = useState(DEFAULT_CUSTOMER_COLOR);
   const [logoUrl, setLogoUrl] = useState("");
+  const [isInternal, setIsInternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ratesError, setRatesError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +47,7 @@ export function EditCustomerModal({
       setAccountManagerId(customer.accountManagerId ?? "");
       setColor(customer.color ?? DEFAULT_CUSTOMER_COLOR);
       setLogoUrl(customer.logoUrl ?? "");
+      setIsInternal(customer.isInternal ?? false);
     }
   }, [customer]);
 
@@ -64,6 +66,7 @@ export function EditCustomerModal({
         account_manager_id: accountManagerId || null,
         color: color.trim() || null,
         logo_url: logoUrl.trim() || null,
+        is_internal: isInternal,
       });
       resetForm();
       onSuccess();
@@ -97,6 +100,7 @@ export function EditCustomerModal({
     setAccountManagerId("");
     setColor(DEFAULT_CUSTOMER_COLOR);
     setLogoUrl("");
+    setIsInternal(false);
     setError(null);
     setRatesError(null);
     setActiveTab("information");
@@ -242,6 +246,19 @@ export function EditCustomerModal({
                 className={`mt-1 ${modalInputClass}`}
               />
             </div>
+
+            <label
+              htmlFor="edit-customer-is-internal"
+              className="flex items-center gap-2 text-sm text-text-primary"
+            >
+              <input
+                id="edit-customer-is-internal"
+                type="checkbox"
+                checked={isInternal}
+                onChange={(e) => setIsInternal(e.target.checked)}
+              />
+              Internal customer
+            </label>
           </form>
           </TabsContent>
           <TabsContent value="rates" className="mt-6 min-h-[340px]">

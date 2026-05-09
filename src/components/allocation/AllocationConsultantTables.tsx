@@ -4,11 +4,13 @@ import {
   Fragment,
   useEffect,
   useMemo,
+  useState,
   type Dispatch,
   type SetStateAction,
   type MutableRefObject,
   type ReactNode,
   type KeyboardEvent,
+  type FocusEvent,
 } from "react";
 import Link from "next/link";
 import type { useRouter } from "next/navigation";
@@ -26,6 +28,10 @@ import { allocationCellKey } from "@/lib/allocationCellKey";
 import { formatAllocationEmbedRevenue } from "@/lib/allocationPageDisplay";
 import { buildPerConsultantView } from "@/lib/allocationPageView";
 import { getBookingAllocationsForRow } from "@/app/(app)/allocation/actions";
+import {
+  useTimeGridColumnHighlight,
+  timeGridColumnCellInteractionProps,
+} from "@/components/TimeGridColumnHighlight";
 
 type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
@@ -193,6 +199,27 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     [data.consultantTotalHours]
   );
 
+  const { highlightedColumnIndex, setHighlightedColumnIndex } =
+    useTimeGridColumnHighlight();
+  const [hoverRowKey, setHoverRowKey] = useState<string | null>(null);
+
+  const allocationRowHoverHandlers = (rowKey: string) => ({
+    onMouseEnter: () => setHoverRowKey(rowKey),
+    onMouseLeave: () => setHoverRowKey(null),
+    onFocusCapture: () => setHoverRowKey(rowKey),
+    onBlurCapture: (e: FocusEvent<HTMLTableRowElement>) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && e.currentTarget.contains(next)) return;
+      setHoverRowKey(null);
+    },
+  });
+
+  const allocationRowHoverClass = (rowKey: string) =>
+    hoverRowKey === rowKey ? "time-grid-row-hover" : "";
+
+  const allocColHoverClass = (weekIndex: number) =>
+    highlightedColumnIndex === weekIndex ? "time-grid-column-hover" : "";
+
   useEffect(() => {
     if (!ENABLE_PERF_DEBUG) return;
     fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
@@ -354,7 +381,8 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr
-                      className={`border-b border-grid-light-subtle last:border-form ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                      className={`border-b border-grid-light-subtle last:border-form ${isToPlan ? "bg-bg-muted/60" : ""} ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`int-name-${row.consultant.id}`)}`}
+                      {...allocationRowHoverHandlers(`int-name-${row.consultant.id}`)}
                     >
                       <td className={`border-r border-grid-light-subtle px-2 py-1.5 align-top ${embedMode ? "max-w-0" : ""}`}>
                         <div className={`flex items-center justify-between gap-1 w-full ${embedMode ? "min-w-0" : ""}`}>
@@ -424,10 +452,14 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         const dragMax = Math.max(cellDragWeekStart ?? 0, cellDragWeekEnd ?? 0);
                         const isDragLeft = isDragRange && i === dragMin;
                         const isDragRight = isDragRange && i === dragMax;
+                        const colHl = timeGridColumnCellInteractionProps(
+                          i,
+                          setHighlightedColumnIndex
+                        );
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -438,7 +470,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               setCellDragWeekStart(i);
                               setCellDragWeekEnd(i);
                             }}
-                            onMouseEnter={() => {
+                            onMouseLeave={colHl.onMouseLeave}
+                            onFocusCapture={colHl.onFocusCapture}
+                            onBlurCapture={colHl.onBlurCapture}
+                            onMouseEnter={(e) => {
+                              colHl.onMouseEnter?.(e);
                               if (cellDragConsultant?.id === row.consultant.id)
                                 setCellDragWeekEnd(i);
                             }}
@@ -496,10 +532,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         return (
                         <tr
                           key={pr.projectId + (pr.roleName || "")}
-                          className="border-b border-grid-light-subtle last:border-form"
+                          className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`int-proj-${row.consultant.id}-${pr.projectId}`)}`}
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
                           }}
+                          {...allocationRowHoverHandlers(`int-proj-${row.consultant.id}-${pr.projectId}`)}
                         >
                           <td className={`border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary ${embedMode ? "max-w-0" : ""}`}>
                             <span className={`flex items-center gap-1 ${embedMode ? "min-w-0 overflow-hidden" : "whitespace-nowrap"}`}>
@@ -608,10 +645,14 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               projectRowDrag?.projectId === pr.projectId &&
                               i >= Math.min(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd) &&
                               i <= Math.max(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd);
+                            const colHl = timeGridColumnCellInteractionProps(
+                              i,
+                              setHighlightedColumnIndex
+                            );
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-l border-r border-brand-signal bg-brand-signal/20" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-l border-r border-brand-signal bg-brand-signal/20" : ""} ${allocColHoverClass(i)}`}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setProjectRowDrag({
@@ -626,7 +667,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 });
                                 setProjectRowDragMoved(false);
                               }}
-                              onMouseEnter={() => {
+                              onMouseLeave={colHl.onMouseLeave}
+                              onFocusCapture={colHl.onFocusCapture}
+                              onBlurCapture={colHl.onBlurCapture}
+                              onMouseEnter={(e) => {
+                                colHl.onMouseEnter?.(e);
                                 if (projectRowDrag?.consultantId === row.consultant.id && projectRowDrag?.projectId === pr.projectId) {
                                   setProjectRowDrag((prev) => (prev ? { ...prev, weekIndexEnd: i } : null));
                                   setProjectRowDragMoved(true);
@@ -754,14 +799,21 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                   </tbody>
                   {embedMode && (
                   <tfoot>
-                    <tr className="border-t-2 border-grid-subtle bg-bg-muted/60">
+                    <tr
+                      className={`border-t-2 border-grid-subtle bg-bg-muted/60 ${allocationRowHoverClass("int-foot-hours")}`}
+                      {...allocationRowHoverHandlers("int-foot-hours")}
+                    >
                       <td className="border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
                         Week total (h)
                       </td>
                       {data.weeks.map((w, i) => (
                         <td
                           key={`ft-h-${w.year}-${w.week}`}
-                          className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary"
+                          {...timeGridColumnCellInteractionProps(
+                            i,
+                            setHighlightedColumnIndex
+                          )}
+                          className={`border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary ${allocColHoverClass(i)}`}
                         >
                           {weekTotalsHours[i] > 0 ? `${weekTotalsHours[i]}` : "\u00A0"}
                         </td>
@@ -784,14 +836,21 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       )}
                       {!embedMode && <td className="w-6 border-r border-grid-light-subtle px-0 py-0.5" />}
                     </tr>
-                    <tr className="border-t border-grid-subtle bg-bg-muted/40">
+                    <tr
+                      className={`border-t border-grid-subtle bg-bg-muted/40 ${allocationRowHoverClass("int-foot-revenue")}`}
+                      {...allocationRowHoverHandlers("int-foot-revenue")}
+                    >
                       <td className="border-r border-grid-light-subtle px-2 py-1 text-[10px] font-medium text-text-primary">
                         Revenue total
                       </td>
                       {data.weeks.map((w, i) => (
                         <td
                           key={`ft-m-${w.year}-${w.week}`}
-                          className="border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary"
+                          {...timeGridColumnCellInteractionProps(
+                            i,
+                            setHighlightedColumnIndex
+                          )}
+                          className={`border-r border-grid-light-subtle px-1 py-1 text-center text-[10px] tabular-nums text-text-primary ${allocColHoverClass(i)}`}
                         >
                           {weekTotalsMoney != null
                             ? formatAllocationEmbedRevenue(weekTotalsMoney[i] ?? 0)
@@ -870,7 +929,8 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                 return (
                   <Fragment key={row.consultant.id}>
                     <tr
-                      className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""}`}
+                      className={`border-b border-grid-light-subtle last:border-form ${expanded && hasProjects ? "shadow-[0_2px_8px_rgba(0,0,0,0.28)]" : ""} ${allocationRowHoverClass(`ext-name-${row.consultant.id}`)}`}
+                      {...allocationRowHoverHandlers(`ext-name-${row.consultant.id}`)}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1.5 align-top">
                         <div className="flex items-center justify-between gap-1 w-full">
@@ -951,10 +1011,14 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         const dragMax = Math.max(cellDragWeekStart ?? 0, cellDragWeekEnd ?? 0);
                         const isDragLeft = isDragRange && i === dragMin;
                         const isDragRight = isDragRange && i === dragMax;
+                        const colHl = timeGridColumnCellInteractionProps(
+                          i,
+                          setHighlightedColumnIndex
+                        );
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -965,7 +1029,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               setCellDragWeekStart(i);
                               setCellDragWeekEnd(i);
                             }}
-                            onMouseEnter={() => {
+                            onMouseLeave={colHl.onMouseLeave}
+                            onFocusCapture={colHl.onFocusCapture}
+                            onBlurCapture={colHl.onBlurCapture}
+                            onMouseEnter={(e) => {
+                              colHl.onMouseEnter?.(e);
                               if (cellDragConsultant?.id === row.consultant.id)
                                 setCellDragWeekEnd(i);
                             }}
@@ -1004,10 +1072,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         return (
                         <tr
                           key={pr.projectId}
-                          className="border-b border-grid-light-subtle last:border-form"
+                          className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`ext-proj-${row.consultant.id}-${pr.projectId}`)}`}
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
                           }}
+                          {...allocationRowHoverHandlers(`ext-proj-${row.consultant.id}-${pr.projectId}`)}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             <span className="flex items-center gap-1 whitespace-nowrap">
@@ -1108,10 +1177,14 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               projectRowDrag?.projectId === pr.projectId &&
                               i >= Math.min(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd) &&
                               i <= Math.max(projectRowDrag.weekIndexStart, projectRowDrag.weekIndexEnd);
+                            const colHl = timeGridColumnCellInteractionProps(
+                              i,
+                              setHighlightedColumnIndex
+                            );
                             return (
                             <td
                               key={`${weekKey.year}-${weekKey.week}`}
-                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""} ${isProjectDragRangeExt ? "drag-range-cell border-t border-b border-l border-r border-brand-signal bg-brand-signal/20" : ""}`}
+                              className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} p-0 py-1 text-center select-none cursor-pointer ${row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${isCurrentWeek(data.weeks[i]) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(data.weeks[i]) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isEditingConsultant ? "align-middle" : ""} ${isProjectDragRangeExt ? "drag-range-cell border-t border-b border-l border-r border-brand-signal bg-brand-signal/20" : ""} ${allocColHoverClass(i)}`}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setProjectRowDrag({
@@ -1126,7 +1199,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                 });
                                 setProjectRowDragMoved(false);
                               }}
-                              onMouseEnter={() => {
+                              onMouseLeave={colHl.onMouseLeave}
+                              onFocusCapture={colHl.onFocusCapture}
+                              onBlurCapture={colHl.onBlurCapture}
+                              onMouseEnter={(e) => {
+                                colHl.onMouseEnter?.(e);
                                 if (projectRowDrag?.consultantId === row.consultant.id && projectRowDrag?.projectId === pr.projectId) {
                                   setProjectRowDrag((prev) => (prev ? { ...prev, weekIndexEnd: i } : null));
                                   setProjectRowDragMoved(true);

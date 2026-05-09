@@ -3,6 +3,11 @@
 import type { RoleOccupancyRow } from "@/types/occupancyReport";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import { Panel, PanelSectionTitle } from "@/components/ui";
+import {
+  TimeGridColumnHighlightProvider,
+  useTimeGridColumnHighlight,
+  timeGridColumnCellInteractionProps,
+} from "@/components/TimeGridColumnHighlight";
 
 type Props = {
   rows: RoleOccupancyRow[];
@@ -21,11 +26,22 @@ function getOccupancyCellBgClass(pct: number): string {
   return "bg-brand-blue/25";
 }
 
-export function RoleOccupancyPanel({
+export function RoleOccupancyPanel(props: Props) {
+  return (
+    <TimeGridColumnHighlightProvider>
+      <RoleOccupancyPanelInner {...props} />
+    </TimeGridColumnHighlightProvider>
+  );
+}
+
+function RoleOccupancyPanelInner({
   rows,
   currentYear,
   currentWeek,
 }: Props) {
+  const { highlightedColumnIndex, setHighlightedColumnIndex } =
+    useTimeGridColumnHighlight();
+
   const weekCount =
     rows.length > 0 && rows[0].weeks.length > 0 ? rows[0].weeks.length : 0;
   const weeks =
@@ -70,7 +86,7 @@ export function RoleOccupancyPanel({
                       isCurrentWeek(w.year, w.week)
                         ? "current-week-header bg-brand-signal/20 border-l border-r"
                         : ""
-                    }`}
+                    } ${highlightedColumnIndex === i ? "time-grid-header-column-active" : ""}`}
                   >
                     v{w.week}
                   </th>
@@ -90,10 +106,15 @@ export function RoleOccupancyPanel({
                     const wk = row.weeks[i];
                     const p = row.points[i];
                     const current = wk && isCurrentWeek(wk.year, wk.week);
+                    const colHl = timeGridColumnCellInteractionProps(
+                      i,
+                      setHighlightedColumnIndex
+                    );
                     if (p == null) {
                       return (
                         <td
                           key={i}
+                          {...colHl}
                           className={`px-1 py-1.5 text-center text-xs text-text-primary opacity-40 ${
                             current ? "bg-brand-signal/15 border-l border-r border-brand-signal/30" : ""
                           }`}
@@ -106,6 +127,7 @@ export function RoleOccupancyPanel({
                     return (
                       <td
                         key={wk?.label ?? i}
+                        {...colHl}
                         className={`w-0 min-w-[2.25rem] border-r border-panel/60 px-1 py-1.5 text-center text-xs tabular-nums text-text-primary ${getOccupancyCellBgClass(pct)} ${
                           current ? "current-week-cell bg-brand-signal/15 border-l border-r border-brand-signal/30" : ""
                         }`}

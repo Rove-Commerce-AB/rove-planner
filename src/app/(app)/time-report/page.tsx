@@ -1,10 +1,10 @@
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
-import { getCustomersByIds, getInternalRoveCustomerId } from "@/lib/customers";
-import { getCurrentYearWeek } from "@/lib/dateUtils";
+import { getCustomersByIds, getInternalCustomerId } from "@/lib/customers";
+import { getCurrentCalendarYearMonth, getCurrentYearWeek } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui";
-import { TimeReportPageClient } from "./TimeReportPageClient";
+import { TimeReportWithColumnHighlight } from "./TimeReportWithColumnHighlight";
 import { getHolidayDatesForWeek } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,8 @@ export default async function TimeReportPage() {
   const consultant = await getConsultantForCurrentUser();
   const appUser = await getCurrentAppUser();
   const { year: initialYear, week: initialWeek } = getCurrentYearWeek();
+  const { year: initialDisplayYear, month: initialDisplayMonth } =
+    getCurrentCalendarYearMonth();
   const [rawCustomerIds, initialHolidayDates] = consultant
     ? await Promise.all([
         getCustomerIdsForConsultant(consultant.id),
@@ -28,9 +30,9 @@ export default async function TimeReportPage() {
 
   let customerIds = rawCustomerIds;
   if (appUser?.role === "subcontractor") {
-    const roveId = await getInternalRoveCustomerId();
-    if (roveId) {
-      customerIds = customerIds.filter((id) => id !== roveId);
+    const internalCustomerId = await getInternalCustomerId();
+    if (internalCustomerId) {
+      customerIds = customerIds.filter((id) => id !== internalCustomerId);
     }
   }
 
@@ -39,7 +41,7 @@ export default async function TimeReportPage() {
   return (
     <div className="p-6">
       <PageHeader title="Time report" className="mb-6" />
-      <TimeReportPageClient
+      <TimeReportWithColumnHighlight
         consultant={consultant}
         customers={customers.map((c) => ({
           id: c.id,
@@ -48,6 +50,8 @@ export default async function TimeReportPage() {
         }))}
         initialYear={initialYear}
         initialWeek={initialWeek}
+        initialDisplayYear={initialDisplayYear}
+        initialDisplayMonth={initialDisplayMonth}
         calendarId={consultant?.calendar_id ?? null}
         initialHolidayDates={initialHolidayDates}
       />

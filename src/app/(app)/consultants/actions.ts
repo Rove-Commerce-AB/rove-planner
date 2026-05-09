@@ -5,7 +5,7 @@ import {
   createConsultant,
   deleteConsultant,
   getConsultantsList,
-  linkNewInternalConsultantToRoveCustomer,
+  linkNewInternalConsultantToInternalCustomer,
   type CreateConsultantInput,
 } from "@/lib/consultants";
 import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
@@ -16,13 +16,13 @@ export async function createConsultantAndRevalidate(
   await assertNotSubcontractorForWrite();
   const result = await createConsultant(input);
 
-  const roveCustomerId = await linkNewInternalConsultantToRoveCustomer(
+  const internalCustomerId = await linkNewInternalConsultantToInternalCustomer(
     result.id,
     input
   );
-  if (roveCustomerId) {
+  if (internalCustomerId) {
     revalidatePath("/customers");
-    revalidatePath(`/customers/${roveCustomerId}`);
+    revalidatePath(`/customers/${internalCustomerId}`);
   }
 
   revalidateTag("allocation-consultants", "max");

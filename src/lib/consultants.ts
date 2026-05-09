@@ -1,8 +1,10 @@
 import "server-only";
 
+import { revalidatePath, revalidateTag } from "next/cache";
+
 import { getCurrentAppUser } from "./appUsers";
 import { addConsultantToCustomer } from "./customerConsultants";
-import { getCustomerIdByName } from "./customers";
+import { getInternalCustomerId } from "./customers";
 import * as q from "./consultantsQueries";
 
 export type {
@@ -12,22 +14,20 @@ export type {
   ConsultantForEdit,
 } from "./consultantsQueries";
 
-const ROVE_CUSTOMER_NAME = "Rove";
-
 /**
- * Internal consultants are linked to the Rove customer when it exists.
- * Returns the Rove customer id when a link was created (caller may revalidate paths).
+ * Internal consultants are linked to the internal customer when it exists.
+ * Returns the internal customer id when a link was created (caller may revalidate paths).
  */
-export async function linkNewInternalConsultantToRoveCustomer(
+export async function linkNewInternalConsultantToInternalCustomer(
   consultantId: string,
   input: q.CreateConsultantInput
 ): Promise<string | null> {
   const isInternal = !(input.is_external ?? false);
   if (!isInternal) return null;
-  const roveCustomerId = await getCustomerIdByName(ROVE_CUSTOMER_NAME);
-  if (!roveCustomerId) return null;
-  await addConsultantToCustomer(roveCustomerId, consultantId);
-  return roveCustomerId;
+  const internalCustomerId = await getInternalCustomerId();
+  if (!internalCustomerId) return null;
+  await addConsultantToCustomer(internalCustomerId, consultantId);
+  return internalCustomerId;
 }
 
 export async function createConsultant(input: q.CreateConsultantInput) {
@@ -35,7 +35,11 @@ export async function createConsultant(input: q.CreateConsultantInput) {
 }
 
 export async function updateConsultant(id: string, input: q.UpdateConsultantInput) {
-  return q.updateConsultantQuery(id, input);
+  const updated = await q.updateConsultantQuery(id, input);
+  if (!updated) return;
+  revalidateTag("allocation-consultants", "max");
+  revalidatePath("/consultants");
+  revalidatePath("/allocation");
 }
 
 export async function deleteConsultant(id: string) {

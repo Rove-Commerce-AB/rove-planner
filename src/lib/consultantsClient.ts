@@ -1,5 +1,6 @@
 "use server";
 
+import { updateConsultant as updateConsultantServer } from "./consultants";
 import * as q from "./consultantsQueries";
 
 export type {
@@ -17,7 +18,7 @@ export async function updateConsultant(
   id: string,
   input: q.UpdateConsultantInput
 ) {
-  return q.updateConsultantQuery(id, input);
+  return updateConsultantServer(id, input);
 }
 
 export async function getConsultantById(id: string) {

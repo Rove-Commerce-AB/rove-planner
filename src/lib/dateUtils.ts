@@ -2,6 +2,12 @@
  * Returns current ISO 8601 week and year.
  * ISO week: Mon–Sun, week 1 contains Jan 4.
  */
+/** Local calendar year and month (1–12) for “today”. */
+export function getCurrentCalendarYearMonth(): { year: number; month: number } {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
 export function getCurrentYearWeek(): { year: number; week: number } {
   const now = new Date();
   // ISO day: Mon=1 .. Sun=7 (JS getDay: Sun=0, Mon=1, ...)

@@ -13,6 +13,7 @@ export type Customer = {
   color: string | null;
   logo_url: string | null;
   url: string | null;
+  is_internal: boolean;
   is_active: boolean;
 };
 
@@ -24,6 +25,7 @@ export type CreateCustomerInput = {
   color?: string | null;
   logo_url?: string | null;
   url?: string | null;
+  is_internal?: boolean;
   is_active?: boolean;
 };
 
@@ -35,11 +37,12 @@ export type UpdateCustomerInput = {
   color?: string | null;
   logo_url?: string | null;
   url?: string | null;
+  is_internal?: boolean;
   is_active?: boolean;
 };
 
 const CUSTOMER_SELECT =
-  "id, name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_active";
+  "id, name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active";
 
 function getInitials(name: string): string {
   return name
@@ -80,7 +83,7 @@ export async function fetchCustomerById(
     ? await consultantNamesMap([data.account_manager_id])
     : new Map<string, string>();
 
-  let projectsByCustomer = new Map<
+  const projectsByCustomer = new Map<
     string,
     { id: string; name: string; is_active: boolean; type: string }[]
   >();
@@ -116,6 +119,7 @@ export async function fetchCustomerById(
     color: data.color || DEFAULT_CUSTOMER_COLOR,
     logoUrl: data.logo_url ?? null,
     url: data.url ?? null,
+    isInternal: data.is_internal ?? false,
     initials: getInitials(data.name),
     isActive: data.is_active ?? true,
     activeProjectCount: activeProjects.length,
@@ -136,6 +140,13 @@ export async function fetchCustomers(): Promise<Customer[]> {
     `SELECT ${CUSTOMER_SELECT} FROM customers ORDER BY name`
   );
   return rows;
+}
+
+export async function fetchInternalCustomerId(): Promise<string | null> {
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM customers WHERE is_internal = true ORDER BY created_at ASC LIMIT 1`
+  );
+  return rows[0]?.id ?? null;
 }
 
 export async function fetchCustomerIdByName(
@@ -164,8 +175,8 @@ export async function createCustomerQuery(
 ): Promise<Customer> {
   const { rows } = await cloudSqlPool.query<Customer>(
     `INSERT INTO customers (
-       name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_active
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${CUSTOMER_SELECT}`,
     [
       input.name.trim(),
@@ -175,6 +186,7 @@ export async function createCustomerQuery(
       input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
       input.logo_url?.trim() || null,
       input.url?.trim() ?? null,
+      input.is_internal ?? false,
       input.is_active ?? true,
     ]
   );
@@ -217,6 +229,10 @@ export async function updateCustomerQuery(
     sets.push(`url = $${i++}`);
     values.push(input.url?.trim() || null);
   }
+  if (input.is_internal !== undefined) {
+    sets.push(`is_internal = $${i++}`);
+    values.push(input.is_internal);
+  }
   if (input.is_active !== undefined) {
     sets.push(`is_active = $${i++}`);
     values.push(input.is_active);
@@ -245,7 +261,7 @@ export async function fetchCustomersWithDetails(): Promise<
   ] as string[];
   const accountManagerNames = await consultantNamesMap(accountManagerIds);
 
-  let projectsByCustomer = new Map<
+  const projectsByCustomer = new Map<
     string,
     { id: string; name: string; is_active: boolean; type: string }[]
   >();
@@ -284,6 +300,7 @@ export async function fetchCustomersWithDetails(): Promise<
       color: c.color || DEFAULT_CUSTOMER_COLOR,
       logoUrl: c.logo_url ?? null,
       url: c.url ?? null,
+      isInternal: c.is_internal ?? false,
       initials: getInitials(c.name),
       isActive: c.is_active ?? true,
       activeProjectCount: activeProjects.length,

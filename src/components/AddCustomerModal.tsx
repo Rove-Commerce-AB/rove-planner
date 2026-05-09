@@ -16,6 +16,7 @@ type Props = {
 export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [isInternal, setIsInternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -30,6 +31,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
     try {
       const customer = await createCustomerAction({
         name: name.trim(),
+        is_internal: isInternal,
       });
       onSuccess();
       onClose();
@@ -44,6 +46,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
 
   const handleClose = () => {
     setName("");
+    setIsInternal(false);
     setError(null);
     onClose();
   };
@@ -109,6 +112,19 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
               autoFocus
             />
           </div>
+
+          <label
+            htmlFor="customer-is-internal"
+            className="flex items-center gap-2 text-sm text-text-primary"
+          >
+            <input
+              id="customer-is-internal"
+              type="checkbox"
+              checked={isInternal}
+              onChange={(e) => setIsInternal(e.target.checked)}
+            />
+            Internal customer
+          </label>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={handleClose}>
