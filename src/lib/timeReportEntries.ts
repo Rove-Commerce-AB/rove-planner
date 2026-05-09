@@ -15,7 +15,7 @@ import { getCalendarHolidays } from "@/lib/calendarHolidays";
 import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { getInternalRoveCustomerId } from "@/lib/customers";
+import { getInternalCustomerId } from "@/lib/customers";
 import type {
   CopyEntryToWeekResult,
   JiraDevOpsOption,
@@ -48,8 +48,8 @@ async function getTimeReportAccessContext() {
   );
   const allowedCustomerIds = new Set(customerLinks.map((r) => r.customer_id));
   if (isSubcontractorRole(appUser?.role)) {
-    const roveId = await getInternalRoveCustomerId();
-    if (roveId) allowedCustomerIds.delete(roveId);
+    const internalCustomerId = await getInternalCustomerId();
+    if (internalCustomerId) allowedCustomerIds.delete(internalCustomerId);
   }
 
   const { rows: allocations } = await cloudSqlPool.query<{ project_id: string }>(
@@ -460,8 +460,10 @@ export async function getTimeReportEntries(
   let filteredRows = rows;
   const appUser = await getCurrentAppUser();
   if (isSubcontractorRole(appUser?.role)) {
-    const roveId = await getInternalRoveCustomerId();
-    if (roveId) filteredRows = filteredRows.filter((r) => r.customer_id !== roveId);
+    const internalCustomerId = await getInternalCustomerId();
+    if (internalCustomerId) {
+      filteredRows = filteredRows.filter((r) => r.customer_id !== internalCustomerId);
+    }
   }
 
   if (!filteredRows.length) return { groups: [], revision };
@@ -537,11 +539,11 @@ export async function getTimeReportMonthTotalHours(
   ).padStart(2, "0")}`;
 
   const appUser = await getCurrentAppUser();
-  const roveId =
-    isSubcontractorRole(appUser?.role) ? await getInternalRoveCustomerId() : null;
+  const internalCustomerId =
+    isSubcontractorRole(appUser?.role) ? await getInternalCustomerId() : null;
 
   const { rows } = await cloudSqlPool.query<{ total_hours: string | number | null }>(
-    roveId
+    internalCustomerId
       ? `SELECT COALESCE(SUM(hours), 0) AS total_hours
          FROM time_report_entries
          WHERE consultant_id = $1
@@ -553,8 +555,8 @@ export async function getTimeReportMonthTotalHours(
          WHERE consultant_id = $1
            AND entry_date >= $2::date
            AND entry_date <= $3::date`,
-    roveId
-      ? [consultantId, monthStart, monthEndStr, roveId]
+    internalCustomerId
+      ? [consultantId, monthStart, monthEndStr, internalCustomerId]
       : [consultantId, monthStart, monthEndStr]
   );
 

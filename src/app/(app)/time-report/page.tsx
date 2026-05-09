@@ -1,7 +1,7 @@
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
-import { getCustomersByIds, getInternalRoveCustomerId } from "@/lib/customers";
+import { getCustomersByIds, getInternalCustomerId } from "@/lib/customers";
 import { getCurrentCalendarYearMonth, getCurrentYearWeek } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui";
 import { TimeReportWithColumnHighlight } from "./TimeReportWithColumnHighlight";
@@ -30,9 +30,9 @@ export default async function TimeReportPage() {
 
   let customerIds = rawCustomerIds;
   if (appUser?.role === "subcontractor") {
-    const roveId = await getInternalRoveCustomerId();
-    if (roveId) {
-      customerIds = customerIds.filter((id) => id !== roveId);
+    const internalCustomerId = await getInternalCustomerId();
+    if (internalCustomerId) {
+      customerIds = customerIds.filter((id) => id !== internalCustomerId);
     }
   }
 

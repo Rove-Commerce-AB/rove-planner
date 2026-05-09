@@ -102,6 +102,7 @@ export type CustomerWithDetails = {
   color: string;
   logoUrl: string | null;
   url: string | null;
+  isInternal: boolean;
   initials: string;
   isActive: boolean;
   activeProjectCount: number;

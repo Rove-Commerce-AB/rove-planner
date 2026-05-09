@@ -11,8 +11,6 @@ import * as roles from "./rolesQueries";
 import * as teams from "./teamsQueries";
 import type { ConsultantWithDetails } from "@/types";
 
-const ROVE_CUSTOMER_NAME = "Rove";
-
 export type ConsultantListItem = {
   id: string;
   name: string;
@@ -139,15 +137,14 @@ export async function updateConsultantQuery(
   );
 
   if (input.is_external === true) {
-    const { rows: roveRows } = await cloudSqlPool.query<{ id: string }>(
-      `SELECT id FROM customers WHERE name = $1 LIMIT 1`,
-      [ROVE_CUSTOMER_NAME]
+    const { rows: internalRows } = await cloudSqlPool.query<{ id: string }>(
+      `SELECT id FROM customers WHERE is_internal = true ORDER BY created_at ASC LIMIT 1`
     );
-    const roveId = roveRows[0]?.id;
-    if (roveId) {
+    const internalCustomerId = internalRows[0]?.id;
+    if (internalCustomerId) {
       await cloudSqlPool.query(
         `DELETE FROM customer_consultants WHERE customer_id = $1 AND consultant_id = $2`,
-        [roveId, id]
+        [internalCustomerId, id]
       );
     }
   }

@@ -36,6 +36,7 @@ Customer / company.
 | contact_email | text | nullable |
 | color | text | default `#3b82f6` |
 | logo_url | text | nullable |
+| is_internal | boolean | NOT NULL, default false; max one row should be true |
 | is_active | boolean | NOT NULL, default true |
 | account_manager_id | uuid | nullable, FK → `consultants.id` |
 | url | text | nullable (e.g. website for favicon / links) |
