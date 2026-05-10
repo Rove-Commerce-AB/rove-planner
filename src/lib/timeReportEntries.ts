@@ -521,11 +521,9 @@ export async function getTimeReportEntries(
   }
 
   const byCustomer = new Map<string, TimeReportEntry[]>();
-  const customerOrder: string[] = [];
   for (const line of filteredLines) {
     if (!byCustomer.has(line.customer_id)) {
       byCustomer.set(line.customer_id, []);
-      customerOrder.push(line.customer_id);
     }
     const dayRows = byLineId.get(line.id) ?? [];
     const hours: number[] = [0, 0, 0, 0, 0, 0, 0];
@@ -549,7 +547,23 @@ export async function getTimeReportEntries(
     });
   }
 
-  const groups = customerOrder.map((customerId) => ({
+  const customerIds = [...byCustomer.keys()];
+  if (customerIds.length > 0) {
+    const { rows: nameRows } = await cloudSqlPool.query<{ id: string; name: string }>(
+      `SELECT id::text AS id, name FROM customers WHERE id = ANY($1::uuid[])`,
+      [customerIds]
+    );
+    const nameById = new Map(nameRows.map((r) => [r.id, r.name]));
+    customerIds.sort((a, b) => {
+      const cmp = (nameById.get(a) ?? "").localeCompare(nameById.get(b) ?? "", "sv", {
+        sensitivity: "base",
+      });
+      if (cmp !== 0) return cmp;
+      return a.localeCompare(b);
+    });
+  }
+
+  const groups = customerIds.map((customerId) => ({
     customerId,
     entries: byCustomer.get(customerId)!,
   }));

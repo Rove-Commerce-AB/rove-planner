@@ -73,7 +73,6 @@ import {
 } from "@/components/TimeGridColumnHighlight";
 
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
-const TIME_REPORT_MONTH_CUSTOMER_ORDER_STORAGE_KEY = "time-report-month-customer-order-v1";
 
 function collectTimeReportHydratePayload(groups: CustomerGroup[]): {
   customerIds: string[];
@@ -236,7 +235,8 @@ function resolveMergedRowLineIdForWeek(row: MonthMergedRow, weekSliceKey: string
 function buildMergedMonthRows(
   slices: Record<string, CustomerGroup[]>,
   monthWeeks: { year: number; week: number }[],
-  monthCalendarDates: string[]
+  monthCalendarDates: string[],
+  customerById: Map<string, CustomerOption>
 ): MonthMergedRow[] {
   type Source = {
     mergeKey: string;
@@ -248,7 +248,6 @@ function buildMergedMonthRows(
   };
   const monthSet = new Set(monthCalendarDates);
   const sources: Source[] = [];
-  const customerRank = new Map<string, number>();
 
   for (const { year: y, week: w } of monthWeeks) {
     const sk = weekSliceKey(y, w);
@@ -256,10 +255,6 @@ function buildMergedMonthRows(
     const groups = slices[weekSliceKey(y, w)] ?? [];
     for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
       const g = groups[groupIndex]!;
-      const prevRank = customerRank.get(g.customerId);
-      if (prevRank == null || groupIndex < prevRank) {
-        customerRank.set(g.customerId, groupIndex);
-      }
       for (const e of g.entries) {
         /** Rows whose only booked days fall outside this calendar month still exist on the ISO-week slice; month UI showed them as empty and delete could not drop the header (`remainingInWeek` > 0). Omit from month merge. */
         let hasInsideMonthActivity = false;
@@ -354,9 +349,8 @@ function buildMergedMonthRows(
     });
   }
   rows.sort((a, b) => {
-    const ra = customerRank.get(a.customerId) ?? Number.MAX_SAFE_INTEGER;
-    const rb = customerRank.get(b.customerId) ?? Number.MAX_SAFE_INTEGER;
-    if (ra !== rb) return ra - rb;
+    const rc = compareCustomerIdsByName(a.customerId, b.customerId, customerById);
+    if (rc !== 0) return rc;
     const ka = mergeKeyRank.get(a.rowKey) ?? Number.MAX_SAFE_INTEGER;
     const kb = mergeKeyRank.get(b.rowKey) ?? Number.MAX_SAFE_INTEGER;
     return ka - kb;
@@ -496,11 +490,39 @@ function nextCalendarMonth(year: number, month: number): { y: number; m: number 
   return { y: year, m: month + 1 };
 }
 
-function monthOrderKey(year: number, month: number): string {
-  return `${year}-${String(month).padStart(2, "0")}`;
+type CustomerOption = { id: string; name: string; color?: string | null };
+
+function compareCustomerIdsByName(
+  a: string,
+  b: string,
+  customerById: Map<string, CustomerOption>
+): number {
+  const na = customerById.get(a)?.name ?? a;
+  const nb = customerById.get(b)?.name ?? b;
+  const c = na.localeCompare(nb, "sv", { sensitivity: "base" });
+  if (c !== 0) return c;
+  return a.localeCompare(b);
 }
 
-type CustomerOption = { id: string; name: string; color?: string | null };
+function sortCustomerGroupsByCustomerName(
+  groups: CustomerGroup[],
+  customerById: Map<string, CustomerOption>
+): CustomerGroup[] {
+  return [...groups].sort((x, y) =>
+    compareCustomerIdsByName(x.customerId, y.customerId, customerById)
+  );
+}
+
+function sortMonthMergedRowsByCustomerName(
+  rows: MonthMergedRow[],
+  customerById: Map<string, CustomerOption>
+): MonthMergedRow[] {
+  return [...rows].sort((a, b) => {
+    const c = compareCustomerIdsByName(a.customerId, b.customerId, customerById);
+    if (c !== 0) return c;
+    return a.rowKey.localeCompare(b.rowKey);
+  });
+}
 
 type Props = {
   consultant: { id: string; name: string; calendar_id?: string } | null;
@@ -689,6 +711,10 @@ export function TimeReportPageClient({
   const saveStateRef = useRef(saveState);
   const loadStateRef = useRef(loadState);
   const weekLoadRequestIdRef = useRef(0);
+  const customerById = useMemo(
+    () => new Map(customers.map((c) => [c.id, c])),
+    [customers]
+  );
   const customerGroupsRef = useRef(customerGroups);
   const isDirtyRef = useRef(isDirty);
   const yearRef = useRef(year);
@@ -708,7 +734,6 @@ export function TimeReportPageClient({
   const [viewModeStorageReady, setViewModeStorageReady] = useState(false);
   const [monthMergedRows, setMonthMergedRows] = useState<MonthMergedRow[]>([]);
   const monthLoadRequestIdRef = useRef(0);
-  const customerOrderByMonthRef = useRef<Record<string, string[]>>({});
   const viewModeRef = useRef(viewMode);
   /** Serialize server saves so concurrent requests never reuse a stale expectedRevision (revision_conflict). */
   const saveQueueTailRef = useRef(Promise.resolve());
@@ -728,29 +753,6 @@ export function TimeReportPageClient({
       // private mode / blocked storage
     } finally {
       setViewModeStorageReady(true);
-    }
-  }, []);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(TIME_REPORT_MONTH_CUSTOMER_ORDER_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Record<string, string[]>;
-      if (parsed && typeof parsed === "object") {
-        customerOrderByMonthRef.current = parsed;
-      }
-    } catch {
-      // ignore malformed/localStorage-unavailable cases
-    }
-  }, []);
-
-  const persistMonthCustomerOrder = useCallback(() => {
-    try {
-      localStorage.setItem(
-        TIME_REPORT_MONTH_CUSTOMER_ORDER_STORAGE_KEY,
-        JSON.stringify(customerOrderByMonthRef.current)
-      );
-    } catch {
-      // ignore storage failures
     }
   }, []);
 
@@ -790,33 +792,6 @@ export function TimeReportPageClient({
     // flushSave may run before React commits state; keep ref in sync immediately.
     isDirtyRef.current = true;
   }, []);
-  const applyStableCustomerOrderForMonth = useCallback(
-    (rows: MonthMergedRow[], year: number, month: number): MonthMergedRow[] => {
-      const key = monthOrderKey(year, month);
-      const existingOrder = customerOrderByMonthRef.current[key] ?? [];
-      const seen = new Set<string>();
-      const discovered: string[] = [];
-      for (const row of rows) {
-        if (seen.has(row.customerId)) continue;
-        seen.add(row.customerId);
-        discovered.push(row.customerId);
-      }
-      const mergedOrder = [...existingOrder];
-      for (const cid of discovered) {
-        if (!mergedOrder.includes(cid)) mergedOrder.push(cid);
-      }
-      customerOrderByMonthRef.current[key] = mergedOrder;
-      persistMonthCustomerOrder();
-      const rank = new Map(mergedOrder.map((cid, idx) => [cid, idx]));
-      return [...rows].sort((a, b) => {
-        const ra = rank.get(a.customerId) ?? Number.MAX_SAFE_INTEGER;
-        const rb = rank.get(b.customerId) ?? Number.MAX_SAFE_INTEGER;
-        if (ra !== rb) return ra - rb;
-        return a.rowKey.localeCompare(b.rowKey);
-      });
-    },
-    [persistMonthCustomerOrder]
-  );
   useEffect(() => {
     yearRef.current = year;
   }, [year]);
@@ -964,11 +939,7 @@ export function TimeReportPageClient({
         });
         weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
         setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
-        const mergedRows = applyStableCustomerOrderForMonth(
-          buildMergedMonthRows(slices, weeks, calDates),
-          displayYear,
-          displayMonth
-        );
+        const mergedRows = buildMergedMonthRows(slices, weeks, calDates, customerById);
         setMonthMergedRows(mergedRows);
         loadStateRef.current = "loaded";
         setLoadState("loaded");
@@ -995,7 +966,7 @@ export function TimeReportPageClient({
     displayMonth,
     displayYear,
     runBatchHydrate,
-    applyStableCustomerOrderForMonth,
+    customerById,
   ]);
 
   useEffect(() => {
@@ -1435,7 +1406,7 @@ export function TimeReportPageClient({
         });
         weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
         setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
-        const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
+        const mergedRows = buildMergedMonthRows(slices, weeks, calDates, customerById);
         setMonthMergedRows(mergedRows);
         loadStateRef.current = "loaded";
         setLoadState("loaded");
@@ -1453,7 +1424,7 @@ export function TimeReportPageClient({
         );
       }
     })();
-  }, [runBatchHydrate]);
+  }, [runBatchHydrate, customerById]);
 
   useEffect(() => {
     const checkStaleRevision = () => {
@@ -1692,10 +1663,6 @@ export function TimeReportPageClient({
     }
     return !monthMergedRows.some((r) => r.customerId === c.id);
   });
-  const customerById = useMemo(
-    () => new Map(customers.map((c) => [c.id, c])),
-    [customers]
-  );
   const entryById = useMemo(() => {
     const map = new Map<string, Entry>();
     if (viewMode === "week") {
@@ -1875,26 +1842,24 @@ export function TimeReportPageClient({
     if (viewMode === "week") {
       if (customerGroups.some((g) => g.customerId === customerId)) return;
       markDirty();
-      setCustomerGroups((prev) => [
-        ...prev,
-        { customerId, entries: [newEntry()] },
-      ]);
+      setCustomerGroups((prev) =>
+        sortCustomerGroupsByCustomerName(
+          [...prev, { customerId, entries: [newEntry()] }],
+          customerById
+        )
+      );
     } else {
       if (monthMergedRows.some((r) => r.customerId === customerId)) return;
       markDirty();
-      const key = monthOrderKey(displayYear, displayMonth);
-      const curOrder = customerOrderByMonthRef.current[key] ?? [];
-      // Always move newly added customer to the bottom for this month,
-      // even if it existed in a previously persisted order.
-      customerOrderByMonthRef.current[key] = [
-        ...curOrder.filter((cid) => cid !== customerId),
-        customerId,
-      ];
-      persistMonthCustomerOrder();
-      setMonthMergedRows((prev) => [
-        ...prev,
-        newMonthMergedRow(customerId, getCalendarDatesInMonth(displayYear, displayMonth)),
-      ]);
+      setMonthMergedRows((prev) =>
+        sortMonthMergedRowsByCustomerName(
+          [
+            ...prev,
+            newMonthMergedRow(customerId, getCalendarDatesInMonth(displayYear, displayMonth)),
+          ],
+          customerById
+        )
+      );
     }
     setAddCustomerOpen(false);
     const c = customerById.get(customerId);
@@ -1930,7 +1895,7 @@ export function TimeReportPageClient({
           });
           weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
           setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
-          const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
+          const mergedRows = buildMergedMonthRows(slices, weeks, calDates, customerById);
           setMonthMergedRows(mergedRows);
           void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
         } catch {
@@ -1952,7 +1917,7 @@ export function TimeReportPageClient({
         void runBatchHydrate(data.groups);
       });
     }
-  }, [runBatchHydrate]);
+  }, [runBatchHydrate, customerById]);
 
   const getFreshTargetWeekRevision = useCallback(
     async (consultantId: string, y: number, w: number): Promise<number> => {
@@ -2218,25 +2183,6 @@ export function TimeReportPageClient({
   const performCopyWholeMonthToNextMonth = async (copyHours: boolean) => {
     const rows = monthMergedRowsRef.current;
     if (rows.length === 0) return;
-    const sourceMonthKey = monthOrderKey(displayYearRef.current, displayMonthRef.current);
-    const { y: nextYear, m: nextMonth } = nextCalendarMonth(
-      displayYearRef.current,
-      displayMonthRef.current
-    );
-    const targetMonthKey = monthOrderKey(nextYear, nextMonth);
-
-    // Preserve source-month customer order in target month so copied rows land
-    // on the same visual positions after month navigation/reload.
-    const sourceOrder = customerOrderByMonthRef.current[sourceMonthKey] ?? [
-      ...new Set(rows.map((r) => r.customerId)),
-    ];
-    const targetExistingOrder = customerOrderByMonthRef.current[targetMonthKey] ?? [];
-    const mergedTargetOrder = [
-      ...sourceOrder,
-      ...targetExistingOrder.filter((cid) => !sourceOrder.includes(cid)),
-    ];
-    customerOrderByMonthRef.current[targetMonthKey] = mergedTargetOrder;
-    persistMonthCustomerOrder();
 
     const ok = await flushSave();
     if (!ok) return;
