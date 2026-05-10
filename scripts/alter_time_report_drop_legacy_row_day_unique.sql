@@ -5,6 +5,15 @@
 -- duplicate-key errors when two logical lines (different entry_line_id) share
 -- the same dimensions on the same day — which is valid in the new model.
 --
+-- Data safety: This script NEVER deletes, truncates, or updates rows in
+-- time_report_entries. It only drops UNIQUE constraints and UNIQUE indexes.
+-- In PostgreSQL those operations remove enforcement/metadata only; heap rows
+-- stay untouched. (If something depends on a dropped constraint, DROP may ERROR
+-- instead of silently removing data — fix dependencies first.)
+--
+-- Optional sanity check (run before and after; counts must match):
+--   SELECT COUNT(*) AS time_report_entries_rows FROM public.time_report_entries;
+--
 -- Safe to run once per database; skips constraints/indexes that mention entry_line_id.
 
 DO $$
