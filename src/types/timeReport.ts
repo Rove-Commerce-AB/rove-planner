@@ -45,13 +45,13 @@ export type TimeReportEntryCopyPayload = {
   hours: number[];
   comments: Record<number, string>;
   /**
-   * When false, copies project, role, Jira/DevOps, and description only — all target days
-   * get 0 hours and no internal comments. When true or omitted, copies hours and comments as usual.
+   * When false, copies project, role, Jira/DevOps, and description only — creates line header
+   * stubs without `time_report_entries` rows. When true or omitted, copies hours and comments as usual.
    */
   copyHours?: boolean;
   /**
-   * Optional target date (`YYYY-MM-DD`) used for rows-only copies to ensure an
-   * empty placeholder cell is created in the intended calendar period.
+   * Optional calendar date (`YYYY-MM-DD`) within the visible scope: sets stub line header
+   * `created_at` / `updated_at` so month filtering still surfaces header-only rows.
    */
   rowOnlyAnchorDate?: string;
 };

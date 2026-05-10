@@ -34,7 +34,7 @@ function baseEntry(
 describe("buildMergedMonthRows", () => {
   const customerById = new Map([["cust-a", { id: "cust-a", name: "Acme" }]]);
 
-  it("merges two ISO-week slices into one row when business key and displayOrder match", () => {
+  it("merges two ISO-week slices into one row when customer/project/role/jira/task match", () => {
     const y = 2026;
     const wA = 5;
     const wB = 6;
@@ -68,7 +68,7 @@ describe("buildMergedMonthRows", () => {
     );
   });
 
-  it("keeps separate merged rows when displayOrder differs across weeks (split merge key)", () => {
+  it("merges across ISO-week slices when only displayOrder differs (uses min for sorting)", () => {
     const y = 2026;
     const wA = 5;
     const wB = 6;
@@ -95,6 +95,10 @@ describe("buildMergedMonthRows", () => {
     };
 
     const rows = buildMergedMonthRows(slices, monthWeeks, monthCalendarDates, customerById);
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.displayOrder).toBe(1000);
+    expect(rows[0]!.weekSliceKeys.sort()).toEqual(
+      [weekSliceKey(y, wA), weekSliceKey(y, wB)].sort()
+    );
   });
 });

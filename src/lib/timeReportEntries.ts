@@ -1138,28 +1138,8 @@ async function buildDesiredCellsForCopy(
     }
   }
 
-  if (
-    !copyHours &&
-    entry.rowOnlyAnchorDate &&
-    weekDates.includes(entry.rowOnlyAnchorDate) &&
-    entry.projectId &&
-    entry.roleId
-  ) {
-    toInsert.push({
-      entry_line_id: entryLineId,
-      consultant_id: consultantId,
-      customer_id: customerId,
-      project_id: entry.projectId,
-      role_id: entry.roleId,
-      jira_devops_key: entry.jiraDevOpsValue || null,
-      description: (entry.task ?? "").trim() || null,
-      entry_date: entry.rowOnlyAnchorDate,
-      hours: COMMENT_ONLY_PLACEHOLDER_HOURS,
-      internal_comment: null,
-      rate_snapshot: rateSnapshot,
-      display_order: displayOrderPlaceholder,
-    });
-  }
+  /* Rows-only copies create `time_report_entry_lines` without day rows (no placeholder hours).
+   * `rowOnlyAnchorDate` on the payload is only used for stub header timestamps (see copyEntryToWeekCore). */
 
   if (copyHours && toInsert.length === 0) {
     return { toInsert: [], error: "Entry has no hours or comments to copy." };

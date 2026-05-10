@@ -2,10 +2,14 @@
  * Month-view merge of ISO-week time report slices.
  * A merged row groups multiple week payloads that describe the same logical line.
  *
- * Merge identity: customerId + projectId + roleId + jira key + trimmed task + displayOrder.
- * Including displayOrder keeps distinct grid rows that share project/role/jira/task apart.
- * Month-to-next-month copy must use the same displayOrder on every target ISO week so this key
- * stays stable across weeks (see copyEntryToWeek lineDisplayOrder).
+ * Merge identity (month grid): customerId + projectId + roleId + jira key + trimmed task.
+ * displayOrder is deliberately omitted: after week-scoped cleanup / legacy data, the same line
+ * shape can carry different display_order per ISO week while still being one logical row in
+ * the calendar month (matches merge_same_shape.sql semantics per week).
+ *
+ * The merged row's displayOrder is the minimum among contributing slices for stable sorting.
+ * Month-to-next-month copy should still align displayOrder across weeks when possible
+ * (see copyEntryToWeek lineDisplayOrder).
  */
 
 import type { TimeReportCustomerGroup, TimeReportEntry } from "@/types";
@@ -107,7 +111,7 @@ export function buildMergedMonthRows(
           const c = (e.comments[i] ?? "").trim();
           if (c) commentsByDate[d] = e.comments[i] ?? "";
         }
-        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}|${e.displayOrder ?? 0}`;
+        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
         sources.push({
           mergeKey,
           sliceKey: sk,
@@ -144,6 +148,11 @@ export function buildMergedMonthRows(
     const sliceIds = Object.values(lineIdByWeekSliceKey);
     const canonicalLineId =
       sliceIds.length > 0 ? sliceIds.reduce((a, b) => (a < b ? a : b)) : first.entry.id;
+    const definedOrders = list
+      .map((s) => s.entry.displayOrder)
+      .filter((o): o is number => typeof o === "number" && Number.isFinite(o));
+    const mergedDisplayOrder =
+      definedOrders.length > 0 ? Math.min(...definedOrders) : (first.entry.displayOrder ?? 0);
     const hoursByDate: Record<string, number> = {};
     const commentsByDate: Record<string, string> = {};
     for (const d of monthCalendarDates) {
@@ -161,7 +170,7 @@ export function buildMergedMonthRows(
       rowKey: mk,
       lineId: canonicalLineId,
       lineIdByWeekSliceKey,
-      displayOrder: first.entry.displayOrder ?? 0,
+      displayOrder: Number.isFinite(mergedDisplayOrder) ? mergedDisplayOrder : 0,
       weekSliceKeys: [...new Set(list.map((s) => s.sliceKey))],
       customerId: first.customerId,
       projectId: first.entry.projectId,
@@ -172,6 +181,26 @@ export function buildMergedMonthRows(
       commentsByDate,
     });
   }
+
+  /* Weeks where the row shows hours/comments inside the calendar month but had no slice-specific
+   * line id (e.g. spill-over from merged slices). Without this, save rebuild falls back to shared
+   * row.lineId across rows → ambiguous line identity. */
+  for (const row of rows) {
+    for (const mw of monthWeeks) {
+      const sk = weekSliceKey(mw.year, mw.week);
+      if (row.lineIdByWeekSliceKey[sk]) continue;
+      const wd = getWeekDates(mw.year, mw.week);
+      const activeInMonth = wd.some(
+        (d) =>
+          monthSet.has(d) &&
+          ((row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== "")
+      );
+      if (!activeInMonth) continue;
+      const sortedSliceIds = [...new Set(Object.values(row.lineIdByWeekSliceKey))].sort();
+      row.lineIdByWeekSliceKey[sk] = sortedSliceIds[0] ?? row.lineId;
+    }
+  }
+
   rows.sort((a, b) => {
     const rc = compareCustomerIdsByName(a.customerId, b.customerId, customerById);
     if (rc !== 0) return rc;

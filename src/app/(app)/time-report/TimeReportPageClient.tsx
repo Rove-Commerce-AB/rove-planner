@@ -222,7 +222,10 @@ function mergedRowAllLineIds(row: MonthMergedRow): string[] {
 }
 
 function resolveMergedRowLineIdForWeek(row: MonthMergedRow, sliceKeyStr: string): string {
-  return row.lineIdByWeekSliceKey[sliceKeyStr] ?? row.lineId;
+  const direct = row.lineIdByWeekSliceKey[sliceKeyStr];
+  if (direct) return direct;
+  const pool = [...new Set(Object.values(row.lineIdByWeekSliceKey))].sort();
+  return pool[0] ?? row.lineId;
 }
 
 function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): MonthMergedRow {
@@ -385,8 +388,8 @@ function buildCopyMergedRowToNextMonthOperations(
   const { y: ny, m: nm } = nextCalendarMonth(displayYear, displayMonth);
   const curDates = getCalendarDatesInMonth(displayYear, displayMonth);
   const nextDates = getCalendarDatesInMonth(ny, nm);
+  const monthDaySet = new Set(nextDates);
   const targetLineId = crypto.randomUUID();
-  const monthAnchorDate = !copyHours ? (nextDates[0] ?? null) : null;
   const hoursByNext: Record<string, number> = {};
   const commentsByNext: Record<string, string> = {};
   for (const d of nextDates) {
@@ -418,9 +421,11 @@ function buildCopyMergedRowToNextMonthOperations(
     });
     const has = hours.some((hh) => (hh ?? 0) > 0) || Object.keys(comments).length > 0;
     if (copyHours && !has) continue;
-    const anchorDateInThisWeek =
-      !copyHours && monthAnchorDate && wd.includes(monthAnchorDate) ? monthAnchorDate : null;
-    if (!copyHours && !anchorDateInThisWeek) continue;
+
+    const stubHeaderAnchor: string | undefined = copyHours
+      ? undefined
+      : (wd.find((d) => monthDaySet.has(d)) ?? nextDates[0]);
+    if (!copyHours && stubHeaderAnchor == null) continue;
 
     operations.push({
       targetYear: y,
@@ -436,7 +441,7 @@ function buildCopyMergedRowToNextMonthOperations(
         hours,
         comments,
         copyHours,
-        rowOnlyAnchorDate: anchorDateInThisWeek ?? undefined,
+        rowOnlyAnchorDate: stubHeaderAnchor,
       },
     });
   }
@@ -1980,6 +1985,11 @@ export function TimeReportPageClient({
         hours: entry.hours,
         comments: entry.comments,
         copyHours,
+        ...(!copyHours
+          ? {
+              rowOnlyAnchorDate: getWeekDates(initialYear, initialWeek)[0],
+            }
+          : {}),
       }
     );
     if (!result.success) {
@@ -2052,6 +2062,8 @@ export function TimeReportPageClient({
 
     const sourceGroups = customerGroupsRef.current;
     const target = addWeeksToYearWeekLocal(yearRef.current, weekRef.current, 1);
+    const targetWeekDates = getWeekDates(target.year, target.week);
+    const stubAnchorDate = targetWeekDates[0];
     setCopyToWeekState("copying");
     setSaveError(null);
 
@@ -2072,6 +2084,9 @@ export function TimeReportPageClient({
             hours: entry.hours,
             comments: entry.comments,
             copyHours: includeHoursForThisRow,
+            ...(includeHoursForThisRow || stubAnchorDate == null
+              ? {}
+              : { rowOnlyAnchorDate: stubAnchorDate }),
           }
         );
         if (!result.success) {
@@ -3847,7 +3862,7 @@ export function TimeReportPageClient({
                       <>
                         Choose whether to include reported hours and internal comments in{" "}
                         {d.mode === "whole-month-next-month" ? "the next calendar month for all rows" : "the next calendar month"} ({nextMonthLabel}), or only
-                        project, role, description, and Jira/DevOps with empty cells.
+                        project, role, description, and Jira/DevOps (&quot;Rows only&quot; — empty cells until you book time).
                       </>
                     )}
                   </p>
