@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, Select, Button, modalSelectTriggerClass } from "@/components/ui";
+import { Dialog, Button } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
 import { addConsultantToCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
@@ -24,14 +24,14 @@ export function AddCustomerConsultantModal({
   const [allConsultants, setAllConsultants] = useState<
     { id: string; name: string }[]
   >([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      setSelectedId("");
+      setSelectedIds([]);
       getConsultantsWithDefaultRole()
         .then(setAllConsultants)
         .catch(() => setAllConsultants([]));
@@ -43,15 +43,27 @@ export function AddCustomerConsultantModal({
     .filter((c) => !existingIds.has(c.id))
     .map((c) => ({ value: c.id, label: c.name }));
 
+  const toggleConsultant = (consultantId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(consultantId)
+        ? prev.filter((id) => id !== consultantId)
+        : [...prev, consultantId]
+    );
+  };
+
   const handleSubmit = async () => {
-    if (!selectedId) {
-      setError("Select a consultant");
+    if (selectedIds.length === 0) {
+      setError("Select at least one consultant");
       return;
     }
     setError(null);
     setSubmitting(true);
     try {
-      await addConsultantToCustomer(customerId, selectedId);
+      await Promise.all(
+        selectedIds.map((consultantId) =>
+          addConsultantToCustomer(customerId, consultantId)
+        )
+      );
       onSuccess();
       onClose();
     } catch (e) {
@@ -80,16 +92,31 @@ export function AddCustomerConsultantModal({
           </p>
         )}
 
-        <Select
-          id="add-consultant-select"
-          label="Consultant"
-          value={selectedId}
-          onValueChange={setSelectedId}
-          placeholder="Select consultant"
-          variant="modal"
-          triggerClassName={modalSelectTriggerClass}
-          options={options}
-        />
+        {options.length > 0 && (
+          <div>
+            <p className="mb-2 block text-sm font-medium text-text-primary">
+              Consultants
+            </p>
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
+              {options.map((option) => (
+                <label
+                  key={option.value}
+                  htmlFor={`add-consultant-${option.value}`}
+                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+                >
+                  <input
+                    id={`add-consultant-${option.value}`}
+                    type="checkbox"
+                    checked={selectedIds.includes(option.value)}
+                    onChange={() => toggleConsultant(option.value)}
+                    disabled={submitting}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {options.length === 0 && allConsultants.length > 0 && (
           <p className="text-sm text-text-primary opacity-70">
@@ -101,8 +128,11 @@ export function AddCustomerConsultantModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Adding…" : "Add"}
+          <Button
+            type="submit"
+            disabled={submitting || options.length === 0}
+          >
+            {submitting ? "Adding…" : "Add selected"}
           </Button>
         </div>
       </form>

@@ -44,6 +44,18 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   return Math.floor(n);
 }
 
+function isConnectTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("timeout exceeded when trying to connect");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function buildCloudSqlPoolConfig(): PoolConfig {
   const connectionString = process.env.CLOUD_SQL_URL;
   if (!connectionString) {
@@ -134,6 +146,32 @@ function getCloudSqlPool(): Pool {
  */
 export const cloudSqlPool = new Proxy({} as Pool, {
   get(_target, prop, receiver) {
+    if (prop === "query") {
+      return async (...args: unknown[]) => {
+        const pool = getCloudSqlPool();
+        const retryCount = parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_COUNT) ?? 1;
+        const retryDelayMs = parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_DELAY_MS) ?? 150;
+
+        let attempt = 0;
+        // attempt 0 = initial try, then retryCount additional retries.
+        while (attempt <= retryCount) {
+          try {
+            return await (pool.query as (...innerArgs: unknown[]) => Promise<unknown>)(...args);
+          } catch (error) {
+            const canRetry = isConnectTimeoutError(error) && attempt < retryCount;
+            if (!canRetry) throw error;
+
+            debugLog("db-pool", "query retry after connect timeout", {
+              attempt: attempt + 1,
+              retryCount,
+              retryDelayMs,
+            });
+            await sleep(retryDelayMs);
+            attempt += 1;
+          }
+        }
+      };
+    }
     return Reflect.get(getCloudSqlPool(), prop, receiver);
   },
 });

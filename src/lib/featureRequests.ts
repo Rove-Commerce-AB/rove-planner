@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { notifyFeatureRequestImplemented } from "@/lib/userNotifications";
+import {
+  notifyFeatureRequestDeclined,
+  notifyFeatureRequestImplemented,
+} from "@/lib/userNotifications";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 
 type LinearConfig = {
@@ -106,13 +109,23 @@ export type FeatureRequest = {
   updated_at: string;
   submitted_by_email: string | null;
   is_implemented: boolean;
+  declined_at: string | null;
+  decline_comment: string | null;
 };
 
 export async function getFeatureRequests(): Promise<FeatureRequest[]> {
   const { rows } = await cloudSqlPool.query<FeatureRequest>(
-    `SELECT id, content, created_at::text, updated_at::text, submitted_by_email, is_implemented
+    `SELECT id, content, created_at::text, updated_at::text, submitted_by_email, is_implemented,
+            declined_at::text, decline_comment
      FROM feature_requests
-     ORDER BY is_implemented ASC, created_at DESC`
+     ORDER BY
+       CASE
+         WHEN declined_at IS NOT NULL THEN 2
+         WHEN is_implemented THEN 1
+         ELSE 0
+       END ASC,
+       updated_at DESC,
+       created_at DESC`
   );
   return rows;
 }
@@ -134,7 +147,12 @@ export async function setFeatureRequestImplemented(
   if (!prev) throw new Error("Update failed");
 
   const { rowCount } = await cloudSqlPool.query(
-    `UPDATE feature_requests SET is_implemented = $2, updated_at = now() WHERE id = $1`,
+    `UPDATE feature_requests
+     SET is_implemented = $2,
+         declined_at = CASE WHEN $2 THEN NULL ELSE declined_at END,
+         decline_comment = CASE WHEN $2 THEN NULL ELSE decline_comment END,
+         updated_at = now()
+     WHERE id = $1`,
     [id, is_implemented]
   );
   if (!rowCount) throw new Error("Update failed");
@@ -152,6 +170,49 @@ export async function setFeatureRequestImplemented(
       contentPreview: preview,
     });
   }
+  revalidatePath("/settings");
+}
+
+export async function declineFeatureRequest(
+  id: string,
+  adminComment: string
+): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  const trimmedComment = adminComment.trim();
+  if (!trimmedComment) throw new Error("Admin comment is required");
+
+  const { rows: beforeRows } = await cloudSqlPool.query<{
+    submitted_by_email: string | null;
+    content: string;
+  }>(
+    `SELECT submitted_by_email, content FROM feature_requests WHERE id = $1`,
+    [id]
+  );
+  const prev = beforeRows[0];
+  if (!prev) throw new Error("Update failed");
+
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE feature_requests
+     SET is_implemented = false,
+         declined_at = now(),
+         decline_comment = $2,
+         updated_at = now()
+     WHERE id = $1`,
+    [id, trimmedComment]
+  );
+  if (!rowCount) throw new Error("Update failed");
+
+  if (prev.submitted_by_email?.trim()) {
+    const c = prev.content;
+    const preview = c.length > 120 ? `${c.slice(0, 117)}...` : c;
+    await notifyFeatureRequestDeclined({
+      submittedByEmail: prev.submitted_by_email.trim(),
+      featureRequestId: id,
+      contentPreview: preview,
+      adminComment: trimmedComment,
+    });
+  }
+
   revalidatePath("/settings");
 }
 

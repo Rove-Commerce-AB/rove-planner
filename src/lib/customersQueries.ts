@@ -44,6 +44,50 @@ export type UpdateCustomerInput = {
 const CUSTOMER_SELECT =
   "id, name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active";
 
+const SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX =
+  "Only one customer can be internal";
+
+function buildSingleInternalCustomerErrorMessage(
+  existingInternalCustomerName: string
+): string {
+  return `${SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX}: customer "${existingInternalCustomerName}" is already internal.`;
+}
+
+async function findExistingInternalCustomerName(
+  excludeCustomerId?: string
+): Promise<string | null> {
+  const { rows } = await cloudSqlPool.query<{ name: string }>(
+    `SELECT name
+     FROM customers
+     WHERE is_internal = true
+       AND ($1::uuid IS NULL OR id <> $1::uuid)
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [excludeCustomerId ?? null]
+  );
+  return rows[0]?.name ?? null;
+}
+
+async function assertNoOtherInternalCustomer(excludeCustomerId?: string) {
+  const existingInternalCustomerName = await findExistingInternalCustomerName(
+    excludeCustomerId
+  );
+  if (existingInternalCustomerName) {
+    throw new Error(
+      buildSingleInternalCustomerErrorMessage(existingInternalCustomerName)
+    );
+  }
+}
+
+function isSingleInternalConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybePgError = error as { code?: string; constraint?: string };
+  return (
+    maybePgError.code === "23505" &&
+    maybePgError.constraint === "customers_single_internal_idx"
+  );
+}
+
 function getInitials(name: string): string {
   return name
     .split(" ")
@@ -173,23 +217,39 @@ export async function fetchCustomersByIds(ids: string[]): Promise<Customer[]> {
 export async function createCustomerQuery(
   input: CreateCustomerInput
 ): Promise<Customer> {
-  const { rows } = await cloudSqlPool.query<Customer>(
-    `INSERT INTO customers (
-       name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING ${CUSTOMER_SELECT}`,
-    [
-      input.name.trim(),
-      input.contact_name?.trim() || null,
-      input.contact_email?.trim() || null,
-      input.account_manager_id ?? null,
-      input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
-      input.logo_url?.trim() || null,
-      input.url?.trim() ?? null,
-      input.is_internal ?? false,
-      input.is_active ?? true,
-    ]
-  );
+  if (input.is_internal) {
+    await assertNoOtherInternalCustomer();
+  }
+  let rows: Customer[];
+  try {
+    const result = await cloudSqlPool.query<Customer>(
+      `INSERT INTO customers (
+         name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING ${CUSTOMER_SELECT}`,
+      [
+        input.name.trim(),
+        input.contact_name?.trim() || null,
+        input.contact_email?.trim() || null,
+        input.account_manager_id ?? null,
+        input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
+        input.logo_url?.trim() || null,
+        input.url?.trim() ?? null,
+        input.is_internal ?? false,
+        input.is_active ?? true,
+      ]
+    );
+    rows = result.rows;
+  } catch (error) {
+    if (isSingleInternalConstraintError(error)) {
+      const existingInternalCustomerName =
+        (await findExistingInternalCustomerName()) ?? "another customer";
+      throw new Error(
+        buildSingleInternalCustomerErrorMessage(existingInternalCustomerName)
+      );
+    }
+    throw error;
+  }
   if (!rows[0]) throw new Error("Failed to create customer");
   return rows[0];
 }
@@ -198,6 +258,9 @@ export async function updateCustomerQuery(
   id: string,
   input: UpdateCustomerInput
 ): Promise<Customer> {
+  if (input.is_internal) {
+    await assertNoOtherInternalCustomer(id);
+  }
   const sets: string[] = [];
   const values: unknown[] = [];
   let i = 1;
@@ -239,10 +302,23 @@ export async function updateCustomerQuery(
   }
   sets.push(`updated_at = now()`);
   values.push(id);
-  const { rows } = await cloudSqlPool.query<Customer>(
-    `UPDATE customers SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${CUSTOMER_SELECT}`,
-    values
-  );
+  let rows: Customer[];
+  try {
+    const result = await cloudSqlPool.query<Customer>(
+      `UPDATE customers SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${CUSTOMER_SELECT}`,
+      values
+    );
+    rows = result.rows;
+  } catch (error) {
+    if (isSingleInternalConstraintError(error)) {
+      const existingInternalCustomerName =
+        (await findExistingInternalCustomerName(id)) ?? "another customer";
+      throw new Error(
+        buildSingleInternalCustomerErrorMessage(existingInternalCustomerName)
+      );
+    }
+    throw error;
+  }
   if (!rows[0]) throw new Error("Failed to update customer");
   return rows[0];
 }

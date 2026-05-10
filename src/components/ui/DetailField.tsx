@@ -191,3 +191,30 @@ export function InlineEditTrigger({
     </button>
   );
 }
+
+/**
+ * Read-only row for badges/toggles on detail pages: matches {@link InlineEditFieldContainer}
+ * value strip + reserved status strip so vertical rhythm aligns with editable fields.
+ */
+export function DetailBadgeFieldRow({
+  label,
+  children,
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <FieldLabel>{label}</FieldLabel>
+      <div className="flex w-full min-w-0 flex-col">
+        <div
+          className={`flex w-full min-w-0 flex-1 items-center gap-2 ${INLINE_EDIT_VALUE_ROW_MIN_H}`}
+        >
+          <span className="min-w-0 flex-1">{children}</span>
+          <span className="inline-flex w-6 shrink-0 items-center justify-end" aria-hidden />
+        </div>
+        <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`} aria-hidden />
+      </div>
+    </div>
+  );
+}

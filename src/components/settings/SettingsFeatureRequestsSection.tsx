@@ -26,7 +26,9 @@ export function SettingsFeatureRequestsSection({
   savingFeatureRequest,
   featureRequestError,
   togglingImplementedId,
+  decliningFeatureRequestId,
   handleToggleImplemented,
+  handleDecline,
   setFeatureRequestError,
   setFeatureRequestToDelete,
 }: {
@@ -42,7 +44,9 @@ export function SettingsFeatureRequestsSection({
   savingFeatureRequest: boolean;
   featureRequestError: string | null;
   togglingImplementedId: string | null;
+  decliningFeatureRequestId: string | null;
   handleToggleImplemented: (fr: FeatureRequest) => void | Promise<void>;
+  handleDecline: (fr: FeatureRequest) => void | Promise<void>;
   setFeatureRequestError: Dispatch<SetStateAction<string | null>>;
   setFeatureRequestToDelete: Dispatch<SetStateAction<FeatureRequest | null>>;
 }) {
@@ -59,7 +63,13 @@ export function SettingsFeatureRequestsSection({
             featureRequests.map((fr) => (
               <li
                 key={fr.id}
-                className={`flex items-start gap-4 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-muted/50 ${fr.is_implemented ? "bg-green-100/80 dark:bg-green-900/20" : ""}`}
+                className={`flex items-start gap-4 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-muted/50 ${
+                  fr.is_implemented
+                    ? "bg-green-100/80 dark:bg-green-900/20"
+                    : fr.declined_at
+                      ? "border-l-2 border-l-red-700 bg-red-50 dark:border-l-red-300 dark:bg-red-950/25"
+                      : ""
+                }`}
               >
                 <div className="min-w-0 flex-1 flex flex-col">
                   <div className="flex min-h-[2rem] flex-col">
@@ -88,13 +98,19 @@ export function SettingsFeatureRequestsSection({
                               {fr.created_at && (
                                 <span>
                                   {fr.submitted_by_email ? " · " : ": "}
-                                  {new Date(fr.created_at).toLocaleDateString(undefined, {
+                                  {new Date(fr.created_at).toLocaleDateString("sv-SE", {
                                     day: "numeric",
                                     month: "short",
                                     year: "numeric",
                                   })}
                                 </span>
                               )}
+                            </p>
+                          )}
+                          {fr.declined_at && (
+                            <p className="mt-1 text-xs font-semibold text-danger">
+                              Declined
+                              {fr.decline_comment ? `: ${fr.decline_comment}` : ""}
                             </p>
                           )}
                         </div>
@@ -127,7 +143,7 @@ export function SettingsFeatureRequestsSection({
                     <button
                       type="button"
                       onClick={() => void handleToggleImplemented(fr)}
-                      disabled={togglingImplementedId === fr.id}
+                      disabled={togglingImplementedId === fr.id || decliningFeatureRequestId === fr.id}
                       className={`cursor-pointer rounded-sm p-1.5 transition-colors disabled:opacity-50 ${fr.is_implemented ? "text-green-600 opacity-100" : "text-text-primary opacity-60 hover:opacity-100"} hover:bg-bg-muted/50`}
                       aria-label={
                         fr.is_implemented ? "Mark as not implemented" : "Mark as implemented"
@@ -135,6 +151,16 @@ export function SettingsFeatureRequestsSection({
                       title={fr.is_implemented ? "Mark as not implemented" : "Implemented"}
                     >
                       <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDecline(fr)}
+                      disabled={decliningFeatureRequestId === fr.id || togglingImplementedId === fr.id}
+                      className="cursor-pointer rounded-sm px-2 py-1 text-xs font-medium text-danger transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                      aria-label="Decline with comment"
+                      title="Decline with comment"
+                    >
+                      Decline
                     </button>
                     <button
                       type="button"

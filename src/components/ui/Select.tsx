@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useLayoutEffect, useCallback, useState } from "react";
+import { useRef, useLayoutEffect, useCallback, useState, useEffect, useMemo } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { ChevronDown, Loader2 } from "lucide-react";
 
@@ -65,6 +65,18 @@ export function Select({
         ? EMPTY
         : value;
 
+  /** Radix generates `aria-controls` via `useId()`; SSR + streaming can desync IDs vs client (hydration warning). */
+  const [radixReady, setRadixReady] = useState(false);
+  useEffect(() => {
+    setRadixReady(true);
+  }, []);
+
+  const shellDisplayLabel = useMemo(() => {
+    if (value === "" && !hasEmptyOption) return placeholder;
+    const lookup = value === "" ? "" : value;
+    return options.find((o) => o.value === lookup)?.label ?? placeholder;
+  }, [value, hasEmptyOption, options, placeholder]);
+
   const viewportHasMaxHeight = /\bmax-h-/.test(viewportClassName);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -116,6 +128,75 @@ export function Select({
   const inlineEditTriggerBase =
     "group inline-flex h-8 w-full min-w-0 box-border shrink-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)]";
 
+  const mergedTriggerClass =
+    isInlineEdit
+      ? `${inlineEditTriggerBase} ${triggerClassName}`.trim()
+      : `group inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)] ${triggerSize} ${triggerShape} ${triggerClassName}`.trim();
+
+  if (!radixReady) {
+    const showPlaceholderTone = value === "" && !hasEmptyOption;
+    return (
+      <div className={className}>
+        {label && !isFilter && (
+          <label
+            htmlFor={id}
+            className="mb-1 block text-sm font-medium text-text-primary"
+          >
+            {label}
+          </label>
+        )}
+        <button
+          type="button"
+          id={id}
+          title={triggerTitle}
+          onBlur={onBlur}
+          disabled={disabled}
+          aria-busy={isLoading}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error && id ? `${id}-error` : undefined}
+          aria-haspopup="listbox"
+          aria-expanded={false}
+          className={mergedTriggerClass}
+          data-placeholder={showPlaceholderTone ? "" : undefined}
+        >
+          <span
+            className={`min-w-0 shrink truncate ${showPlaceholderTone ? "text-text-muted" : ""}`}
+          >
+            {shellDisplayLabel}
+          </span>
+          <span className="shrink-0" aria-hidden>
+            {isLoading ? (
+              <Loader2
+                className={
+                  isFilter
+                    ? "h-3.5 w-3.5 animate-spin text-text-muted"
+                    : isInlineEdit
+                      ? "h-3.5 w-3.5 animate-spin text-text-muted"
+                      : "h-4 w-4 animate-spin text-text-muted"
+                }
+              />
+            ) : (
+              <ChevronDown
+                className={
+                  isFilter
+                    ? "h-3.5 w-3.5 opacity-70 transition-transform"
+                    : isInlineEdit
+                      ? "h-3.5 w-3.5 opacity-60 transition-transform"
+                      : "h-4 w-4 opacity-60 transition-transform"
+                }
+              />
+            )}
+          </span>
+        </button>
+        {error && (
+          <p id={id ? `${id}-error` : undefined} className="mt-1 text-sm text-danger" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={className}>
       {label && !isFilter && (
@@ -150,11 +231,7 @@ export function Select({
           aria-busy={isLoading}
           aria-invalid={Boolean(error)}
           aria-describedby={error && id ? `${id}-error` : undefined}
-          className={
-            isInlineEdit
-              ? `${inlineEditTriggerBase} ${triggerClassName}`.trim()
-              : `group inline-flex h-auto w-full min-w-0 items-center justify-between gap-1.5 overflow-hidden text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted data-[state=open]:rounded-b-none data-[state=open]:border-[var(--color-border-default)] ${triggerSize} ${triggerShape} ${triggerClassName}`.trim()
-          }
+          className={mergedTriggerClass}
         >
           <span className="min-w-0 shrink truncate">
             <SelectPrimitive.Value placeholder={placeholder} />

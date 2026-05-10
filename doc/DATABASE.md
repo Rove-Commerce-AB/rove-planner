@@ -302,6 +302,8 @@ Unique / index definitions: see migrations (e.g. uniqueness including `display_o
 | updated_at | timestamptz | NOT NULL |
 | submitted_by_email | text | nullable |
 | is_implemented | boolean | NOT NULL, default false |
+| declined_at | timestamptz | nullable; set when request is declined |
+| decline_comment | text | nullable; admin comment shown to reporter |
 
 ---
 
@@ -313,7 +315,7 @@ In-app notifications for authenticated users (`app_users`). Rows are created fro
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
 | app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE CASCADE |
-| kind | text | NOT NULL, e.g. `allocation_booked`, `feature_request_implemented` |
+| kind | text | NOT NULL, e.g. `allocation_booked`, `feature_request_implemented`, `feature_request_declined` |
 | payload | jsonb | NOT NULL, default `{}`; shape depends on `kind` |
 | read_at | timestamptz | nullable; null = unread |
 | created_at | timestamptz | NOT NULL, default now() |

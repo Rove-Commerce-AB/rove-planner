@@ -29,6 +29,8 @@ export type TimeReportCustomerGroup = {
 
 /** Payload for copying a single entry to another week (subset of TimeReportEntry). */
 export type TimeReportEntryCopyPayload = {
+  /** Optional stable line id to reuse across multiple target weeks in one copy operation. */
+  lineId?: string;
   projectId: string;
   roleId: string;
   jiraDevOpsValue: string;
@@ -40,6 +42,11 @@ export type TimeReportEntryCopyPayload = {
    * get 0 hours and no internal comments. When true or omitted, copies hours and comments as usual.
    */
   copyHours?: boolean;
+  /**
+   * Optional target date (`YYYY-MM-DD`) used for rows-only copies to ensure an
+   * empty placeholder cell is created in the intended calendar period.
+   */
+  rowOnlyAnchorDate?: string;
 };
 
 /** Result of loading one ISO week of time report data (includes revision for optimistic locking). */

@@ -90,6 +90,25 @@ function notificationBody(n: UserNotificationRow): { text: ReactNode } {
       ),
     };
   }
+  if (n.kind === USER_NOTIFICATION_KIND.FEATURE_REQUEST_DECLINED) {
+    const preview =
+      typeof p.contentPreview === "string" && p.contentPreview.trim()
+        ? p.contentPreview.trim()
+        : "(no content)";
+    const adminComment =
+      typeof p.adminComment === "string" && p.adminComment.trim()
+        ? p.adminComment.trim()
+        : "No comment provided.";
+    return {
+      text: (
+        <>
+          A feature request you submitted was declined:{" "}
+          <span className="font-medium opacity-90">&quot;{preview}&quot;</span>. Admin comment:{" "}
+          <span className="font-medium opacity-90">{adminComment}</span>
+        </>
+      ),
+    };
+  }
   if (n.kind === USER_NOTIFICATION_KIND.TASK_BOARD_INVITED) {
     const boardId =
       typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;

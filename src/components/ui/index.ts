@@ -19,6 +19,7 @@ export { PanelSectionTitle } from "./PanelSectionTitle";
 export {
   FieldLabel,
   FieldValue,
+  DetailBadgeFieldRow,
   InlineEditFieldContainer,
   InlineEditTrigger,
   InlineEditStatus,

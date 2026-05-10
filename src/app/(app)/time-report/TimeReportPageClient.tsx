@@ -25,6 +25,7 @@ import {
   Copy,
   CopyPlus,
   Link,
+  Link2Off,
   ExternalLink,
   Loader2,
 } from "lucide-react";
@@ -72,6 +73,7 @@ import {
 } from "@/components/TimeGridColumnHighlight";
 
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
+const TIME_REPORT_MONTH_CUSTOMER_ORDER_STORAGE_KEY = "time-report-month-customer-order-v1";
 
 function collectTimeReportHydratePayload(groups: CustomerGroup[]): {
   customerIds: string[];
@@ -96,6 +98,51 @@ function collectTimeReportHydratePayload(groups: CustomerGroup[]): {
 
 function weekSliceKey(year: number, week: number) {
   return `${year}-W${week}`;
+}
+
+/** Parallel server-action bursts when switching months could stall the pool; fetch sequentially + timeout so UI never hangs on `loading` forever. */
+const TIME_REPORT_FETCH_TIMEOUT_MS = 45_000;
+/** If Postgres or the server action stalls, month save loops would otherwise leave “Saving…” indefinitely. */
+const SAVE_SERVER_ACTION_TIMEOUT_MS = 90_000;
+
+function promiseWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label}: exceeded ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
+
+type TimeReportWeekPayload = Awaited<ReturnType<typeof getTimeReportEntries>>;
+
+/**
+ * Sequential week fetches with cooperative abort. Without this, switching months leaves the
+ * previous fetch running (N× server actions) alongside the new one and can exhaust the pool —
+ * the latest load never finishes and the UI stays on “Loading…”.
+ */
+async function fetchTimeReportWeeksSequentialUnlessAborted(
+  consultantId: string,
+  weeks: { year: number; week: number }[],
+  labelPrefix: string,
+  shouldAbort: () => boolean,
+  /** Only set for month aggregate loads — ISO weeks can span two calendar months. */
+  calendarMonthForLineFilter?: { year: number; month: number } | null
+): Promise<TimeReportWeekPayload[] | null> {
+  const out: TimeReportWeekPayload[] = [];
+  for (let wi = 0; wi < weeks.length; wi++) {
+    if (shouldAbort()) return null;
+    const { year: y, week: w } = weeks[wi]!;
+    const payload = await promiseWithTimeout(
+      getTimeReportEntries(consultantId, y, w, calendarMonthForLineFilter ?? undefined),
+      TIME_REPORT_FETCH_TIMEOUT_MS,
+      `${labelPrefix} ${wi + 1}/${weeks.length} ${y}-W${w}`
+    );
+    if (shouldAbort()) return null;
+    out.push(payload);
+  }
+  return out;
 }
 
 /** Native `title` on the Jira/DevOps key: shows summary/title when loaded. */
@@ -134,6 +181,15 @@ function formatReportHoursTotal(
   return String(Math.round(w * 100) / 100).replace(/\.?0+$/, "");
 }
 
+/** Computed totals only — italic + secondary tone vs editable hour cells and date labels. */
+function timeReportSumFigureClass(size: "week" | "month"): string {
+  return [
+    // No truncate: overflow:hidden clips italic glyph overshoot in narrow columns.
+    "inline-flex max-w-full items-center justify-center overflow-visible italic tabular-nums font-semibold text-text-secondary empty:hidden pl-px pr-1",
+    size === "week" ? "text-xs leading-none" : "text-[12px] leading-tight",
+  ].join(" ");
+}
+
 /** Ref must update synchronously: month save loops multiple ISO weeks in one run; the next `expected` revision must not lag React state. */
 function syncWeekRevisionAfterSave(
   setWeekRevisionsByKey: Dispatch<SetStateAction<Record<string, number>>>,
@@ -147,7 +203,10 @@ function syncWeekRevisionAfterSave(
 
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = {
-  id: string;
+  rowKey: string;
+  lineId: string;
+  weekSliceKeys: string[];
+  isDraft?: boolean;
   customerId: string;
   projectId: string;
   roleId: string;
@@ -164,6 +223,7 @@ function buildMergedMonthRows(
 ): MonthMergedRow[] {
   type Source = {
     mergeKey: string;
+    sliceKey: string;
     customerId: string;
     entry: Entry;
     hoursByDate: Record<string, number>;
@@ -171,12 +231,33 @@ function buildMergedMonthRows(
   };
   const monthSet = new Set(monthCalendarDates);
   const sources: Source[] = [];
+  const customerRank = new Map<string, number>();
 
   for (const { year: y, week: w } of monthWeeks) {
+    const sk = weekSliceKey(y, w);
     const weekDates = getWeekDates(y, w);
     const groups = slices[weekSliceKey(y, w)] ?? [];
-    for (const g of groups) {
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+      const g = groups[groupIndex]!;
+      const prevRank = customerRank.get(g.customerId);
+      if (prevRank == null || groupIndex < prevRank) {
+        customerRank.set(g.customerId, groupIndex);
+      }
       for (const e of g.entries) {
+        /** Rows whose only booked days fall outside this calendar month still exist on the ISO-week slice; month UI showed them as empty and delete could not drop the header (`remainingInWeek` > 0). Omit from month merge. */
+        let hasInsideMonthActivity = false;
+        let hasOutsideMonthActivity = false;
+        for (let i = 0; i < 7; i++) {
+          const d = weekDates[i]!;
+          const h = e.hours[i] ?? 0;
+          const cmt = (e.comments[i] ?? "").trim();
+          const active = h > 0 || cmt !== "";
+          if (!active) continue;
+          if (monthSet.has(d)) hasInsideMonthActivity = true;
+          else hasOutsideMonthActivity = true;
+        }
+        if (hasOutsideMonthActivity && !hasInsideMonthActivity) continue;
+
         const hoursByDate: Record<string, number> = {};
         const commentsByDate: Record<string, string> = {};
         for (let i = 0; i < 7; i++) {
@@ -191,7 +272,14 @@ function buildMergedMonthRows(
         // Keep entry-line identity in month rows so save payload cannot collapse
         // multiple distinct lines into one and accidentally trigger deletes.
         const mergeKey = `${e.id}|${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
-        sources.push({ mergeKey, customerId: g.customerId, entry: e, hoursByDate, commentsByDate });
+        sources.push({
+          mergeKey,
+          sliceKey: sk,
+          customerId: g.customerId,
+          entry: e,
+          hoursByDate,
+          commentsByDate,
+        });
       }
     }
   }
@@ -207,7 +295,9 @@ function buildMergedMonthRows(
   }
 
   const rows: MonthMergedRow[] = [];
+  const mergeKeyRank = new Map<string, number>();
   for (const mk of keyOrder) {
+    mergeKeyRank.set(mk, mergeKeyRank.size);
     const list = byKey.get(mk)!;
     const first = list[0]!;
     const hoursByDate: Record<string, number> = {};
@@ -224,7 +314,9 @@ function buildMergedMonthRows(
       }
     }
     rows.push({
-      id: first.entry.id,
+      rowKey: mk,
+      lineId: first.entry.id,
+      weekSliceKeys: [...new Set(list.map((s) => s.sliceKey))],
       customerId: first.customerId,
       projectId: first.entry.projectId,
       roleId: first.entry.roleId,
@@ -234,8 +326,16 @@ function buildMergedMonthRows(
       commentsByDate,
     });
   }
-  // Omit rows that only have hours/comments outside this calendar month (e.g. ISO week spills April→May).
-  return rows.filter(mergedRowHasContent);
+  rows.sort((a, b) => {
+    const ra = customerRank.get(a.customerId) ?? Number.MAX_SAFE_INTEGER;
+    const rb = customerRank.get(b.customerId) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    const ka = mergeKeyRank.get(a.rowKey) ?? Number.MAX_SAFE_INTEGER;
+    const kb = mergeKeyRank.get(b.rowKey) ?? Number.MAX_SAFE_INTEGER;
+    return ka - kb;
+  });
+  // Keep empty rows too so "template rows" survive refresh and month navigation.
+  return rows;
 }
 
 function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): MonthMergedRow {
@@ -246,7 +346,10 @@ function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): Mo
     commentsByDate[d] = "";
   }
   return {
-    id: crypto.randomUUID(),
+    rowKey: crypto.randomUUID(),
+    lineId: crypto.randomUUID(),
+    weekSliceKeys: [],
+    isDraft: true,
     customerId,
     projectId: "",
     roleId: "",
@@ -266,7 +369,7 @@ function pseudoCustomerGroupsForHydrate(rows: MonthMergedRow[]): CustomerGroup[]
       order.push(row.customerId);
     }
     byCustomer.get(row.customerId)!.push({
-      id: row.id,
+      id: row.lineId,
       projectId: row.projectId,
       roleId: row.roleId,
       jiraDevOpsValue: row.jiraDevOpsValue,
@@ -283,10 +386,17 @@ function buildCustomerGroupsForWeekFromMerged(
   y: number,
   w: number
 ): CustomerGroup[] {
+  const sk = weekSliceKey(y, w);
   const weekDates = getWeekDates(y, w);
   const order: string[] = [];
   const byCustomer = new Map<string, Entry[]>();
   for (const row of rows) {
+    const hasWeekData = weekDates.some(
+      (d) => (row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== ""
+    );
+    const belongsToWeek =
+      row.isDraft === true || row.weekSliceKeys.includes(sk) || hasWeekData;
+    if (!belongsToWeek) continue;
     if (!byCustomer.has(row.customerId)) {
       byCustomer.set(row.customerId, []);
       order.push(row.customerId);
@@ -298,7 +408,7 @@ function buildCustomerGroupsForWeekFromMerged(
       if (t) comments[i] = row.commentsByDate[d] ?? "";
     });
     byCustomer.get(row.customerId)!.push({
-      id: row.id,
+      id: row.lineId,
       projectId: row.projectId,
       roleId: row.roleId,
       jiraDevOpsValue: row.jiraDevOpsValue,
@@ -314,6 +424,25 @@ function mergedRowHasContent(row: MonthMergedRow): boolean {
   const hasHours = Object.values(row.hoursByDate).some((h) => (h ?? 0) > 0);
   const hasComment = Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "");
   return hasHours || hasComment;
+}
+
+function hasAmbiguousLineIdentity(groups: CustomerGroup[]): boolean {
+  const byId = new Map<string, string>();
+  for (const g of groups) {
+    for (const e of g.entries) {
+      const shape = [
+        g.customerId,
+        e.projectId ?? "",
+        e.roleId ?? "",
+        e.jiraDevOpsValue ?? "",
+        (e.task ?? "").trim(),
+      ].join("|");
+      const prev = byId.get(e.id);
+      if (prev && prev !== shape) return true;
+      byId.set(e.id, shape);
+    }
+  }
+  return false;
 }
 
 /** Same calendar day-of-month in another (year, month), clamped to last day of target month. */
@@ -332,6 +461,10 @@ function mapDateSameDomToMonth(
 function nextCalendarMonth(year: number, month: number): { y: number; m: number } {
   if (month === 12) return { y: year + 1, m: 1 };
   return { y: year, m: month + 1 };
+}
+
+function monthOrderKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}`;
 }
 
 type CustomerOption = { id: string; name: string; color?: string | null };
@@ -362,8 +495,8 @@ type EditableHourTdProps = {
   compact?: boolean;
   /** When set, overrides default `dayIndex === 0` for left border (month grid). */
   showLeftBorder?: boolean;
-  /** Visual marker when this day has a non-empty internal comment. */
-  hasInternalComment?: boolean;
+  /** Trimmed internal comment for this day; corner marker + instant hover preview when set. */
+  internalCommentText?: string;
   columnInteractionProps?: Pick<
     HTMLAttributes<HTMLTableCellElement>,
     "onMouseEnter" | "onMouseLeave" | "onFocusCapture" | "onBlurCapture"
@@ -383,7 +516,7 @@ const EditableHourTd = memo(function EditableHourTd({
   onBlur,
   compact = false,
   showLeftBorder,
-  hasInternalComment = false,
+  internalCommentText,
   columnInteractionProps,
 }: EditableHourTdProps) {
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
@@ -392,10 +525,12 @@ const EditableHourTd = memo(function EditableHourTd({
     : "w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem]";
   const rowH = compact ? "h-7" : "h-8";
   const grayBg = isGray ? (grayWeekend ? "bg-bg-muted/60" : "bg-bg-muted/51") : "";
+  const commentPreview = internalCommentText?.trim();
+  const hasInternalComment = Boolean(commentPreview);
   return (
     <td
       {...columnInteractionProps}
-      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
+      className={`group/comment-tip relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
     >
       <div
         role="button"
@@ -424,13 +559,21 @@ const EditableHourTd = memo(function EditableHourTd({
         />
       </div>
       {hasInternalComment ? (
-        <svg
-          className={`pointer-events-none absolute top-0 right-0 z-10 text-brand-signal ${compact ? "h-2 w-2" : "h-2.5 w-2.5"}`}
-          viewBox="0 0 8 8"
-          aria-hidden
-        >
-          <polygon points="8 0 8 8 0 0" className="fill-current" />
-        </svg>
+        <>
+          <svg
+            className={`pointer-events-none absolute top-0 right-0 z-10 text-brand-signal ${compact ? "h-2 w-2" : "h-2.5 w-2.5"}`}
+            viewBox="0 0 8 8"
+            aria-hidden
+          >
+            <polygon points="8 0 8 8 0 0" className="fill-current" />
+          </svg>
+          <div
+            role="tooltip"
+            className="absolute bottom-full left-1/2 z-50 mb-0.5 w-max max-w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-default px-2 py-1.5 text-left text-[11px] leading-snug text-text-primary opacity-0 shadow-md transition-none group-hover/comment-tip:opacity-100"
+          >
+            {commentPreview}
+          </div>
+        </>
       ) : null}
     </td>
   );
@@ -488,6 +631,8 @@ export function TimeReportPageClient({
     | null
     | { mode: "current-week"; customerId: string; entry: Entry }
     | { mode: "next-month"; row: MonthMergedRow }
+    | { mode: "whole-week-next-week" }
+    | { mode: "whole-month-next-month" }
   >(null);
   const [pendingRowDelete, setPendingRowDelete] = useState<{
     customerId: string;
@@ -503,8 +648,10 @@ export function TimeReportPageClient({
   const weekRevisionRef = useRef(0);
   const [weekRevisionsByKey, setWeekRevisionsByKey] = useState<Record<string, number>>({});
   const weekRevisionsByKeyRef = useRef<Record<string, number>>({});
+  const deletedLineIdsByWeekRef = useRef<Record<string, Set<string>>>({});
   const [revisionConflictOpen, setRevisionConflictOpen] = useState(false);
   const savePausedForRevisionConflictRef = useRef(false);
+  const lastLocalSaveAtRef = useRef(0);
   const lastVisibilityRevalidateAtRef = useRef(0);
   const saveStateRef = useRef(saveState);
   const loadStateRef = useRef(loadState);
@@ -528,6 +675,7 @@ export function TimeReportPageClient({
   const [viewModeStorageReady, setViewModeStorageReady] = useState(false);
   const [monthMergedRows, setMonthMergedRows] = useState<MonthMergedRow[]>([]);
   const monthLoadRequestIdRef = useRef(0);
+  const customerOrderByMonthRef = useRef<Record<string, string[]>>({});
   const viewModeRef = useRef(viewMode);
   /** Serialize server saves so concurrent requests never reuse a stale expectedRevision (revision_conflict). */
   const saveQueueTailRef = useRef(Promise.resolve());
@@ -549,6 +697,29 @@ export function TimeReportPageClient({
       setViewModeStorageReady(true);
     }
   }, []);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TIME_REPORT_MONTH_CUSTOMER_ORDER_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, string[]>;
+      if (parsed && typeof parsed === "object") {
+        customerOrderByMonthRef.current = parsed;
+      }
+    } catch {
+      // ignore malformed/localStorage-unavailable cases
+    }
+  }, []);
+
+  const persistMonthCustomerOrder = useCallback(() => {
+    try {
+      localStorage.setItem(
+        TIME_REPORT_MONTH_CUSTOMER_ORDER_STORAGE_KEY,
+        JSON.stringify(customerOrderByMonthRef.current)
+      );
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
 
   useEffect(() => {
     if (!viewModeStorageReady) return;
@@ -565,7 +736,7 @@ export function TimeReportPageClient({
   useEffect(() => {
     viewModeRef.current = viewMode;
   }, [viewMode]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     monthMergedRowsRef.current = monthMergedRows;
   }, [monthMergedRows]);
   useEffect(() => {
@@ -575,12 +746,44 @@ export function TimeReportPageClient({
     displayYearRef.current = displayYear;
   }, [displayYear]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     customerGroupsRef.current = customerGroups;
   }, [customerGroups]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     isDirtyRef.current = isDirty;
   }, [isDirty]);
+  const markDirty = useCallback(() => {
+    setIsDirty(true);
+    // flushSave may run before React commits state; keep ref in sync immediately.
+    isDirtyRef.current = true;
+  }, []);
+  const applyStableCustomerOrderForMonth = useCallback(
+    (rows: MonthMergedRow[], year: number, month: number): MonthMergedRow[] => {
+      const key = monthOrderKey(year, month);
+      const existingOrder = customerOrderByMonthRef.current[key] ?? [];
+      const seen = new Set<string>();
+      const discovered: string[] = [];
+      for (const row of rows) {
+        if (seen.has(row.customerId)) continue;
+        seen.add(row.customerId);
+        discovered.push(row.customerId);
+      }
+      const mergedOrder = [...existingOrder];
+      for (const cid of discovered) {
+        if (!mergedOrder.includes(cid)) mergedOrder.push(cid);
+      }
+      customerOrderByMonthRef.current[key] = mergedOrder;
+      persistMonthCustomerOrder();
+      const rank = new Map(mergedOrder.map((cid, idx) => [cid, idx]));
+      return [...rows].sort((a, b) => {
+        const ra = rank.get(a.customerId) ?? Number.MAX_SAFE_INTEGER;
+        const rb = rank.get(b.customerId) ?? Number.MAX_SAFE_INTEGER;
+        if (ra !== rb) return ra - rb;
+        return a.rowKey.localeCompare(b.rowKey);
+      });
+    },
+    [persistMonthCustomerOrder]
+  );
   useEffect(() => {
     yearRef.current = year;
   }, [year]);
@@ -656,6 +859,14 @@ export function TimeReportPageClient({
     };
   }, []);
 
+  /** Avoid infinite “Loading…” if consultant disappears mid-flight or reload helpers reject without clearing state. */
+  useEffect(() => {
+    if (!consultant) {
+      loadStateRef.current = "idle";
+      setLoadState("idle");
+    }
+  }, [consultant]);
+
   useEffect(() => {
     if (!consultant || viewMode !== "week") return;
 
@@ -664,7 +875,11 @@ export function TimeReportPageClient({
     // Clear old week view immediately to avoid showing stale rows during week switch.
     setCustomerGroups([]);
     const requestId = ++weekLoadRequestIdRef.current;
-    getTimeReportEntries(consultant.id, year, week)
+    promiseWithTimeout(
+      getTimeReportEntries(consultant.id, year, week),
+      TIME_REPORT_FETCH_TIMEOUT_MS,
+      `Week load ${year}-W${week}`
+    )
       .then((data) => {
         if (requestId !== weekLoadRequestIdRef.current) return;
         const sliceKey = weekSliceKey(year, week);
@@ -688,13 +903,24 @@ export function TimeReportPageClient({
 
     loadStateRef.current = "loading";
     setLoadState("loading");
+    setSaveError(null);
     setMonthMergedRows([]);
     const weeks = getWeeksInMonthLocal(displayMonth, displayYear);
     const requestId = ++monthLoadRequestIdRef.current;
     const calDates = getCalendarDatesInMonth(displayYear, displayMonth);
-    Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(consultant.id, y, w)))
-      .then((allData) => {
-        if (requestId !== monthLoadRequestIdRef.current) return;
+    const cid = consultant.id;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const allData = await fetchTimeReportWeeksSequentialUnlessAborted(
+          cid,
+          weeks,
+          `Month load ${displayYear}-${String(displayMonth).padStart(2, "0")}`,
+          () => cancelled || requestId !== monthLoadRequestIdRef.current,
+          { year: displayYear, month: displayMonth }
+        );
+        if (allData === null || cancelled || requestId !== monthLoadRequestIdRef.current) return;
         const slices: Record<string, CustomerGroup[]> = {};
         const revMap: Record<string, number> = {};
         weeks.forEach(({ year: y, week: w }, i) => {
@@ -705,19 +931,39 @@ export function TimeReportPageClient({
         });
         weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
         setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
-        const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
+        const mergedRows = applyStableCustomerOrderForMonth(
+          buildMergedMonthRows(slices, weeks, calDates),
+          displayYear,
+          displayMonth
+        );
         setMonthMergedRows(mergedRows);
+        loadStateRef.current = "loaded";
         setLoadState("loaded");
         setIsDirty(false);
         savePausedForRevisionConflictRef.current = false;
         setRevisionConflictOpen(false);
         void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
-      })
-      .catch(() => {
-        if (requestId !== monthLoadRequestIdRef.current) return;
+      } catch {
+        if (cancelled || requestId !== monthLoadRequestIdRef.current) return;
+        loadStateRef.current = "loaded";
         setLoadState("loaded");
-      });
-  }, [consultant?.id, viewMode, displayMonth, displayYear, runBatchHydrate]);
+        setSaveError(
+          "Kunde inte ladda tidrapporten (timeout eller serverfel). Välj månad igen eller uppdatera sidan."
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    consultant?.id,
+    viewMode,
+    displayMonth,
+    displayYear,
+    runBatchHydrate,
+    applyStableCustomerOrderForMonth,
+  ]);
 
   useEffect(() => {
     if (saveDebounceRef.current) {
@@ -758,15 +1004,25 @@ export function TimeReportPageClient({
       if (mode === "week") {
         void enqueueTimeReportSave(async () => {
           try {
-            const result = await saveTimeReportEntries(
-              cid,
-              yearRef.current,
-              weekRef.current,
-              customerGroupsRef.current,
-              weekRevisionRef.current
+            const result = await promiseWithTimeout(
+              saveTimeReportEntries(
+                cid,
+                yearRef.current,
+                weekRef.current,
+                customerGroupsRef.current,
+                weekRevisionRef.current,
+                null,
+                Array.from(
+                  deletedLineIdsByWeekRef.current[
+                    weekSliceKey(yearRef.current, weekRef.current)
+                  ] ?? []
+                )
+              ),
+              SAVE_SERVER_ACTION_TIMEOUT_MS,
+              `autosave week ${yearRef.current}-W${weekRef.current}`
             );
-            if (requestId !== saveRequestIdRef.current) return;
             if (!result.success) {
+              if (requestId !== saveRequestIdRef.current) return;
               if (result.code === "revision_conflict") {
                 savePausedForRevisionConflictRef.current = true;
                 setRevisionConflictOpen(true);
@@ -778,8 +1034,14 @@ export function TimeReportPageClient({
               return;
             }
             const sk = weekSliceKey(yearRef.current, weekRef.current);
+            // Keep local revision in sync even if a newer request is queued.
+            // Otherwise server revision may advance while client map stays stale,
+            // which triggers false "changed elsewhere" prompts.
             weekRevisionRef.current = result.revision;
             syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+            lastLocalSaveAtRef.current = Date.now();
+            delete deletedLineIdsByWeekRef.current[sk];
+            if (requestId !== saveRequestIdRef.current) return;
             finishOk();
             if (ENABLE_PERF_DEBUG) {
               fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
@@ -816,52 +1078,78 @@ export function TimeReportPageClient({
       }
 
       void enqueueTimeReportSave(async () => {
-        const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
-        const rows = monthMergedRowsRef.current;
-        const monthScope = {
-          year: displayYearRef.current,
-          month: displayMonthRef.current,
-        };
-        for (const { year: y, week: w } of weeks) {
-          const sk = weekSliceKey(y, w);
-          const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
-          const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
-          const result = await saveTimeReportEntries(cid, y, w, groups, expected, monthScope);
-          if (requestId !== saveRequestIdRef.current) return;
-          if (!result.success) {
-            if (result.code === "revision_conflict") {
-              savePausedForRevisionConflictRef.current = true;
-              setRevisionConflictOpen(true);
-              saveStateRef.current = "idle";
-              setSaveState("idle");
+        try {
+          const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+          const monthScope = {
+            year: displayYearRef.current,
+            month: displayMonthRef.current,
+          };
+          for (const { year: y, week: w } of weeks) {
+            const sk = weekSliceKey(y, w);
+            const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
+            const groups = buildCustomerGroupsForWeekFromMerged(monthMergedRowsRef.current, y, w);
+            if (hasAmbiguousLineIdentity(groups)) {
+              finishErr("Ambiguous row identity detected. Reload before saving.");
               return;
             }
-            finishErr(result.error, true);
-            return;
+            const result = await promiseWithTimeout(
+              saveTimeReportEntries(
+                cid,
+                y,
+                w,
+                groups,
+                expected,
+                monthScope,
+                Array.from(deletedLineIdsByWeekRef.current[sk] ?? [])
+              ),
+              SAVE_SERVER_ACTION_TIMEOUT_MS,
+              `autosave month ${monthScope.year}-${monthScope.month} ${y}-W${w}`
+            );
+            if (!result.success) {
+              if (requestId !== saveRequestIdRef.current) return;
+              if (result.code === "revision_conflict") {
+                savePausedForRevisionConflictRef.current = true;
+                setRevisionConflictOpen(true);
+                saveStateRef.current = "idle";
+                setSaveState("idle");
+                return;
+              }
+              finishErr(result.error, true);
+              return;
+            }
+            // Keep revision map current even for non-latest queued saves.
+            syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+            lastLocalSaveAtRef.current = Date.now();
+            delete deletedLineIdsByWeekRef.current[sk];
+            if (requestId !== saveRequestIdRef.current) return;
           }
-          syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
-        }
-        finishOk();
-        if (ENABLE_PERF_DEBUG) {
-          fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "97edeb",
-            },
-            body: JSON.stringify({
-              sessionId: "97edeb",
-              runId: "perf-scan-1",
-              hypothesisId: "H3",
-              location: "TimeReportPageClient.tsx:autosave-month",
-              message: "time report month autosave done",
-              data: {
-                ms: Math.round((performance.now() - saveStart) * 100) / 100,
-                weeks: weeks.length,
+          finishOk();
+          if (ENABLE_PERF_DEBUG) {
+            fetch("http://127.0.0.1:7377/ingest/142286f1-190a-49b6-8e1e-854ceb792769", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "97edeb",
               },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
+              body: JSON.stringify({
+                sessionId: "97edeb",
+                runId: "perf-scan-1",
+                hypothesisId: "H3",
+                location: "TimeReportPageClient.tsx:autosave-month",
+                message: "time report month autosave done",
+                data: {
+                  ms: Math.round((performance.now() - saveStart) * 100) / 100,
+                  weeks: weeks.length,
+                },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          }
+        } catch {
+          if (requestId !== saveRequestIdRef.current) return;
+          saveStateRef.current = "error";
+          setSaveState("error");
+          setSaveError("Save failed");
         }
       });
     }, 700);
@@ -948,12 +1236,22 @@ export function TimeReportPageClient({
       }
       try {
         if (viewModeRef.current === "week") {
-          const result = await saveTimeReportEntries(
-            activeConsultant.id,
-            yearRef.current,
-            weekRef.current,
-            customerGroupsRef.current,
-            weekRevisionRef.current
+          const result = await promiseWithTimeout(
+            saveTimeReportEntries(
+              activeConsultant.id,
+              yearRef.current,
+              weekRef.current,
+              customerGroupsRef.current,
+              weekRevisionRef.current,
+              null,
+              Array.from(
+                deletedLineIdsByWeekRef.current[
+                  weekSliceKey(yearRef.current, weekRef.current)
+                ] ?? []
+              )
+            ),
+            SAVE_SERVER_ACTION_TIMEOUT_MS,
+            `flush week ${yearRef.current}-W${weekRef.current}`
           );
           if (requestId !== saveRequestIdRef.current) return false;
           if (!result.success) {
@@ -975,9 +1273,10 @@ export function TimeReportPageClient({
           const sk = weekSliceKey(yearRef.current, weekRef.current);
           weekRevisionRef.current = result.revision;
           syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+          lastLocalSaveAtRef.current = Date.now();
+          delete deletedLineIdsByWeekRef.current[sk];
         } else {
           const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
-          const rows = monthMergedRowsRef.current;
           const monthScope = {
             year: displayYearRef.current,
             month: displayMonthRef.current,
@@ -985,8 +1284,26 @@ export function TimeReportPageClient({
           for (const { year: y, week: w } of weeks) {
             const sk = weekSliceKey(y, w);
             const expected = weekRevisionsByKeyRef.current[sk] ?? 0;
-            const groups = buildCustomerGroupsForWeekFromMerged(rows, y, w);
-            const result = await saveTimeReportEntries(activeConsultant.id, y, w, groups, expected, monthScope);
+            const groups = buildCustomerGroupsForWeekFromMerged(monthMergedRowsRef.current, y, w);
+            if (hasAmbiguousLineIdentity(groups)) {
+              setSaveError("Ambiguous row identity detected. Reload before saving.");
+              saveStateRef.current = "error";
+              setSaveState("error");
+              return false;
+            }
+            const result = await promiseWithTimeout(
+              saveTimeReportEntries(
+                activeConsultant.id,
+                y,
+                w,
+                groups,
+                expected,
+                monthScope,
+                Array.from(deletedLineIdsByWeekRef.current[sk] ?? [])
+              ),
+              SAVE_SERVER_ACTION_TIMEOUT_MS,
+              `flush month ${monthScope.year}-${monthScope.month} ${y}-W${w}`
+            );
             if (requestId !== saveRequestIdRef.current) return false;
             if (!result.success) {
               if (result.code === "revision_conflict") {
@@ -1005,6 +1322,8 @@ export function TimeReportPageClient({
               return false;
             }
             syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+            lastLocalSaveAtRef.current = Date.now();
+            delete deletedLineIdsByWeekRef.current[sk];
           }
         }
         if (requestId !== saveRequestIdRef.current) return false;
@@ -1032,19 +1351,26 @@ export function TimeReportPageClient({
     const requestId = ++weekLoadRequestIdRef.current;
     loadStateRef.current = "loading";
     setLoadState("loading");
-    getTimeReportEntries(c.id, y, w).then((data) => {
-      if (requestId !== weekLoadRequestIdRef.current) return;
-      const sliceKey = weekSliceKey(y, w);
-      setCustomerGroups(data.groups);
-      weekRevisionRef.current = data.revision;
-      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
-      setLoadState("loaded");
-      setIsDirty(false);
-      isDirtyRef.current = false;
-      savePausedForRevisionConflictRef.current = false;
-      setRevisionConflictOpen(false);
-      void runBatchHydrate(data.groups);
-    });
+    void promiseWithTimeout(getTimeReportEntries(c.id, y, w), TIME_REPORT_FETCH_TIMEOUT_MS, `Reload week ${y}-W${w}`)
+      .then((data) => {
+        if (requestId !== weekLoadRequestIdRef.current) return;
+        const sliceKey = weekSliceKey(y, w);
+        setCustomerGroups(data.groups);
+        weekRevisionRef.current = data.revision;
+        syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
+        delete deletedLineIdsByWeekRef.current[sliceKey];
+        setLoadState("loaded");
+        setIsDirty(false);
+        isDirtyRef.current = false;
+        savePausedForRevisionConflictRef.current = false;
+        setRevisionConflictOpen(false);
+        void runBatchHydrate(data.groups);
+      })
+      .catch(() => {
+        if (requestId !== weekLoadRequestIdRef.current) return;
+        loadStateRef.current = "loaded";
+        setLoadState("loaded");
+      });
   }, [runBatchHydrate]);
 
   const reloadMonthFromServer = useCallback(() => {
@@ -1055,27 +1381,45 @@ export function TimeReportPageClient({
     const requestId = ++monthLoadRequestIdRef.current;
     loadStateRef.current = "loading";
     setLoadState("loading");
-    Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(c.id, y, w))).then((allData) => {
-      if (requestId !== monthLoadRequestIdRef.current) return;
-      const slices: Record<string, CustomerGroup[]> = {};
-      const revMap: Record<string, number> = {};
-      weeks.forEach(({ year: y, week: w }, i) => {
-        const payload = allData[i];
-        const key = weekSliceKey(y, w);
-        slices[key] = payload?.groups ?? [];
-        revMap[key] = payload?.revision ?? 0;
-      });
-      weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
-      setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
-      const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
-      setMonthMergedRows(mergedRows);
-      setLoadState("loaded");
-      setIsDirty(false);
-      isDirtyRef.current = false;
-      savePausedForRevisionConflictRef.current = false;
-      setRevisionConflictOpen(false);
-      void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
-    });
+    void (async () => {
+      try {
+        const allData = await fetchTimeReportWeeksSequentialUnlessAborted(
+          c.id,
+          weeks,
+          `Reload month ${displayYearRef.current}-${String(displayMonthRef.current).padStart(2, "0")}`,
+          () => requestId !== monthLoadRequestIdRef.current,
+          { year: displayYearRef.current, month: displayMonthRef.current }
+        );
+        if (allData === null || requestId !== monthLoadRequestIdRef.current) return;
+        const slices: Record<string, CustomerGroup[]> = {};
+        const revMap: Record<string, number> = {};
+        weeks.forEach(({ year: y, week: w }, i) => {
+          const payload = allData[i];
+          const key = weekSliceKey(y, w);
+          slices[key] = payload?.groups ?? [];
+          revMap[key] = payload?.revision ?? 0;
+          delete deletedLineIdsByWeekRef.current[key];
+        });
+        weekRevisionsByKeyRef.current = { ...weekRevisionsByKeyRef.current, ...revMap };
+        setWeekRevisionsByKey((prev) => ({ ...prev, ...revMap }));
+        const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
+        setMonthMergedRows(mergedRows);
+        loadStateRef.current = "loaded";
+        setLoadState("loaded");
+        setIsDirty(false);
+        isDirtyRef.current = false;
+        savePausedForRevisionConflictRef.current = false;
+        setRevisionConflictOpen(false);
+        void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
+      } catch {
+        if (requestId !== monthLoadRequestIdRef.current) return;
+        loadStateRef.current = "loaded";
+        setLoadState("loaded");
+        setSaveError(
+          "Kunde inte ladda om tidrapporten (timeout eller serverfel). Välj månad igen eller uppdatera sidan."
+        );
+      }
+    })();
   }, [runBatchHydrate]);
 
   useEffect(() => {
@@ -1084,6 +1428,7 @@ export function TimeReportPageClient({
       const now = Date.now();
       if (now - lastVisibilityRevalidateAtRef.current < 2500) return;
       lastVisibilityRevalidateAtRef.current = now;
+      if (now - lastLocalSaveAtRef.current < 3500) return;
       if (saveStateRef.current === "saving") return;
       // Avoid false positives while month/week slices fetch — client rev map may not match yet.
       if (loadStateRef.current === "loading") return;
@@ -1326,8 +1671,8 @@ export function TimeReportPageClient({
       });
     } else {
       for (const r of monthMergedRows) {
-        map.set(r.id, {
-          id: r.id,
+        map.set(r.rowKey, {
+          id: r.lineId,
           projectId: r.projectId,
           roleId: r.roleId,
           jiraDevOpsValue: r.jiraDevOpsValue,
@@ -1347,7 +1692,7 @@ export function TimeReportPageClient({
       });
     } else {
       for (const r of monthMergedRows) {
-        map.set(r.id, r.customerId);
+        map.set(r.rowKey, r.customerId);
       }
     }
     return map;
@@ -1463,7 +1808,7 @@ export function TimeReportPageClient({
   }, [viewMode, customerGroups, monthMergedRows, loadJiraDevOpsForProject]);
 
   const updateEntryInGroup = (customerId: string, entryId: string, patch: Partial<Entry>) => {
-    setIsDirty(true);
+    markDirty();
     if (viewMode === "week") {
       setCustomerGroups((prev) =>
         prev.map((g) =>
@@ -1481,7 +1826,7 @@ export function TimeReportPageClient({
     }
     setMonthMergedRows((prev) =>
       prev.map((r) => {
-        if (r.customerId !== customerId || r.id !== entryId) return r;
+        if (r.customerId !== customerId || r.rowKey !== entryId) return r;
         const next = { ...r };
         if (patch.projectId !== undefined) next.projectId = patch.projectId;
         if (patch.roleId !== undefined) next.roleId = patch.roleId;
@@ -1495,14 +1840,23 @@ export function TimeReportPageClient({
   const addCustomerGroup = (customerId: string) => {
     if (viewMode === "week") {
       if (customerGroups.some((g) => g.customerId === customerId)) return;
-      setIsDirty(true);
+      markDirty();
       setCustomerGroups((prev) => [
         ...prev,
         { customerId, entries: [newEntry()] },
       ]);
     } else {
       if (monthMergedRows.some((r) => r.customerId === customerId)) return;
-      setIsDirty(true);
+      markDirty();
+      const key = monthOrderKey(displayYear, displayMonth);
+      const curOrder = customerOrderByMonthRef.current[key] ?? [];
+      // Always move newly added customer to the bottom for this month,
+      // even if it existed in a previously persisted order.
+      customerOrderByMonthRef.current[key] = [
+        ...curOrder.filter((cid) => cid !== customerId),
+        customerId,
+      ];
+      persistMonthCustomerOrder();
       setMonthMergedRows((prev) => [
         ...prev,
         newMonthMergedRow(customerId, getCalendarDatesInMonth(displayYear, displayMonth)),
@@ -1522,8 +1876,16 @@ export function TimeReportPageClient({
         displayYearRef.current,
         displayMonthRef.current
       );
-      void Promise.all(weeks.map(({ year: y, week: w }) => getTimeReportEntries(c.id, y, w))).then(
-        (allData) => {
+      void (async () => {
+        try {
+          const allData = await fetchTimeReportWeeksSequentialUnlessAborted(
+            c.id,
+            weeks,
+            `Refresh after copy ${displayYearRef.current}-${String(displayMonthRef.current).padStart(2, "0")}`,
+            () => false,
+            { year: displayYearRef.current, month: displayMonthRef.current }
+          );
+          if (allData === null) return;
           const slices: Record<string, CustomerGroup[]> = {};
           const revMap: Record<string, number> = {};
           weeks.forEach(({ year: y, week: w }, i) => {
@@ -1537,12 +1899,18 @@ export function TimeReportPageClient({
           const mergedRows = buildMergedMonthRows(slices, weeks, calDates);
           setMonthMergedRows(mergedRows);
           void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
+        } catch {
+          // Silent: copy already succeeded; user can switch month to retry refresh.
         }
-      );
+      })();
       return;
     }
     if (yearRef.current === initialYear && weekRef.current === initialWeek) {
-      getTimeReportEntries(c.id, yearRef.current, weekRef.current).then((data) => {
+      void promiseWithTimeout(
+        getTimeReportEntries(c.id, yearRef.current, weekRef.current),
+        TIME_REPORT_FETCH_TIMEOUT_MS,
+        `Refresh after copy W${yearRef.current}-${weekRef.current}`
+      ).then((data) => {
         const sk = weekSliceKey(yearRef.current, weekRef.current);
         setCustomerGroups(data.groups);
         weekRevisionRef.current = data.revision;
@@ -1551,6 +1919,76 @@ export function TimeReportPageClient({
       });
     }
   }, [runBatchHydrate]);
+
+  const getFreshTargetWeekRevision = useCallback(
+    async (consultantId: string, y: number, w: number): Promise<number> => {
+      const sk = weekSliceKey(y, w);
+      const serverRevision = await getTimeReportWeekRevision(consultantId, y, w);
+      const revision = Number(serverRevision ?? 0);
+      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, revision);
+      return revision;
+    },
+    []
+  );
+
+  const copyEntryToWeekWithRevisionRetry = useCallback(
+    async (
+      consultantId: string,
+      y: number,
+      w: number,
+      customerId: string,
+      payload: {
+        lineId?: string;
+        projectId: string;
+        roleId: string;
+        jiraDevOpsValue: string;
+        task: string;
+        hours: number[];
+        comments: Record<number, string>;
+        copyHours: boolean;
+        rowOnlyAnchorDate?: string;
+      }
+    ) => {
+      const sk = weekSliceKey(y, w);
+      let expectedRev =
+        weekRevisionsByKeyRef.current[sk] ??
+        (await getFreshTargetWeekRevision(consultantId, y, w));
+
+      let result = await copyEntryToWeek(
+        consultantId,
+        y,
+        w,
+        customerId,
+        payload,
+        expectedRev
+      );
+
+      if (!result.success && result.code === "revision_conflict") {
+        expectedRev =
+          result.currentRevision ??
+          (await getFreshTargetWeekRevision(consultantId, y, w));
+        result = await copyEntryToWeek(
+          consultantId,
+          y,
+          w,
+          customerId,
+          payload,
+          expectedRev
+        );
+      }
+
+      if (result.success) {
+        syncWeekRevisionAfterSave(
+          setWeekRevisionsByKey,
+          weekRevisionsByKeyRef,
+          sk,
+          result.revision
+        );
+      }
+      return result;
+    },
+    [getFreshTargetWeekRevision]
+  );
 
   const performCopyRowToCurrentWeek = async (
     customerId: string,
@@ -1568,8 +2006,7 @@ export function TimeReportPageClient({
     setCopyToWeekState("copying");
     setSaveError(null);
     const targetKey = weekSliceKey(initialYear, initialWeek);
-    const expectedRev = weekRevisionsByKeyRef.current[targetKey] ?? 0;
-    const result = await copyEntryToWeek(
+    const result = await copyEntryToWeekWithRevisionRetry(
       consultant.id,
       initialYear,
       initialWeek,
@@ -1582,8 +2019,7 @@ export function TimeReportPageClient({
         hours: entry.hours,
         comments: entry.comments,
         copyHours,
-      },
-      expectedRev
+      }
     );
     if (!result.success) {
       if (result.code === "revision_conflict") {
@@ -1599,17 +2035,28 @@ export function TimeReportPageClient({
     refreshAfterCopyToCurrentWeek();
   };
 
-  const performCopyMergedRowToNextMonth = async (row: MonthMergedRow, copyHours: boolean) => {
-    if (!consultant || !row.projectId || !row.roleId) return;
-    if (copyHours && !mergedRowHasContent(row)) return;
+  const performCopyMergedRowToNextMonth = async (
+    row: MonthMergedRow,
+    copyHours: boolean,
+    options?: { skipFlush?: boolean; manageCopyState?: boolean }
+  ): Promise<boolean> => {
+    if (!consultant) return false;
+    if (copyHours && (!row.projectId || !row.roleId)) return false;
+    if (copyHours && !mergedRowHasContent(row)) return false;
 
-    const ok = await flushSave();
-    if (!ok) return;
-    setCopyRowDialog(null);
+    const skipFlush = options?.skipFlush === true;
+    const manageCopyState = options?.manageCopyState !== false;
+    if (!skipFlush) {
+      const ok = await flushSave();
+      if (!ok) return false;
+      setCopyRowDialog(null);
+    }
 
     const { y: ny, m: nm } = nextCalendarMonth(displayYear, displayMonth);
     const curDates = getCalendarDatesInMonth(displayYear, displayMonth);
     const nextDates = getCalendarDatesInMonth(ny, nm);
+    const targetLineId = crypto.randomUUID();
+    const monthAnchorDate = !copyHours ? (nextDates[0] ?? null) : null;
     const hoursByNext: Record<string, number> = {};
     const commentsByNext: Record<string, string> = {};
     for (const d of nextDates) {
@@ -1627,8 +2074,10 @@ export function TimeReportPageClient({
       }
     }
 
-    setCopyToNextMonthState("copying");
-    setSaveError(null);
+    if (manageCopyState) {
+      setCopyToNextMonthState("copying");
+      setSaveError(null);
+    }
     const nextWeeks = getWeeksInMonthLocal(nm, ny);
     for (const { year: y, week: w } of nextWeeks) {
       const wd = getWeekDates(y, w);
@@ -1640,15 +2089,18 @@ export function TimeReportPageClient({
       });
       const has = hours.some((hh) => (hh ?? 0) > 0) || Object.keys(comments).length > 0;
       if (copyHours && !has) continue;
+      const anchorDateInThisWeek =
+        !copyHours && monthAnchorDate && wd.includes(monthAnchorDate) ? monthAnchorDate : null;
+      if (!copyHours && !anchorDateInThisWeek) continue;
 
       const sk = weekSliceKey(y, w);
-      const expectedRev = weekRevisionsByKeyRef.current[sk] ?? 0;
-      const result = await copyEntryToWeek(
+      const result = await copyEntryToWeekWithRevisionRetry(
         consultant.id,
         y,
         w,
         row.customerId,
         {
+          lineId: targetLineId,
           projectId: row.projectId,
           roleId: row.roleId,
           jiraDevOpsValue: row.jiraDevOpsValue,
@@ -1656,25 +2108,124 @@ export function TimeReportPageClient({
           hours,
           comments,
           copyHours,
-        },
-        expectedRev
+          rowOnlyAnchorDate: anchorDateInThisWeek ?? undefined,
+        }
       );
       if (!result.success) {
         if (result.code === "revision_conflict") {
           savePausedForRevisionConflictRef.current = true;
           setRevisionConflictOpen(true);
         }
-        setCopyToNextMonthState("error");
+        if (manageCopyState) setCopyToNextMonthState("error");
         setSaveError(result.error);
-        return;
+        return false;
       }
       syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+    }
+    if (manageCopyState) setCopyToNextMonthState("idle");
+    return true;
+  };
+
+  const performCopyWholeWeekToNextWeek = async (copyHours: boolean) => {
+    if (!consultant) return;
+    const ok = await flushSave();
+    if (!ok) return;
+    setCopyRowDialog(null);
+
+    const sourceGroups = customerGroupsRef.current;
+    const target = addWeeksToYearWeekLocal(yearRef.current, weekRef.current, 1);
+    setCopyToWeekState("copying");
+    setSaveError(null);
+
+    for (const group of sourceGroups) {
+      for (const entry of group.entries) {
+        const includeHoursForThisRow = copyHours && entryHasContent(entry);
+        const targetKey = weekSliceKey(target.year, target.week);
+        const result = await copyEntryToWeekWithRevisionRetry(
+          consultant.id,
+          target.year,
+          target.week,
+          group.customerId,
+          {
+            projectId: entry.projectId,
+            roleId: entry.roleId,
+            jiraDevOpsValue: entry.jiraDevOpsValue,
+            task: entry.task ?? "",
+            hours: entry.hours,
+            comments: entry.comments,
+            copyHours: includeHoursForThisRow,
+          }
+        );
+        if (!result.success) {
+          if (result.code === "revision_conflict") {
+            savePausedForRevisionConflictRef.current = true;
+            setRevisionConflictOpen(true);
+          }
+          setCopyToWeekState("error");
+          setSaveError(result.error);
+          return;
+        }
+        syncWeekRevisionAfterSave(
+          setWeekRevisionsByKey,
+          weekRevisionsByKeyRef,
+          targetKey,
+          result.revision
+        );
+      }
+    }
+
+    setCopyToWeekState("idle");
+    // Refresh source week if we're currently there.
+    if (yearRef.current === target.year && weekRef.current === target.week) {
+      refreshAfterCopyToCurrentWeek();
+    }
+  };
+
+  const performCopyWholeMonthToNextMonth = async (copyHours: boolean) => {
+    const rows = monthMergedRowsRef.current;
+    if (rows.length === 0) return;
+    const sourceMonthKey = monthOrderKey(displayYearRef.current, displayMonthRef.current);
+    const { y: nextYear, m: nextMonth } = nextCalendarMonth(
+      displayYearRef.current,
+      displayMonthRef.current
+    );
+    const targetMonthKey = monthOrderKey(nextYear, nextMonth);
+
+    // Preserve source-month customer order in target month so copied rows land
+    // on the same visual positions after month navigation/reload.
+    const sourceOrder = customerOrderByMonthRef.current[sourceMonthKey] ?? [
+      ...new Set(rows.map((r) => r.customerId)),
+    ];
+    const targetExistingOrder = customerOrderByMonthRef.current[targetMonthKey] ?? [];
+    const mergedTargetOrder = [
+      ...sourceOrder,
+      ...targetExistingOrder.filter((cid) => !sourceOrder.includes(cid)),
+    ];
+    customerOrderByMonthRef.current[targetMonthKey] = mergedTargetOrder;
+    persistMonthCustomerOrder();
+
+    const ok = await flushSave();
+    if (!ok) return;
+    setCopyRowDialog(null);
+    setCopyToNextMonthState("copying");
+    setSaveError(null);
+
+    for (const row of rows) {
+      const includeHoursForThisRow = copyHours && mergedRowHasContent(row);
+      const success = await performCopyMergedRowToNextMonth(row, includeHoursForThisRow, {
+        skipFlush: true,
+        manageCopyState: false,
+      });
+      if (!success) {
+        setCopyToNextMonthState("error");
+        return;
+      }
     }
     setCopyToNextMonthState("idle");
   };
 
   const addRow = (customerId: string) => {
-    setIsDirty(true);
+    markDirty();
     if (viewMode === "week") {
       setCustomerGroups((prev) =>
         prev.map((g) =>
@@ -1700,7 +2251,7 @@ export function TimeReportPageClient({
   };
 
   const duplicateRow = (customerId: string, entryId: string) => {
-    setIsDirty(true);
+    markDirty();
     if (viewMode === "week") {
       setCustomerGroups((prev) =>
         prev.map((g) => {
@@ -1730,7 +2281,7 @@ export function TimeReportPageClient({
       roleId: source.roleId,
     });
     setMonthMergedRows((prev) => {
-      const index = prev.findIndex((r) => r.customerId === customerId && r.id === entryId);
+      const index = prev.findIndex((r) => r.customerId === customerId && r.rowKey === entryId);
       if (index === -1) return prev;
       const source = prev[index]!;
       const next = duplicate(source);
@@ -1738,22 +2289,61 @@ export function TimeReportPageClient({
     });
   };
 
-  const removeEntry = (customerId: string, entryId: string) => {
-    setIsDirty(true);
+  const markDeletedLineIds = (lineIds: string[]) => {
+    if (lineIds.length === 0) return;
     if (viewMode === "week") {
-      setCustomerGroups((prev) =>
-        prev
-          .map((g) =>
-            g.customerId !== customerId
-              ? g
-              : { ...g, entries: g.entries.filter((e) => e.id !== entryId) }
-          )
-          .filter((g) => g.entries.length > 0)
-      );
+      const sk = weekSliceKey(yearRef.current, weekRef.current);
+      const cur = deletedLineIdsByWeekRef.current[sk] ?? new Set<string>();
+      for (const id of lineIds) cur.add(id);
+      deletedLineIdsByWeekRef.current[sk] = cur;
+      return;
+    }
+    const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+    for (const { year: y, week: w } of weeks) {
+      const sk = weekSliceKey(y, w);
+      const cur = deletedLineIdsByWeekRef.current[sk] ?? new Set<string>();
+      for (const id of lineIds) cur.add(id);
+      deletedLineIdsByWeekRef.current[sk] = cur;
+    }
+  };
+
+  const removeEntry = (customerId: string, entryId: string, explicitLineIds?: string[]) => {
+    markDirty();
+    if (viewMode === "week") {
+      const removedIds: string[] =
+        explicitLineIds ??
+        customerGroupsRef.current
+          .find((g) => g.customerId === customerId)
+          ?.entries.filter((e) => e.id === entryId)
+          .map((e) => e.id) ??
+        [];
+      setCustomerGroups((prev) => {
+        const next = prev
+          .map((g) => {
+            if (g.customerId !== customerId) return g;
+            const keep = g.entries.filter((e) => e.id !== entryId);
+            return { ...g, entries: keep };
+          })
+          .filter((g) => g.entries.length > 0);
+        customerGroupsRef.current = next;
+        return next;
+      });
+      markDeletedLineIds(removedIds);
     } else {
-      setMonthMergedRows((prev) =>
-        prev.filter((r) => !(r.customerId === customerId && r.id === entryId))
-      );
+      const removedIds: string[] =
+        explicitLineIds ??
+        monthMergedRowsRef.current
+          .filter((r) => r.customerId === customerId && r.rowKey === entryId)
+          .map((r) => r.lineId);
+      setMonthMergedRows((prev) => {
+        const keep = prev.filter((r) => {
+          if (!(r.customerId === customerId && r.rowKey === entryId)) return true;
+          return false;
+        });
+        monthMergedRowsRef.current = keep;
+        return keep;
+      });
+      markDeletedLineIds(removedIds);
     }
     if (
       editingCell &&
@@ -1767,6 +2357,28 @@ export function TimeReportPageClient({
   const entryHasComment = (entry: Entry): boolean =>
     Object.values(entry.comments).some((c) => (c ?? "").trim() !== "");
 
+  const requestRemoveEntry = (customerId: string, entryId: string) => {
+    if (viewMode === "week") {
+      const entry = customerGroups
+        .find((g) => g.customerId === customerId)
+        ?.entries.find((e) => e.id === entryId);
+      if (entry && !entryHasContent(entry)) {
+        removeEntry(customerId, entryId);
+        return;
+      }
+    } else {
+      const row = monthMergedRows.find((r) => r.customerId === customerId && r.rowKey === entryId);
+      if (row && !mergedRowHasContent(row)) {
+        removeEntry(customerId, entryId, [row.lineId]);
+        return;
+      }
+    }
+    setPendingRowDelete({
+      customerId,
+      entryId,
+    });
+  };
+
   const openComment = (entryId: string) => {
     const entry = entryById.get(entryId);
     const texts: Record<number, string> = {};
@@ -1779,7 +2391,7 @@ export function TimeReportPageClient({
 
   const openCommentMonth = (rowId: string) => {
     const dates = getCalendarDatesInMonth(displayYear, displayMonth);
-    const row = monthMergedRows.find((r) => r.id === rowId);
+    const row = monthMergedRows.find((r) => r.rowKey === rowId);
     const texts: Record<string, string> = {};
     for (const d of dates) {
       texts[d] = (row?.commentsByDate[d] ?? "").trim();
@@ -1790,7 +2402,7 @@ export function TimeReportPageClient({
 
   const saveComment = () => {
     if (!commentState) return;
-    setIsDirty(true);
+    markDirty();
     if (commentState.kind === "week") {
       const customerId = customerIdByEntryId.get(commentState.entryId);
       if (!customerId) return;
@@ -1818,7 +2430,7 @@ export function TimeReportPageClient({
       const dates = getCalendarDatesInMonth(displayYear, displayMonth);
       setMonthMergedRows((prev) =>
         prev.map((r) => {
-          if (r.id !== commentState.rowId) return r;
+          if (r.rowKey !== commentState.rowId) return r;
           const nextComments = { ...r.commentsByDate };
           for (const d of dates) {
             if ((r.hoursByDate[d] ?? 0) <= 0) {
@@ -1932,7 +2544,7 @@ export function TimeReportPageClient({
 
   const commentDialogMonthRow = useMemo(() => {
     if (!commentState || commentState.kind !== "month") return null;
-    return monthMergedRows.find((r) => r.id === commentState.rowId) ?? null;
+    return monthMergedRows.find((r) => r.rowKey === commentState.rowId) ?? null;
   }, [commentState, monthMergedRows]);
 
   const totalHoursPerDay = useMemo(
@@ -1994,7 +2606,7 @@ export function TimeReportPageClient({
     <div className="time-report-font-12 flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex justify-end">
-          <div className="flex items-center gap-0.5 rounded-md p-0.5">
+          <div className="flex items-center gap-1 rounded-md p-0.5">
             <Button
               type="button"
               variant={viewMode === "month" ? "primary" : "secondary"}
@@ -2120,7 +2732,22 @@ export function TimeReportPageClient({
           <table className="w-full min-w-[66rem] table-fixed border-collapse text-xs">
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5" aria-hidden />
+                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5">
+                  <div className="flex items-center justify-center">
+                    <IconButton
+                      aria-label="Copy whole week to next week"
+                      title="Copy whole week to next week"
+                      onClick={() => setCopyRowDialog({ mode: "whole-week-next-week" })}
+                      disabled={copyToWeekState === "copying"}
+                    >
+                      {copyToWeekState === "copying" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </IconButton>
+                  </div>
+                </th>
                 <th className="w-[140px] min-w-[140px] max-w-[140px] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
@@ -2137,7 +2764,7 @@ export function TimeReportPageClient({
                   <th
                     key={i}
                     className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""} ${highlightedColumnIndex === i ? "time-grid-header-column-active" : ""}`}
-                    title={isTodayColumn(i) ? "Idag" : undefined}
+                    title={isTodayColumn(i) ? "Today" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
                       <div>
@@ -2176,7 +2803,7 @@ export function TimeReportPageClient({
                         className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
-                          <span className="text-xs tabular-nums text-text-primary">
+                          <span className={timeReportSumFigureClass("week")}>
                             {h > 0 ? String(h) : ""}
                           </span>
                         </div>
@@ -2184,7 +2811,7 @@ export function TimeReportPageClient({
                     ))}
                     <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
                       <div className="flex min-h-8 w-full items-center justify-center pr-7">
-                        <span className="text-center text-xs font-medium tabular-nums text-text-primary">
+                        <span className={timeReportSumFigureClass("week")}>
                           {weekTotalDisplay}
                         </span>
                       </div>
@@ -2234,7 +2861,7 @@ export function TimeReportPageClient({
                           className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
-                            <span className="text-xs tabular-nums text-text-primary">
+                            <span className={timeReportSumFigureClass("week")}>
                               {(customerDayTotals[i] ?? 0) > 0 ? String(customerDayTotals[i]) : ""}
                             </span>
                           </div>
@@ -2242,7 +2869,7 @@ export function TimeReportPageClient({
                       ))}
                       <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
                         <div className="flex min-h-8 w-full items-center justify-center pr-7">
-                          <span className="text-center text-xs font-medium tabular-nums text-text-primary">
+                          <span className={timeReportSumFigureClass("week")}>
                             {customerWeekTotal > 0 ? String(customerWeekTotal) : ""}
                           </span>
                         </div>
@@ -2422,6 +3049,18 @@ export function TimeReportPageClient({
                                     </span>
                                   );
                                 })()}
+                                <IconButton
+                                  aria-label="Remove Jira/DevOps link"
+                                  title="Remove link"
+                                  className="time-report-icons-tight shrink-0 text-text-secondary hover:text-text-primary"
+                                  onClick={() =>
+                                    updateEntryInGroup(group.customerId, entry.id, {
+                                      jiraDevOpsValue: "",
+                                    })
+                                  }
+                                >
+                                  <Link2Off className="h-3.5 w-3.5 stroke-[1.5]" />
+                                </IconButton>
                               </div>
                               );
                             })() : (
@@ -2464,9 +3103,7 @@ export function TimeReportPageClient({
                                 });
                               }}
                               onBlur={() => setEditingCell(null)}
-                              hasInternalComment={
-                                (entry.comments[dayIndex] ?? "").trim() !== ""
-                              }
+                              internalCommentText={(entry.comments[dayIndex] ?? "").trim() || undefined}
                               columnInteractionProps={timeGridColumnCellInteractionProps(
                                 dayIndex,
                                 setHighlightedColumnIndex
@@ -2476,7 +3113,7 @@ export function TimeReportPageClient({
                           <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
                             <div className="flex min-h-8 w-full items-center justify-center pr-7">
                               <span
-                                className="text-center text-xs font-medium tabular-nums text-text-primary"
+                                className={timeReportSumFigureClass("week")}
                                 title="Total hours this week on this row"
                               >
                                 {formatReportHoursTotal(
@@ -2488,12 +3125,7 @@ export function TimeReportPageClient({
                             <IconButton
                               aria-label="Delete entire row"
                               title="Delete entire row"
-                              onClick={() => {
-                                setPendingRowDelete({
-                                  customerId: group.customerId,
-                                  entryId: entry.id,
-                                });
-                              }}
+                              onClick={() => requestRemoveEntry(group.customerId, entry.id)}
                               className="time-report-icons-tight absolute top-1/2 right-0 z-[1] -translate-y-1/2 !opacity-100 text-brand-signal hover:text-brand-signal"
                             >
                               <Trash2 className="h-3.5 w-3.5 stroke-[1.5]" />
@@ -2526,7 +3158,22 @@ export function TimeReportPageClient({
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle bg-bg-muted/40">
-                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5" aria-hidden />
+                <th className="w-[4.75rem] min-w-[4.75rem] px-0 py-1.5">
+                  <div className="flex items-center justify-center">
+                    <IconButton
+                      aria-label="Copy whole month to next month"
+                      title="Copy whole month to next month"
+                      onClick={() => setCopyRowDialog({ mode: "whole-month-next-month" })}
+                      disabled={copyToNextMonthState === "copying"}
+                    >
+                      {copyToNextMonthState === "copying" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </IconButton>
+                  </div>
+                </th>
                 <th className="min-w-0 px-1 py-1.5 text-left font-medium text-text-secondary">
                   Project
                 </th>
@@ -2559,7 +3206,7 @@ export function TimeReportPageClient({
                       className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""} ${highlightedColumnIndex === dateIdx ? "time-grid-header-column-active" : ""}`}
                       title={
                         isTodayHeader
-                          ? `Idag — ${longDow} ${dom} (${dateStr})`
+                          ? `Today — ${longDow} ${dom} (${dateStr})`
                           : `${longDow} ${dom} (${dateStr})`
                       }
                     >
@@ -2601,7 +3248,7 @@ export function TimeReportPageClient({
                           className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
-                            <span className="truncate text-[12px] tabular-nums text-text-primary">
+                            <span className={timeReportSumFigureClass("month")}>
                               {h > 0 ? String(h) : ""}
                             </span>
                           </div>
@@ -2610,7 +3257,7 @@ export function TimeReportPageClient({
                     })}
                     <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
                       <div className="flex min-h-7 w-full items-center justify-center pr-7">
-                        <span className="text-center text-[12px] font-medium tabular-nums text-text-primary">
+                        <span className={timeReportSumFigureClass("month")}>
                           {monthGridTotalDisplay}
                         </span>
                       </div>
@@ -2664,7 +3311,7 @@ export function TimeReportPageClient({
                               className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                             >
                               <div className="flex h-full w-full items-center justify-center">
-                                <span className="truncate text-[12px] tabular-nums text-text-primary">
+                                <span className={timeReportSumFigureClass("month")}>
                                   {(customerMonthDayTotals[dateIdx] ?? 0) > 0
                                     ? String(customerMonthDayTotals[dateIdx])
                                     : ""}
@@ -2674,7 +3321,7 @@ export function TimeReportPageClient({
                           ))}
                           <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
                             <div className="flex min-h-7 w-full items-center justify-center pr-7">
-                              <span className="text-center text-[12px] font-medium tabular-nums text-text-primary">
+                              <span className={timeReportSumFigureClass("month")}>
                                 {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
                               </span>
                             </div>
@@ -2683,7 +3330,7 @@ export function TimeReportPageClient({
                         {rows.map((row) => {
                           return (
                             <tr
-                              key={row.id}
+                              key={row.rowKey}
                               className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
                             >
                               <td
@@ -2694,7 +3341,7 @@ export function TimeReportPageClient({
                                   <IconButton
                                     aria-label="Add internal comment"
                                     title="Add internal comment"
-                                    onClick={() => openCommentMonth(row.id)}
+                                    onClick={() => openCommentMonth(row.rowKey)}
                                     className={
                                       Object.values(row.commentsByDate).some((c) => (c ?? "").trim() !== "")
                                         ? "text-brand-signal time-report-icons-tight"
@@ -2723,7 +3370,7 @@ export function TimeReportPageClient({
                                   <IconButton
                                     aria-label="Duplicate row"
                                     title="Duplicate row (Project + Role)"
-                                    onClick={() => duplicateRow(row.customerId, row.id)}
+                                    onClick={() => duplicateRow(row.customerId, row.rowKey)}
                                     className="time-report-icons-tight"
                                   >
                                     <CopyPlus className="h-3 w-3" />
@@ -2738,7 +3385,7 @@ export function TimeReportPageClient({
                                     value={row.projectId}
                                     onValueChange={(value) => {
                                       setShowValidationHighlights(false);
-                                      updateEntryInGroup(row.customerId, row.id, {
+                                      updateEntryInGroup(row.customerId, row.rowKey, {
                                         projectId: value,
                                         jiraDevOpsValue: "",
                                         roleId: "",
@@ -2763,7 +3410,7 @@ export function TimeReportPageClient({
                                     value={row.roleId}
                                     onValueChange={(value) => {
                                       setShowValidationHighlights(false);
-                                      updateEntryInGroup(row.customerId, row.id, { roleId: value });
+                                      updateEntryInGroup(row.customerId, row.rowKey, { roleId: value });
                                     }}
                                     options={getTaskOptions(row.customerId, row.projectId)}
                                     size="sm"
@@ -2784,7 +3431,7 @@ export function TimeReportPageClient({
                                   type="text"
                                   value={row.task ?? ""}
                                   onChange={(e) =>
-                                    updateEntryInGroup(row.customerId, row.id, {
+                                    updateEntryInGroup(row.customerId, row.rowKey, {
                                       task: e.target.value,
                                     })
                                   }
@@ -2814,7 +3461,7 @@ export function TimeReportPageClient({
                                         setJiraDevOpsModalValue(row.jiraDevOpsValue);
                                         setJiraDevOpsModal({
                                           customerId: row.customerId,
-                                          entryId: row.id,
+                                          entryId: row.rowKey,
                                         });
                                         if (row.projectId) loadJiraDevOpsForProject(row.projectId);
                                       }}
@@ -2855,6 +3502,18 @@ export function TimeReportPageClient({
                                         </span>
                                       );
                                     })()}
+                                    <IconButton
+                                      aria-label="Remove Jira/DevOps link"
+                                      title="Remove link"
+                                      className="time-report-icons-tight shrink-0 self-start text-text-secondary hover:text-text-primary"
+                                      onClick={() =>
+                                        updateEntryInGroup(row.customerId, row.rowKey, {
+                                          jiraDevOpsValue: "",
+                                        })
+                                      }
+                                    >
+                                      <Link2Off className="h-3 w-3 stroke-[1.5]" />
+                                    </IconButton>
                                   </div>
                                   );
                                 })() : (
@@ -2864,7 +3523,7 @@ export function TimeReportPageClient({
                                       setJiraDevOpsModalValue("");
                                       setJiraDevOpsModal({
                                         customerId: row.customerId,
-                                        entryId: row.id,
+                                        entryId: row.rowKey,
                                       });
                                       if (row.projectId) loadJiraDevOpsForProject(row.projectId);
                                     }}
@@ -2879,13 +3538,13 @@ export function TimeReportPageClient({
                                 <EditableHourTd
                                   key={dateStr}
                                   dayIndex={0}
-                                  entryId={row.id}
+                                  entryId={row.rowKey}
                                   value={row.hoursByDate[dateStr] ?? 0}
                                   compact
                                   showLeftBorder={dateIdx === 0}
                                   isEditing={
                                     editingCell?.scope === "month" &&
-                                    editingCell.rowId === row.id &&
+                                    editingCell.rowId === row.rowKey &&
                                     editingCell.dateStr === dateStr
                                   }
                                   isGray={isMonthDateGrayed(dateStr)}
@@ -2894,31 +3553,26 @@ export function TimeReportPageClient({
                                   onStartEdit={() =>
                                     setEditingCell({
                                       scope: "month",
-                                      rowId: row.id,
+                                      rowId: row.rowKey,
                                       dateStr,
                                     })
                                   }
                                   onCommit={(v) => {
-                                    setIsDirty(true);
+                                    markDirty();
                                     setMonthMergedRows((prev) => {
-                                      const next = prev.map((r) =>
-                                        r.id !== row.id
+                                      return prev.map((r) =>
+                                        r.rowKey !== row.rowKey
                                           ? r
                                           : {
                                               ...r,
                                               hoursByDate: { ...r.hoursByDate, [dateStr]: v },
                                             }
                                       );
-                                      const u = next.find((rr) => rr.id === row.id);
-                                      if (u && !mergedRowHasContent(u)) {
-                                        return next.filter((rr) => rr.id !== row.id);
-                                      }
-                                      return next;
                                     });
                                   }}
                                   onBlur={() => setEditingCell(null)}
-                                  hasInternalComment={
-                                    (row.commentsByDate[dateStr] ?? "").trim() !== ""
+                                  internalCommentText={
+                                    (row.commentsByDate[dateStr] ?? "").trim() || undefined
                                   }
                                   columnInteractionProps={timeGridColumnCellInteractionProps(
                                     dateIdx,
@@ -2929,7 +3583,7 @@ export function TimeReportPageClient({
                               <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
                                 <div className="flex min-h-7 w-full items-center justify-center pr-7">
                                   <span
-                                    className="text-center text-[12px] font-medium tabular-nums text-text-primary"
+                                    className={timeReportSumFigureClass("month")}
                                     title="Total hours this month on this row"
                                   >
                                     {formatReportHoursTotal(
@@ -2944,12 +3598,7 @@ export function TimeReportPageClient({
                                 <IconButton
                                   aria-label="Delete entire row"
                                   title="Delete entire row"
-                                  onClick={() => {
-                                    setPendingRowDelete({
-                                      customerId: row.customerId,
-                                      entryId: row.id,
-                                    });
-                                  }}
+                                  onClick={() => requestRemoveEntry(row.customerId, row.rowKey)}
                                   className="time-report-icons-tight absolute top-1/2 right-0 z-[1] -translate-y-1/2 !opacity-100 text-brand-signal hover:text-brand-signal"
                                 >
                                   <Trash2 className="h-3 w-3 stroke-[1.5]" />
@@ -3015,7 +3664,6 @@ export function TimeReportPageClient({
         open={revisionConflictOpen}
         onOpenChange={(open) => {
           setRevisionConflictOpen(open);
-          if (!open) savePausedForRevisionConflictRef.current = false;
         }}
         title="Time report changed elsewhere"
       >
@@ -3048,7 +3696,8 @@ export function TimeReportPageClient({
       >
         <div className="flex flex-col gap-3 pt-2">
           <p className="text-sm text-text-secondary">
-            Add a comment for each day. Leave blank for no comment.
+            Add a comment for each day. Reported hours are shown for days you can comment on.
+            Leave blank for no comment.
           </p>
           <div className="flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto">
             {commentState?.kind === "month"
@@ -3060,13 +3709,23 @@ export function TimeReportPageClient({
                       ? TIME_REPORT_DAY_LABELS[6]
                       : TIME_REPORT_DAY_LABELS[dow - 1];
                   const dom = parseInt(dateStr.slice(8, 10), 10);
+                  const reportedHours = commentDialogMonthRow?.hoursByDate[dateStr] ?? 0;
+                  const canComment = reportedHours > 0;
+                  const reportedDisplay = canComment
+                    ? `${formatReportHoursTotal(reportedHours, "month")}h`
+                    : "";
                   return (
                     <div key={dateStr} className="flex min-w-0 items-start gap-2">
                       <label
                         htmlFor={`comment-month-${dateStr}`}
-                        className="w-[4.25rem] shrink-0 pt-1.5 text-left text-xs font-medium tabular-nums text-text-secondary"
+                        className="flex w-[6.5rem] shrink-0 items-baseline justify-between gap-2 pt-1.5 text-xs font-medium tabular-nums text-text-secondary"
                       >
-                        {label} {dom}
+                        <span>
+                          {label} {dom}
+                        </span>
+                        <span className="w-8 text-right text-[11px] italic font-semibold">
+                          {reportedDisplay}
+                        </span>
                       </label>
                       <textarea
                         id={`comment-month-${dateStr}`}
@@ -3077,33 +3736,45 @@ export function TimeReportPageClient({
                             [dateStr]: e.target.value,
                           }))
                         }
-                        disabled={(commentDialogMonthRow?.hoursByDate[dateStr] ?? 0) <= 0}
+                        disabled={!canComment}
                         rows={1}
                         className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary disabled:cursor-not-allowed disabled:bg-bg-muted/40 disabled:text-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
                       />
                     </div>
                   );
                 })
-              : TIME_REPORT_DAY_LABELS.map((label, i) => (
-                  <div key={i} className="flex min-w-0 items-start gap-2">
-                    <label
-                      htmlFor={`comment-day-${i}`}
-                      className="w-[4.25rem] shrink-0 pt-1.5 text-left text-xs font-medium tabular-nums text-text-secondary"
-                    >
-                      {label} {commentDialogWeekDayNumbers[i]}
-                    </label>
-                    <textarea
-                      id={`comment-day-${i}`}
-                      value={commentTexts[i] ?? ""}
-                      onChange={(e) =>
-                        setCommentTexts((prev) => ({ ...prev, [i]: e.target.value }))
-                      }
-                      disabled={(commentDialogWeekEntry?.hours[i] ?? 0) <= 0}
-                      rows={1}
-                      className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary disabled:cursor-not-allowed disabled:bg-bg-muted/40 disabled:text-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
-                    />
-                  </div>
-                ))}
+              : TIME_REPORT_DAY_LABELS.map((label, i) => {
+                  const reportedHours = commentDialogWeekEntry?.hours[i] ?? 0;
+                  const canComment = reportedHours > 0;
+                  const reportedDisplay = canComment
+                    ? `${formatReportHoursTotal(reportedHours, "week")}h`
+                    : "";
+                  return (
+                    <div key={i} className="flex min-w-0 items-start gap-2">
+                      <label
+                        htmlFor={`comment-day-${i}`}
+                        className="flex w-[6.5rem] shrink-0 items-baseline justify-between gap-2 pt-1.5 text-xs font-medium tabular-nums text-text-secondary"
+                      >
+                        <span>
+                          {label} {commentDialogWeekDayNumbers[i]}
+                        </span>
+                        <span className="w-8 text-right text-[11px] italic font-semibold">
+                          {reportedDisplay}
+                        </span>
+                      </label>
+                      <textarea
+                        id={`comment-day-${i}`}
+                        value={commentTexts[i] ?? ""}
+                        onChange={(e) =>
+                          setCommentTexts((prev) => ({ ...prev, [i]: e.target.value }))
+                        }
+                        disabled={!canComment}
+                        rows={1}
+                        className="min-h-8 flex-1 resize-y rounded-lg border border-form bg-bg-default px-2 py-1.5 text-sm text-text-primary disabled:cursor-not-allowed disabled:bg-bg-muted/40 disabled:text-text-muted focus:border-form focus:outline-none focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset"
+                      />
+                    </div>
+                  );
+                })}
           </div>
           <div className="flex justify-end gap-2">
             <Button
@@ -3133,6 +3804,7 @@ export function TimeReportPageClient({
           const jiraBusy = Boolean(
             entry.projectId && jiraOptionsLoading[entry.projectId]
           );
+          const hasSavedLink = Boolean((entry.jiraDevOpsValue ?? "").trim());
           return (
             <div className="flex flex-col gap-3 pt-2">
               {jiraBusy ? (
@@ -3158,26 +3830,46 @@ export function TimeReportPageClient({
                   renderListInPortal={false}
                 />
               )}
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setJiraDevOpsModal(null)}
-                >
-                  Avbryt
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={jiraBusy}
-                  onClick={() => {
-                    updateEntryInGroup(jiraDevOpsModal.customerId, jiraDevOpsModal.entryId, {
-                      jiraDevOpsValue: jiraDevOpsModalValue,
-                    });
-                    setJiraDevOpsModal(null);
-                  }}
-                >
-                  OK
-                </Button>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 shrink">
+                  {hasSavedLink && !jiraBusy ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="text-text-secondary"
+                      onClick={() => {
+                        updateEntryInGroup(jiraDevOpsModal.customerId, jiraDevOpsModal.entryId, {
+                          jiraDevOpsValue: "",
+                        });
+                        setJiraDevOpsModal(null);
+                      }}
+                    >
+                      Remove link
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="ml-auto flex shrink-0 justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setJiraDevOpsModal(null)}
+                  >
+                    Avbryt
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={jiraBusy}
+                    onClick={() => {
+                      updateEntryInGroup(jiraDevOpsModal.customerId, jiraDevOpsModal.entryId, {
+                        jiraDevOpsValue: jiraDevOpsModalValue,
+                      });
+                      setJiraDevOpsModal(null);
+                    }}
+                  >
+                    OK
+                  </Button>
+                </div>
               </div>
             </div>
           );
@@ -3192,25 +3884,36 @@ export function TimeReportPageClient({
         title={
           copyRowDialog?.mode === "next-month"
             ? "Copy row to next month"
-            : "Copy row to current week"
+            : copyRowDialog?.mode === "whole-month-next-month"
+              ? "Copy whole month to next month"
+              : copyRowDialog?.mode === "whole-week-next-week"
+                ? "Copy whole week to next week"
+                : "Copy row to current week"
         }
       >
         {copyRowDialog
           ? (() => {
               const d = copyRowDialog;
               const copyDialogBusy =
-                d.mode === "current-week"
+                d.mode === "current-week" || d.mode === "whole-week-next-week"
                   ? copyToWeekState === "copying"
                   : copyToNextMonthState === "copying";
               const hasHoursToCopy =
                 d.mode === "current-week"
                   ? entryHasContent(d.entry)
-                  : mergedRowHasContent(d.row);
+                  : d.mode === "next-month"
+                    ? mergedRowHasContent(d.row)
+                    : d.mode === "whole-month-next-month"
+                      ? monthMergedRowsRef.current.some(mergedRowHasContent)
+                      : customerGroupsRef.current.some((g) =>
+                          g.entries.some((e) => entryHasContent(e))
+                        );
               const { y: nextCopyY, m: nextCopyM } = nextCalendarMonth(displayYear, displayMonth);
               const nextMonthLabel = new Date(nextCopyY, nextCopyM - 1, 1).toLocaleDateString(
                 "en-US",
                 { month: "long", year: "numeric" }
               );
+              const nextWeek = addWeeksToYearWeekLocal(year, week, 1);
               return (
                 <div className="flex flex-col gap-3 pt-2">
                   <p className="text-sm text-text-secondary">
@@ -3220,11 +3923,17 @@ export function TimeReportPageClient({
                         current calendar week (W{initialWeek} {initialYear}), or only project, role,
                         description, and Jira/DevOps with empty cells.
                       </>
+                    ) : d.mode === "whole-week-next-week" ? (
+                      <>
+                        Choose whether to include reported hours and internal comments when copying
+                        all rows in this week to the next week (W{nextWeek.week} {nextWeek.year}),
+                        or only row metadata with empty cells.
+                      </>
                     ) : (
                       <>
-                        Choose whether to include reported hours and internal comments in the next
-                        calendar month ({nextMonthLabel}), or only project, role, description, and
-                        Jira/DevOps with empty cells.
+                        Choose whether to include reported hours and internal comments in{" "}
+                        {d.mode === "whole-month-next-month" ? "the next calendar month for all rows" : "the next calendar month"} ({nextMonthLabel}), or only
+                        project, role, description, and Jira/DevOps with empty cells.
                       </>
                     )}
                   </p>
@@ -3249,6 +3958,10 @@ export function TimeReportPageClient({
                       onClick={() => {
                         if (d.mode === "current-week") {
                           void performCopyRowToCurrentWeek(d.customerId, d.entry, false);
+                        } else if (d.mode === "whole-week-next-week") {
+                          void performCopyWholeWeekToNextWeek(false);
+                        } else if (d.mode === "whole-month-next-month") {
+                          void performCopyWholeMonthToNextMonth(false);
                         } else {
                           void performCopyMergedRowToNextMonth(d.row, false);
                         }
@@ -3263,6 +3976,10 @@ export function TimeReportPageClient({
                       onClick={() => {
                         if (d.mode === "current-week") {
                           void performCopyRowToCurrentWeek(d.customerId, d.entry, true);
+                        } else if (d.mode === "whole-week-next-week") {
+                          void performCopyWholeWeekToNextWeek(true);
+                        } else if (d.mode === "whole-month-next-month") {
+                          void performCopyWholeMonthToNextMonth(true);
                         } else {
                           void performCopyMergedRowToNextMonth(d.row, true);
                         }
@@ -3281,14 +3998,22 @@ export function TimeReportPageClient({
       <ConfirmModal
         isOpen={pendingRowDelete !== null}
         title="Delete row"
-        message="Are you sure you want to delete this row?"
+        message="This row contains hours and/or comments. Are you sure you want to delete it?"
         confirmLabel="Delete"
         variant="danger"
         onClose={() => setPendingRowDelete(null)}
         onConfirm={() => {
           if (!pendingRowDelete) return;
-          removeEntry(pendingRowDelete.customerId, pendingRowDelete.entryId);
+          const p = pendingRowDelete;
           setPendingRowDelete(null);
+          if (viewModeRef.current === "month") {
+            const row = monthMergedRowsRef.current.find(
+              (r) => r.customerId === p.customerId && r.rowKey === p.entryId
+            );
+            removeEntry(p.customerId, p.entryId, row ? [row.lineId] : undefined);
+          } else {
+            removeEntry(p.customerId, p.entryId);
+          }
         }}
       />
     </div>

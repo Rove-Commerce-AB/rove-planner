@@ -323,6 +323,19 @@ type TimeReportRowDb = {
   display_order: string | number | null;
 };
 
+type TimeReportLineDb = {
+  id: string;
+  consultant_id: string;
+  iso_year: number;
+  iso_week: number;
+  customer_id: string;
+  project_id: string | null;
+  role_id: string | null;
+  jira_devops_key: string | null;
+  description: string | null;
+  display_order: string | number | null;
+};
+
 async function getAppUserIdForAudit(): Promise<string | null> {
   const u = await getCurrentAppUser();
   if (!u?.email) return null;
@@ -430,7 +443,9 @@ async function writeEntryHistory(
 export async function getTimeReportEntries(
   consultantId: string,
   year: number,
-  week: number
+  week: number,
+  /** Month calendar scope for aggregated month UI only — hides lines from neighbouring months that share this ISO week. */
+  calendarMonthForLineFilter?: { year: number; month: number } | null
 ): Promise<TimeReportWeekData> {
   const consultant = await getConsultantForCurrentUser();
   if (!consultant || consultant.id !== consultantId) {
@@ -438,12 +453,43 @@ export async function getTimeReportEntries(
   }
 
   const weekDates = getISOWeekDateStrings(year, week);
+  const filterActive = Boolean(calendarMonthForLineFilter);
+  const bounds =
+    calendarMonthForLineFilter != null
+      ? calendarMonthDateBounds(calendarMonthForLineFilter.year, calendarMonthForLineFilter.month)
+      : { start: "1970-01-01", end: "1970-01-01" };
 
-  const [{ rows: revRows }, { rows }] = await Promise.all([
+  const [{ rows: revRows }, { rows: lineRows }, { rows: entryRows }] = await Promise.all([
     cloudSqlPool.query<{ revision: string | null }>(
       `SELECT revision::text FROM time_report_week_revisions
        WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
       [consultantId, year, week]
+    ),
+    cloudSqlPool.query<TimeReportLineDb>(
+      `SELECT id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+              jira_devops_key, description, display_order
+       FROM time_report_entry_lines l
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+         AND (
+           NOT $4::boolean
+           OR EXISTS (
+             SELECT 1 FROM time_report_entries e
+             WHERE e.consultant_id = l.consultant_id
+               AND e.entry_line_id = l.id
+               AND e.entry_date >= $5::date
+               AND e.entry_date <= $6::date
+           )
+           OR (
+             NOT EXISTS (
+               SELECT 1 FROM time_report_entries e
+               WHERE e.consultant_id = l.consultant_id AND e.entry_line_id = l.id
+             )
+             AND l.created_at::date >= $5::date
+             AND l.created_at::date <= $6::date
+           )
+         )
+       ORDER BY display_order ASC NULLS LAST, id ASC`,
+      [consultantId, year, week, filterActive, bounds.start, bounds.end]
     ),
     cloudSqlPool.query<TimeReportRowDb>(
       `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
@@ -457,16 +503,16 @@ export async function getTimeReportEntries(
 
   const revision = Number(revRows[0]?.revision ?? 0);
 
-  let filteredRows = rows;
+  let filteredLines = lineRows;
+  let filteredRows = entryRows;
   const appUser = await getCurrentAppUser();
   if (isSubcontractorRole(appUser?.role)) {
     const internalCustomerId = await getInternalCustomerId();
     if (internalCustomerId) {
+      filteredLines = filteredLines.filter((r) => r.customer_id !== internalCustomerId);
       filteredRows = filteredRows.filter((r) => r.customer_id !== internalCustomerId);
     }
   }
-
-  if (!filteredRows.length) return { groups: [], revision };
 
   const byLineId = new Map<string, TimeReportRowDb[]>();
   for (const r of filteredRows) {
@@ -474,54 +520,39 @@ export async function getTimeReportEntries(
     byLineId.get(r.entry_line_id)!.push(r);
   }
 
-  const lineGroups = [...byLineId.values()].sort(
-    (a, b) =>
-      Number(a[0]?.display_order ?? 0) - Number(b[0]?.display_order ?? 0)
-  );
-
-  const byCustomer = new Map<string, TimeReportRowDb[][]>();
-  for (const dayRows of lineGroups) {
-    const customerId = dayRows[0]!.customer_id;
-    if (!byCustomer.has(customerId)) byCustomer.set(customerId, []);
-    byCustomer.get(customerId)!.push(dayRows);
-  }
-
-  const result: TimeReportCustomerGroup[] = [];
-  for (const [customerId, groups] of byCustomer) {
-    groups.sort(
-      (a, b) =>
-        Number(a[0]?.display_order ?? 0) - Number(b[0]?.display_order ?? 0)
-    );
-    const entries: TimeReportEntry[] = groups.map((dayRows) => {
-      const hours: number[] = [0, 0, 0, 0, 0, 0, 0];
-      const comments: Record<number, string> = {};
-      for (const row of dayRows) {
-        const dayIndex = weekDates.indexOf(row.entry_date);
-        if (dayIndex >= 0) {
-          hours[dayIndex] = Number(row.hours ?? 0);
-          if (row.internal_comment) comments[dayIndex] = row.internal_comment;
-        }
+  const byCustomer = new Map<string, TimeReportEntry[]>();
+  const customerOrder: string[] = [];
+  for (const line of filteredLines) {
+    if (!byCustomer.has(line.customer_id)) {
+      byCustomer.set(line.customer_id, []);
+      customerOrder.push(line.customer_id);
+    }
+    const dayRows = byLineId.get(line.id) ?? [];
+    const hours: number[] = [0, 0, 0, 0, 0, 0, 0];
+    const comments: Record<number, string> = {};
+    for (const row of dayRows) {
+      const dayIndex = weekDates.indexOf(row.entry_date);
+      if (dayIndex >= 0) {
+        hours[dayIndex] = Number(row.hours ?? 0);
+        if (row.internal_comment) comments[dayIndex] = row.internal_comment;
       }
-      const first = dayRows[0]!;
-      return {
-        id: first.entry_line_id,
-        projectId: first.project_id,
-        roleId: first.role_id,
-        jiraDevOpsValue: first.jira_devops_key ?? "",
-        task: first.description ?? "",
-        hours,
-        comments,
-      };
+    }
+    byCustomer.get(line.customer_id)!.push({
+      id: line.id,
+      projectId: line.project_id ?? "",
+      roleId: line.role_id ?? "",
+      jiraDevOpsValue: line.jira_devops_key ?? "",
+      task: line.description ?? "",
+      hours,
+      comments,
     });
-    result.push({ customerId, entries });
   }
 
-  const customerOrder = [...new Set(filteredRows.map((r) => r.customer_id))];
-  result.sort(
-    (a, b) => customerOrder.indexOf(a.customerId) - customerOrder.indexOf(b.customerId)
-  );
-
-  return { groups: result, revision };
+  const groups = customerOrder.map((customerId) => ({
+    customerId,
+    entries: byCustomer.get(customerId)!,
+  }));
+  return { groups, revision };
 }
 
 export async function getTimeReportMonthTotalHours(
@@ -569,7 +600,8 @@ export async function saveTimeReportEntries(
   week: number,
   customerGroups: TimeReportCustomerGroup[],
   expectedRevision: number,
-  calendarMonthScope?: SaveTimeReportCalendarMonthScope | null
+  calendarMonthScope?: SaveTimeReportCalendarMonthScope | null,
+  deletedLineIds?: string[]
 ): Promise<SaveTimeReportEntriesResult> {
   const ctx = await getTimeReportAccessContext();
   const consultant = ctx.consultant;
@@ -584,6 +616,21 @@ export async function saveTimeReportEntries(
     : null;
 
   const desired: DesiredCell[] = [];
+  const desiredLines: Array<{
+    id: string;
+    consultant_id: string;
+    iso_year: number;
+    iso_week: number;
+    customer_id: string;
+    project_id: string | null;
+    role_id: string | null;
+    jira_devops_key: string | null;
+    description: string | null;
+    display_order: number;
+  }> = [];
+  const explicitDeletedLineIds = new Set(
+    (deletedLineIds ?? []).map((v) => v.trim()).filter((v) => v !== "")
+  );
 
   const projectIds = new Set<string>();
   const customerIds = new Set<string>();
@@ -643,10 +690,20 @@ export async function saveTimeReportEntries(
           error: "Project and Role are required for all rows with hours or comments.",
         };
       }
-      if (!entry.projectId || !entry.roleId) continue;
       const displayOrder = cgIndex * 1000 + eIndex;
-      const rateSnapshot = resolveRateSnapshot(entry.projectId, group.customerId, entry.roleId);
       const entryLineId = (entry.id && entry.id.trim() !== "" ? entry.id : randomUUID()) as string;
+      desiredLines.push({
+        id: entryLineId,
+        consultant_id: consultantId,
+        iso_year: year,
+        iso_week: week,
+        customer_id: group.customerId,
+        project_id: entry.projectId || null,
+        role_id: entry.roleId || null,
+        jira_devops_key: entry.jiraDevOpsValue || null,
+        description: (entry.task ?? "").trim() || null,
+        display_order: displayOrder,
+      });
 
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
         const entryDate = weekDates[dayIndex]!;
@@ -658,7 +715,8 @@ export async function saveTimeReportEntries(
         }
         const hours = entry.hours[dayIndex] ?? 0;
         const comment = entry.comments[dayIndex]?.trim() ?? "";
-        if (hours > 0 || comment !== "") {
+        if (hours > 0 && entry.projectId && entry.roleId) {
+          const rateSnapshot = resolveRateSnapshot(entry.projectId, group.customerId, entry.roleId);
           desired.push({
             entry_line_id: entryLineId,
             consultant_id: consultantId,
@@ -676,6 +734,26 @@ export async function saveTimeReportEntries(
         }
       }
     }
+  }
+
+  // Never let one request contain conflicting definitions for the same line id.
+  // This otherwise causes non-deterministic "last write wins" behavior.
+  const lineShapeById = new Map<string, string>();
+  for (const line of desiredLines) {
+    if (explicitDeletedLineIds.has(line.id)) continue;
+    const shape = [
+      line.customer_id,
+      line.project_id ?? "",
+      line.role_id ?? "",
+      line.jira_devops_key ?? "",
+      line.description ?? "",
+      String(line.display_order),
+    ].join("|");
+    const prev = lineShapeById.get(line.id);
+    if (prev && prev !== shape) {
+      return { success: false, error: "Ambiguous line identity in save payload." };
+    }
+    lineShapeById.set(line.id, shape);
   }
 
   const appUserId = await getAppUserIdForAudit();
@@ -708,13 +786,133 @@ export async function saveTimeReportEntries(
 
     const newRevision = currentRev + 1;
 
+    const { rows: existingLines } = await client.query<TimeReportLineDb>(
+      `SELECT id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+              jira_devops_key, description, display_order
+       FROM time_report_entry_lines
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+       FOR UPDATE`,
+      [consultantId, year, week]
+    );
+
+    const existingLineById = new Map<string, TimeReportLineDb>();
+    for (const l of existingLines) existingLineById.set(l.id, l);
+    const desiredLineById = new Map<string, (typeof desiredLines)[number]>();
+    for (const l of desiredLines) {
+      if (explicitDeletedLineIds.has(l.id)) continue;
+      desiredLineById.set(l.id, l);
+    }
+
+    for (const lineId of explicitDeletedLineIds) {
+      if (!existingLineById.has(lineId)) continue;
+      // Delete only within the visible scope:
+      // - week view: only this ISO week's cells + header
+      // - month view: only this calendar month's cells in this ISO week,
+      //   then drop header only when no week cells remain.
+      if (scopeBounds) {
+        await client.query(
+          `DELETE FROM time_report_entries
+           WHERE consultant_id = $1
+             AND entry_line_id = $2
+             AND entry_date = ANY($3::date[])
+             AND entry_date >= $4::date
+             AND entry_date <= $5::date`,
+          [consultantId, lineId, weekDates, scopeBounds.start, scopeBounds.end]
+        );
+        const { rows: rem } = await client.query<{ c: string }>(
+          `SELECT COUNT(*)::text AS c
+           FROM time_report_entries
+           WHERE consultant_id = $1
+             AND entry_line_id = $2
+             AND entry_date = ANY($3::date[])`,
+          [consultantId, lineId, weekDates]
+        );
+        const remainingInWeek = Number(rem[0]?.c ?? 0);
+        if (remainingInWeek === 0) {
+          await client.query(
+            `DELETE FROM time_report_entry_lines
+             WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3 AND id = $4`,
+            [consultantId, year, week, lineId]
+          );
+        }
+      } else {
+        await client.query(
+          `DELETE FROM time_report_entries
+           WHERE consultant_id = $1
+             AND entry_line_id = $2
+             AND entry_date = ANY($3::date[])`,
+          [consultantId, lineId, weekDates]
+        );
+        await client.query(
+          `DELETE FROM time_report_entry_lines
+           WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3 AND id = $4`,
+          [consultantId, year, week, lineId]
+        );
+      }
+    }
+
+    for (const [lineId, de] of desiredLineById) {
+      const ex = existingLineById.get(lineId);
+      if (!ex) {
+        const monthAnchorDate =
+          calendarMonthScope != null
+            ? `${calendarMonthScope.year}-${String(calendarMonthScope.month).padStart(2, "0")}-01`
+            : null;
+        await client.query(
+          `INSERT INTO time_report_entry_lines (
+             id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+             jira_devops_key, description, display_order, created_at, updated_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, now()), COALESCE($11::date, now()))`,
+          [
+            de.id,
+            de.consultant_id,
+            de.iso_year,
+            de.iso_week,
+            de.customer_id,
+            de.project_id,
+            de.role_id,
+            de.jira_devops_key,
+            de.description,
+            de.display_order,
+            monthAnchorDate,
+          ]
+        );
+      } else {
+        await client.query(
+          `UPDATE time_report_entry_lines SET
+             customer_id = $3,
+             project_id = $4,
+             role_id = $5,
+             jira_devops_key = $6,
+             description = $7,
+             display_order = $8
+           WHERE consultant_id = $1 AND iso_year = $9 AND iso_week = $10 AND id = $2`,
+          [
+            consultantId,
+            lineId,
+            de.customer_id,
+            de.project_id,
+            de.role_id,
+            de.jira_devops_key,
+            de.description,
+            de.display_order,
+            year,
+            week,
+          ]
+        );
+      }
+    }
+
+    const lineIds = Array.from(desiredLineById.keys());
     const { rows: existingRows } = await client.query<TimeReportRowDb>(
       `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
               entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
        FROM time_report_entries
-       WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
+       WHERE consultant_id = $1
+         AND entry_line_id = ANY($2::uuid[])
+         AND entry_date = ANY($3::date[])
        FOR UPDATE`,
-      [consultantId, weekDates]
+      [consultantId, lineIds.length > 0 ? lineIds : [randomUUID()], weekDates]
     );
 
     const existingByKey = new Map<string, TimeReportRowDb>();
@@ -724,6 +922,7 @@ export async function saveTimeReportEntries(
 
     const desiredByKey = new Map<string, DesiredCell>();
     for (const d of desired) {
+      if (explicitDeletedLineIds.has(d.entry_line_id)) continue;
       desiredByKey.set(`${d.entry_line_id}|${d.entry_date}`, d);
     }
 
@@ -866,65 +1065,51 @@ export async function copyEntryToWeek(
   if (!ctx.allowedCustomerIds.has(customerId)) {
     return { success: false, error: "Unauthorized customer." };
   }
-  if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(entry.projectId)) {
+  if (
+    isSubcontractorRole(ctx.appUser?.role) &&
+    entry.projectId &&
+    !ctx.bookedProjectIds.has(entry.projectId)
+  ) {
     return { success: false, error: "Unauthorized project for subcontractor." };
   }
-  if (!entry.projectId || !entry.roleId) {
+  const copyHours = entry.copyHours !== false;
+  const hasProjectAndRole = Boolean(entry.projectId && entry.roleId);
+  if (copyHours && !hasProjectAndRole) {
     return { success: false, error: "Project and Role are required." };
   }
 
   const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
-  const rateSnapshot = await getEffectiveRateSnapshot(
-    entry.projectId,
-    customerId,
-    entry.roleId
-  );
-
-  const copyHours = entry.copyHours !== false;
+  const rateSnapshot =
+    entry.projectId && entry.roleId
+      ? await getEffectiveRateSnapshot(entry.projectId, customerId, entry.roleId)
+      : null;
 
   const toInsert: DesiredCell[] = [];
-  const entryLineId = randomUUID();
+  const entryLineId = entry.lineId?.trim() ? entry.lineId.trim() : randomUUID();
   const displayOrderPlaceholder = 0;
 
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     const hours = copyHours ? (entry.hours[dayIndex] ?? 0) : 0;
     const comment = copyHours ? (entry.comments[dayIndex]?.trim() ?? "") : "";
-    if (copyHours) {
-      if (hours > 0 || comment !== "") {
-        toInsert.push({
-          entry_line_id: entryLineId,
-          consultant_id: consultantId,
-          customer_id: customerId,
-          project_id: entry.projectId,
-          role_id: entry.roleId,
-          jira_devops_key: entry.jiraDevOpsValue || null,
-          description: (entry.task ?? "").trim() || null,
-          entry_date: weekDates[dayIndex]!,
-          hours,
-          internal_comment: comment || null,
-          rate_snapshot: rateSnapshot,
-          display_order: displayOrderPlaceholder,
-        });
-      }
-    } else {
+    if (hours > 0) {
       toInsert.push({
         entry_line_id: entryLineId,
         consultant_id: consultantId,
         customer_id: customerId,
-        project_id: entry.projectId,
-        role_id: entry.roleId,
+        project_id: entry.projectId || null,
+        role_id: entry.roleId || null,
         jira_devops_key: entry.jiraDevOpsValue || null,
         description: (entry.task ?? "").trim() || null,
         entry_date: weekDates[dayIndex]!,
-        hours: 0,
-        internal_comment: null,
+        hours,
+        internal_comment: comment || null,
         rate_snapshot: rateSnapshot,
         display_order: displayOrderPlaceholder,
       });
     }
   }
 
-  if (toInsert.length === 0) {
+  if (copyHours && toInsert.length === 0) {
     return { success: false, error: "Entry has no hours or comments to copy." };
   }
 
@@ -934,9 +1119,10 @@ export async function copyEntryToWeek(
     await client.query("BEGIN");
 
     const { rows: ordRows } = await client.query<{ display_order: string | number | null }>(
-      `SELECT display_order FROM time_report_entries
-       WHERE consultant_id = $1 AND entry_date = ANY($2::date[])`,
-      [consultantId, weekDates]
+      `SELECT display_order
+       FROM time_report_entry_lines
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
+      [consultantId, targetYear, targetWeek]
     );
     const maxOrder =
       ordRows.length && ordRows.every((r) => r.display_order != null)
@@ -972,6 +1158,27 @@ export async function copyEntryToWeek(
     }
 
     const newRevision = currentRev + 1;
+    const rowOnlyLineCreatedAt = !copyHours ? (entry.rowOnlyAnchorDate ?? null) : null;
+
+    await client.query(
+      `INSERT INTO time_report_entry_lines (
+         id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+         jira_devops_key, description, display_order, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, now()), COALESCE($11::date, now()))`,
+      [
+        entryLineId,
+        consultantId,
+        targetYear,
+        targetWeek,
+        customerId,
+        entry.projectId || null,
+        entry.roleId || null,
+        entry.jiraDevOpsValue || null,
+        (entry.task ?? "").trim() || null,
+        displayOrder,
+        rowOnlyLineCreatedAt,
+      ]
+    );
 
     for (const de of toInsert) {
       const ins = await client.query<{ id: string }>(

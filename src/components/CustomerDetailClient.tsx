@@ -10,6 +10,7 @@ import {
   Badge,
   ConfirmModal,
   DetailPageHeader,
+  DetailBadgeFieldRow,
   FieldLabel,
   FieldValue,
   IconButton,
@@ -79,6 +80,7 @@ export function CustomerDetailClient({
   );
   const [logoUrl, setLogoUrl] = useState(initialCustomer.logoUrl ?? "");
   const [url, setUrl] = useState(initialCustomer.url ?? "");
+  const [isInternal, setIsInternal] = useState(initialCustomer.isInternal ?? false);
   const [isActive, setIsActive] = useState(initialCustomer.isActive ?? true);
   const [error, setError] = useState<string | null>(null);
   const [ratesError, setRatesError] = useState<string | null>(null);
@@ -108,6 +110,7 @@ export function CustomerDetailClient({
     setAccountManagerName(initialCustomer.accountManagerName ?? null);
     setColor(initialCustomer.color ?? DEFAULT_CUSTOMER_COLOR);
     setLogoUrl(initialCustomer.logoUrl ?? "");
+    setIsInternal(initialCustomer.isInternal ?? false);
     setIsActive(initialCustomer.isActive ?? true);
     setLogoImageError(false);
   }, [initialCustomer]);
@@ -250,6 +253,21 @@ export function CustomerDetailClient({
     try {
       await updateCustomerAction(initialCustomer.id, { is_active: !isActive });
       setIsActive(!isActive);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleInternal = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateCustomerAction(initialCustomer.id, { is_internal: !isInternal });
+      setIsInternal(!isInternal);
+      refreshCustomers();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -538,8 +556,7 @@ export function CustomerDetailClient({
                   />
               </div>
 
-              <div>
-                <FieldLabel>Status</FieldLabel>
+              <DetailBadgeFieldRow label="Status">
                 <Badge
                   variant={isActive ? "active" : "inactive"}
                   interactive
@@ -548,7 +565,18 @@ export function CustomerDetailClient({
                 >
                   {isActive ? "Active" : "Inactive"}
                 </Badge>
-              </div>
+              </DetailBadgeFieldRow>
+
+              <DetailBadgeFieldRow label="Internal customer">
+                <Badge
+                  variant={isInternal ? "active" : "inactive"}
+                  interactive
+                  onClick={handleToggleInternal}
+                  disabled={submitting}
+                >
+                  {isInternal ? "Internal" : "Standard"}
+                </Badge>
+              </DetailBadgeFieldRow>
               </div>
             </div>
           </Panel>

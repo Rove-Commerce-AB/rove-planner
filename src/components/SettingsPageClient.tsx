@@ -9,12 +9,30 @@ import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
 import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
 import { removeAppUser, updateAppUser, type AppUser, type AppUserRole } from "@/lib/appUsers";
 import {
+  Button,
+  Dialog,
+  IconButton,
+  ConfirmModal,
+  InlineEditStatus,
+  SavedCheckmark,
+  PageHeader,
+  Panel,
+  PanelSectionTitle,
+  SAVED_DURATION_MS,
+  INLINE_EDIT_STATUS_ROW_MIN_H,
+  Select,
+  editInputListClass,
+  editTriggerClass,
+  inlineEditTriggerListClassRowHover,
+  modalInputClass,
+} from "@/components/ui";
+import {
   updateFeatureRequest,
   deleteFeatureRequest,
   setFeatureRequestImplemented,
+  declineFeatureRequest,
   type FeatureRequest,
 } from "@/lib/featureRequests";
-import { IconButton, ConfirmModal, InlineEditStatus, SavedCheckmark, PageHeader, Panel, PanelSectionTitle, SAVED_DURATION_MS, INLINE_EDIT_STATUS_ROW_MIN_H, Select, editInputListClass, editTriggerClass, inlineEditTriggerListClassRowHover } from "@/components/ui";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
 import { SettingsCalendarsSection } from "./settings/SettingsCalendarsSection";
@@ -93,6 +111,10 @@ export function SettingsPageClient({
   const lastSavedFeatureRequestIdRef = useRef<string | null>(null);
   const [featureRequestToDelete, setFeatureRequestToDelete] = useState<FeatureRequest | null>(null);
   const [togglingImplementedId, setTogglingImplementedId] = useState<string | null>(null);
+  const [decliningFeatureRequestId, setDecliningFeatureRequestId] = useState<string | null>(null);
+  const [featureRequestToDecline, setFeatureRequestToDecline] = useState<FeatureRequest | null>(null);
+  const [declineCommentValue, setDeclineCommentValue] = useState("");
+  const [declineCommentError, setDeclineCommentError] = useState<string | null>(null);
   const [editingAppUserId, setEditingAppUserId] = useState<string | null>(null);
   const [editingAppUserField, setEditingAppUserField] = useState<"name" | "email" | "role" | null>(null);
   const [editingAppUserValue, setEditingAppUserValue] = useState("");
@@ -283,6 +305,38 @@ export function SettingsPageClient({
       alert(e instanceof Error ? e.message : "Failed to update");
     } finally {
       setTogglingImplementedId(null);
+    }
+  };
+
+  const handleDeclineFeatureRequest = async (fr: FeatureRequest) => {
+    setDeclineCommentError(null);
+    setDeclineCommentValue(fr.decline_comment ?? "");
+    setFeatureRequestToDecline(fr);
+  };
+
+  const handleDeclineModalClose = () => {
+    setFeatureRequestToDecline(null);
+    setDeclineCommentValue("");
+    setDeclineCommentError(null);
+  };
+
+  const handleDeclineModalConfirm = async () => {
+    if (!featureRequestToDecline) return;
+    const targetId = featureRequestToDecline.id;
+    const comment = declineCommentValue.trim();
+    if (!comment) {
+      setDeclineCommentError("A comment is required.");
+      return;
+    }
+    setDecliningFeatureRequestId(targetId);
+    try {
+      await declineFeatureRequest(targetId, comment);
+      handleDeclineModalClose();
+      router.refresh();
+    } catch (e) {
+      setDeclineCommentError(e instanceof Error ? e.message : "Failed to decline");
+    } finally {
+      setDecliningFeatureRequestId(null);
     }
   };
 
@@ -756,7 +810,9 @@ export function SettingsPageClient({
           savingFeatureRequest={savingFeatureRequest}
           featureRequestError={featureRequestError}
           togglingImplementedId={togglingImplementedId}
+          decliningFeatureRequestId={decliningFeatureRequestId}
           handleToggleImplemented={handleToggleImplemented}
+          handleDecline={handleDeclineFeatureRequest}
           setFeatureRequestError={setFeatureRequestError}
           setFeatureRequestToDelete={setFeatureRequestToDelete}
         />
@@ -829,6 +885,47 @@ export function SettingsPageClient({
         onClose={() => setFeatureRequestToDelete(null)}
         onConfirm={handleFeatureRequestDelete}
       />
+
+      <Dialog
+        open={featureRequestToDecline !== null}
+        onOpenChange={(open) => {
+          if (!open) handleDeclineModalClose();
+        }}
+        title="Decline feature request"
+        subtitle="Reporter notification"
+      >
+        <div className="mt-4 space-y-4">
+          <p className="text-sm text-text-primary/85">
+            Add a comment for the reporter. This will be sent as a notification.
+          </p>
+          <textarea
+            value={declineCommentValue}
+            onChange={(e) => {
+              setDeclineCommentValue(e.target.value);
+              if (declineCommentError) setDeclineCommentError(null);
+            }}
+            rows={4}
+            className={`${modalInputClass} w-full resize-y`}
+            placeholder="Sorry, this will not be implemented because..."
+            autoFocus
+          />
+          {declineCommentError && (
+            <p className="text-sm font-medium text-red-700 dark:text-red-300">{declineCommentError}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={handleDeclineModalClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={featureRequestToDecline == null || decliningFeatureRequestId != null}
+              onClick={() => void handleDeclineModalConfirm()}
+            >
+              {decliningFeatureRequestId ? "Declining..." : "Decline request"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </>
   );
 }
