@@ -204,7 +204,11 @@ function syncWeekRevisionAfterSave(
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = {
   rowKey: string;
+  /** Fallback line UUID when no week-specific id exists (e.g. drafts). */
   lineId: string;
+  /** Persisted `time_report_entry_lines.id` per ISO-week slice (`year-Wnn`). Backfill assigned different UUIDs per week for the same visible row. */
+  lineIdByWeekSliceKey: Record<string, string>;
+  displayOrder: number;
   weekSliceKeys: string[];
   isDraft?: boolean;
   customerId: string;
@@ -215,6 +219,19 @@ type MonthMergedRow = {
   hoursByDate: Record<string, number>;
   commentsByDate: Record<string, string>;
 };
+
+function mergedRowAllLineIds(row: MonthMergedRow): string[] {
+  const ids = new Set<string>();
+  for (const id of Object.values(row.lineIdByWeekSliceKey)) {
+    if (id) ids.add(id);
+  }
+  if (row.lineId) ids.add(row.lineId);
+  return [...ids];
+}
+
+function resolveMergedRowLineIdForWeek(row: MonthMergedRow, weekSliceKey: string): string {
+  return row.lineIdByWeekSliceKey[weekSliceKey] ?? row.lineId;
+}
 
 function buildMergedMonthRows(
   slices: Record<string, CustomerGroup[]>,
@@ -268,10 +285,10 @@ function buildMergedMonthRows(
           if (c) commentsByDate[d] = e.comments[i] ?? "";
         }
         // Do not include per-day comments in the merge key.
-        // Comments are date-specific and should merge into the same logical month row.
-        // Keep entry-line identity in month rows so save payload cannot collapse
-        // multiple distinct lines into one and accidentally trigger deletes.
-        const mergeKey = `${e.id}|${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
+        // Omit entry-line UUID: SQL backfill assigns one entry_line_id per ISO week, so the same
+        // logical row appears as multiple ids across weeks — merging by business identity + display_order
+        // keeps month view aligned with save semantics (see lineIdByWeekSliceKey).
+        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}|${e.displayOrder ?? 0}`;
         sources.push({
           mergeKey,
           sliceKey: sk,
@@ -300,6 +317,14 @@ function buildMergedMonthRows(
     mergeKeyRank.set(mk, mergeKeyRank.size);
     const list = byKey.get(mk)!;
     const first = list[0]!;
+    const lineIdByWeekSliceKey: Record<string, string> = {};
+    for (const s of list) {
+      const cur = lineIdByWeekSliceKey[s.sliceKey];
+      if (!cur || s.entry.id < cur) lineIdByWeekSliceKey[s.sliceKey] = s.entry.id;
+    }
+    const sliceIds = Object.values(lineIdByWeekSliceKey);
+    const canonicalLineId =
+      sliceIds.length > 0 ? sliceIds.reduce((a, b) => (a < b ? a : b)) : first.entry.id;
     const hoursByDate: Record<string, number> = {};
     const commentsByDate: Record<string, string> = {};
     for (const d of monthCalendarDates) {
@@ -315,7 +340,9 @@ function buildMergedMonthRows(
     }
     rows.push({
       rowKey: mk,
-      lineId: first.entry.id,
+      lineId: canonicalLineId,
+      lineIdByWeekSliceKey,
+      displayOrder: first.entry.displayOrder ?? 0,
       weekSliceKeys: [...new Set(list.map((s) => s.sliceKey))],
       customerId: first.customerId,
       projectId: first.entry.projectId,
@@ -348,6 +375,8 @@ function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): Mo
   return {
     rowKey: crypto.randomUUID(),
     lineId: crypto.randomUUID(),
+    lineIdByWeekSliceKey: {},
+    displayOrder: 0,
     weekSliceKeys: [],
     isDraft: true,
     customerId,
@@ -370,6 +399,7 @@ function pseudoCustomerGroupsForHydrate(rows: MonthMergedRow[]): CustomerGroup[]
     }
     byCustomer.get(row.customerId)!.push({
       id: row.lineId,
+      displayOrder: row.displayOrder,
       projectId: row.projectId,
       roleId: row.roleId,
       jiraDevOpsValue: row.jiraDevOpsValue,
@@ -407,8 +437,10 @@ function buildCustomerGroupsForWeekFromMerged(
       const t = (row.commentsByDate[d] ?? "").trim();
       if (t) comments[i] = row.commentsByDate[d] ?? "";
     });
+    const lineIdForWeek = resolveMergedRowLineIdForWeek(row, sk);
     byCustomer.get(row.customerId)!.push({
-      id: row.lineId,
+      id: lineIdForWeek,
+      displayOrder: row.displayOrder,
       projectId: row.projectId,
       roleId: row.roleId,
       jiraDevOpsValue: row.jiraDevOpsValue,
@@ -436,6 +468,7 @@ function hasAmbiguousLineIdentity(groups: CustomerGroup[]): boolean {
         e.roleId ?? "",
         e.jiraDevOpsValue ?? "",
         (e.task ?? "").trim(),
+        String(e.displayOrder ?? 0),
       ].join("|");
       const prev = byId.get(e.id);
       if (prev && prev !== shape) return true;
@@ -1673,6 +1706,7 @@ export function TimeReportPageClient({
       for (const r of monthMergedRows) {
         map.set(r.rowKey, {
           id: r.lineId,
+          displayOrder: r.displayOrder,
           projectId: r.projectId,
           roleId: r.roleId,
           jiraDevOpsValue: r.jiraDevOpsValue,
@@ -2279,6 +2313,9 @@ export function TimeReportPageClient({
       ...newMonthMergedRow(customerId, dates),
       projectId: source.projectId,
       roleId: source.roleId,
+      jiraDevOpsValue: source.jiraDevOpsValue,
+      task: source.task,
+      displayOrder: source.displayOrder,
     });
     setMonthMergedRows((prev) => {
       const index = prev.findIndex((r) => r.customerId === customerId && r.rowKey === entryId);
@@ -2334,7 +2371,7 @@ export function TimeReportPageClient({
         explicitLineIds ??
         monthMergedRowsRef.current
           .filter((r) => r.customerId === customerId && r.rowKey === entryId)
-          .map((r) => r.lineId);
+          .flatMap((r) => mergedRowAllLineIds(r));
       setMonthMergedRows((prev) => {
         const keep = prev.filter((r) => {
           if (!(r.customerId === customerId && r.rowKey === entryId)) return true;
@@ -2369,7 +2406,7 @@ export function TimeReportPageClient({
     } else {
       const row = monthMergedRows.find((r) => r.customerId === customerId && r.rowKey === entryId);
       if (row && !mergedRowHasContent(row)) {
-        removeEntry(customerId, entryId, [row.lineId]);
+        removeEntry(customerId, entryId, mergedRowAllLineIds(row));
         return;
       }
     }
@@ -4010,7 +4047,7 @@ export function TimeReportPageClient({
             const row = monthMergedRowsRef.current.find(
               (r) => r.customerId === p.customerId && r.rowKey === p.entryId
             );
-            removeEntry(p.customerId, p.entryId, row ? [row.lineId] : undefined);
+            removeEntry(p.customerId, p.entryId, row ? mergedRowAllLineIds(row) : undefined);
           } else {
             removeEntry(p.customerId, p.entryId);
           }

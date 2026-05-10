@@ -14,6 +14,8 @@ export type TaskOption = { value: string; label: string };
 /** One row in the time report grid (7 days of hours + per-day comments). */
 export type TimeReportEntry = {
   id: string;
+  /** Line ordering from DB (`time_report_entry_lines.display_order`); separates duplicate project/role rows. */
+  displayOrder: number;
   projectId: string;
   roleId: string;
   jiraDevOpsValue: string;

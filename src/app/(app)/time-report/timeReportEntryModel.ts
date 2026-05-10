@@ -5,6 +5,7 @@ export type { TimeReportCustomerGroup, TimeReportEntry };
 export function newTimeReportEntry(): TimeReportEntry {
   return {
     id: crypto.randomUUID(),
+    displayOrder: 0,
     projectId: "",
     roleId: "",
     jiraDevOpsValue: "",

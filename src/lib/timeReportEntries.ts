@@ -539,6 +539,7 @@ export async function getTimeReportEntries(
     }
     byCustomer.get(line.customer_id)!.push({
       id: line.id,
+      displayOrder: Number(line.display_order ?? 0),
       projectId: line.project_id ?? "",
       roleId: line.role_id ?? "",
       jiraDevOpsValue: line.jira_devops_key ?? "",
