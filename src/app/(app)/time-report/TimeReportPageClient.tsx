@@ -38,11 +38,17 @@ import {
   getTimeReportEntries,
   saveTimeReportEntries,
   copyEntryToWeek,
+  copyTimeReportEntriesBatch,
   batchHydrateTimeReport,
   getTimeReportWeekRevision,
   getTimeReportWeekRevisions,
 } from "./actions";
-import type { ProjectOption, JiraDevOpsOption, TaskOption } from "@/types";
+import type {
+  ProjectOption,
+  JiraDevOpsOption,
+  TaskOption,
+  TimeReportCopyBatchOperation,
+} from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
@@ -51,7 +57,14 @@ import {
   getWeeksInMonthLocal,
   getWeekDates,
   getCalendarDatesInMonth,
+  weekSliceKey,
 } from "@/lib/timeReportBrowserWeek";
+import {
+  buildMergedMonthRows,
+  sortCustomerGroupsByCustomerName,
+  sortMonthMergedRowsByCustomerName,
+  type TimeReportMonthMergedRow,
+} from "@/lib/timeReportMonthMerge";
 import {
   TIME_REPORT_DAY_LABELS,
   TIME_REPORT_MONTH_GRID_DOW,
@@ -93,10 +106,6 @@ function collectTimeReportHydratePayload(groups: CustomerGroup[]): {
     }
   }
   return { customerIds, taskOptionPairs };
-}
-
-function weekSliceKey(year: number, week: number) {
-  return `${year}-W${week}`;
 }
 
 /** Parallel server-action bursts when switching months could stall the pool; fetch sequentially + timeout so UI never hangs on `loading` forever. */
@@ -201,23 +210,7 @@ function syncWeekRevisionAfterSave(
 }
 
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
-type MonthMergedRow = {
-  rowKey: string;
-  /** Fallback line UUID when no week-specific id exists (e.g. drafts). */
-  lineId: string;
-  /** Persisted `time_report_entry_lines.id` per ISO-week slice (`year-Wnn`). Backfill assigned different UUIDs per week for the same visible row. */
-  lineIdByWeekSliceKey: Record<string, string>;
-  displayOrder: number;
-  weekSliceKeys: string[];
-  isDraft?: boolean;
-  customerId: string;
-  projectId: string;
-  roleId: string;
-  jiraDevOpsValue: string;
-  task: string;
-  hoursByDate: Record<string, number>;
-  commentsByDate: Record<string, string>;
-};
+type MonthMergedRow = TimeReportMonthMergedRow;
 
 function mergedRowAllLineIds(row: MonthMergedRow): string[] {
   const ids = new Set<string>();
@@ -228,135 +221,8 @@ function mergedRowAllLineIds(row: MonthMergedRow): string[] {
   return [...ids];
 }
 
-function resolveMergedRowLineIdForWeek(row: MonthMergedRow, weekSliceKey: string): string {
-  return row.lineIdByWeekSliceKey[weekSliceKey] ?? row.lineId;
-}
-
-function buildMergedMonthRows(
-  slices: Record<string, CustomerGroup[]>,
-  monthWeeks: { year: number; week: number }[],
-  monthCalendarDates: string[],
-  customerById: Map<string, CustomerOption>
-): MonthMergedRow[] {
-  type Source = {
-    mergeKey: string;
-    sliceKey: string;
-    customerId: string;
-    entry: Entry;
-    hoursByDate: Record<string, number>;
-    commentsByDate: Record<string, string>;
-  };
-  const monthSet = new Set(monthCalendarDates);
-  const sources: Source[] = [];
-
-  for (const { year: y, week: w } of monthWeeks) {
-    const sk = weekSliceKey(y, w);
-    const weekDates = getWeekDates(y, w);
-    const groups = slices[weekSliceKey(y, w)] ?? [];
-    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-      const g = groups[groupIndex]!;
-      for (const e of g.entries) {
-        /** Rows whose only booked days fall outside this calendar month still exist on the ISO-week slice; month UI showed them as empty and delete could not drop the header (`remainingInWeek` > 0). Omit from month merge. */
-        let hasInsideMonthActivity = false;
-        let hasOutsideMonthActivity = false;
-        for (let i = 0; i < 7; i++) {
-          const d = weekDates[i]!;
-          const h = e.hours[i] ?? 0;
-          const cmt = (e.comments[i] ?? "").trim();
-          const active = h > 0 || cmt !== "";
-          if (!active) continue;
-          if (monthSet.has(d)) hasInsideMonthActivity = true;
-          else hasOutsideMonthActivity = true;
-        }
-        if (hasOutsideMonthActivity && !hasInsideMonthActivity) continue;
-
-        const hoursByDate: Record<string, number> = {};
-        const commentsByDate: Record<string, string> = {};
-        for (let i = 0; i < 7; i++) {
-          const d = weekDates[i]!;
-          if (!monthSet.has(d)) continue;
-          hoursByDate[d] = e.hours[i] ?? 0;
-          const c = (e.comments[i] ?? "").trim();
-          if (c) commentsByDate[d] = e.comments[i] ?? "";
-        }
-        // Do not include per-day comments in the merge key.
-        // Omit entry-line UUID: SQL backfill assigns one entry_line_id per ISO week, so the same
-        // logical row appears as multiple ids across weeks — merging by business identity + display_order
-        // keeps month view aligned with save semantics (see lineIdByWeekSliceKey).
-        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}|${e.displayOrder ?? 0}`;
-        sources.push({
-          mergeKey,
-          sliceKey: sk,
-          customerId: g.customerId,
-          entry: e,
-          hoursByDate,
-          commentsByDate,
-        });
-      }
-    }
-  }
-
-  const byKey = new Map<string, Source[]>();
-  const keyOrder: string[] = [];
-  for (const s of sources) {
-    if (!byKey.has(s.mergeKey)) {
-      byKey.set(s.mergeKey, []);
-      keyOrder.push(s.mergeKey);
-    }
-    byKey.get(s.mergeKey)!.push(s);
-  }
-
-  const rows: MonthMergedRow[] = [];
-  const mergeKeyRank = new Map<string, number>();
-  for (const mk of keyOrder) {
-    mergeKeyRank.set(mk, mergeKeyRank.size);
-    const list = byKey.get(mk)!;
-    const first = list[0]!;
-    const lineIdByWeekSliceKey: Record<string, string> = {};
-    for (const s of list) {
-      const cur = lineIdByWeekSliceKey[s.sliceKey];
-      if (!cur || s.entry.id < cur) lineIdByWeekSliceKey[s.sliceKey] = s.entry.id;
-    }
-    const sliceIds = Object.values(lineIdByWeekSliceKey);
-    const canonicalLineId =
-      sliceIds.length > 0 ? sliceIds.reduce((a, b) => (a < b ? a : b)) : first.entry.id;
-    const hoursByDate: Record<string, number> = {};
-    const commentsByDate: Record<string, string> = {};
-    for (const d of monthCalendarDates) {
-      hoursByDate[d] = 0;
-      commentsByDate[d] = "";
-    }
-    for (const s of list) {
-      for (const d of monthCalendarDates) {
-        hoursByDate[d] = (hoursByDate[d] ?? 0) + (s.hoursByDate[d] ?? 0);
-        const t = (s.commentsByDate[d] ?? "").trim();
-        if (t) commentsByDate[d] = t;
-      }
-    }
-    rows.push({
-      rowKey: mk,
-      lineId: canonicalLineId,
-      lineIdByWeekSliceKey,
-      displayOrder: first.entry.displayOrder ?? 0,
-      weekSliceKeys: [...new Set(list.map((s) => s.sliceKey))],
-      customerId: first.customerId,
-      projectId: first.entry.projectId,
-      roleId: first.entry.roleId,
-      jiraDevOpsValue: first.entry.jiraDevOpsValue,
-      task: first.entry.task ?? "",
-      hoursByDate,
-      commentsByDate,
-    });
-  }
-  rows.sort((a, b) => {
-    const rc = compareCustomerIdsByName(a.customerId, b.customerId, customerById);
-    if (rc !== 0) return rc;
-    const ka = mergeKeyRank.get(a.rowKey) ?? Number.MAX_SAFE_INTEGER;
-    const kb = mergeKeyRank.get(b.rowKey) ?? Number.MAX_SAFE_INTEGER;
-    return ka - kb;
-  });
-  // Keep empty rows too so "template rows" survive refresh and month navigation.
-  return rows;
+function resolveMergedRowLineIdForWeek(row: MonthMergedRow, sliceKeyStr: string): string {
+  return row.lineIdByWeekSliceKey[sliceKeyStr] ?? row.lineId;
 }
 
 function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): MonthMergedRow {
@@ -490,39 +356,95 @@ function nextCalendarMonth(year: number, month: number): { y: number; m: number 
   return { y: year, m: month + 1 };
 }
 
+function dedupeWeeksFromCopyOperations(
+  operations: TimeReportCopyBatchOperation[]
+): { year: number; week: number }[] {
+  const seen = new Set<string>();
+  const weeks: { year: number; week: number }[] = [];
+  for (const op of operations) {
+    const k = weekSliceKey(op.targetYear, op.targetWeek);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    weeks.push({ year: op.targetYear, week: op.targetWeek });
+  }
+  return weeks;
+}
+
+/** Builds server payloads for copying one merged month row into the following calendar month. */
+function buildCopyMergedRowToNextMonthOperations(
+  row: MonthMergedRow,
+  displayYear: number,
+  displayMonth: number,
+  copyHours: boolean
+): TimeReportCopyBatchOperation[] {
+  if (copyHours) {
+    if (!row.projectId || !row.roleId) return [];
+    if (!mergedRowHasContent(row)) return [];
+  }
+
+  const { y: ny, m: nm } = nextCalendarMonth(displayYear, displayMonth);
+  const curDates = getCalendarDatesInMonth(displayYear, displayMonth);
+  const nextDates = getCalendarDatesInMonth(ny, nm);
+  const targetLineId = crypto.randomUUID();
+  const monthAnchorDate = !copyHours ? (nextDates[0] ?? null) : null;
+  const hoursByNext: Record<string, number> = {};
+  const commentsByNext: Record<string, string> = {};
+  for (const d of nextDates) {
+    hoursByNext[d] = 0;
+    commentsByNext[d] = "";
+  }
+  if (copyHours) {
+    for (const d of curDates) {
+      const h = row.hoursByDate[d] ?? 0;
+      const c = (row.commentsByDate[d] ?? "").trim();
+      if (h === 0 && !c) continue;
+      const mapped = mapDateSameDomToMonth(d, ny, nm);
+      hoursByNext[mapped] = (hoursByNext[mapped] ?? 0) + h;
+      if (c) commentsByNext[mapped] = c;
+    }
+  }
+
+  const operations: TimeReportCopyBatchOperation[] = [];
+  const nextWeeks = getWeeksInMonthLocal(nm, ny);
+  const lineDisplayOrder = row.displayOrder;
+
+  for (const { year: y, week: w } of nextWeeks) {
+    const wd = getWeekDates(y, w);
+    const hours = wd.map((d) => hoursByNext[d] ?? 0);
+    const comments: Record<number, string> = {};
+    wd.forEach((d, i) => {
+      const t = (commentsByNext[d] ?? "").trim();
+      if (t) comments[i] = commentsByNext[d] ?? "";
+    });
+    const has = hours.some((hh) => (hh ?? 0) > 0) || Object.keys(comments).length > 0;
+    if (copyHours && !has) continue;
+    const anchorDateInThisWeek =
+      !copyHours && monthAnchorDate && wd.includes(monthAnchorDate) ? monthAnchorDate : null;
+    if (!copyHours && !anchorDateInThisWeek) continue;
+
+    operations.push({
+      targetYear: y,
+      targetWeek: w,
+      customerId: row.customerId,
+      entry: {
+        lineId: targetLineId,
+        lineDisplayOrder,
+        projectId: row.projectId,
+        roleId: row.roleId,
+        jiraDevOpsValue: row.jiraDevOpsValue,
+        task: row.task,
+        hours,
+        comments,
+        copyHours,
+        rowOnlyAnchorDate: anchorDateInThisWeek ?? undefined,
+      },
+    });
+  }
+
+  return operations;
+}
+
 type CustomerOption = { id: string; name: string; color?: string | null };
-
-function compareCustomerIdsByName(
-  a: string,
-  b: string,
-  customerById: Map<string, CustomerOption>
-): number {
-  const na = customerById.get(a)?.name ?? a;
-  const nb = customerById.get(b)?.name ?? b;
-  const c = na.localeCompare(nb, "sv", { sensitivity: "base" });
-  if (c !== 0) return c;
-  return a.localeCompare(b);
-}
-
-function sortCustomerGroupsByCustomerName(
-  groups: CustomerGroup[],
-  customerById: Map<string, CustomerOption>
-): CustomerGroup[] {
-  return [...groups].sort((x, y) =>
-    compareCustomerIdsByName(x.customerId, y.customerId, customerById)
-  );
-}
-
-function sortMonthMergedRowsByCustomerName(
-  rows: MonthMergedRow[],
-  customerById: Map<string, CustomerOption>
-): MonthMergedRow[] {
-  return [...rows].sort((a, b) => {
-    const c = compareCustomerIdsByName(a.customerId, b.customerId, customerById);
-    if (c !== 0) return c;
-    return a.rowKey.localeCompare(b.rowKey);
-  });
-}
 
 type Props = {
   consultant: { id: string; name: string; calendar_id?: string } | null;
@@ -1938,6 +1860,7 @@ export function TimeReportPageClient({
       customerId: string,
       payload: {
         lineId?: string;
+        lineDisplayOrder?: number;
         projectId: string;
         roleId: string;
         jiraDevOpsValue: string;
@@ -1987,6 +1910,45 @@ export function TimeReportPageClient({
       return result;
     },
     [getFreshTargetWeekRevision]
+  );
+
+  const buildRevisionMapForWeeks = useCallback(
+    async (consultantId: string, weeks: { year: number; week: number }[]) => {
+      const rev: Record<string, number> = {};
+      for (const { year: y, week: w } of weeks) {
+        const sk = weekSliceKey(y, w);
+        rev[sk] =
+          weekRevisionsByKeyRef.current[sk] ??
+          (await getFreshTargetWeekRevision(consultantId, y, w));
+      }
+      return rev;
+    },
+    [getFreshTargetWeekRevision]
+  );
+
+  const copyTimeReportEntriesBatchWithRevisionRetry = useCallback(
+    async (consultantId: string, operations: TimeReportCopyBatchOperation[]) => {
+      if (operations.length === 0) {
+        return { success: true as const, weekRevisions: {} as Record<string, number> };
+      }
+      const weeks = dedupeWeeksFromCopyOperations(operations);
+      let initialRev = await buildRevisionMapForWeeks(consultantId, weeks);
+      let result = await copyTimeReportEntriesBatch(consultantId, operations, initialRev);
+      if (!result.success && result.code === "revision_conflict") {
+        await Promise.all(
+          weeks.map(({ year: y, week: w }) => getFreshTargetWeekRevision(consultantId, y, w))
+        );
+        initialRev = await buildRevisionMapForWeeks(consultantId, weeks);
+        result = await copyTimeReportEntriesBatch(consultantId, operations, initialRev);
+      }
+      if (result.success) {
+        for (const [sk, revision] of Object.entries(result.weekRevisions)) {
+          syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, revision);
+        }
+      }
+      return result;
+    },
+    [buildRevisionMapForWeeks, getFreshTargetWeekRevision]
   );
 
   const performCopyRowToCurrentWeek = async (
@@ -2051,76 +2013,33 @@ export function TimeReportPageClient({
       setCopyRowDialog(null);
     }
 
-    const { y: ny, m: nm } = nextCalendarMonth(displayYear, displayMonth);
-    const curDates = getCalendarDatesInMonth(displayYear, displayMonth);
-    const nextDates = getCalendarDatesInMonth(ny, nm);
-    const targetLineId = crypto.randomUUID();
-    const monthAnchorDate = !copyHours ? (nextDates[0] ?? null) : null;
-    const hoursByNext: Record<string, number> = {};
-    const commentsByNext: Record<string, string> = {};
-    for (const d of nextDates) {
-      hoursByNext[d] = 0;
-      commentsByNext[d] = "";
-    }
-    if (copyHours) {
-      for (const d of curDates) {
-        const h = row.hoursByDate[d] ?? 0;
-        const c = (row.commentsByDate[d] ?? "").trim();
-        if (h === 0 && !c) continue;
-        const mapped = mapDateSameDomToMonth(d, ny, nm);
-        hoursByNext[mapped] = (hoursByNext[mapped] ?? 0) + h;
-        if (c) commentsByNext[mapped] = c;
-      }
-    }
-
     if (manageCopyState) {
       setCopyToNextMonthState("copying");
       setSaveError(null);
     }
-    const nextWeeks = getWeeksInMonthLocal(nm, ny);
-    for (const { year: y, week: w } of nextWeeks) {
-      const wd = getWeekDates(y, w);
-      const hours = wd.map((d) => hoursByNext[d] ?? 0);
-      const comments: Record<number, string> = {};
-      wd.forEach((d, i) => {
-        const t = (commentsByNext[d] ?? "").trim();
-        if (t) comments[i] = commentsByNext[d] ?? "";
-      });
-      const has = hours.some((hh) => (hh ?? 0) > 0) || Object.keys(comments).length > 0;
-      if (copyHours && !has) continue;
-      const anchorDateInThisWeek =
-        !copyHours && monthAnchorDate && wd.includes(monthAnchorDate) ? monthAnchorDate : null;
-      if (!copyHours && !anchorDateInThisWeek) continue;
 
-      const sk = weekSliceKey(y, w);
-      const result = await copyEntryToWeekWithRevisionRetry(
-        consultant.id,
-        y,
-        w,
-        row.customerId,
-        {
-          lineId: targetLineId,
-          projectId: row.projectId,
-          roleId: row.roleId,
-          jiraDevOpsValue: row.jiraDevOpsValue,
-          task: row.task,
-          hours,
-          comments,
-          copyHours,
-          rowOnlyAnchorDate: anchorDateInThisWeek ?? undefined,
-        }
-      );
-      if (!result.success) {
-        if (result.code === "revision_conflict") {
-          savePausedForRevisionConflictRef.current = true;
-          setRevisionConflictOpen(true);
-        }
-        if (manageCopyState) setCopyToNextMonthState("error");
-        setSaveError(result.error);
-        return false;
-      }
-      syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sk, result.revision);
+    const operations = buildCopyMergedRowToNextMonthOperations(
+      row,
+      displayYear,
+      displayMonth,
+      copyHours
+    );
+    if (operations.length === 0) {
+      if (manageCopyState) setCopyToNextMonthState("idle");
+      return true;
     }
+
+    const result = await copyTimeReportEntriesBatchWithRevisionRetry(consultant.id, operations);
+    if (!result.success) {
+      if (result.code === "revision_conflict") {
+        savePausedForRevisionConflictRef.current = true;
+        setRevisionConflictOpen(true);
+      }
+      if (manageCopyState) setCopyToNextMonthState("error");
+      setSaveError(result.error);
+      return false;
+    }
+
     if (manageCopyState) setCopyToNextMonthState("idle");
     return true;
   };
@@ -2190,16 +2109,28 @@ export function TimeReportPageClient({
     setCopyToNextMonthState("copying");
     setSaveError(null);
 
+    if (!consultant) {
+      setCopyToNextMonthState("idle");
+      return;
+    }
+
+    const operations: TimeReportCopyBatchOperation[] = [];
+    const dy = displayYearRef.current;
+    const dm = displayMonthRef.current;
     for (const row of rows) {
       const includeHoursForThisRow = copyHours && mergedRowHasContent(row);
-      const success = await performCopyMergedRowToNextMonth(row, includeHoursForThisRow, {
-        skipFlush: true,
-        manageCopyState: false,
-      });
-      if (!success) {
-        setCopyToNextMonthState("error");
-        return;
+      operations.push(...buildCopyMergedRowToNextMonthOperations(row, dy, dm, includeHoursForThisRow));
+    }
+
+    const result = await copyTimeReportEntriesBatchWithRevisionRetry(consultant.id, operations);
+    if (!result.success) {
+      if (result.code === "revision_conflict") {
+        savePausedForRevisionConflictRef.current = true;
+        setRevisionConflictOpen(true);
       }
+      setCopyToNextMonthState("error");
+      setSaveError(result.error);
+      return;
     }
     setCopyToNextMonthState("idle");
   };

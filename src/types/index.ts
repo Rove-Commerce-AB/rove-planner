@@ -7,10 +7,12 @@ export type {
 export type { ProjectManagerEntry } from "./projectManagerTimeReport";
 export type {
   CopyEntryToWeekResult,
+  CopyTimeReportEntriesBatchResult,
   JiraDevOpsOption,
   ProjectOption,
   SaveTimeReportEntriesResult,
   TaskOption,
+  TimeReportCopyBatchOperation,
   TimeReportCustomerGroup,
   TimeReportEntry,
   TimeReportEntryCopyPayload,

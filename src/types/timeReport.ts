@@ -33,6 +33,11 @@ export type TimeReportCustomerGroup = {
 export type TimeReportEntryCopyPayload = {
   /** Optional stable line id to reuse across multiple target weeks in one copy operation. */
   lineId?: string;
+  /**
+   * When set, used as `time_report_entry_lines.display_order` (and cell `display_order`) for this
+   * operation on every target week. Keeps month-view merge keys stable across ISO weeks.
+   */
+  lineDisplayOrder?: number;
   projectId: string;
   roleId: string;
   jiraDevOpsValue: string;
@@ -51,6 +56,14 @@ export type TimeReportEntryCopyPayload = {
   rowOnlyAnchorDate?: string;
 };
 
+/** One copy operation inside an atomic month batch (`copyTimeReportEntriesBatch`). */
+export type TimeReportCopyBatchOperation = {
+  targetYear: number;
+  targetWeek: number;
+  customerId: string;
+  entry: TimeReportEntryCopyPayload;
+};
+
 /** Result of loading one ISO week of time report data (includes revision for optimistic locking). */
 export type TimeReportWeekData = {
   groups: TimeReportCustomerGroup[];
@@ -63,3 +76,8 @@ export type SaveTimeReportEntriesResult =
   | { success: false; error: string; code?: "revision_conflict"; currentRevision?: number };
 
 export type CopyEntryToWeekResult = SaveTimeReportEntriesResult;
+
+/** Result of `copyTimeReportEntriesBatch` — revisions for every touched ISO week after commit. */
+export type CopyTimeReportEntriesBatchResult =
+  | { success: true; weekRevisions: Record<string, number> }
+  | { success: false; error: string; code?: "revision_conflict"; currentRevision?: number };

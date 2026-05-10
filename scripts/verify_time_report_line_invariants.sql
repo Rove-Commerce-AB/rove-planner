@@ -1,5 +1,7 @@
 -- Read-only invariant checks for time report line model.
--- Intended as a release gate before production deploy.
+--
+-- Release gate (violations MUST be 0): blocks A–D only.
+-- blocks E–H use rows_count — informational / drift / legacy noise (do not fail deploy on these).
 
 -- A) Day entries with non-positive hours (must be 0 rows).
 SELECT
@@ -54,3 +56,81 @@ LEFT JOIN time_report_entries e
  AND to_char(e.entry_date::date, 'IYYY')::int = l.iso_year
  AND to_char(e.entry_date::date, 'IW')::int = l.iso_week
 WHERE e.id IS NULL;
+
+-- F) Duplicate header *pairs* (same week + shape + display_order) with trimmed task OR jira set.
+--    rows_count — advisory only: repeated labels / legacy copies often produce hundreds of pairs.
+SELECT
+  'duplicate_line_headers_same_week_nontrivial_shape_pairs' AS check_name,
+  COUNT(*)::bigint AS rows_count
+FROM time_report_entry_lines l1
+JOIN time_report_entry_lines l2
+  ON l1.consultant_id = l2.consultant_id
+ AND l1.iso_year = l2.iso_year
+ AND l1.iso_week = l2.iso_week
+ AND l1.customer_id = l2.customer_id
+ AND COALESCE(l1.project_id::text, '') = COALESCE(l2.project_id::text, '')
+ AND COALESCE(l1.role_id::text, '') = COALESCE(l2.role_id::text, '')
+ AND COALESCE(l1.jira_devops_key, '') = COALESCE(l2.jira_devops_key, '')
+ AND COALESCE(TRIM(l1.description), '') = COALESCE(TRIM(l2.description), '')
+ AND l1.display_order = l2.display_order
+ AND l1.id < l2.id
+WHERE (
+  NULLIF(TRIM(COALESCE(l1.description, '')), '') IS NOT NULL
+  OR NULLIF(TRIM(COALESCE(l1.jira_devops_key, '')), '') IS NOT NULL
+);
+
+-- G) Same as F but only blank task + blank jira (informational).
+SELECT
+  'duplicate_line_headers_blank_task_and_jira' AS check_name,
+  COUNT(*)::bigint AS rows_count
+FROM time_report_entry_lines l1
+JOIN time_report_entry_lines l2
+  ON l1.consultant_id = l2.consultant_id
+ AND l1.iso_year = l2.iso_year
+ AND l1.iso_week = l2.iso_week
+ AND l1.customer_id = l2.customer_id
+ AND COALESCE(l1.project_id::text, '') = COALESCE(l2.project_id::text, '')
+ AND COALESCE(l1.role_id::text, '') = COALESCE(l2.role_id::text, '')
+ AND COALESCE(l1.jira_devops_key, '') = COALESCE(l2.jira_devops_key, '')
+ AND COALESCE(TRIM(l1.description), '') = COALESCE(TRIM(l2.description), '')
+ AND l1.display_order = l2.display_order
+ AND l1.id < l2.id
+WHERE NULLIF(TRIM(COALESCE(l1.description, '')), '') IS NULL
+  AND NULLIF(TRIM(COALESCE(l1.jira_devops_key, '')), '') IS NULL;
+
+-- H) Like F, but both headers have ≥1 cell dated in their ISO week — sharper signal for “real” duplicate rows.
+SELECT
+  'duplicate_line_headers_nontrivial_both_have_week_cells_pairs' AS check_name,
+  COUNT(*)::bigint AS rows_count
+FROM time_report_entry_lines l1
+JOIN time_report_entry_lines l2
+  ON l1.consultant_id = l2.consultant_id
+ AND l1.iso_year = l2.iso_year
+ AND l1.iso_week = l2.iso_week
+ AND l1.customer_id = l2.customer_id
+ AND COALESCE(l1.project_id::text, '') = COALESCE(l2.project_id::text, '')
+ AND COALESCE(l1.role_id::text, '') = COALESCE(l2.role_id::text, '')
+ AND COALESCE(l1.jira_devops_key, '') = COALESCE(l2.jira_devops_key, '')
+ AND COALESCE(TRIM(l1.description), '') = COALESCE(TRIM(l2.description), '')
+ AND l1.display_order = l2.display_order
+ AND l1.id < l2.id
+WHERE (
+  NULLIF(TRIM(COALESCE(l1.description, '')), '') IS NOT NULL
+  OR NULLIF(TRIM(COALESCE(l1.jira_devops_key, '')), '') IS NOT NULL
+)
+AND EXISTS (
+  SELECT 1
+  FROM time_report_entries e
+  WHERE e.consultant_id = l1.consultant_id
+    AND e.entry_line_id = l1.id
+    AND to_char(e.entry_date::date, 'IYYY')::int = l1.iso_year
+    AND to_char(e.entry_date::date, 'IW')::int = l1.iso_week
+)
+AND EXISTS (
+  SELECT 1
+  FROM time_report_entries e
+  WHERE e.consultant_id = l2.consultant_id
+    AND e.entry_line_id = l2.id
+    AND to_char(e.entry_date::date, 'IYYY')::int = l2.iso_year
+    AND to_char(e.entry_date::date, 'IW')::int = l2.iso_week
+);

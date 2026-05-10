@@ -132,3 +132,8 @@ export function getWeekDates(year: number, week: number): string[] {
     );
   });
 }
+
+/** Matches server/week revision maps and UI slice keys (`year-Wnn`). */
+export function weekSliceKey(year: number, week: number): string {
+  return `${year}-W${week}`;
+}

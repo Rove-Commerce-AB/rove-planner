@@ -18,10 +18,12 @@ import { getCurrentAppUser } from "@/lib/appUsers";
 import { getInternalCustomerId } from "@/lib/customers";
 import type {
   CopyEntryToWeekResult,
+  CopyTimeReportEntriesBatchResult,
   JiraDevOpsOption,
   ProjectOption,
   SaveTimeReportEntriesResult,
   TaskOption,
+  TimeReportCopyBatchOperation,
   TimeReportCustomerGroup,
   TimeReportEntry,
   TimeReportEntryCopyPayload,
@@ -1064,6 +1066,237 @@ export async function saveTimeReportEntries(
   }
 }
 
+/** Schema requires hours > 0; use a minimal positive value when copying comment-only days. */
+const COMMENT_ONLY_PLACEHOLDER_HOURS = 0.01;
+
+function weekRevisionMapKey(year: number, week: number): string {
+  return `${year}-W${week}`;
+}
+
+function copyEntryPayloadBusinessError(entry: TimeReportEntryCopyPayload): string | null {
+  const copyHours = entry.copyHours !== false;
+  if (copyHours && !(entry.projectId && entry.roleId)) {
+    return "Project and Role are required.";
+  }
+  return null;
+}
+
+async function buildDesiredCellsForCopy(
+  consultantId: string,
+  customerId: string,
+  targetYear: number,
+  targetWeek: number,
+  entry: TimeReportEntryCopyPayload,
+  entryLineId: string
+): Promise<{ toInsert: DesiredCell[]; error: string | null }> {
+  const copyHours = entry.copyHours !== false;
+  const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
+  const rateSnapshot =
+    entry.projectId && entry.roleId
+      ? await getEffectiveRateSnapshot(entry.projectId, customerId, entry.roleId)
+      : null;
+
+  const toInsert: DesiredCell[] = [];
+  const displayOrderPlaceholder = 0;
+
+  if (copyHours && entry.projectId && entry.roleId) {
+    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+      const rawHours = entry.hours[dayIndex] ?? 0;
+      const comment = (entry.comments[dayIndex]?.trim() ?? "") || "";
+      const hoursNum = Number(rawHours);
+      if (hoursNum > 0) {
+        toInsert.push({
+          entry_line_id: entryLineId,
+          consultant_id: consultantId,
+          customer_id: customerId,
+          project_id: entry.projectId,
+          role_id: entry.roleId,
+          jira_devops_key: entry.jiraDevOpsValue || null,
+          description: (entry.task ?? "").trim() || null,
+          entry_date: weekDates[dayIndex]!,
+          hours: hoursNum,
+          internal_comment: comment || null,
+          rate_snapshot: rateSnapshot,
+          display_order: displayOrderPlaceholder,
+        });
+      } else if (comment) {
+        toInsert.push({
+          entry_line_id: entryLineId,
+          consultant_id: consultantId,
+          customer_id: customerId,
+          project_id: entry.projectId,
+          role_id: entry.roleId,
+          jira_devops_key: entry.jiraDevOpsValue || null,
+          description: (entry.task ?? "").trim() || null,
+          entry_date: weekDates[dayIndex]!,
+          hours: COMMENT_ONLY_PLACEHOLDER_HOURS,
+          internal_comment: comment,
+          rate_snapshot: rateSnapshot,
+          display_order: displayOrderPlaceholder,
+        });
+      }
+    }
+  }
+
+  if (
+    !copyHours &&
+    entry.rowOnlyAnchorDate &&
+    weekDates.includes(entry.rowOnlyAnchorDate) &&
+    entry.projectId &&
+    entry.roleId
+  ) {
+    toInsert.push({
+      entry_line_id: entryLineId,
+      consultant_id: consultantId,
+      customer_id: customerId,
+      project_id: entry.projectId,
+      role_id: entry.roleId,
+      jira_devops_key: entry.jiraDevOpsValue || null,
+      description: (entry.task ?? "").trim() || null,
+      entry_date: entry.rowOnlyAnchorDate,
+      hours: COMMENT_ONLY_PLACEHOLDER_HOURS,
+      internal_comment: null,
+      rate_snapshot: rateSnapshot,
+      display_order: displayOrderPlaceholder,
+    });
+  }
+
+  if (copyHours && toInsert.length === 0) {
+    return { toInsert: [], error: "Entry has no hours or comments to copy." };
+  }
+
+  return { toInsert, error: null };
+}
+
+/** Assumes `BEGIN` is active; does not commit or roll back. */
+async function copyEntryToWeekCore(
+  client: PoolClient,
+  consultantId: string,
+  appUserId: string | null,
+  customerId: string,
+  targetYear: number,
+  targetWeek: number,
+  entry: TimeReportEntryCopyPayload,
+  expectedRevision: number,
+  entryLineId: string,
+  toInsert: DesiredCell[]
+): Promise<CopyEntryToWeekResult> {
+  const copyHours = entry.copyHours !== false;
+
+  let displayOrderForLine: number;
+  if (entry.lineDisplayOrder != null && Number.isFinite(Number(entry.lineDisplayOrder))) {
+    displayOrderForLine = Math.trunc(Number(entry.lineDisplayOrder));
+  } else {
+    const { rows: ordRows } = await client.query<{ display_order: string | number | null }>(
+      `SELECT display_order
+       FROM time_report_entry_lines
+       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
+      [consultantId, targetYear, targetWeek]
+    );
+    const maxOrder =
+      ordRows.length && ordRows.every((r) => r.display_order != null)
+        ? Math.max(...ordRows.map((r) => Number(r.display_order)))
+        : 0;
+    displayOrderForLine = maxOrder + 1000;
+  }
+  for (const r of toInsert) {
+    r.display_order = displayOrderForLine;
+  }
+
+  await client.query(
+    `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
+     VALUES ($1, $2, $3, 0)
+     ON CONFLICT (consultant_id, iso_year, iso_week) DO NOTHING`,
+    [consultantId, targetYear, targetWeek]
+  );
+
+  const { rows: revLock } = await client.query<{ revision: string }>(
+    `SELECT revision::text FROM time_report_week_revisions
+     WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+     FOR UPDATE`,
+    [consultantId, targetYear, targetWeek]
+  );
+  const currentRev = Number(revLock[0]?.revision ?? 0);
+  if (currentRev !== expectedRevision) {
+    return {
+      success: false,
+      error: "Tidrapporten har uppdaterats någon annanstans. Ladda om innan du kopierar igen.",
+      code: "revision_conflict",
+      currentRevision: currentRev,
+    };
+  }
+
+  const newRevision = currentRev + 1;
+  const rowOnlyLineCreatedAt = !copyHours ? (entry.rowOnlyAnchorDate ?? null) : null;
+
+  await client.query(
+    `INSERT INTO time_report_entry_lines (
+       id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+       jira_devops_key, description, display_order, created_at, updated_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, now()), COALESCE($11::date, now()))`,
+    [
+      entryLineId,
+      consultantId,
+      targetYear,
+      targetWeek,
+      customerId,
+      entry.projectId || null,
+      entry.roleId || null,
+      entry.jiraDevOpsValue || null,
+      (entry.task ?? "").trim() || null,
+      displayOrderForLine,
+      rowOnlyLineCreatedAt,
+    ]
+  );
+
+  for (const de of toInsert) {
+    const ins = await client.query<{ id: string }>(
+      `INSERT INTO time_report_entries (
+         consultant_id, customer_id, project_id, role_id, jira_devops_key,
+         description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order,
+         entry_line_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12)
+       RETURNING id`,
+      [
+        de.consultant_id,
+        de.customer_id,
+        de.project_id,
+        de.role_id,
+        de.jira_devops_key,
+        de.description,
+        de.entry_date,
+        de.hours,
+        de.internal_comment,
+        de.rate_snapshot,
+        de.display_order,
+        de.entry_line_id,
+      ]
+    );
+    const newId = ins.rows[0]?.id;
+    await writeEntryHistory(client, {
+      timeReportEntryId: newId ?? null,
+      entryLineId: de.entry_line_id,
+      consultantId,
+      operation: "insert",
+      before: null,
+      after: desiredCellSnapshot(de, newId),
+      sourceRevision: newRevision,
+      changedByAppUserId: appUserId,
+    });
+  }
+
+  await client.query(
+    `UPDATE time_report_week_revisions
+     SET revision = $1::bigint,
+         updated_at = now(),
+         updated_by_app_user_id = $2
+     WHERE consultant_id = $3 AND iso_year = $4 AND iso_week = $5`,
+    [newRevision, appUserId, consultantId, targetYear, targetWeek]
+  );
+
+  return { success: true, revision: newRevision };
+}
+
 export async function copyEntryToWeek(
   consultantId: string,
   targetYear: number,
@@ -1087,161 +1320,143 @@ export async function copyEntryToWeek(
   ) {
     return { success: false, error: "Unauthorized project for subcontractor." };
   }
-  const copyHours = entry.copyHours !== false;
-  const hasProjectAndRole = Boolean(entry.projectId && entry.roleId);
-  if (copyHours && !hasProjectAndRole) {
-    return { success: false, error: "Project and Role are required." };
-  }
+  const businessErr = copyEntryPayloadBusinessError(entry);
+  if (businessErr) return { success: false, error: businessErr };
 
-  const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
-  const rateSnapshot =
-    entry.projectId && entry.roleId
-      ? await getEffectiveRateSnapshot(entry.projectId, customerId, entry.roleId)
-      : null;
-
-  const toInsert: DesiredCell[] = [];
   const entryLineId = entry.lineId?.trim() ? entry.lineId.trim() : randomUUID();
-  const displayOrderPlaceholder = 0;
-
-  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-    const hours = copyHours ? (entry.hours[dayIndex] ?? 0) : 0;
-    const comment = copyHours ? (entry.comments[dayIndex]?.trim() ?? "") : "";
-    if (hours > 0 && entry.projectId && entry.roleId) {
-      toInsert.push({
-        entry_line_id: entryLineId,
-        consultant_id: consultantId,
-        customer_id: customerId,
-        project_id: entry.projectId,
-        role_id: entry.roleId,
-        jira_devops_key: entry.jiraDevOpsValue || null,
-        description: (entry.task ?? "").trim() || null,
-        entry_date: weekDates[dayIndex]!,
-        hours,
-        internal_comment: comment || null,
-        rate_snapshot: rateSnapshot,
-        display_order: displayOrderPlaceholder,
-      });
-    }
-  }
-
-  if (copyHours && toInsert.length === 0) {
-    return { success: false, error: "Entry has no hours or comments to copy." };
-  }
+  const built = await buildDesiredCellsForCopy(
+    consultantId,
+    customerId,
+    targetYear,
+    targetWeek,
+    entry,
+    entryLineId
+  );
+  if (built.error) return { success: false, error: built.error };
 
   const appUserId = await getAppUserIdForAudit();
   const client = await cloudSqlPool.connect();
   try {
     await client.query("BEGIN");
-
-    const { rows: ordRows } = await client.query<{ display_order: string | number | null }>(
-      `SELECT display_order
-       FROM time_report_entry_lines
-       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
-      [consultantId, targetYear, targetWeek]
+    const result = await copyEntryToWeekCore(
+      client,
+      consultantId,
+      appUserId,
+      customerId,
+      targetYear,
+      targetWeek,
+      entry,
+      expectedRevision,
+      entryLineId,
+      built.toInsert
     );
-    const maxOrder =
-      ordRows.length && ordRows.every((r) => r.display_order != null)
-        ? Math.max(...ordRows.map((r) => Number(r.display_order)))
-        : 0;
-    const displayOrder = maxOrder + 1000;
-    for (const r of toInsert) {
-      r.display_order = displayOrder;
-    }
-
-    await client.query(
-      `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
-       VALUES ($1, $2, $3, 0)
-       ON CONFLICT (consultant_id, iso_year, iso_week) DO NOTHING`,
-      [consultantId, targetYear, targetWeek]
-    );
-
-    const { rows: revLock } = await client.query<{ revision: string }>(
-      `SELECT revision::text FROM time_report_week_revisions
-       WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
-       FOR UPDATE`,
-      [consultantId, targetYear, targetWeek]
-    );
-    const currentRev = Number(revLock[0]?.revision ?? 0);
-    if (currentRev !== expectedRevision) {
+    if (!result.success) {
       await client.query("ROLLBACK");
-      return {
-        success: false,
-        error: "Tidrapporten har uppdaterats någon annanstans. Ladda om innan du kopierar igen.",
-        code: "revision_conflict",
-        currentRevision: currentRev,
-      };
+      return result;
     }
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Ignore rollback errors and return the original failure.
+    }
+    return { success: false, error: e instanceof Error ? e.message : "Insert failed" };
+  } finally {
+    client.release();
+  }
+}
 
-    const newRevision = currentRev + 1;
-    const rowOnlyLineCreatedAt = !copyHours ? (entry.rowOnlyAnchorDate ?? null) : null;
+export async function copyTimeReportEntriesBatch(
+  consultantId: string,
+  operations: TimeReportCopyBatchOperation[],
+  initialWeekRevisions: Record<string, number>
+): Promise<CopyTimeReportEntriesBatchResult> {
+  const ctx = await getTimeReportAccessContext();
+  const consultant = ctx.consultant;
+  if (!consultant || consultant.id !== consultantId) {
+    return { success: false, error: "Unauthorized" };
+  }
 
-    await client.query(
-      `INSERT INTO time_report_entry_lines (
-         id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
-         jira_devops_key, description, display_order, created_at, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, now()), COALESCE($11::date, now()))`,
-      [
-        entryLineId,
+  const indexed = operations.map((op, i) => ({ op, i }));
+  indexed.sort((a, b) => {
+    if (a.op.targetYear !== b.op.targetYear) return a.op.targetYear - b.op.targetYear;
+    if (a.op.targetWeek !== b.op.targetWeek) return a.op.targetWeek - b.op.targetWeek;
+    return a.i - b.i;
+  });
+
+  for (const { op } of indexed) {
+    if (!ctx.allowedCustomerIds.has(op.customerId)) {
+      return { success: false, error: "Unauthorized customer." };
+    }
+    if (
+      isSubcontractorRole(ctx.appUser?.role) &&
+      op.entry.projectId &&
+      !ctx.bookedProjectIds.has(op.entry.projectId)
+    ) {
+      return { success: false, error: "Unauthorized project for subcontractor." };
+    }
+    const be = copyEntryPayloadBusinessError(op.entry);
+    if (be) return { success: false, error: be };
+  }
+
+  const revMap = new Map<string, number>();
+  for (const [k, v] of Object.entries(initialWeekRevisions)) {
+    revMap.set(k, Number(v));
+  }
+
+  const client = await cloudSqlPool.connect();
+  try {
+    await client.query("BEGIN");
+    const appUserId = await getAppUserIdForAudit();
+
+    for (const { op } of indexed) {
+      const key = weekRevisionMapKey(op.targetYear, op.targetWeek);
+      const expected = revMap.get(key);
+      if (expected === undefined) {
+        await client.query("ROLLBACK");
+        return {
+          success: false,
+          error: `Saknar revision för vecka ${key}. Ladda om och försök igen.`,
+        };
+      }
+
+      const entryLineId = op.entry.lineId?.trim() ? op.entry.lineId.trim() : randomUUID();
+      const built = await buildDesiredCellsForCopy(
         consultantId,
-        targetYear,
-        targetWeek,
-        customerId,
-        entry.projectId || null,
-        entry.roleId || null,
-        entry.jiraDevOpsValue || null,
-        (entry.task ?? "").trim() || null,
-        displayOrder,
-        rowOnlyLineCreatedAt,
-      ]
-    );
-
-    for (const de of toInsert) {
-      const ins = await client.query<{ id: string }>(
-        `INSERT INTO time_report_entries (
-           consultant_id, customer_id, project_id, role_id, jira_devops_key,
-           description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order,
-           entry_line_id
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12)
-         RETURNING id`,
-        [
-          de.consultant_id,
-          de.customer_id,
-          de.project_id,
-          de.role_id,
-          de.jira_devops_key,
-          de.description,
-          de.entry_date,
-          de.hours,
-          de.internal_comment,
-          de.rate_snapshot,
-          de.display_order,
-          de.entry_line_id,
-        ]
+        op.customerId,
+        op.targetYear,
+        op.targetWeek,
+        op.entry,
+        entryLineId
       );
-      const newId = ins.rows[0]?.id;
-      await writeEntryHistory(client, {
-        timeReportEntryId: newId ?? null,
-        entryLineId: de.entry_line_id,
-        consultantId,
-        operation: "insert",
-        before: null,
-        after: desiredCellSnapshot(de, newId),
-        sourceRevision: newRevision,
-        changedByAppUserId: appUserId,
-      });
-    }
+      if (built.error) {
+        await client.query("ROLLBACK");
+        return { success: false, error: built.error };
+      }
 
-    await client.query(
-      `UPDATE time_report_week_revisions
-       SET revision = $1::bigint,
-           updated_at = now(),
-           updated_by_app_user_id = $2
-       WHERE consultant_id = $3 AND iso_year = $4 AND iso_week = $5`,
-      [newRevision, appUserId, consultantId, targetYear, targetWeek]
-    );
+      const res = await copyEntryToWeekCore(
+        client,
+        consultantId,
+        appUserId,
+        op.customerId,
+        op.targetYear,
+        op.targetWeek,
+        op.entry,
+        expected,
+        entryLineId,
+        built.toInsert
+      );
+      if (!res.success) {
+        await client.query("ROLLBACK");
+        return res;
+      }
+      revMap.set(key, res.revision);
+    }
 
     await client.query("COMMIT");
-    return { success: true, revision: newRevision };
+    return { success: true, weekRevisions: Object.fromEntries(revMap) };
   } catch (e) {
     try {
       await client.query("ROLLBACK");
