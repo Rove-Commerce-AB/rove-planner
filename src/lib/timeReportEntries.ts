@@ -1091,13 +1091,13 @@ export async function copyEntryToWeek(
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     const hours = copyHours ? (entry.hours[dayIndex] ?? 0) : 0;
     const comment = copyHours ? (entry.comments[dayIndex]?.trim() ?? "") : "";
-    if (hours > 0) {
+    if (hours > 0 && entry.projectId && entry.roleId) {
       toInsert.push({
         entry_line_id: entryLineId,
         consultant_id: consultantId,
         customer_id: customerId,
-        project_id: entry.projectId || null,
-        role_id: entry.roleId || null,
+        project_id: entry.projectId,
+        role_id: entry.roleId,
         jira_devops_key: entry.jiraDevOpsValue || null,
         description: (entry.task ?? "").trim() || null,
         entry_date: weekDates[dayIndex]!,
