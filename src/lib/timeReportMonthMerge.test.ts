@@ -101,4 +101,34 @@ describe("buildMergedMonthRows", () => {
       [weekSliceKey(y, wA), weekSliceKey(y, wB)].sort()
     );
   });
+
+  it("does not merge rows when source prefixes differ", () => {
+    const y = 2026;
+    const wA = 5;
+    const wB = 6;
+    const wdA = getWeekDates(y, wA);
+    const wdB = getWeekDates(y, wB);
+    const monthCalendarDates = sortedUniqueDates([...wdA, ...wdB]);
+    const monthWeeks = [
+      { year: y, week: wA },
+      { year: y, week: wB },
+    ];
+
+    const jiraEntry = {
+      ...baseEntry("line-a", 1000, wdA, wdA[0]!),
+      jiraDevOpsValue: "jira:ABC-1",
+    };
+    const clickupEntry = {
+      ...baseEntry("line-b", 1000, wdB, wdB[0]!),
+      jiraDevOpsValue: "clickup:ABC-1",
+    };
+
+    const slices: Record<string, TimeReportCustomerGroup[]> = {
+      [weekSliceKey(y, wA)]: [{ customerId: "cust-a", entries: [jiraEntry] }],
+      [weekSliceKey(y, wB)]: [{ customerId: "cust-a", entries: [clickupEntry] }],
+    };
+
+    const rows = buildMergedMonthRows(slices, monthWeeks, monthCalendarDates, customerById);
+    expect(rows).toHaveLength(2);
+  });
 });

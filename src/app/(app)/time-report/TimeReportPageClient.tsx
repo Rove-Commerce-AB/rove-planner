@@ -153,13 +153,13 @@ async function fetchTimeReportWeeksSequentialUnlessAborted(
   return out;
 }
 
-/** Native `title` on the Jira/DevOps key: shows summary/title when loaded. */
+/** Native `title` on the Jira/DevOps/ClickUp key: shows summary/title when loaded. */
 function jiraDevOpsKeyTooltipTitle(
   displayKey: string,
   description?: string | null
 ): string {
   const d = description?.trim();
-  if (!d) return `${displayKey} — Change Jira/DevOps`;
+  if (!d) return `${displayKey} — Change Jira/DevOps/ClickUp`;
   const normalizedDisplay = displayKey.toLowerCase();
   const normalizedDescription = d.toLowerCase();
   // Jira labels already include summary (e.g. "ABC-123: Summary"), so avoid duplicates.
@@ -173,7 +173,7 @@ function jiraDevOpsDisplayLabel(
 ): string {
   const label = option?.label?.trim();
   if (label) return label;
-  return rawValue.replace(/^(jira|devops):/, "");
+  return rawValue.replace(/^(jira|devops|clickup):/, "");
 }
 
 /** Compact display for footer / row hour totals (matches week vs month grid footers). */
@@ -2686,7 +2686,7 @@ export function TimeReportPageClient({
                 <th className="w-[clamp(8.5rem,15vw,11.25rem)] min-w-[8.5rem] max-w-[11.25rem] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
-                <th className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps">
+                <th className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps / ClickUp">
                   <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
@@ -2950,20 +2950,24 @@ export function TimeReportPageClient({
                                 >
                                   {displayLabel}
                                 </button>
-                                {entry.jiraDevOpsValue.startsWith("jira:") && (() => {
+                                {(entry.jiraDevOpsValue.startsWith("jira:") ||
+                                  entry.jiraDevOpsValue.startsWith("clickup:")) && (() => {
                                   const url = opt?.url?.trim();
-                                  const key = entry.jiraDevOpsValue.replace(/^jira:/, "");
+                                  const sourceLabel = entry.jiraDevOpsValue.startsWith("clickup:")
+                                    ? "ClickUp"
+                                    : "Jira";
+                                  const key = entry.jiraDevOpsValue.replace(/^(jira|clickup):/, "");
                                   return url ? (
                                     <a
                                       href={url}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="shrink-0 rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
-                                      aria-label="Open in Jira"
+                                      aria-label={`Open in ${sourceLabel}`}
                                       title={
                                         desc
-                                          ? `Open in Jira — ${desc}`
-                                          : "Open in Jira"
+                                          ? `Open in ${sourceLabel} — ${desc}`
+                                          : `Open in ${sourceLabel}`
                                       }
                                     >
                                       <ExternalLink className="h-3.5 w-3.5 stroke-[1.5]" />
@@ -2971,7 +2975,7 @@ export function TimeReportPageClient({
                                   ) : (
                                     <span
                                       className="shrink-0 rounded p-0.5 text-text-muted"
-                                      title={key ? `Jira ${key} – no URL in database` : undefined}
+                                      title={key ? `${sourceLabel} ${key} – no URL in database` : undefined}
                                       aria-hidden
                                     >
                                       <ExternalLink className="h-3.5 w-3.5 stroke-[1.5]" />
@@ -2979,7 +2983,7 @@ export function TimeReportPageClient({
                                   );
                                 })()}
                                 <IconButton
-                                  aria-label="Remove Jira/DevOps link"
+                                  aria-label="Remove Jira/DevOps/ClickUp link"
                                   title="Remove link"
                                   className="time-report-icons-tight shrink-0 text-text-secondary hover:text-text-primary"
                                   onClick={() =>
@@ -2994,14 +2998,14 @@ export function TimeReportPageClient({
                               );
                             })() : (
                               <IconButton
-                                aria-label="Add Jira/DevOps"
+                                aria-label="Add Jira/DevOps/ClickUp"
                                 onClick={() => {
                                   setJiraDevOpsModalValue("");
                                   setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
                                   if (entry.projectId) loadJiraDevOpsForProject(entry.projectId);
                                 }}
                                 disabled={!entry.projectId}
-                                title="Add Jira/DevOps"
+                                title="Add Jira/DevOps/ClickUp"
                               >
                                 <Link className="h-3.5 w-3.5" />
                               </IconButton>
@@ -3115,7 +3119,7 @@ export function TimeReportPageClient({
                 <th
                   className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-1 py-1.5 text-left font-medium text-text-secondary"
                   scope="col"
-                  title="Jira / DevOps"
+                  title="Jira / DevOps / ClickUp"
                 >
                   <Link className="inline-block h-3 w-3 text-text-muted" aria-hidden />
                 </th>
@@ -3403,20 +3407,24 @@ export function TimeReportPageClient({
                                     >
                                       {displayLabel}
                                     </button>
-                                    {row.jiraDevOpsValue.startsWith("jira:") && (() => {
+                                    {(row.jiraDevOpsValue.startsWith("jira:") ||
+                                      row.jiraDevOpsValue.startsWith("clickup:")) && (() => {
                                       const url = opt?.url?.trim();
-                                      const key = row.jiraDevOpsValue.replace(/^jira:/, "");
+                                      const sourceLabel = row.jiraDevOpsValue.startsWith("clickup:")
+                                        ? "ClickUp"
+                                        : "Jira";
+                                      const key = row.jiraDevOpsValue.replace(/^(jira|clickup):/, "");
                                       return url ? (
                                         <a
                                           href={url}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="shrink-0 self-start rounded p-0.5 text-text-secondary hover:bg-bg-muted hover:text-brand-signal"
-                                          aria-label="Open in Jira"
+                                          aria-label={`Open in ${sourceLabel}`}
                                           title={
                                             desc
-                                              ? `Open in Jira — ${desc}`
-                                              : "Open in Jira"
+                                              ? `Open in ${sourceLabel} — ${desc}`
+                                              : `Open in ${sourceLabel}`
                                           }
                                         >
                                           <ExternalLink className="h-3 w-3 stroke-[1.5]" />
@@ -3424,7 +3432,7 @@ export function TimeReportPageClient({
                                       ) : (
                                         <span
                                           className="shrink-0 self-start rounded p-0.5 text-text-muted"
-                                          title={key ? `Jira ${key} – no URL in database` : undefined}
+                                          title={key ? `${sourceLabel} ${key} – no URL in database` : undefined}
                                           aria-hidden
                                         >
                                           <ExternalLink className="h-3 w-3 stroke-[1.5]" />
@@ -3432,7 +3440,7 @@ export function TimeReportPageClient({
                                       );
                                     })()}
                                     <IconButton
-                                      aria-label="Remove Jira/DevOps link"
+                                      aria-label="Remove Jira/DevOps/ClickUp link"
                                       title="Remove link"
                                       className="time-report-icons-tight shrink-0 self-start text-text-secondary hover:text-text-primary"
                                       onClick={() =>
@@ -3447,7 +3455,7 @@ export function TimeReportPageClient({
                                   );
                                 })() : (
                                   <IconButton
-                                    aria-label="Add Jira/DevOps"
+                                    aria-label="Add Jira/DevOps/ClickUp"
                                     onClick={() => {
                                       setJiraDevOpsModalValue("");
                                       setJiraDevOpsModal({
@@ -3457,7 +3465,7 @@ export function TimeReportPageClient({
                                       if (row.projectId) loadJiraDevOpsForProject(row.projectId);
                                     }}
                                     disabled={!row.projectId}
-                                    title="Add Jira/DevOps"
+                                    title="Add Jira/DevOps/ClickUp"
                                   >
                                     <Link className="h-3 w-3" />
                                   </IconButton>
@@ -3725,7 +3733,7 @@ export function TimeReportPageClient({
         onOpenChange={(open) => {
           if (!open) setJiraDevOpsModal(null);
         }}
-        title="Jira / DevOps"
+        title="Jira / DevOps / ClickUp"
       >
         {jiraDevOpsModal && (() => {
           const entry = entryById.get(jiraDevOpsModal.entryId);
@@ -3743,7 +3751,7 @@ export function TimeReportPageClient({
                   aria-live="polite"
                 >
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                  Laddar Jira/DevOps…
+                  Laddar Jira/DevOps/ClickUp…
                 </div>
               ) : (
                 <Combobox
@@ -3755,7 +3763,7 @@ export function TimeReportPageClient({
                   size="sm"
                   variant="filter"
                   inputClassName="h-9 w-full"
-                  emptyOptionsPlaceholder="No Jira/DevOps"
+                  emptyOptionsPlaceholder="No Jira/DevOps/ClickUp"
                   renderListInPortal={false}
                 />
               )}

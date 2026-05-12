@@ -5,7 +5,7 @@ export type JiraDevOpsOption = {
   value: string;
   label: string;
   url?: string | null;
-  /** Jira summary or DevOps work item title (for tooltips). */
+  /** Jira/ClickUp summary or DevOps work item title (for tooltips). */
   description?: string | null;
 };
 
@@ -45,7 +45,7 @@ export type TimeReportEntryCopyPayload = {
   hours: number[];
   comments: Record<number, string>;
   /**
-   * When false, copies project, role, Jira/DevOps, and description only — creates line header
+   * When false, copies project, role, Jira/DevOps/ClickUp, and description only — creates line header
    * stubs without `time_report_entries` rows. When true or omitted, copies hours and comments as usual.
    */
   copyHours?: boolean;

@@ -15,6 +15,13 @@ export type DevOpsWorkItemOption = {
   title: string | null;
 };
 
+export type ClickUpItemOption = {
+  value: string;
+  label: string;
+  url?: string | null;
+  summary: string | null;
+};
+
 /** Jira issues for a project key (project_key = projects.jira_project_key). */
 export async function getJiraIssuesByProjectKey(
   projectKey: string
@@ -54,5 +61,26 @@ export async function getDevOpsWorkItemsByProject(
       ? `${row.work_item_id}: ${row.title}`
       : String(row.work_item_id),
     title: row.title,
+  }));
+}
+
+/** ClickUp items for a project key (project_key = projects.clickup_project_id). */
+export async function getClickUpItemsByProjectKey(
+  projectKey: string
+): Promise<ClickUpItemOption[]> {
+  if (!projectKey.trim()) return [];
+  const { rows } = await cloudSqlPool.query<{
+    clickup_id: string;
+    summary: string | null;
+    url: string | null;
+  }>(
+    `SELECT clickup_id, summary, url FROM clickup WHERE project_key = $1 ORDER BY clickup_id`,
+    [projectKey.trim()]
+  );
+  return rows.map((row) => ({
+    value: row.clickup_id,
+    label: row.summary ? `${row.clickup_id}: ${row.summary}` : row.clickup_id,
+    url: row.url ?? null,
+    summary: row.summary,
   }));
 }

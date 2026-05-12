@@ -49,8 +49,10 @@ export type ProjectWithDetails = {
   probability: number | null;
   /** Optional link to Jira project (project_key). Mutually exclusive with devopsProject. */
   jiraProjectKey: string | null;
-  /** Optional link to DevOps project name. Mutually exclusive with jiraProjectKey. */
+  /** Optional link to DevOps project name. Mutually exclusive with jiraProjectKey/clickupProjectId. */
   devopsProject: string | null;
+  /** Optional link to ClickUp project key. Mutually exclusive with jiraProjectKey/devopsProject. */
+  clickupProjectId: string | null;
   /** Optional budget in hours; shown in planning footer. */
   budgetHours: number | null;
   /** Optional budget in SEK; shown in planning footer. */

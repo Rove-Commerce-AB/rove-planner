@@ -385,16 +385,25 @@ export function ProjectDetailClient({
             await updateProject(initial.id, {
               jira_project_key: null,
               devops_project: null,
+              clickup_project_id: null,
             });
           } else if (trimmed.startsWith("jira:")) {
             await updateProject(initial.id, {
               jira_project_key: trimmed.slice(5),
               devops_project: null,
+              clickup_project_id: null,
             });
           } else if (trimmed.startsWith("devops:")) {
             await updateProject(initial.id, {
               jira_project_key: null,
               devops_project: trimmed.slice(7),
+              clickup_project_id: null,
+            });
+          } else if (trimmed.startsWith("clickup:")) {
+            await updateProject(initial.id, {
+              jira_project_key: null,
+              devops_project: null,
+              clickup_project_id: trimmed.slice(8),
             });
           }
           break;
@@ -644,7 +653,7 @@ export function ProjectDetailClient({
             </div>
 
             <div className="min-w-0">
-              <FieldLabel>Jira / DevOps project</FieldLabel>
+              <FieldLabel>Jira / DevOps / ClickUp project</FieldLabel>
               <div className="mt-0.5">
                 <InlineEditFieldContainer
                   isEditing={editingField === "integration"}
@@ -657,15 +666,19 @@ export function ProjectDetailClient({
                           ? `jira:${initial.jiraProjectKey}`
                           : initial.devopsProject
                             ? `devops:${initial.devopsProject}`
+                            : initial.clickupProjectId
+                              ? `clickup:${initial.clickupProjectId}`
                             : "";
                         startEdit("integration", val);
                       }}
                     >
-                      {initial.jiraProjectKey || initial.devopsProject ? (
+                      {initial.jiraProjectKey || initial.devopsProject || initial.clickupProjectId ? (
                         <FieldValue>
                           {initial.jiraProjectKey
                             ? `Jira: ${initial.jiraProjectKey}`
-                            : `DevOps: ${initial.devopsProject}`}
+                            : initial.devopsProject
+                              ? `DevOps: ${initial.devopsProject}`
+                              : `ClickUp: ${initial.clickupProjectId}`}
                         </FieldValue>
                       ) : (
                         <span className="text-sm text-text-primary opacity-60">—</span>

@@ -8,6 +8,7 @@ import { getProjectsByCustomerIds } from "@/lib/projects";
 import {
   getJiraIssuesByProjectKey,
   getDevOpsWorkItemsByProject,
+  getClickUpItemsByProjectKey,
 } from "@/lib/timeReportIntegrations";
 import { getCustomerRates } from "@/lib/customerRates";
 import { getProjectRates, getRolesWithRateForAllocation } from "@/lib/projectRates";
@@ -110,13 +111,36 @@ export async function getJiraDevOpsOptionsForProject(
   if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(projectId)) {
     return [];
   }
-  const { rows } = await cloudSqlPool.query<{
+  let rows: Array<{
     jira_project_key: string | null;
     devops_project: string | null;
-  }>(
-    `SELECT jira_project_key, devops_project FROM projects WHERE id = $1`,
-    [projectId]
-  );
+    clickup_project_id: string | null;
+  }> = [];
+  try {
+    const result = await cloudSqlPool.query<{
+      jira_project_key: string | null;
+      devops_project: string | null;
+      clickup_project_id: string | null;
+    }>(
+      `SELECT jira_project_key, devops_project, clickup_project_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    rows = result.rows;
+  } catch (error) {
+    const code =
+      typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    if (code !== "42703") throw error;
+    const fallback = await cloudSqlPool.query<{
+      jira_project_key: string | null;
+      devops_project: string | null;
+    }>(`SELECT jira_project_key, devops_project FROM projects WHERE id = $1`, [projectId]);
+    rows = fallback.rows.map((row) => ({
+      ...row,
+      clickup_project_id: null,
+    }));
+  }
   const project = rows[0];
   if (!project) return [];
 
@@ -139,6 +163,17 @@ export async function getJiraDevOpsOptionsForProject(
         value: `devops:${o.value}`,
         label: o.label,
         description: o.title?.trim() || null,
+      }))
+    );
+  }
+  if (project.clickup_project_id) {
+    const clickup = await getClickUpItemsByProjectKey(project.clickup_project_id);
+    options.push(
+      ...clickup.map((o) => ({
+        value: `clickup:${o.value}`,
+        label: o.label,
+        url: o.url ?? undefined,
+        description: o.summary?.trim() || null,
       }))
     );
   }

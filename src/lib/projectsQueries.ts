@@ -7,6 +7,34 @@ import * as consultants from "./consultantsQueries";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 
+let clickupProjectColumnAvailable: boolean | null = null;
+
+async function hasClickupProjectColumn(): Promise<boolean> {
+  if (clickupProjectColumnAvailable != null) return clickupProjectColumnAvailable;
+  try {
+    const { rows } = await cloudSqlPool.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'projects'
+           AND column_name = 'clickup_project_id'
+       ) AS "exists"`
+    );
+    clickupProjectColumnAvailable = Boolean(rows[0]?.exists);
+    return clickupProjectColumnAvailable;
+  } catch {
+    clickupProjectColumnAvailable = false;
+    return false;
+  }
+}
+
+function projectSelectClause(includeClickupProjectId: boolean): string {
+  return includeClickupProjectId
+    ? "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, clickup_project_id, budget_hours, budget_money"
+    : "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, NULL::text AS clickup_project_id, budget_hours, budget_money";
+}
+
 function getInitials(name: string): string {
   return name
     .split(" ")
@@ -28,6 +56,7 @@ export type ProjectRecord = {
   probability: number | null;
   jira_project_key: string | null;
   devops_project: string | null;
+  clickup_project_id: string | null;
   budget_hours: number | null;
   budget_money: number | null;
 };
@@ -43,6 +72,7 @@ export type CreateProjectInput = {
   probability?: number | null;
   jira_project_key?: string | null;
   devops_project?: string | null;
+  clickup_project_id?: string | null;
   budget_hours?: number | null;
   budget_money?: number | null;
 };
@@ -58,12 +88,10 @@ export type UpdateProjectInput = {
   probability?: number | null;
   jira_project_key?: string | null;
   devops_project?: string | null;
+  clickup_project_id?: string | null;
   budget_hours?: number | null;
   budget_money?: number | null;
 };
-
-const PROJECT_SELECT =
-  "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, budget_hours, budget_money";
 
 function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
   return {
@@ -79,6 +107,7 @@ function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
       r.probability != null ? Number(r.probability as string | number) : null,
     jira_project_key: (r.jira_project_key as string | null) ?? null,
     devops_project: (r.devops_project as string | null) ?? null,
+    clickup_project_id: (r.clickup_project_id as string | null) ?? null,
     budget_hours:
       r.budget_hours != null ? Number(r.budget_hours as string | number) : null,
     budget_money:
@@ -90,28 +119,53 @@ export async function createProjectQuery(
   input: CreateProjectInput
 ): Promise<ProjectRecord> {
   const prob = input.probability ?? 100;
-  const { rows } = await cloudSqlPool.query(
-    `INSERT INTO projects (
-       name, customer_id, is_active, type, project_manager_id,
-       start_date, end_date, probability, jira_project_key, devops_project,
-       budget_hours, budget_money
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-     RETURNING ${PROJECT_SELECT}`,
-    [
-      input.name.trim(),
-      input.customer_id,
-      input.is_active ?? true,
-      input.type ?? "customer",
-      input.project_manager_id ?? null,
-      input.start_date?.trim() || null,
-      input.end_date?.trim() || null,
-      prob,
-      input.jira_project_key?.trim() || null,
-      input.devops_project?.trim() || null,
-      input.budget_hours ?? null,
-      input.budget_money ?? null,
-    ]
-  );
+  const includeClickupProjectId = await hasClickupProjectColumn();
+  const { rows } = includeClickupProjectId
+    ? await cloudSqlPool.query(
+        `INSERT INTO projects (
+           name, customer_id, is_active, type, project_manager_id,
+           start_date, end_date, probability, jira_project_key, devops_project, clickup_project_id,
+           budget_hours, budget_money
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING ${projectSelectClause(true)}`,
+        [
+          input.name.trim(),
+          input.customer_id,
+          input.is_active ?? true,
+          input.type ?? "customer",
+          input.project_manager_id ?? null,
+          input.start_date?.trim() || null,
+          input.end_date?.trim() || null,
+          prob,
+          input.jira_project_key?.trim() || null,
+          input.devops_project?.trim() || null,
+          input.clickup_project_id?.trim() || null,
+          input.budget_hours ?? null,
+          input.budget_money ?? null,
+        ]
+      )
+    : await cloudSqlPool.query(
+        `INSERT INTO projects (
+           name, customer_id, is_active, type, project_manager_id,
+           start_date, end_date, probability, jira_project_key, devops_project,
+           budget_hours, budget_money
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING ${projectSelectClause(false)}`,
+        [
+          input.name.trim(),
+          input.customer_id,
+          input.is_active ?? true,
+          input.type ?? "customer",
+          input.project_manager_id ?? null,
+          input.start_date?.trim() || null,
+          input.end_date?.trim() || null,
+          prob,
+          input.jira_project_key?.trim() || null,
+          input.devops_project?.trim() || null,
+          input.budget_hours ?? null,
+          input.budget_money ?? null,
+        ]
+      );
   if (!rows[0]) throw new Error("Failed to create project");
   return rowToProjectRecord(rows[0] as Record<string, unknown>);
 }
@@ -163,6 +217,15 @@ export async function updateProjectQuery(
     sets.push(`devops_project = $${i++}`);
     values.push(input.devops_project?.trim() || null);
   }
+  if (input.clickup_project_id !== undefined) {
+    if (!(await hasClickupProjectColumn())) {
+      throw new Error(
+        "Database migration required for ClickUp integration: run scripts/alter_projects_add_clickup_project_id.sql."
+      );
+    }
+    sets.push(`clickup_project_id = $${i++}`);
+    values.push(input.clickup_project_id?.trim() || null);
+  }
   if (input.budget_hours !== undefined) {
     sets.push(`budget_hours = $${i++}`);
     values.push(input.budget_hours ?? null);
@@ -191,7 +254,7 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
   IntegrationProjectOption[]
 > {
   try {
-    const [jiraRes, devopsRes] = await Promise.all([
+    const [jiraRes, devopsRes, clickupRes] = await Promise.all([
       cloudSqlPool.query<{
         project_key: string;
         project_name: string | null;
@@ -199,6 +262,19 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
       cloudSqlPool.query<{ project: string }>(
         `SELECT * FROM get_distinct_devops_projects()`
       ),
+      cloudSqlPool
+        .query<{
+          project_key: string;
+          project_name: string | null;
+        }>(
+          `SELECT project_key, NULLIF(MAX(NULLIF(project_name, '')), '') AS project_name
+           FROM clickup
+           WHERE project_key IS NOT NULL
+             AND NULLIF(project_key, '') IS NOT NULL
+           GROUP BY project_key
+           ORDER BY project_key`
+        )
+        .catch(() => ({ rows: [] as { project_key: string; project_name: string | null }[] })),
     ]);
 
     const jiraOptions: IntegrationProjectOption[] = jiraRes.rows.map((row) => {
@@ -217,7 +293,16 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
       }
     );
 
-    return [{ value: "", label: "—" }, ...jiraOptions, ...devopsOptions];
+    const clickupOptions: IntegrationProjectOption[] = clickupRes.rows.map((row) => {
+      const key = row.project_key?.trim() ?? "";
+      const name = (row.project_name ?? key).trim();
+      return {
+        value: `clickup:${key}`,
+        label: `ClickUp: ${key}${name && name !== key ? ` (${name})` : ""}`,
+      };
+    });
+
+    return [{ value: "", label: "—" }, ...jiraOptions, ...devopsOptions, ...clickupOptions];
   } catch {
     return [{ value: "", label: "—" }];
   }
@@ -226,9 +311,10 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
 export async function fetchProjectWithDetailsById(
   id: string
 ): Promise<ProjectWithDetails | null> {
+  const includeClickupProjectId = await hasClickupProjectColumn();
   const [projectRes, customersList] = await Promise.all([
     cloudSqlPool.query(
-      `SELECT ${PROJECT_SELECT} FROM projects WHERE id = $1`,
+      `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects WHERE id = $1`,
       [id]
     ),
     customers.fetchCustomers(),
@@ -273,6 +359,7 @@ export async function fetchProjectWithDetailsById(
     probability,
     jiraProjectKey: (p.jira_project_key as string | null) ?? null,
     devopsProject: (p.devops_project as string | null) ?? null,
+    clickupProjectId: (p.clickup_project_id as string | null) ?? null,
     budgetHours:
       p.budget_hours != null ? Number(p.budget_hours as number) : null,
     budgetMoney:
@@ -285,8 +372,9 @@ export async function fetchProjectWithDetailsById(
 }
 
 export async function fetchProjects(): Promise<ProjectRecord[]> {
+  const includeClickupProjectId = await hasClickupProjectColumn();
   const { rows } = await cloudSqlPool.query(
-    `SELECT ${PROJECT_SELECT} FROM projects ORDER BY is_active DESC, name`
+    `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects ORDER BY is_active DESC, name`
   );
   return rows.map((r) => rowToProjectRecord(r as Record<string, unknown>));
 }
@@ -397,6 +485,7 @@ export async function fetchProjectsWithDetails(): Promise<
       probability,
       jiraProjectKey: p.jira_project_key ?? null,
       devopsProject: p.devops_project ?? null,
+      clickupProjectId: p.clickup_project_id ?? null,
       budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
       budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
       consultantCount: consultantIdsList.length,
@@ -412,8 +501,9 @@ export async function fetchProjectsByCustomerIds(
 ): Promise<ProjectRecord[]> {
   if (customerIds.length === 0) return [];
 
+  const includeClickupProjectId = await hasClickupProjectColumn();
   const { rows } = await cloudSqlPool.query(
-    `SELECT ${PROJECT_SELECT} FROM projects WHERE customer_id = ANY($1::uuid[])`,
+    `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects WHERE customer_id = ANY($1::uuid[])`,
     [customerIds]
   );
   return rows.map((r) => rowToProjectRecord(r as Record<string, unknown>));
