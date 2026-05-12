@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
+import { upsertGoogleUserConnection } from "@/lib/googleTasksSyncQueries";
 
 function parsePositiveInt(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -16,6 +17,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope:
+            "openid email profile https://www.googleapis.com/auth/tasks",
+          prompt: "consent",
+          access_type: "offline",
+        },
+      },
     }),
   ],
   callbacks: {
@@ -36,7 +45,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       debugLog("auth", "signIn decision", { email, allowed });
       return allowed;
     },
-    async jwt({ token, trigger }) {
+    async jwt({ token, trigger, account, profile }) {
       const email = token.email ?? null;
       if (!email) return token;
 
@@ -79,6 +88,40 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         found: Boolean(rows[0]),
         role: token.role ?? null,
       });
+
+      if (
+        token.appUserId &&
+        account?.provider === "google" &&
+        account.providerAccountId
+      ) {
+        const expiresAt =
+          typeof account.expires_at === "number" && Number.isFinite(account.expires_at)
+            ? new Date(account.expires_at * 1000)
+            : null;
+        await upsertGoogleUserConnection({
+          appUserId: token.appUserId,
+          googleSub: account.providerAccountId,
+          googleEmail:
+            typeof profile?.email === "string"
+              ? profile.email
+              : email,
+          scope:
+            typeof account.scope === "string" ? account.scope : null,
+          accessToken:
+            typeof account.access_token === "string"
+              ? account.access_token
+              : null,
+          refreshToken:
+            typeof account.refresh_token === "string"
+              ? account.refresh_token
+              : null,
+          tokenType:
+            typeof account.token_type === "string"
+              ? account.token_type
+              : null,
+          accessTokenExpiresAt: expiresAt,
+        });
+      }
       return token;
     },
     async session({ session, token }) {

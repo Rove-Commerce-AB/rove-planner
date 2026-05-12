@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { PageHeader } from "@/components/ui";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
+import { syncAllBoardsFromGoogle } from "@/lib/googleTasksSync";
 import { listBoardsForMember } from "@/lib/taskBoardQueries";
 import { TaskboardListPageClient, type TaskboardListBoard } from "./TaskboardListPageClient";
 
@@ -14,6 +15,12 @@ export default async function TaskboardPage() {
   const appUserId = session?.user?.appUserId;
   if (!appUserId) {
     redirect("/login");
+  }
+
+  try {
+    await syncAllBoardsFromGoogle(appUserId);
+  } catch (e) {
+    console.warn("[taskboard] google tasks inbound sync failed", e);
   }
 
   const rows = await listBoardsForMember(appUserId);

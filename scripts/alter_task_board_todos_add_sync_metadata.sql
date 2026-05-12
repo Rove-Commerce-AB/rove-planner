@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE task_board_todos
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+COMMIT;

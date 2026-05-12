@@ -37,6 +37,7 @@ export type TaskBoardTodoRow = {
   title: string;
   status: "todo" | "done";
   sort_order: number;
+  updated_at: Date;
   assigned_to_app_user_id: string | null;
   assignee_email: string | null;
   assignee_name: string | null;
@@ -207,6 +208,18 @@ export type TaskBoardMyTaskRow = {
   board_title: string;
 };
 
+export type TaskBoardTodoDetailForSync = {
+  id: string;
+  board_id: string;
+  title: string;
+  status: "todo" | "done";
+  due_date: string | null;
+  updated_at: Date;
+  assigned_to_app_user_id: string | null;
+  assignee_email: string | null;
+  assignee_name: string | null;
+};
+
 /** Open todos assigned to this user on boards where they are a member. */
 export async function listOpenTodosAssignedToUser(
   appUserId: string
@@ -230,7 +243,7 @@ export async function listTodosForMember(
   appUserId: string
 ): Promise<TaskBoardTodoRow[]> {
   const { rows } = await cloudSqlPool.query<TaskBoardTodoRow>(
-    `SELECT t.id, t.board_id, t.title, t.status, t.sort_order,
+    `SELECT t.id, t.board_id, t.title, t.status, t.sort_order, t.updated_at,
             t.assigned_to_app_user_id,
             au.email AS assignee_email,
             au.name AS assignee_name,
@@ -275,7 +288,8 @@ export async function updateTodoAssigneeForMember(
   if (assigneeAppUserId === null) {
     const { rowCount } = await cloudSqlPool.query(
       `UPDATE task_board_todos t
-       SET assigned_to_app_user_id = NULL
+       SET assigned_to_app_user_id = NULL,
+           updated_at = now()
        WHERE t.id = $1 AND t.board_id = $2
          AND EXISTS (
            SELECT 1 FROM task_board_members m
@@ -288,7 +302,8 @@ export async function updateTodoAssigneeForMember(
 
   const { rowCount } = await cloudSqlPool.query(
     `UPDATE task_board_todos t
-     SET assigned_to_app_user_id = $4
+     SET assigned_to_app_user_id = $4,
+         updated_at = now()
      WHERE t.id = $1 AND t.board_id = $2
        AND EXISTS (
          SELECT 1 FROM task_board_members m
@@ -324,7 +339,7 @@ export async function createTodoForMember(
   const due = normalizeOptionalIsoDate(dueDateIso ?? null);
 
   const { rows } = await cloudSqlPool.query<{ id: string }>(
-    `INSERT INTO task_board_todos (board_id, title, status, sort_order, due_date)
+    `INSERT INTO task_board_todos (board_id, title, status, sort_order, due_date, updated_at)
      SELECT $1, $2, 'todo',
             COALESCE(
               (SELECT MAX(t2.sort_order)
@@ -332,7 +347,8 @@ export async function createTodoForMember(
                WHERE t2.board_id = $1 AND t2.status = 'todo'),
               -1
             ) + 1,
-            $4::date
+            $4::date,
+            now()
      WHERE EXISTS (
        SELECT 1 FROM task_board_members m
        WHERE m.board_id = $1 AND m.app_user_id = $3
@@ -352,7 +368,8 @@ export async function updateTodoDueDateForMember(
   const due = normalizeOptionalIsoDate(dueDateIso ?? null);
   const { rowCount } = await cloudSqlPool.query(
     `UPDATE task_board_todos t
-     SET due_date = $4::date
+     SET due_date = $4::date,
+         updated_at = now()
      WHERE t.id = $1 AND t.board_id = $2
        AND EXISTS (
          SELECT 1 FROM task_board_members m
@@ -413,7 +430,7 @@ export async function setTodoDoneState(
 
     await client.query(
       `UPDATE task_board_todos
-       SET status = $1, sort_order = $2
+       SET status = $1, sort_order = $2, updated_at = now()
        WHERE id = $3 AND board_id = $4`,
       [nextStatus, sortOrder, todoId, boardId]
     );
@@ -531,4 +548,130 @@ export async function searchAppUsersForBoardInvite(
     [boardId, creatorAppUserId, like]
   );
   return rows;
+}
+
+export async function getTodoForMember(
+  boardId: string,
+  todoId: string,
+  appUserId: string
+): Promise<TaskBoardTodoDetailForSync | null> {
+  const { rows } = await cloudSqlPool.query<TaskBoardTodoDetailForSync>(
+    `SELECT t.id, t.board_id, t.title, t.status, to_char(t.due_date, 'YYYY-MM-DD') AS due_date, t.updated_at,
+            t.assigned_to_app_user_id,
+            au.email AS assignee_email,
+            au.name AS assignee_name
+     FROM task_board_todos t
+     LEFT JOIN app_users au ON au.id = t.assigned_to_app_user_id
+     WHERE t.id = $1 AND t.board_id = $2
+       AND EXISTS (
+         SELECT 1 FROM task_board_members m
+         WHERE m.board_id = t.board_id AND m.app_user_id = $3
+       )
+     LIMIT 1`,
+    [todoId, boardId, appUserId]
+  );
+  return rows[0] ?? null;
+}
+
+/** All todo ids on a board (caller must be a member). */
+export async function listTodoIdsOnBoardForMember(
+  boardId: string,
+  appUserId: string
+): Promise<string[]> {
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT t.id
+     FROM task_board_todos t
+     WHERE t.board_id = $1
+       AND EXISTS (
+         SELECT 1 FROM task_board_members m
+         WHERE m.board_id = t.board_id AND m.app_user_id = $2
+       )
+     ORDER BY t.sort_order ASC`,
+    [boardId, appUserId]
+  );
+  return rows.map((r) => r.id);
+}
+
+export async function listBoardsForMemberSimple(
+  appUserId: string
+): Promise<Array<{ id: string; title: string }>> {
+  const { rows } = await cloudSqlPool.query<{ id: string; title: string }>(
+    `SELECT b.id, b.title
+     FROM task_boards b
+     INNER JOIN task_board_members m ON m.board_id = b.id AND m.app_user_id = $1
+     ORDER BY b.updated_at DESC`,
+    [appUserId]
+  );
+  return rows;
+}
+
+export async function upsertTodoFromGoogleSync(input: {
+  boardId: string;
+  appUserId: string;
+  title: string;
+  status: "todo" | "done";
+  dueDateIso: string | null;
+  updatedAt: Date;
+}): Promise<string | null> {
+  const trimmed = input.title.trim();
+  if (!trimmed) return null;
+  const due = normalizeOptionalIsoDate(input.dueDateIso ?? null);
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `INSERT INTO task_board_todos (board_id, title, status, sort_order, due_date, updated_at)
+     SELECT $1, $2, $4,
+            COALESCE((SELECT MAX(t2.sort_order) FROM task_board_todos t2 WHERE t2.board_id = $1), -1) + 1,
+            $5::date,
+            $6
+     WHERE EXISTS (
+       SELECT 1 FROM task_board_members m
+       WHERE m.board_id = $1 AND m.app_user_id = $3
+     )
+     RETURNING id`,
+    [
+      input.boardId,
+      trimmed,
+      input.appUserId,
+      input.status,
+      due,
+      input.updatedAt,
+    ]
+  );
+  return rows[0]?.id ?? null;
+}
+
+export async function updateTodoFromGoogleSync(input: {
+  boardId: string;
+  todoId: string;
+  appUserId: string;
+  title: string;
+  status: "todo" | "done";
+  dueDateIso: string | null;
+  updatedAt: Date;
+}): Promise<boolean> {
+  const trimmed = input.title.trim();
+  if (!trimmed) return false;
+  const due = normalizeOptionalIsoDate(input.dueDateIso ?? null);
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE task_board_todos t
+     SET title = $4,
+         status = $5,
+         due_date = $6::date,
+         updated_at = $7
+     WHERE t.id = $1
+       AND t.board_id = $2
+       AND EXISTS (
+         SELECT 1 FROM task_board_members m
+         WHERE m.board_id = t.board_id AND m.app_user_id = $3
+       )`,
+    [
+      input.todoId,
+      input.boardId,
+      input.appUserId,
+      trimmed,
+      input.status,
+      due,
+      input.updatedAt,
+    ]
+  );
+  return (rowCount ?? 0) > 0;
 }

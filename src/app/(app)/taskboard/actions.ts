@@ -12,6 +12,7 @@ import {
   deleteBoardAsCreator,
   getBoardForMember,
   getTodoTitleForMember,
+  listTodoIdsOnBoardForMember,
   removeMemberAsCreator,
   searchAppUsersForBoardInvite,
   setTodoDoneState,
@@ -19,6 +20,21 @@ import {
   updateTodoAssigneeForMember,
   updateTodoDueDateForMember,
 } from "@/lib/taskBoardQueries";
+import { listBoardMemberAppUserIdsWithGoogleConnection } from "@/lib/googleTasksSyncQueries";
+import { syncBoardFromGoogle, syncTodoToGoogle } from "@/lib/googleTasksSync";
+
+async function safeSyncTodoToGoogle(input: {
+  actingAppUserId: string;
+  boardId: string;
+  todoId: string;
+  targetMemberIds?: string[] | null;
+}) {
+  try {
+    await syncTodoToGoogle(input);
+  } catch (e) {
+    console.warn("[taskboard] google tasks outbound sync failed", e);
+  }
+}
 
 async function requireAppUserId(): Promise<string> {
   const session = await auth();
@@ -39,6 +55,11 @@ export async function createBoardAction(title: string): Promise<
     await assertNotSubcontractorForWrite();
     const appUserId = await requireAppUserId();
     const boardId = await createBoardWithCreatorMember(appUserId, title);
+    try {
+      await syncBoardFromGoogle({ appUserId, boardId });
+    } catch (e) {
+      console.warn("[taskboard] google tasks board bootstrap failed", e);
+    }
     revalidatePath("/taskboard");
     return { ok: true, boardId };
   } catch (e) {
@@ -116,6 +137,7 @@ export async function createTodoAction(
     if (!id) {
       return { ok: false, error: "Board not found or no access." };
     }
+    await safeSyncTodoToGoogle({ actingAppUserId: appUserId, boardId, todoId: id });
     revalidatePath(`/taskboard/${boardId}`);
     if (dueDateIso != null && String(dueDateIso).trim() !== "") {
       revalidatePath("/", "page");
@@ -147,6 +169,7 @@ export async function setTodoDueDateAction(
     if (!ok) {
       return { ok: false, error: "Todo not found or no access." };
     }
+    await safeSyncTodoToGoogle({ actingAppUserId: appUserId, boardId, todoId });
     revalidatePath(`/taskboard/${boardId}`);
     revalidatePath("/", "page");
     return { ok: true };
@@ -172,6 +195,7 @@ export async function setTodoDoneAction(
     if (!ok) {
       return { ok: false, error: "Todo not found or no access." };
     }
+    await safeSyncTodoToGoogle({ actingAppUserId: appUserId, boardId, todoId });
     revalidatePath(`/taskboard/${boardId}`);
     revalidatePath("/", "page");
     return { ok: true };
@@ -206,6 +230,8 @@ export async function setTodoAssigneeAction(
           "Could not update assignee (todo not found, no access, or assignee is not a board member).",
       };
     }
+
+    await safeSyncTodoToGoogle({ actingAppUserId: appUserId, boardId, todoId });
 
     if (
       assigneeAppUserId != null &&
@@ -287,6 +313,24 @@ export async function addBoardMemberAction(
       }
     } catch (e) {
       console.warn("[taskboard] board invite notification failed", e);
+    }
+
+    try {
+      const connected =
+        await listBoardMemberAppUserIdsWithGoogleConnection(boardId);
+      if (connected.includes(memberAppUserId)) {
+        const todoIds = await listTodoIdsOnBoardForMember(boardId, appUserId);
+        for (const todoId of todoIds) {
+          await safeSyncTodoToGoogle({
+            actingAppUserId: appUserId,
+            boardId,
+            todoId,
+            targetMemberIds: [memberAppUserId],
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[taskboard] google tasks bootstrap for new member failed", e);
     }
 
     revalidatePath(`/taskboard/${boardId}`);

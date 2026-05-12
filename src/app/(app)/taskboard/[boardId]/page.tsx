@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 import { todoDueDateToInputValue } from "@/lib/taskBoardDueDate";
+import { syncBoardFromGoogle } from "@/lib/googleTasksSync";
 import {
   getBoardForMember,
   listMembersForBoard,
@@ -25,6 +26,11 @@ export default async function TaskboardBoardPage({ params }: Props) {
   }
 
   const { boardId } = await params;
+  try {
+    await syncBoardFromGoogle({ appUserId, boardId });
+  } catch (e) {
+    console.warn("[taskboard] google tasks inbound sync failed", e);
+  }
   const board = await getBoardForMember(boardId, appUserId);
   if (!board) {
     notFound();
