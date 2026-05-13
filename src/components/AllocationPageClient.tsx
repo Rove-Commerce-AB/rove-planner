@@ -1090,6 +1090,7 @@ function AllocationPageClientImpl({
               handleCellConsultantInputKeyDown={handleCellConsultantInputKeyDown}
               savingCellConsultant={savingCellConsultant}
               formatWeekLabel={formatAllocationWeekLabel}
+              openConsultantWeekRangeEdit={(params) => setEditRangeModalParams(params)}
             />
           )}
       </div>

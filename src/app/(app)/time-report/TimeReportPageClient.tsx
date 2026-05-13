@@ -512,7 +512,7 @@ const EditableHourTd = memo(function EditableHourTd({
   return (
     <td
       {...columnInteractionProps}
-      className={`group/comment-tip relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
+      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
     >
       <div
         role="button"
@@ -527,7 +527,9 @@ const EditableHourTd = memo(function EditableHourTd({
             if (!isEditing) onStartEdit();
           }
         }}
-        className={`absolute inset-0 flex items-center justify-center rounded-sm transition-colors ${isEditing ? "cursor-default" : "cursor-pointer hover:bg-bg-muted/60"}`}
+        className={`absolute inset-0 flex items-center justify-center rounded-sm transition-colors ${
+          hasInternalComment ? "group/comment-tip" : ""
+        } ${isEditing ? "cursor-default" : "cursor-pointer hover:bg-bg-muted/60"}`}
       >
         <TimeReportHourCell
           value={value}
@@ -539,23 +541,23 @@ const EditableHourTd = memo(function EditableHourTd({
           onBlur={onBlur}
           compact={compact}
         />
-      </div>
-      {hasInternalComment ? (
-        <>
-          <svg
-            className={`pointer-events-none absolute top-0 right-0 z-10 text-brand-signal ${compact ? "h-2 w-2" : "h-2.5 w-2.5"}`}
-            viewBox="0 0 8 8"
-            aria-hidden
-          >
-            <polygon points="8 0 8 8 0 0" className="fill-current" />
-          </svg>
+        {hasInternalComment ? (
           <div
             role="tooltip"
-            className="absolute bottom-full left-1/2 z-50 mb-0.5 w-max max-w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-default px-2 py-1.5 text-left text-[11px] leading-snug text-text-primary opacity-0 shadow-md transition-none group-hover/comment-tip:opacity-100"
+            className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-0.5 w-max max-w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-default px-2 py-1.5 text-left text-[11px] leading-snug text-text-primary opacity-0 shadow-md transition-none group-hover/comment-tip:opacity-100"
           >
             {commentPreview}
           </div>
-        </>
+        ) : null}
+      </div>
+      {hasInternalComment ? (
+        <svg
+          className={`pointer-events-none absolute top-0 right-0 z-10 text-brand-signal ${compact ? "h-2 w-2" : "h-2.5 w-2.5"}`}
+          viewBox="0 0 8 8"
+          aria-hidden
+        >
+          <polygon points="8 0 8 8 0 0" className="fill-current" />
+        </svg>
       ) : null}
     </td>
   );

@@ -45,6 +45,85 @@ export type AddInitialParams = {
   projectLabel?: string;
 };
 
+/** Same payload as `AllocationPageClient` edit-range modal (consultant / project row drag). */
+export type ConsultantWeekRangeEditParams = {
+  consultantId: string;
+  consultantName: string;
+  projectId: string;
+  projectLabel: string;
+  roleId: string | null;
+  roleName?: string;
+  weeks: {
+    year: number;
+    week: number;
+    allocationId: string | null;
+    currentHours: number;
+  }[];
+  availableHoursByWeek: number[];
+};
+
+type CustomerViewForRangeFind = Array<{
+  customer: { id: string };
+  projectGroups: Array<{
+    project: { id: string };
+    consultantRows: Array<{
+      consultantId: string;
+      roleId: string | null;
+      roleName: string;
+      weeks: { week: number; cells: { id: string; hours: number }[] }[];
+    }>;
+  }>;
+}>;
+
+type ProjectViewForRangeFind = Array<{
+  project: { id: string; customer_id: string };
+  consultantRows: Array<{
+    consultantId: string;
+    roleId: string | null;
+    roleName: string;
+    weeks: { week: number; cells: { id: string; hours: number }[] }[];
+  }>;
+}>;
+
+function findConsultantWeeksForRangeEdit(
+  tab: "customer" | "project",
+  perCustomer: unknown[],
+  perProject: unknown[],
+  drag: {
+    customerId: string;
+    projectId: string;
+    consultantId?: string;
+    roleId?: string | null;
+  }
+): { roleName: string; weeks: { week: number; cells: { id: string; hours: number }[] }[] } | null {
+  const roleKey = drag.roleId ?? null;
+  if (tab === "customer") {
+    for (const row of perCustomer as CustomerViewForRangeFind) {
+      if (row.customer.id !== drag.customerId) continue;
+      for (const pg of row.projectGroups) {
+        if (pg.project.id !== drag.projectId) continue;
+        for (const cr of pg.consultantRows) {
+          if (cr.consultantId !== drag.consultantId) continue;
+          if ((cr.roleId ?? null) !== roleKey) continue;
+          return { roleName: cr.roleName, weeks: cr.weeks };
+        }
+      }
+    }
+    return null;
+  }
+  for (const pr of perProject as ProjectViewForRangeFind) {
+    if (pr.project.id !== drag.projectId || pr.project.customer_id !== drag.customerId) {
+      continue;
+    }
+    for (const cr of pr.consultantRows) {
+      if (cr.consultantId !== drag.consultantId) continue;
+      if ((cr.roleId ?? null) !== roleKey) continue;
+      return { roleName: cr.roleName, weeks: cr.weeks };
+    }
+  }
+  return null;
+}
+
 export type AllocationCustomerProjectTabsProps = {
   tab: "customer" | "project";
   data: AllocationPageData;
@@ -75,6 +154,8 @@ export type AllocationCustomerProjectTabsProps = {
   cellError: string | null;
   setAddModalOpen: Dispatch<SetStateAction<boolean>>;
   setAddInitialParams: Dispatch<SetStateAction<AddInitialParams | null>>;
+  /** Multi-week drag on a consultant row opens edit-range (same as consultant tab project row). */
+  openConsultantWeekRangeEdit: (params: ConsultantWeekRangeEditParams) => void;
   editingCellConsultant: EditingCellConsultant | null;
   setEditingCellConsultant: Dispatch<SetStateAction<EditingCellConsultant | null>>;
   editingCellConsultantValue: string;
@@ -188,17 +269,58 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
         });
         p.setEditingCellValue(String(drag.startTotalHours ?? 0));
       } else if (drag.mode === "consultant") {
-        p.setAddInitialParams({
-          consultantId: drag.consultantId,
-          consultantName: drag.consultantName,
-          year: wFrom.year,
-          weekFrom: wFrom.week,
-          weekTo: wTo.week,
-          projectId: drag.projectId,
-          projectLabel: `${drag.customerName} - ${drag.projectName}`,
-        });
-        p.setAddModalOpen(true);
-        setPreventNextConsultantCellClick(true);
+        const found = findConsultantWeeksForRangeEdit(
+          tab,
+          p.perCustomer,
+          p.perProject,
+          drag
+        );
+        const consultant = data.consultants.find((c) => c.id === drag.consultantId);
+        let openedEditRange = false;
+        if (found && drag.consultantId) {
+          const weeks: ConsultantWeekRangeEditParams["weeks"] = [];
+          const availableHoursByWeek: number[] = [];
+          for (let idx = lo; idx <= hi; idx++) {
+            const wk = data.weeks[idx];
+            if (!wk) continue;
+            const cells = found.weeks[idx]?.cells ?? [];
+            const totalHours = cells.reduce((s, c) => s + c.hours, 0);
+            weeks.push({
+              year: wk.year,
+              week: wk.week,
+              allocationId: cells[0]?.id ?? null,
+              currentHours: totalHours,
+            });
+            availableHoursByWeek.push(consultant?.availableHoursByWeek[idx] ?? 0);
+          }
+          if (weeks.length > 0) {
+            setPreventNextConsultantCellClick(true);
+            p.openConsultantWeekRangeEdit({
+              consultantId: drag.consultantId,
+              consultantName: drag.consultantName ?? "",
+              projectId: drag.projectId,
+              projectLabel: `${drag.customerName} - ${drag.projectName}`,
+              roleId: drag.roleId ?? null,
+              roleName: found.roleName || undefined,
+              weeks,
+              availableHoursByWeek,
+            });
+            openedEditRange = true;
+          }
+        }
+        if (!openedEditRange) {
+          p.setAddInitialParams({
+            consultantId: drag.consultantId,
+            consultantName: drag.consultantName,
+            year: wFrom.year,
+            weekFrom: wFrom.week,
+            weekTo: wTo.week,
+            projectId: drag.projectId,
+            projectLabel: `${drag.customerName} - ${drag.projectName}`,
+          });
+          p.setAddModalOpen(true);
+          setPreventNextConsultantCellClick(true);
+        }
       } else {
         p.setAddInitialParams({
           year: wFrom.year,
@@ -222,7 +344,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
-  }, [tab, customerDragState, customerDragMoved, data.weeks, p]);
+  }, [tab, customerDragState, customerDragMoved, data, p]);
 
   if (tab === "customer") {
     return (

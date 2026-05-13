@@ -143,6 +143,48 @@ export async function logBulkAllocationHistory(
   });
 }
 
+/** Same week span semantics as `createAllocationsForWeekRange` (rollover when weekFrom > weekTo). */
+function allocationWeekRange(
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): { y: number; w: number }[] {
+  const weeks: { y: number; w: number }[] = [];
+  if (weekFrom <= weekTo) {
+    for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
+  } else {
+    for (let w = weekFrom; w <= 52; w++) weeks.push({ y: year, w });
+    for (let w = 1; w <= weekTo; w++) weeks.push({ y: year + 1, w });
+  }
+  return weeks;
+}
+
+/** Remove allocations for this consultant / project / role in the given week span (inclusive). */
+export async function deleteAllocationsInWeekRange(
+  consultantId: string | null,
+  projectId: string,
+  roleId: string | null,
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<void> {
+  const weeks = allocationWeekRange(year, weekFrom, weekTo);
+  if (weeks.length === 0) return;
+  const ys = weeks.map((x) => x.y);
+  const ws = weeks.map((x) => x.w);
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id FROM allocations
+     WHERE project_id = $1
+       AND consultant_id IS NOT DISTINCT FROM $2::uuid
+       AND role_id IS NOT DISTINCT FROM $3::uuid
+       AND (year, week) IN (SELECT * FROM unnest($4::int[], $5::int[]) AS t(y, w))`,
+    [projectId, consultantId, roleId, ys, ws]
+  );
+  const ids = rows.map((r) => r.id);
+  if (ids.length === 0) return;
+  await deleteAllocationsWithHistory(ids);
+}
+
 export async function getBookingAllocationsForRow(
   consultantId: string | null,
   projectId: string,

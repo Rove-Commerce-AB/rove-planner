@@ -11,6 +11,7 @@ import { getRolesWithRateForAllocation } from "@/lib/projectRatesClient";
 import { createAllocationsForWeekRange } from "@/lib/allocationsClient";
 import {
   createAllocationsByPercent,
+  deleteAllocationsInWeekRange,
   revalidateAllocationPage,
   logBulkAllocationHistory,
 } from "@/app/(app)/allocation/actions";
@@ -230,28 +231,46 @@ export function AddAllocationModal({
         handleClose();
       } else {
         const hours = parseFloat(hoursPerWeek);
-        if (isNaN(hours) || hours < 0.01) {
-          setError("Hours must be at least 0.01");
+        if (isNaN(hours) || hours < 0) {
+          setError("Hours must be 0 or a positive number");
           setSubmitting(false);
           return;
         }
-        const records = await createAllocationsForWeekRange(
-          effectiveConsultantId ?? null,
-          projectId,
-          effectiveRoleId,
-          allocYear,
-          fromWeek,
-          toWeek,
-          hours
-        );
-        await revalidateAllocationPage();
-        onSuccess();
-        handleClose();
-        if (records.length > 0) {
-          logBulkAllocationHistory(
-            records.map((r) => r.id),
-            records.reduce((s, r) => s + r.hours, 0)
-          ).catch(() => {});
+        if (hours === 0) {
+          await deleteAllocationsInWeekRange(
+            effectiveConsultantId ?? null,
+            projectId,
+            effectiveRoleId,
+            allocYear,
+            fromWeek,
+            toWeek
+          );
+          await revalidateAllocationPage();
+          onSuccess();
+          handleClose();
+        } else if (hours < 0.01) {
+          setError("Hours must be at least 0.01");
+          setSubmitting(false);
+          return;
+        } else {
+          const records = await createAllocationsForWeekRange(
+            effectiveConsultantId ?? null,
+            projectId,
+            effectiveRoleId,
+            allocYear,
+            fromWeek,
+            toWeek,
+            hours
+          );
+          await revalidateAllocationPage();
+          onSuccess();
+          handleClose();
+          if (records.length > 0) {
+            logBulkAllocationHistory(
+              records.map((r) => r.id),
+              records.reduce((s, r) => s + r.hours, 0)
+            ).catch(() => {});
+          }
         }
       }
     } catch (e) {

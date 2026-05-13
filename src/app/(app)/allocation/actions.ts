@@ -12,6 +12,7 @@ import {
   getBookingAllocationsForRow as getBookingAllocationsForRowRaw,
   deleteAllocationWithHistory as deleteAllocationWithHistoryRaw,
   deleteAllocationsWithHistory as deleteAllocationsWithHistoryRaw,
+  deleteAllocationsInWeekRange as deleteAllocationsInWeekRangeRaw,
 } from "@/lib/allocationWrite";
 import type { AllocationHistoryEntry } from "@/types";
 import type { AllocationHistoryDetails } from "@/types";
@@ -83,6 +84,25 @@ export async function deleteAllocationsWithHistory(allocationIds: string[]): Pro
   return deleteAllocationsWithHistoryRaw(allocationIds);
 }
 
+export async function deleteAllocationsInWeekRange(
+  consultantId: string | null,
+  projectId: string,
+  roleId: string | null,
+  year: number,
+  weekFrom: number,
+  weekTo: number
+): Promise<void> {
+  await assertNotSubcontractorForWrite();
+  return deleteAllocationsInWeekRangeRaw(
+    consultantId,
+    projectId,
+    roleId,
+    year,
+    weekFrom,
+    weekTo
+  );
+}
+
 export async function createAllocationsByPercent(
   consultantId: string | null,
   projectId: string,
@@ -94,6 +114,18 @@ export async function createAllocationsByPercent(
 ): Promise<void> {
   await assertNotSubcontractorForWrite();
   const pct = Math.max(0, Math.min(100, percent)) / 100;
+  if (pct === 0) {
+    await deleteAllocationsInWeekRangeRaw(
+      consultantId,
+      projectId,
+      roleId,
+      year,
+      weekFrom,
+      weekTo
+    );
+    revalidateTag("allocation-page", "max");
+    return;
+  }
   const records = await createAllocationsForWeekRangeWithGetter(
     consultantId,
     projectId,
