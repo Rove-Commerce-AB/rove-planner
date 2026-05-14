@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import { getDashboardData } from "@/lib/dashboard";
 import { getRevenueForecast } from "@/lib/revenueForecast";
 import { getCurrentYearWeek, addWeeksToYearWeek } from "@/lib/dateUtils";
+import {
+  expandYearWeekRangeInclusive,
+  getAllocationBudgetDrilldown,
+} from "@/lib/allocationBudgetReport";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getOccupancyReportData, getOccupancyByRoleReport } from "@/lib/occupancyReport";
 import { getRoles } from "@/lib/roles";
@@ -9,6 +13,7 @@ import { getTeams } from "@/lib/teams";
 import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { OccupancyChartPanel } from "@/components/OccupancyChartPanel";
 import { RoleOccupancyPanel } from "@/components/RoleOccupancyPanel";
+import { AllocationBudgetDrilldownPanel } from "@/components/AllocationBudgetDrilldownPanel";
 import { PageHeader } from "@/components/ui";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
@@ -37,13 +42,19 @@ export default async function ReportsPage() {
     weeksForRoleOccupancy.push(addWeeksToYearWeek(currentYear, currentWeek, i));
   }
 
+  const allocStart = addWeeksToYearWeek(currentYear, currentWeek, -2);
+  const allocEnd = addWeeksToYearWeek(currentYear, currentWeek, 25);
+  const allocWeeks = expandYearWeekRangeInclusive(allocStart, allocEnd);
+
   const [roles, teams] = await Promise.all([getRoles(), getTeams()]);
-  const [data, forecast, occupancyData, roleOccupancyRows] = await Promise.all([
-    getDashboardData(),
-    getRevenueForecast(currentYear, 1, currentYear + 1, 52),
-    getOccupancyReportData(weeks, undefined, undefined),
-    getOccupancyByRoleReport(weeksForRoleOccupancy, roles),
-  ]);
+  const [data, forecast, occupancyData, roleOccupancyRows, allocationBudgetDrilldown] =
+    await Promise.all([
+      getDashboardData(),
+      getRevenueForecast(currentYear, 1, currentYear + 1, 52),
+      getOccupancyReportData(weeks, undefined, undefined),
+      getOccupancyByRoleReport(weeksForRoleOccupancy, roles),
+      getAllocationBudgetDrilldown(allocWeeks),
+    ]);
 
   return (
     <div className="p-6">
@@ -55,6 +66,11 @@ export default async function ReportsPage() {
         />
 
         <div className="flex flex-col gap-6">
+          <AllocationBudgetDrilldownPanel
+            initialData={allocationBudgetDrilldown}
+            initialFrom={allocStart}
+            initialTo={allocEnd}
+          />
           <OccupancyChartPanel
             initialData={occupancyData}
             roles={roles}

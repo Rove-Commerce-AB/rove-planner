@@ -1,6 +1,9 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import {
+  cloudSqlPool,
+  isTransientCloudSqlConnectError,
+} from "@/lib/cloudSqlPool";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
 import { upsertGoogleUserConnection } from "@/lib/googleTasksSyncQueries";
 
@@ -31,19 +34,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ user }) {
       // Blockera inloggning om e-post inte finns i app_users
       const email = user.email ?? null;
-      const { rows } = await timedDebug(
-        "auth",
-        "signIn app_user lookup",
-        () =>
-          cloudSqlPool.query(
-            "SELECT id FROM app_users WHERE email = $1",
-            [email]
-          ),
-        { email }
-      );
-      const allowed = rows.length > 0;
-      debugLog("auth", "signIn decision", { email, allowed });
-      return allowed;
+      try {
+        const { rows } = await timedDebug(
+          "auth",
+          "signIn app_user lookup",
+          () =>
+            cloudSqlPool.query(
+              "SELECT id FROM app_users WHERE email = $1",
+              [email]
+            ),
+          { email }
+        );
+        const allowed = rows.length > 0;
+        debugLog("auth", "signIn decision", { email, allowed });
+        return allowed;
+      } catch (e) {
+        console.error("[auth] signIn app_user lookup failed", {
+          email,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        if (isTransientCloudSqlConnectError(e)) {
+          return false;
+        }
+        throw e;
+      }
     },
     async jwt({ token, trigger, account, profile }) {
       const email = token.email ?? null;
@@ -61,20 +75,41 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       if (!shouldSync) return token;
 
-      const { rows } = await timedDebug(
-        "auth",
-        "jwt app_user lookup",
-        () =>
-          cloudSqlPool.query(
-            "SELECT id, role, name FROM app_users WHERE email = $1",
-            [email]
-          ),
-        { email, trigger: trigger ?? "session" }
-      );
+      let rows: { id: string; role: string; name: string | null }[] = [];
+      try {
+        const result = await timedDebug(
+          "auth",
+          "jwt app_user lookup",
+          () =>
+            cloudSqlPool.query(
+              "SELECT id, role, name FROM app_users WHERE email = $1",
+              [email]
+            ),
+          { email, trigger: trigger ?? "session" }
+        );
+        rows = result.rows as typeof rows;
+      } catch (e) {
+        const hasCachedIdentity =
+          typeof token.appUserId === "string" || Boolean(token.role);
+        if (isTransientCloudSqlConnectError(e) && hasCachedIdentity) {
+          console.warn(
+            "[auth] jwt app_user lookup failed; using cached token until next refresh",
+            { email, error: e instanceof Error ? e.message : String(e) }
+          );
+          token.appUserSyncedAt = Date.now();
+          return token;
+        }
+        throw e;
+      }
 
       if (rows[0]) {
         token.appUserId = rows[0].id;
-        token.role = rows[0].role;
+        const dbRole = rows[0].role;
+        if (dbRole === "admin" || dbRole === "member" || dbRole === "subcontractor") {
+          token.role = dbRole;
+        } else {
+          token.role = undefined;
+        }
         token.name = rows[0].name ?? token.name;
         token.appUserSyncedAt = Date.now();
       } else {
@@ -98,29 +133,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           typeof account.expires_at === "number" && Number.isFinite(account.expires_at)
             ? new Date(account.expires_at * 1000)
             : null;
-        await upsertGoogleUserConnection({
-          appUserId: token.appUserId,
-          googleSub: account.providerAccountId,
-          googleEmail:
-            typeof profile?.email === "string"
-              ? profile.email
-              : email,
-          scope:
-            typeof account.scope === "string" ? account.scope : null,
-          accessToken:
-            typeof account.access_token === "string"
-              ? account.access_token
-              : null,
-          refreshToken:
-            typeof account.refresh_token === "string"
-              ? account.refresh_token
-              : null,
-          tokenType:
-            typeof account.token_type === "string"
-              ? account.token_type
-              : null,
-          accessTokenExpiresAt: expiresAt,
-        });
+        try {
+          await upsertGoogleUserConnection({
+            appUserId: token.appUserId,
+            googleSub: account.providerAccountId,
+            googleEmail:
+              typeof profile?.email === "string"
+                ? profile.email
+                : email,
+            scope:
+              typeof account.scope === "string" ? account.scope : null,
+            accessToken:
+              typeof account.access_token === "string"
+                ? account.access_token
+                : null,
+            refreshToken:
+              typeof account.refresh_token === "string"
+                ? account.refresh_token
+                : null,
+            tokenType:
+              typeof account.token_type === "string"
+                ? account.token_type
+                : null,
+            accessTokenExpiresAt: expiresAt,
+          });
+        } catch (e) {
+          if (!isTransientCloudSqlConnectError(e)) throw e;
+          console.warn(
+            "[auth] upsertGoogleUserConnection skipped (transient db error)",
+            { email, error: e instanceof Error ? e.message : String(e) }
+          );
+        }
       }
       return token;
     },

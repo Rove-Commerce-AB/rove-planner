@@ -356,6 +356,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
             {data.weeks.map((w) => (
               <col key={`${w.year}-${w.week}`} className="w-[29px]" />
             ))}
+            <col className="w-[4rem]" />
           </colgroup>
           <thead>
             <tr className="border-b border-grid-subtle">
@@ -375,6 +376,12 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                   {span.label}
                 </th>
               ))}
+              <th
+                rowSpan={2}
+                className="border-r border-grid px-1 py-1 text-center text-[10px] font-medium text-text-primary opacity-80"
+              >
+                Total
+              </th>
             </tr>
             <tr className="border-b border-grid-subtle">
               {p.renderWeekHeaderCells("customer", "border-grid")}
@@ -460,6 +467,15 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         </td>
                       );
                     })}
+                    <td className="border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
+                      {(() => {
+                        const customerTotal = data.weeks.reduce(
+                          (sum, w) => sum + (row.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
+                          0
+                        );
+                        return customerTotal > 0 ? `${customerTotal}h` : null;
+                      })()}
+                    </td>
                   </tr>
                   {expanded &&
                     row.projectGroups.map((pg) => (
@@ -469,9 +485,15 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           {...allocationRowHoverHandlers(`cust-proj-${row.customer.id}-${pg.project.id}`)}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
-                            <span className="flex items-center gap-1 whitespace-nowrap font-medium text-text-primary">
+                            <Link
+                              href={`/projects/${pg.project.id}`}
+                              onMouseEnter={() =>
+                                p.router.prefetch(`/projects/${pg.project.id}`)
+                              }
+                              className="inline-block min-w-0 max-w-full truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
+                            >
                               {pg.project.name}
-                            </span>
+                            </Link>
                           </td>
                           {data.weeks.map((w, i) => {
                             const total = pg.totalByWeek.get(`${w.year}-${w.week}`) ?? 0;
@@ -557,6 +579,15 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                               </td>
                             );
                           })}
+                          <td className="border-r border-grid-light px-1 py-1 text-right text-[9px] font-medium tabular-nums text-text-primary">
+                            {(() => {
+                              const projectTotal = data.weeks.reduce(
+                                (sum, w) => sum + (pg.totalByWeek.get(`${w.year}-${w.week}`) ?? 0),
+                                0
+                              );
+                              return projectTotal > 0 ? `${projectTotal}h` : null;
+                            })()}
+                          </td>
                         </tr>
                         {pg.consultantRows.map((cr) => (
                       <tr
@@ -565,12 +596,20 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         {...allocationRowHoverHandlers(`cust-cell-${row.customer.id}-${pg.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}
                       >
                         <td className="border-r border-grid-light-subtle px-2 py-1 pl-14 text-text-primary">
-                          <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
-                            {cr.consultantName}
+                          <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
+                            <Link
+                              href={`/consultants/${cr.consultantId}`}
+                              onMouseEnter={() =>
+                                p.router.prefetch(`/consultants/${cr.consultantId}`)
+                              }
+                              className="min-w-0 shrink truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
+                            >
+                              {cr.consultantName}
+                            </Link>
                             {cr.roleName ? (
-                              <span className="opacity-80"> · {cr.roleName}</span>
+                              <span className="shrink-0 opacity-80"> · {cr.roleName}</span>
                             ) : null}
-                          </span>
+                          </div>
                         </td>
                         {cr.weeks.map((w, i) => {
                           const cells = w.cells;
@@ -702,6 +741,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                             </td>
                           );
                         })}
+                        <td className="border-r border-grid-light px-1 py-1" aria-hidden />
                       </tr>
                         ))}
                       </Fragment>
@@ -867,12 +907,20 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       {...allocationRowHoverHandlers(`proj-row-${row.project.id}-${cr.consultantId}-${cr.roleId ?? "none"}`)}
                     >
                       <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
-                        <span className="flex items-center gap-1 whitespace-nowrap text-text-primary">
-                          {cr.consultantName}
+                        <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
+                          <Link
+                            href={`/consultants/${cr.consultantId}`}
+                            onMouseEnter={() =>
+                              p.router.prefetch(`/consultants/${cr.consultantId}`)
+                            }
+                            className="min-w-0 shrink truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
+                          >
+                            {cr.consultantName}
+                          </Link>
                           {cr.roleName ? (
-                            <span className="opacity-80"> · {cr.roleName}</span>
+                            <span className="shrink-0 opacity-80"> · {cr.roleName}</span>
                           ) : null}
-                        </span>
+                        </div>
                       </td>
                       {cr.weeks.map((w, i) => {
                         const cells = w.cells;

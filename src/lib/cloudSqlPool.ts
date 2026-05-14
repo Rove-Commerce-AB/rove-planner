@@ -44,10 +44,17 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   return Math.floor(n);
 }
 
-function isConnectTimeoutError(error: unknown): boolean {
+/** True for errors where retrying or serving stale session may be reasonable. */
+export function isTransientCloudSqlConnectError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
-  return msg.includes("timeout exceeded when trying to connect");
+  return (
+    msg.includes("timeout exceeded when trying to connect") ||
+    msg.includes("econnrefused") ||
+    msg.includes("enotfound") ||
+    msg.includes("socket hang up") ||
+    msg.includes("connection terminated unexpectedly")
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -91,7 +98,7 @@ function buildCloudSqlPoolConfig(): PoolConfig {
     (isProd ? 20_000 : undefined);
   const connectionTimeoutMillis =
     parsePositiveInt(process.env.CLOUD_SQL_CONNECTION_TIMEOUT_MS) ??
-    (isProd ? 5_000 : undefined);
+    (isProd ? 15_000 : undefined);
   const keepAliveEnabled =
     process.env.CLOUD_SQL_KEEP_ALIVE === "false" ? false : true;
   const keepAliveInitialDelayMillis =
@@ -149,7 +156,7 @@ export const cloudSqlPool = new Proxy({} as Pool, {
     if (prop === "query") {
       return async (...args: unknown[]) => {
         const pool = getCloudSqlPool();
-        const retryCount = parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_COUNT) ?? 1;
+        const retryCount = parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_COUNT) ?? 2;
         const retryDelayMs = parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_DELAY_MS) ?? 150;
 
         let attempt = 0;
@@ -158,7 +165,8 @@ export const cloudSqlPool = new Proxy({} as Pool, {
           try {
             return await (pool.query as (...innerArgs: unknown[]) => Promise<unknown>)(...args);
           } catch (error) {
-            const canRetry = isConnectTimeoutError(error) && attempt < retryCount;
+            const canRetry =
+              isTransientCloudSqlConnectError(error) && attempt < retryCount;
             if (!canRetry) throw error;
 
             debugLog("db-pool", "query retry after connect timeout", {
