@@ -66,14 +66,14 @@ export function AllocationPageWrapper({
 
   return (
     <AllocationPageClient
-      data={data}
-      error={error}
-      year={year}
-      weekFrom={weekFrom}
-      weekTo={weekTo}
-      currentYear={currentYear}
-      currentWeek={currentWeek}
-      onWeekRangeChange={handleWeekRangeChange}
+        data={data}
+        error={error}
+        year={year}
+        weekFrom={weekFrom}
+        weekTo={weekTo}
+        currentYear={currentYear}
+        currentWeek={currentWeek}
+        onWeekRangeChange={handleWeekRangeChange}
       embedWeekNavLoading={loading}
     />
   );

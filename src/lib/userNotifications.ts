@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import {
+  getCachedUnreadNotificationCount,
+  revalidateUserNotificationCache,
+} from "@/lib/layoutShell";
+import {
   USER_NOTIFICATION_KIND,
   type AllocationInsertForNotify,
   type UserNotificationKind,
@@ -250,29 +254,23 @@ export async function getNotificationsForCurrentUser(
 export async function getUnreadNotificationCountForCurrentUser(): Promise<number> {
   const sessionUser = await getCurrentAppUser();
   if (!sessionUser?.email) return 0;
+  return getCachedUnreadNotificationCount(sessionUser.email);
+}
 
-  try {
-    const { rows } = await cloudSqlPool.query<{ n: string }>(
-      `SELECT count(*)::text AS n
-       FROM user_notifications un
-       INNER JOIN app_users au ON au.id = un.app_user_id
-       WHERE lower(trim(au.email)) = lower(trim($1))
-         AND un.read_at IS NULL`,
-      [sessionUser.email]
-    );
-    return Number(rows[0]?.n ?? 0);
-  } catch (e) {
-    if (isUserNotificationsAccessError(e)) {
-      return 0;
-    }
-    throw e;
-  }
+function revalidateNotificationCountForEmail(email: string) {
+  revalidateUserNotificationCache(email);
+  revalidateDashboardShell();
 }
 
 async function getCurrentAppUserId(): Promise<string | null> {
   const u = await getCurrentAppUser();
   if (!u?.email) return null;
   return getAppUserIdByEmail(u.email);
+}
+
+async function getCurrentUserEmail(): Promise<string | null> {
+  const u = await getCurrentAppUser();
+  return u?.email ?? null;
 }
 
 export async function markUserNotificationRead(notificationId: string): Promise<void> {
@@ -284,7 +282,9 @@ export async function markUserNotificationRead(notificationId: string): Promise<
        WHERE id = $1 AND app_user_id = $2 AND read_at IS NULL`,
       [notificationId, appUserId]
     );
-    revalidateDashboardShell();
+    const email = await getCurrentUserEmail();
+    if (email) revalidateNotificationCountForEmail(email);
+    else revalidateDashboardShell();
   } catch (e) {
     if (isUserNotificationsAccessError(e)) {
       console.warn("[userNotifications] mark read skipped (DB privileges)", e);
@@ -303,7 +303,9 @@ export async function markAllUserNotificationsRead(): Promise<void> {
        WHERE app_user_id = $1 AND read_at IS NULL`,
       [appUserId]
     );
-    revalidateDashboardShell();
+    const email = await getCurrentUserEmail();
+    if (email) revalidateNotificationCountForEmail(email);
+    else revalidateDashboardShell();
   } catch (e) {
     if (isUserNotificationsAccessError(e)) {
       console.warn("[userNotifications] mark all read skipped (DB privileges)", e);

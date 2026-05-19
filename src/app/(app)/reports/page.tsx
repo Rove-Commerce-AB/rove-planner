@@ -1,17 +1,23 @@
 import { redirect } from "next/navigation";
 import { getDashboardData } from "@/lib/dashboard";
 import { getRevenueForecast } from "@/lib/revenueForecast";
-import { getCurrentYearWeek, addWeeksToYearWeek } from "@/lib/dateUtils";
+import {
+  getCurrentYearWeek,
+  addWeeksToYearWeek,
+  getCurrentCalendarYearMonth,
+} from "@/lib/dateUtils";
 import {
   expandYearWeekRangeInclusive,
   getAllocationBudgetDrilldown,
 } from "@/lib/allocationBudgetReport";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import { getOccupancyReportData, getOccupancyByRoleReport } from "@/lib/occupancyReport";
+import { getReportsOccupancyData } from "@/lib/occupancyReport";
 import { getRoles } from "@/lib/roles";
 import { getTeams } from "@/lib/teams";
 import { RevenueForecastPanel } from "@/components/RevenueForecastPanel";
 import { OccupancyChartPanel } from "@/components/OccupancyChartPanel";
+import { BillableUtilizationMonthlyPanel } from "@/components/BillableUtilizationMonthlyPanel";
+import { getBillableUtilizationMonthlyReport } from "@/lib/billableUtilizationReport";
 import { RoleOccupancyPanel } from "@/components/RoleOccupancyPanel";
 import { AllocationBudgetDrilldownPanel } from "@/components/AllocationBudgetDrilldownPanel";
 import { PageHeader } from "@/components/ui";
@@ -21,6 +27,43 @@ export const dynamic = "force-dynamic";
 
 const OCCUPANCY_WEEKS_BACK = 2;
 const OCCUPANCY_WEEKS_AHEAD = 25;
+const OCCUPANCY_MONTHS_BACK = 2;
+const OCCUPANCY_MONTH_WINDOW = 12;
+
+function addCalendarMonths(
+  year: number,
+  month: number,
+  delta: number
+): { year: number; month: number } {
+  let m = month + delta;
+  let y = year;
+  while (m < 1) {
+    m += 12;
+    y -= 1;
+  }
+  while (m > 12) {
+    m -= 12;
+    y += 1;
+  }
+  return { year: y, month: m };
+}
+
+function buildOccupancyMonthRange(
+  anchorYear: number,
+  anchorMonth: number
+): { year: number; month: number }[] {
+  const start = addCalendarMonths(anchorYear, anchorMonth, -OCCUPANCY_MONTHS_BACK);
+  const months: { year: number; month: number }[] = [];
+  let y = start.year;
+  let m = start.month;
+  for (let i = 0; i < OCCUPANCY_MONTH_WINDOW; i++) {
+    months.push({ year: y, month: m });
+    const next = addCalendarMonths(y, m, 1);
+    y = next.year;
+    m = next.month;
+  }
+  return months;
+}
 
 export default async function ReportsPage() {
   await redirectSubcontractorToAccessDenied();
@@ -31,6 +74,8 @@ export default async function ReportsPage() {
   }
 
   const { year: currentYear, week: currentWeek } = getCurrentYearWeek();
+  const { year: calendarYear, month: calendarMonth } = getCurrentCalendarYearMonth();
+  const occupancyMonths = buildOccupancyMonthRange(calendarYear, calendarMonth);
   const weeks = [];
   for (let i = -OCCUPANCY_WEEKS_BACK; i <= OCCUPANCY_WEEKS_AHEAD; i++) {
     weeks.push(addWeeksToYearWeek(currentYear, currentWeek, i));
@@ -47,14 +92,26 @@ export default async function ReportsPage() {
   const allocWeeks = expandYearWeekRangeInclusive(allocStart, allocEnd);
 
   const [roles, teams] = await Promise.all([getRoles(), getTeams()]);
-  const [data, forecast, occupancyData, roleOccupancyRows, allocationBudgetDrilldown] =
-    await Promise.all([
-      getDashboardData(),
-      getRevenueForecast(currentYear, 1, currentYear + 1, 52),
-      getOccupancyReportData(weeks, undefined, undefined),
-      getOccupancyByRoleReport(weeksForRoleOccupancy, roles),
-      getAllocationBudgetDrilldown(allocWeeks),
-    ]);
+  const occupancyBundlePromise = getReportsOccupancyData(
+    weeks,
+    weeksForRoleOccupancy,
+    roles
+  );
+  const [
+    data,
+    forecast,
+    occupancyBundle,
+    billableUtilizationData,
+    allocationBudgetDrilldown,
+  ] = await Promise.all([
+    getDashboardData(),
+    getRevenueForecast(currentYear, 1, currentYear + 1, 52),
+    occupancyBundlePromise,
+    getBillableUtilizationMonthlyReport(occupancyMonths, undefined, "weighted"),
+    getAllocationBudgetDrilldown(allocWeeks),
+  ]);
+  const occupancyData = occupancyBundle.chart;
+  const roleOccupancyRows = occupancyBundle.byRole;
 
   return (
     <div className="p-6">
@@ -66,17 +123,23 @@ export default async function ReportsPage() {
         />
 
         <div className="flex flex-col gap-6">
-          <AllocationBudgetDrilldownPanel
-            initialData={allocationBudgetDrilldown}
-            initialFrom={allocStart}
-            initialTo={allocEnd}
-          />
           <OccupancyChartPanel
             initialData={occupancyData}
             roles={roles}
             teams={teams}
             currentYear={currentYear}
             currentWeek={currentWeek}
+          />
+          <BillableUtilizationMonthlyPanel
+            initialData={billableUtilizationData}
+            teams={teams}
+            anchorYear={calendarYear}
+            anchorMonth={calendarMonth}
+          />
+          <AllocationBudgetDrilldownPanel
+            initialData={allocationBudgetDrilldown}
+            initialFrom={allocStart}
+            initialTo={allocEnd}
           />
           <RoleOccupancyPanel
             rows={roleOccupancyRows}

@@ -36,6 +36,7 @@ import {
   getHolidayDatesForWeek,
   getHolidayDatesForRange,
   getTimeReportEntries,
+  getTimeReportEntriesForWeeks,
   saveTimeReportEntries,
   copyEntryToWeek,
   copyTimeReportEntriesBatch,
@@ -126,9 +127,8 @@ function promiseWithTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 type TimeReportWeekPayload = Awaited<ReturnType<typeof getTimeReportEntries>>;
 
 /**
- * Sequential week fetches with cooperative abort. Without this, switching months leaves the
- * previous fetch running (N× server actions) alongside the new one and can exhaust the pool —
- * the latest load never finishes and the UI stays on “Loading…”.
+ * Month/week batch load in one server action (sequential DB inside) with cooperative abort.
+ * Replaces N separate server actions from the client to reduce connection pressure.
  */
 async function fetchTimeReportWeeksSequentialUnlessAborted(
   consultantId: string,
@@ -138,19 +138,20 @@ async function fetchTimeReportWeeksSequentialUnlessAborted(
   /** Only set for month aggregate loads — ISO weeks can span two calendar months. */
   calendarMonthForLineFilter?: { year: number; month: number } | null
 ): Promise<TimeReportWeekPayload[] | null> {
-  const out: TimeReportWeekPayload[] = [];
-  for (let wi = 0; wi < weeks.length; wi++) {
-    if (shouldAbort()) return null;
-    const { year: y, week: w } = weeks[wi]!;
-    const payload = await promiseWithTimeout(
-      getTimeReportEntries(consultantId, y, w, calendarMonthForLineFilter ?? undefined),
-      TIME_REPORT_FETCH_TIMEOUT_MS,
-      `${labelPrefix} ${wi + 1}/${weeks.length} ${y}-W${w}`
-    );
-    if (shouldAbort()) return null;
-    out.push(payload);
-  }
-  return out;
+  if (shouldAbort()) return null;
+  if (weeks.length === 0) return [];
+
+  const payloads = await promiseWithTimeout(
+    getTimeReportEntriesForWeeks(
+      consultantId,
+      weeks,
+      calendarMonthForLineFilter ?? undefined
+    ),
+    TIME_REPORT_FETCH_TIMEOUT_MS,
+    `${labelPrefix} (${weeks.length} week(s))`
+  );
+  if (shouldAbort()) return null;
+  return payloads;
 }
 
 /** Native `title` on the Jira/DevOps/ClickUp key: shows summary/title when loaded. */

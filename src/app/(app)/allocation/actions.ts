@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { getAvailableHoursForConsultantWeek } from "@/lib/consultants";
 import { createAllocationsForWeekRangeWithGetter } from "@/lib/allocations";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
@@ -24,7 +24,7 @@ import type { AllocationPageData } from "@/lib/allocationPageTypes";
 
 export async function revalidateAllocationPage(): Promise<void> {
   await assertNotSubcontractorForWrite();
-  revalidateTag("allocation-page", "max");
+  revalidatePath("/allocation");
 }
 
 export async function getAllocationHistory(
@@ -123,7 +123,7 @@ export async function createAllocationsByPercent(
       weekFrom,
       weekTo
     );
-    revalidateTag("allocation-page", "max");
+    revalidatePath("/allocation");
     return;
   }
   const records = await createAllocationsForWeekRangeWithGetter(
@@ -144,7 +144,7 @@ export async function createAllocationsByPercent(
           return Math.round(available * pct * 100) / 100;
         }
   );
-  revalidateTag("allocation-page", "max");
+  revalidatePath("/allocation");
   if (records.length > 0) {
     void logBulkAllocationHistoryRaw(
       records.map((r) => r.id),

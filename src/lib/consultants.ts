@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getCurrentAppUser } from "./appUsers";
@@ -50,11 +51,11 @@ export async function getConsultantByEmail(email: string) {
   return q.fetchConsultantByEmail(email);
 }
 
-export async function getConsultantForCurrentUser() {
+export const getConsultantForCurrentUser = cache(async () => {
   const user = await getCurrentAppUser();
   if (!user?.email) return null;
   return q.fetchConsultantByEmail(user.email);
-}
+});
 
 export async function getConsultantById(id: string) {
   return q.fetchConsultantById(id);

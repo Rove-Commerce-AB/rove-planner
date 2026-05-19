@@ -607,6 +607,25 @@ export async function getTimeReportEntries(
   return { groups, revision };
 }
 
+import { loadTimeReportEntriesForWeeksSequential } from "./timeReportEntriesBatchLoad";
+
+/**
+ * Loads multiple ISO weeks in one server action (same payload per week as getTimeReportEntries).
+ * Sequential DB work avoids parallel pool bursts; reduces client server-action count.
+ */
+export async function getTimeReportEntriesForWeeks(
+  consultantId: string,
+  weeks: { year: number; week: number }[],
+  calendarMonthForLineFilter?: { year: number; month: number } | null
+): Promise<TimeReportWeekData[]> {
+  return loadTimeReportEntriesForWeeksSequential(
+    getTimeReportEntries,
+    consultantId,
+    weeks,
+    calendarMonthForLineFilter
+  );
+}
+
 export async function getTimeReportMonthTotalHours(
   consultantId: string,
   year: number,

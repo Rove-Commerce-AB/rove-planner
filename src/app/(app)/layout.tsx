@@ -1,8 +1,10 @@
 import { AppLayoutClient } from "@/components/AppLayoutClient";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
-import { getUnreadNotificationCountForCurrentUser } from "@/lib/userNotifications";
+import {
+  getCachedProjectManagerNavVisible,
+  getCachedUnreadNotificationCount,
+} from "@/lib/layoutShell";
 
 /** Auth and app_users gatekeeping run in src/proxy.ts. */
 
@@ -13,27 +15,26 @@ export default async function AppLayout({
   const isAdmin = user?.role === "admin";
   const isSubcontractor = user?.role === "subcontractor";
   let canSeeTimeReportProjectManager = false;
-  try {
-    if (!isAdmin && !isSubcontractor) {
+
+  if (isAdmin || isSubcontractor) {
+    canSeeTimeReportProjectManager = true;
+  } else {
+    try {
       const consultant = await getConsultantForCurrentUser();
       if (consultant?.id) {
-        const { rows } = await cloudSqlPool.query<{ id: string }>(
-          `SELECT id FROM projects WHERE project_manager_id = $1 LIMIT 1`,
-          [consultant.id]
-        );
-        canSeeTimeReportProjectManager = rows.length > 0;
+        canSeeTimeReportProjectManager =
+          await getCachedProjectManagerNavVisible(consultant.id);
       }
-    } else {
-      canSeeTimeReportProjectManager = true;
+    } catch {
+      // If the new column isn't present yet (or DB is in-flight), fail closed.
+      canSeeTimeReportProjectManager = false;
     }
-  } catch {
-    // If the new column isn't present yet (or DB is in-flight), fail closed.
-    canSeeTimeReportProjectManager = false;
   }
 
-  const unreadNotificationCount = user
-    ? await getUnreadNotificationCountForCurrentUser()
-    : 0;
+  const unreadNotificationCount =
+    user?.email != null
+      ? await getCachedUnreadNotificationCount(user.email)
+      : 0;
 
   return (
     <AppLayoutClient

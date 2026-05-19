@@ -1,5 +1,6 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCachedConsultantsRaw } from "./consultantsCache";
 import { getProjectsWithCustomer } from "./projects";
@@ -47,7 +48,11 @@ function weekLabel(year: number, week: number): string {
   return `W${week} ${MONTH_NAMES[month - 1]}`;
 }
 
-async function getOccupancyBaseData(
+function weeksCacheKey(weeks: { year: number; week: number }[]): string {
+  return weeks.map((w) => `${w.year}-W${w.week}`).join(",");
+}
+
+async function fetchOccupancyBaseData(
   weeks: { year: number; week: number }[]
 ): Promise<OccupancyBaseData> {
   const [consultantsRaw, allocations, calQuery] = await Promise.all([
@@ -91,6 +96,45 @@ async function getOccupancyBaseData(
     holidaysByCalendar,
     projectMap,
   };
+}
+
+/** Shared consultants/allocations/holidays load for reports (short TTL). */
+export async function getCachedOccupancyBaseData(
+  weeks: { year: number; week: number }[]
+): Promise<OccupancyBaseData> {
+  const key = weeksCacheKey(weeks);
+  const serialized = await unstable_cache(
+    async () => {
+      const data = await fetchOccupancyBaseData(weeks);
+      return {
+        consultantsRaw: data.consultantsRaw,
+        allocations: data.allocations,
+        holidaysByCalendar: Object.fromEntries(data.holidaysByCalendar.entries()),
+        projectMap: Object.fromEntries(data.projectMap.entries()),
+      };
+    },
+    ["occupancy-base", key],
+    { revalidate: 120 }
+  )();
+  return {
+    consultantsRaw: serialized.consultantsRaw,
+    allocations: serialized.allocations,
+    holidaysByCalendar: new Map(
+      Object.entries(serialized.holidaysByCalendar) as [string, CalendarHoliday[]][]
+    ),
+    projectMap: new Map(
+      Object.entries(serialized.projectMap) as [
+        string,
+        { type: ProjectType; probability: number },
+      ][]
+    ),
+  };
+}
+
+async function getOccupancyBaseData(
+  weeks: { year: number; week: number }[]
+): Promise<OccupancyBaseData> {
+  return getCachedOccupancyBaseData(weeks);
 }
 
 function buildOccupancyPointsForFilter(
@@ -218,6 +262,75 @@ export async function getOccupancyReportData(
  * Fetches occupancy per role for the given weeks (e.g. next 10 weeks).
  * Returns one row for "All roles" plus one per role.
  */
+/** Reports page: one base fetch for chart weeks, role panel uses a subset of the same data. */
+export async function getReportsOccupancyData(
+  chartWeeks: { year: number; week: number }[],
+  roleWeeks: { year: number; week: number }[],
+  roles: { id: string; name: string }[]
+): Promise<{
+  chart: OccupancyReportResult;
+  byRole: RoleOccupancyRow[];
+}> {
+  const baseData = await getOccupancyBaseData(chartWeeks);
+  const chartWeeksWithLabel: OccupancyWeek[] = chartWeeks.map((w) => ({
+    year: w.year,
+    week: w.week,
+    label: weekLabel(w.year, w.week),
+  }));
+  const chart: OccupancyReportResult =
+    chartWeeks.length === 0
+      ? { weeks: chartWeeksWithLabel, points: [] }
+      : {
+          weeks: chartWeeksWithLabel,
+          points: buildOccupancyPointsForFilter(
+            chartWeeks,
+            baseData,
+            undefined,
+            undefined
+          ),
+        };
+
+  const roleWeeksWithLabel: OccupancyWeek[] = roleWeeks.map((w) => ({
+    year: w.year,
+    week: w.week,
+    label: weekLabel(w.year, w.week),
+  }));
+  if (roleWeeks.length === 0) {
+    return {
+      chart,
+      byRole: [
+        {
+          roleId: "",
+          roleName: "All roles",
+          weeks: roleWeeksWithLabel,
+          points: [],
+        },
+        ...roles.map((r) => ({
+          roleId: r.id,
+          roleName: r.name,
+          weeks: roleWeeksWithLabel,
+          points: [],
+        })),
+      ],
+    };
+  }
+  const byRole: RoleOccupancyRow[] = [
+    {
+      roleId: "",
+      roleName: "All roles",
+      weeks: roleWeeksWithLabel,
+      points: buildOccupancyPointsForFilter(roleWeeks, baseData, undefined),
+    },
+    ...roles.map((r) => ({
+      roleId: r.id,
+      roleName: r.name,
+      weeks: roleWeeksWithLabel,
+      points: buildOccupancyPointsForFilter(roleWeeks, baseData, r.id),
+    })),
+  ];
+  return { chart, byRole };
+}
+
 export async function getOccupancyByRoleReport(
   weeks: { year: number; week: number }[],
   roles: { id: string; name: string }[]

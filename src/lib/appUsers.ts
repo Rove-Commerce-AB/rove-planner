@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { auth } from "@/auth";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { revalidatePath } from "next/cache";
@@ -20,7 +21,7 @@ export type CurrentAppUser = {
   name: string | null;
 } | null;
 
-export async function getCurrentAppUser(): Promise<CurrentAppUser> {
+export const getCurrentAppUser = cache(async (): Promise<CurrentAppUser> => {
   const session = await auth();
   if (!session?.user?.email) return null;
 
@@ -29,7 +30,7 @@ export async function getCurrentAppUser(): Promise<CurrentAppUser> {
     role: session.user.role as AppUserRole,
     name: session.user.name ?? null,
   };
-}
+});
 
 export async function getAppUsersForAdmin(): Promise<AppUser[]> {
   const current = await getCurrentAppUser();

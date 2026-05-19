@@ -22,8 +22,7 @@ export default async function AllocationPage({ searchParams }: Props) {
   const fromParam = params.from ? parseInt(params.from, 10) : null;
   const toParam = params.to ? parseInt(params.to, 10) : null;
 
-  const weekFrom =
-    fromParam ?? Math.max(1, currentWeek - 2);
+  const weekFrom = fromParam ?? Math.max(1, currentWeek - 2);
   const weekTo =
     toParam ?? Math.min(52, weekFrom + FALLBACK_WEEKS - 1);
 

@@ -33,9 +33,34 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 - `CLOUD_SQL_POOL_MAX` (default in production: `5`)
 - `CLOUD_SQL_IDLE_TIMEOUT_MS` (default in production: `20000`)
-- `CLOUD_SQL_CONNECTION_TIMEOUT_MS` (default in production: `5000`)
+- `CLOUD_SQL_CONNECTION_TIMEOUT_MS` (default in production: `15000`)
+- `CLOUD_SQL_ACQUIRE_TIMEOUT_MS` (default: `20000`) — max wait for a free connection from the pool; logs `waitingCount` on timeout
 - `CLOUD_SQL_KEEP_ALIVE` (default: `true`)
 - `CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS` (default: `10000`)
+- `APP_DEBUG_POOL=1` — log pool `waitingCount` on slow queries (optional)
+- `AUTH_DB_REFRESH_MS` — optional interval to refresh `app_users` from DB in prod (e.g. `1800000` = 30 min)
+
+Rule of thumb: `CLOUD_SQL_POOL_MAX × Cloud Run max instances` should stay **below** Cloud SQL `max_connections` with headroom (~10).
+
+### Health check (Cloud Run liveness)
+
+`GET /api/health` runs `SELECT 1` with a 3s timeout. Returns `200` when the database is reachable, `503` otherwise.
+
+Configure Cloud Run **liveness probe** to this path so unhealthy instances restart instead of requiring a manual daily restart.
+
+### Recommended Cloud Run settings (production)
+
+| Setting | Typical today | Recommended | Why |
+|---------|---------------|-------------|-----|
+| Concurrent requests / instance | 8 | **2–3** | Fewer parallel DB work per instance |
+| `CLOUD_SQL_POOL_MAX` | 10 | **5** | Limits connections per instance |
+| Max instances | 10 | **3–5** | Caps total pool × instances |
+| Request timeout | 900 s | **120 s** | Fail fast instead of hanging |
+| `APP_DEBUG_LOGS` | 1 | **0** in prod | Less noise after debugging |
+
+After deploy, watch **PostgreSQL Connections** in GCP (target &lt; ~15 under normal load with the above).
+
+See also [`doc/PERFORMANCE_REGRESSION_BASELINE.md`](doc/PERFORMANCE_REGRESSION_BASELINE.md) and [`doc/PERFORMANCE_VERIFY.md`](doc/PERFORMANCE_VERIFY.md).
 
 You can start editing the page by modifying `src/app/(app)/page.tsx`. The page auto-updates as you edit the file.
 

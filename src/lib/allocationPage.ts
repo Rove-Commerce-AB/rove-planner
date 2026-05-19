@@ -17,14 +17,15 @@ import {
   countWeekdayHolidaysInRange,
   type CalendarHoliday,
 } from "./calendarHolidaysUtils";
-import { fetchCalendarHolidays } from "./calendarHolidaysQueries";
+import { fetchCalendarHolidaysByCalendarIds } from "./calendarHolidaysQueries";
 import * as rolesQueries from "./rolesQueries";
 import * as teamsQueries from "./teamsQueries";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { getCachedConsultantsRaw } from "./consultantsCache";
 import { getConsultantsByCustomerId } from "./customerConsultants";
 import { DEFAULT_HOURS_PER_WEEK } from "./constants";
-import { getISOWeekDateRange, isoWeeksInYear } from "./dateUtils";
+import { buildWeeksArray } from "./allocationWeekParams";
+import { getISOWeekDateRange } from "./dateUtils";
 import { getProjectsWithCustomer } from "./projects";
 import { getRoles } from "./roles";
 import { getTeams } from "./teams";
@@ -66,10 +67,14 @@ async function getCachedCalendars() {
   )();
 }
 
-async function getCachedCalendarHolidays(calendarId: string) {
+async function getCachedCalendarHolidaysByIds(calendarIds: string[]) {
+  const key = [...calendarIds].sort().join(",");
   return unstable_cache(
-    async () => fetchCalendarHolidays(calendarId),
-    ["allocation-holidays", calendarId],
+    async () => {
+      const map = await fetchCalendarHolidaysByCalendarIds(calendarIds);
+      return Object.fromEntries(map.entries()) as Record<string, CalendarHoliday[]>;
+    },
+    ["allocation-holidays-batch", key],
     { revalidate: HOLIDAYS_CACHE_REVALIDATE }
   )();
 }
@@ -94,24 +99,6 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-function buildWeeksArray(
-  year: number,
-  weekFrom: number,
-  weekTo: number
-): { year: number; week: number }[] {
-  if (weekFrom <= weekTo) {
-    return Array.from({ length: weekTo - weekFrom + 1 }, (_, i) => ({
-      year,
-      week: weekFrom + i,
-    }));
-  }
-  const weeks: { year: number; week: number }[] = [];
-  const maxWeek = isoWeeksInYear(year);
-  for (let w = weekFrom; w <= maxWeek; w++) weeks.push({ year, week: w });
-  for (let w = 1; w <= weekTo; w++) weeks.push({ year: year + 1, week: w });
-  return weeks;
-}
-
 /** Fetches allocation page data without cache so add/edit/delete are visible immediately on refresh. */
 export async function getAllocationPageData(
   year: number,
@@ -127,18 +114,34 @@ export async function getAllocationPageData(
   let allocations: AllocationPageData["allocations"] = [];
 
   try {
-    const [consultantsRaw, rolesData, teamsData, allocationsData, calendarsData] =
-      await Promise.all([
-        getCachedConsultantsRaw(),
-        getCachedRoles(),
-        getCachedTeams(),
-        getAllocationsForWeeks(weeks),
-        getCachedCalendars(),
-      ]);
+    const [
+      consultantsRaw,
+      rolesData,
+      teamsData,
+      allocationsData,
+      calendarsData,
+      projectsData,
+    ] = await Promise.all([
+      getCachedConsultantsRaw(),
+      getCachedRoles(),
+      getCachedTeams(),
+      getAllocationsForWeeks(weeks),
+      getCachedCalendars(),
+      getProjectsWithCustomer(),
+    ]);
+
+    const calendarIds = [
+      ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
+    ] as string[];
+    const holidaysRecord =
+      calendarIds.length > 0
+        ? await getCachedCalendarHolidaysByIds(calendarIds).catch(() => ({}))
+        : {};
 
     roles = rolesData;
     teams = teamsData;
     allocations = allocationsData;
+    projects = projectsData;
     const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
     const roleMap = new Map(roles.map((r) => [r.id, r.name]));
 
@@ -147,19 +150,8 @@ export async function getAllocationPageData(
       calendarMap.set(c.id, Number(c.hours_per_week));
     }
 
-    const calendarIds = [
-      ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
-    ];
-    const holidaysByCalendar = new Map<string, CalendarHoliday[]>();
-    await Promise.all(
-      calendarIds.map(async (calId) => {
-        try {
-          const h = await getCachedCalendarHolidays(calId);
-          holidaysByCalendar.set(calId, h);
-        } catch {
-          holidaysByCalendar.set(calId, []);
-        }
-      })
+    const holidaysByCalendar = new Map<string, CalendarHoliday[]>(
+      Object.entries(holidaysRecord)
     );
 
     consultants = consultantsRaw.map((c) => {
@@ -206,12 +198,6 @@ export async function getAllocationPageData(
         unavailableByWeek,
       };
     });
-
-    // Always load projects when building the allocation grid: the UI maps
-    // allocations to projects via projectMap — if this stays empty while
-    // allocations exist (e.g. consultants list empty due to RLS/cache), all
-    // allocation rows would be dropped in the client.
-    projects = await getProjectsWithCustomer();
 
     const toPlanConsultant: AllocationConsultant = {
       id: TO_PLAN_CONSULTANT_ID,

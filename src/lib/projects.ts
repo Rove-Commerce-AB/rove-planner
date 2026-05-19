@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { revalidateProjectManagerNavCache } from "@/lib/layoutShell";
 import * as q from "./projectsQueries";
 
 export type {
@@ -15,6 +17,19 @@ export async function createProject(input: q.CreateProjectInput) {
 }
 
 export async function updateProject(id: string, input: q.UpdateProjectInput) {
+  if (input.project_manager_id !== undefined) {
+    const { rows } = await cloudSqlPool.query<{
+      project_manager_id: string | null;
+    }>(`SELECT project_manager_id FROM projects WHERE id = $1`, [id]);
+    const previousPm = rows[0]?.project_manager_id ?? null;
+    await q.updateProjectQuery(id, input);
+    if (previousPm) revalidateProjectManagerNavCache(previousPm);
+    const nextPm = input.project_manager_id ?? null;
+    if (nextPm && nextPm !== previousPm) {
+      revalidateProjectManagerNavCache(nextPm);
+    }
+    return;
+  }
   return q.updateProjectQuery(id, input);
 }
 

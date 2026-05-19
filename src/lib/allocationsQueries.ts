@@ -92,37 +92,43 @@ export async function getAllocationsForProjectWithWeeks(
   return rows.map(mapAllocation);
 }
 
-const ALLOCATIONS_PAGE_SIZE = 1000;
-
-async function getAllocationsForOneYear(
+async function getAllocationsForYearWeekList(
   year: number,
   weeksInYear: { year: number; week: number }[]
 ): Promise<AllocationRecord[]> {
-  const minWeek = Math.min(...weeksInYear.map((w) => w.week));
-  const maxWeek = Math.max(...weeksInYear.map((w) => w.week));
-  const results: AllocationRecord[] = [];
-  let offset = 0;
-  let pageLen: number;
-  do {
-    const { rows } = await timedDebug(
-      "allocations-query",
-      "getAllocationsForOneYear page",
-      () =>
-        cloudSqlPool.query(
-          `SELECT id, consultant_id, project_id, role_id, year, week, hours
-           FROM allocations
-           WHERE year = $1 AND week >= $2 AND week <= $3
-           ORDER BY year, week, consultant_id, project_id, id
-           LIMIT $4 OFFSET $5`,
-          [year, minWeek, maxWeek, ALLOCATIONS_PAGE_SIZE, offset]
-        ),
-      { year, minWeek, maxWeek, offset, pageSize: ALLOCATIONS_PAGE_SIZE }
+  if (weeksInYear.length === 0) return [];
+
+  const weekNumbers = [...new Set(weeksInYear.map((w) => w.week))].sort(
+    (a, b) => a - b
+  );
+  const isContiguous =
+    weekNumbers.length > 0 &&
+    weekNumbers.every(
+      (w, i) => i === 0 || w === weekNumbers[i - 1]! + 1
     );
-    pageLen = rows.length;
-    results.push(...rows.map(mapAllocation));
-    offset += ALLOCATIONS_PAGE_SIZE;
-  } while (pageLen === ALLOCATIONS_PAGE_SIZE);
-  return results;
+
+  if (isContiguous) {
+    return getAllocationsForWeekRange(
+      year,
+      weekNumbers[0]!,
+      weekNumbers[weekNumbers.length - 1]!
+    );
+  }
+
+  const { rows } = await timedDebug(
+    "allocations-query",
+    "getAllocationsForYearWeekList",
+    () =>
+      cloudSqlPool.query(
+        `SELECT id, consultant_id, project_id, role_id, year, week, hours
+         FROM allocations
+         WHERE year = $1 AND week = ANY($2::int[])
+         ORDER BY year, week, consultant_id, project_id, id`,
+        [year, weekNumbers]
+      ),
+    { year, weekCount: weekNumbers.length }
+  );
+  return rows.map(mapAllocation);
 }
 
 export async function getAllocationsForWeeks(
@@ -132,11 +138,13 @@ export async function getAllocationsForWeeks(
   const uniqueYears = [...new Set(weeks.map((w) => w.year))].sort((a, b) => a - b);
   const yearResults = await Promise.all(
     uniqueYears.map((y) =>
-      getAllocationsForOneYear(y, weeks.filter((w) => w.year === y))
+      getAllocationsForYearWeekList(
+        y,
+        weeks.filter((w) => w.year === y)
+      )
     )
   );
-  const weekSet = new Set(weeks.map((w) => `${w.year}-${w.week}`));
-  return yearResults.flat().filter((r) => weekSet.has(`${r.year}-${r.week}`));
+  return yearResults.flat();
 }
 
 export async function getAllocationsForWeekRange(

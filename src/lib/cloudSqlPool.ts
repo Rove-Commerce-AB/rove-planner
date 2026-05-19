@@ -53,7 +53,8 @@ export function isTransientCloudSqlConnectError(error: unknown): boolean {
     msg.includes("econnrefused") ||
     msg.includes("enotfound") ||
     msg.includes("socket hang up") ||
-    msg.includes("connection terminated unexpectedly")
+    msg.includes("connection terminated unexpectedly") ||
+    msg.includes("pool acquire timeout")
   );
 }
 
@@ -147,6 +148,40 @@ function getCloudSqlPool(): Pool {
   return poolSingleton;
 }
 
+function getAcquireTimeoutMs(): number {
+  return parsePositiveInt(process.env.CLOUD_SQL_ACQUIRE_TIMEOUT_MS) ?? 20_000;
+}
+
+async function runQueryWithAcquireTimeout(
+  pool: Pool,
+  args: unknown[]
+): Promise<unknown> {
+  const acquireTimeoutMs = getAcquireTimeoutMs();
+  const execute = () =>
+    (pool.query as (...innerArgs: unknown[]) => Promise<unknown>)(...args);
+
+  if (pool.waitingCount <= 0) {
+    return execute();
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(
+        new Error(
+          `Pool acquire timeout after ${acquireTimeoutMs}ms (waitingCount=${pool.waitingCount}, totalCount=${pool.totalCount}, idleCount=${pool.idleCount})`
+        )
+      );
+    }, acquireTimeoutMs);
+  });
+
+  try {
+    return await Promise.race([execute(), timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Keep the existing import surface (`cloudSqlPool.query(...)`) but avoid
  * constructing the DB pool at module-load time, which can happen during build.
@@ -160,14 +195,30 @@ export const cloudSqlPool = new Proxy({} as Pool, {
         const retryDelayMs = parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_DELAY_MS) ?? 150;
 
         let attempt = 0;
-        // attempt 0 = initial try, then retryCount additional retries.
         while (attempt <= retryCount) {
           try {
-            return await (pool.query as (...innerArgs: unknown[]) => Promise<unknown>)(...args);
+            return await runQueryWithAcquireTimeout(pool, args);
           } catch (error) {
             const canRetry =
               isTransientCloudSqlConnectError(error) && attempt < retryCount;
-            if (!canRetry) throw error;
+            if (!canRetry) {
+              if (
+                error instanceof Error &&
+                error.message.includes("Pool acquire timeout")
+              ) {
+                debugLog(
+                  "db-pool",
+                  "pool acquire timeout",
+                  {
+                    waitingCount: pool.waitingCount,
+                    totalCount: pool.totalCount,
+                    idleCount: pool.idleCount,
+                  },
+                  "error"
+                );
+              }
+              throw error;
+            }
 
             debugLog("db-pool", "query retry after connect timeout", {
               attempt: attempt + 1,

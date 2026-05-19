@@ -5,6 +5,11 @@ import {
   expandYearWeekRangeInclusive,
   getAllocationBudgetDrilldown,
 } from "@/lib/allocationBudgetReport";
+import {
+  getBillableUtilizationMonthlyReport,
+  type ProbabilityDisplay,
+} from "@/lib/billableUtilizationReport";
+import type { BillableUtilizationMonthlyReportResult } from "@/types/billableUtilizationReport";
 import type { OccupancyReportResult } from "@/types/occupancyReport";
 import type { AllocationBudgetDrilldownResult } from "@/types/allocationBudgetReport";
 import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
@@ -16,6 +21,15 @@ export async function getOccupancyReportDataAction(
 ): Promise<OccupancyReportResult> {
   await assertNotSubcontractorForWrite();
   return getOccupancyReportData(weeks, roleId, teamId);
+}
+
+export async function getBillableUtilizationMonthlyReportAction(
+  months: { year: number; month: number }[],
+  teamId?: string | null,
+  probabilityDisplay: ProbabilityDisplay = "weighted"
+): Promise<BillableUtilizationMonthlyReportResult> {
+  await assertNotSubcontractorForWrite();
+  return getBillableUtilizationMonthlyReport(months, teamId, probabilityDisplay);
 }
 
 export async function getAllocationBudgetDrilldownAction(
