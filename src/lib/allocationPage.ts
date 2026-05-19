@@ -334,17 +334,13 @@ export async function getAllocationPageDataForProject(
 
   const calendarIds = [
     ...new Set(consultantsRaw.map((c) => c.calendar_id).filter(Boolean)),
-  ];
-  const holidaysByCalendar = new Map<string, CalendarHoliday[]>();
-  await Promise.all(
-    calendarIds.map(async (calId) => {
-      try {
-        const h = await getCachedCalendarHolidays(calId);
-        holidaysByCalendar.set(calId, h);
-      } catch {
-        holidaysByCalendar.set(calId, []);
-      }
-    })
+  ] as string[];
+  const holidaysRecord =
+    calendarIds.length > 0
+      ? await getCachedCalendarHolidaysByIds(calendarIds).catch(() => ({}))
+      : {};
+  const holidaysByCalendar = new Map<string, CalendarHoliday[]>(
+    Object.entries(holidaysRecord)
   );
 
   let consultants: AllocationConsultant[] = consultantsRaw.map((c) => {

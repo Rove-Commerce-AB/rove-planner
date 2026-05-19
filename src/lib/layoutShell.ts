@@ -70,9 +70,9 @@ export async function getCachedProjectManagerNavVisible(
 }
 
 export function revalidateUserNotificationCache(email: string) {
-  revalidateTag(`user-notifications-${email.trim().toLowerCase()}`);
+  revalidateTag(`user-notifications-${email.trim().toLowerCase()}`, "max");
 }
 
 export function revalidateProjectManagerNavCache(consultantId: string) {
-  revalidateTag(`project-manager-nav-${consultantId}`);
+  revalidateTag(`project-manager-nav-${consultantId}`, "max");
 }
