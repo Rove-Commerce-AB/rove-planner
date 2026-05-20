@@ -537,7 +537,12 @@ function AllocationPageClientImpl({
     }
     const internalRows = internalRowsRef.current;
     const row = internalRows.find((r) => r.consultant.id === projectRowDrag.consultantId);
-    const pr = row?.projectRows.find((p) => p.projectId === projectRowDrag.projectId);
+    const pr = row?.projectRows.find((p) => {
+      if (p.projectId !== projectRowDrag.projectId) return false;
+      const rowRoleId =
+        p.weeks.find((week) => week.cell?.roleId)?.cell?.roleId ?? null;
+      return rowRoleId === projectRowDrag.roleId;
+    });
     if (!row || !pr) {
       setProjectRowDrag(null);
       setProjectRowDragMoved(false);

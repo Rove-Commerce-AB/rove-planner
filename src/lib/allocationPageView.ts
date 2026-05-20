@@ -88,10 +88,7 @@ export function buildPerConsultantView(
 
   for (const a of data.allocations) {
     const consultantKey = a.consultant_id ?? TO_PLAN_CONSULTANT_ID;
-    const projectRowKey =
-      consultantKey === TO_PLAN_CONSULTANT_ID
-        ? `${a.project_id}\0${a.role_id ?? ""}`
-        : a.project_id;
+    const projectRowKey = `${a.project_id}\0${a.role_id ?? ""}`;
 
     if (!byConsultant.has(consultantKey)) {
       byConsultant.set(consultantKey, new Map());
@@ -131,10 +128,7 @@ export function buildPerConsultantView(
     if (projectsMap) {
       const rows: (typeof projectRows)[number][] = [];
       for (const [projectRowKey, byWeek] of projectsMap) {
-        const projectId =
-          c.id === TO_PLAN_CONSULTANT_ID
-            ? (projectRowKey.split("\0")[0] ?? projectRowKey)
-            : projectRowKey;
+        const projectId = projectRowKey.split("\0")[0] ?? projectRowKey;
         const proj = projectMap.get(projectId);
         const weeks = data.weeks.map((w) => {
           const raw = byWeek.get(weekKey(w.year, w.week)) ?? null;

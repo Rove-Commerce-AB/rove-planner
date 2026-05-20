@@ -531,12 +531,12 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         const hasAnyBooking = allocationsWithBooking.length > 0;
                         return (
                         <tr
-                          key={pr.projectId + (pr.roleName || "")}
-                          className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`int-proj-${row.consultant.id}-${pr.projectId}`)}`}
+                          key={`${pr.projectId}|${projectRoleId ?? "none"}`}
+                          className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`int-proj-${row.consultant.id}-${pr.projectId}-${projectRoleId ?? "none"}`)}`}
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
                           }}
-                          {...allocationRowHoverHandlers(`int-proj-${row.consultant.id}-${pr.projectId}`)}
+                          {...allocationRowHoverHandlers(`int-proj-${row.consultant.id}-${pr.projectId}-${projectRoleId ?? "none"}`)}
                         >
                           <td className={`border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary ${embedMode ? "max-w-0" : ""}`}>
                             <span className={`flex items-center gap-1 ${embedMode ? "min-w-0 overflow-hidden" : "whitespace-nowrap"}`}>
@@ -622,6 +622,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               editingCellConsultant?.consultantId ===
                                 row.consultant.id &&
                               editingCellConsultant?.projectId === pr.projectId &&
+                              editingCellConsultant?.roleId === roleId &&
                               editingCellConsultant?.weekIndex === i;
                             const effectiveHours =
                               optimisticHours != null ? optimisticHours : (w.cell?.hours ?? 0);
@@ -1071,12 +1072,12 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         const hasAnyBooking = allocationsWithBooking.length > 0;
                         return (
                         <tr
-                          key={pr.projectId}
-                          className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`ext-proj-${row.consultant.id}-${pr.projectId}`)}`}
+                          key={`${pr.projectId}|${projectRoleId ?? "none"}`}
+                          className={`border-b border-grid-light-subtle last:border-form ${allocationRowHoverClass(`ext-proj-${row.consultant.id}-${pr.projectId}-${projectRoleId ?? "none"}`)}`}
                           style={{
                             backgroundColor: `${pr.customerColor}18`,
                           }}
-                          {...allocationRowHoverHandlers(`ext-proj-${row.consultant.id}-${pr.projectId}`)}
+                          {...allocationRowHoverHandlers(`ext-proj-${row.consultant.id}-${pr.projectId}-${projectRoleId ?? "none"}`)}
                         >
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-[10px] text-text-primary">
                             <span className="flex items-center gap-1 whitespace-nowrap">
@@ -1154,6 +1155,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               editingCellConsultant?.consultantId ===
                                 row.consultant.id &&
                               editingCellConsultant?.projectId === pr.projectId &&
+                              editingCellConsultant?.roleId === roleId &&
                               editingCellConsultant?.weekIndex === i;
                             const effectiveHours =
                               optimisticHours != null ? optimisticHours : (w.cell?.hours ?? 0);

@@ -332,6 +332,29 @@ export async function syncBoardFromGoogle(input: {
       // no-op: ensures patch call was executed and typed use has side effects.
     }
   }
+
+  // Backfill local-only todos that have no Google mapping yet.
+  for (const local of localTodos) {
+    const existingMap = await getGoogleTaskMapByTodo(input.appUserId, local.id);
+    if (existingMap) continue;
+
+    const inserted = await insertGoogleTask(accessToken, list.taskListId, {
+      title: local.title,
+      notes: buildAssigneeGoogleNotes(local),
+      due: toGoogleTaskDueDate(local.due_date) ?? null,
+      status: toGoogleTaskStatus(local.status),
+    });
+    await upsertGoogleTaskMap({
+      appUserId: input.appUserId,
+      boardId: input.boardId,
+      todoId: local.id,
+      googleTaskListId: list.taskListId,
+      googleTaskId: inserted.id,
+      sourceLastWrite: "taskboard",
+      sourceLastModifiedAt: local.updated_at,
+    });
+  }
+
   await touchGoogleUserSyncAt(input.appUserId);
 }
 
