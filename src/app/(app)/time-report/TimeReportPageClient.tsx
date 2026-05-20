@@ -36,7 +36,6 @@ import {
   getHolidayDatesForWeek,
   getHolidayDatesForRange,
   getTimeReportEntries,
-  getTimeReportEntriesForWeeks,
   saveTimeReportEntries,
   copyEntryToWeek,
   copyTimeReportEntriesBatch,
@@ -127,8 +126,8 @@ function promiseWithTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 type TimeReportWeekPayload = Awaited<ReturnType<typeof getTimeReportEntries>>;
 
 /**
- * Month/week batch load in one server action (sequential DB inside) with cooperative abort.
- * Replaces N separate server actions from the client to reduce connection pressure.
+ * Sequential week fetches with cooperative abort. One server action per week avoids
+ * bundling issues and matches the pre-perf load path (data-integrity hotfix).
  */
 async function fetchTimeReportWeeksSequentialUnlessAborted(
   consultantId: string,
@@ -138,20 +137,32 @@ async function fetchTimeReportWeeksSequentialUnlessAborted(
   /** Only set for month aggregate loads — ISO weeks can span two calendar months. */
   calendarMonthForLineFilter?: { year: number; month: number } | null
 ): Promise<TimeReportWeekPayload[] | null> {
-  if (shouldAbort()) return null;
-  if (weeks.length === 0) return [];
+  const out: TimeReportWeekPayload[] = [];
+  for (let wi = 0; wi < weeks.length; wi++) {
+    if (shouldAbort()) return null;
+    const { year: y, week: w } = weeks[wi]!;
+    const payload = await promiseWithTimeout(
+      getTimeReportEntries(consultantId, y, w, calendarMonthForLineFilter ?? undefined),
+      TIME_REPORT_FETCH_TIMEOUT_MS,
+      `${labelPrefix} ${wi + 1}/${weeks.length} ${y}-W${w}`
+    );
+    if (shouldAbort()) return null;
+    out.push(payload);
+  }
+  return out;
+}
 
-  const payloads = await promiseWithTimeout(
-    getTimeReportEntriesForWeeks(
-      consultantId,
-      weeks,
-      calendarMonthForLineFilter ?? undefined
-    ),
-    TIME_REPORT_FETCH_TIMEOUT_MS,
-    `${labelPrefix} (${weeks.length} week(s))`
-  );
-  if (shouldAbort()) return null;
-  return payloads;
+function weekSliceKeysForCalendarDate(
+  dateStr: string,
+  monthWeeks: { year: number; week: number }[]
+): string[] {
+  const keys: string[] = [];
+  for (const { year, week } of monthWeeks) {
+    if (getWeekDates(year, week).includes(dateStr)) {
+      keys.push(weekSliceKey(year, week));
+    }
+  }
+  return keys;
 }
 
 /** Native `title` on the Jira/DevOps/ClickUp key: shows summary/title when loaded. */
@@ -212,6 +223,25 @@ function syncWeekRevisionAfterSave(
 
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = TimeReportMonthMergedRow;
+
+function weekSliceKeysForMergedRow(
+  row: MonthMergedRow,
+  monthWeeks: { year: number; week: number }[]
+): string[] {
+  const keys = new Set<string>(row.weekSliceKeys);
+  for (const { year, week } of monthWeeks) {
+    const sk = weekSliceKey(year, week);
+    const active = getWeekDates(year, week).some(
+      (d) =>
+        (row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== ""
+    );
+    if (active) keys.add(sk);
+  }
+  if (row.isDraft) {
+    for (const { year, week } of monthWeeks) keys.add(weekSliceKey(year, week));
+  }
+  return [...keys];
+}
 
 function mergedRowAllLineIds(row: MonthMergedRow): string[] {
   const ids = new Set<string>();
@@ -664,6 +694,8 @@ export function TimeReportPageClient({
   const [viewModeStorageReady, setViewModeStorageReady] = useState(false);
   const [monthMergedRows, setMonthMergedRows] = useState<MonthMergedRow[]>([]);
   const monthLoadRequestIdRef = useRef(0);
+  /** ISO week slice keys touched in month view — only these weeks are autosaved. */
+  const dirtyWeekSliceKeysRef = useRef<Set<string>>(new Set());
   const viewModeRef = useRef(viewMode);
   /** Serialize server saves so concurrent requests never reuse a stale expectedRevision (revision_conflict). */
   const saveQueueTailRef = useRef(Promise.resolve());
@@ -717,10 +749,31 @@ export function TimeReportPageClient({
   useLayoutEffect(() => {
     isDirtyRef.current = isDirty;
   }, [isDirty]);
-  const markDirty = useCallback(() => {
+  const clearDirtyWeekSliceKeys = useCallback(() => {
+    dirtyWeekSliceKeysRef.current = new Set();
+  }, []);
+
+  const markDirty = useCallback((monthWeekSliceKeys?: string[]) => {
+    if (monthWeekSliceKeys?.length) {
+      for (const k of monthWeekSliceKeys) dirtyWeekSliceKeysRef.current.add(k);
+    }
     setIsDirty(true);
     // flushSave may run before React commits state; keep ref in sync immediately.
     isDirtyRef.current = true;
+  }, []);
+
+  const markDirtyEntireDisplayMonth = useCallback(() => {
+    const keys = getWeeksInMonthLocal(displayYearRef.current, displayMonthRef.current).map(
+      ({ year: y, week: w }) => weekSliceKey(y, w)
+    );
+    markDirty(keys);
+  }, [markDirty]);
+
+  const getMonthWeeksToSave = useCallback((): { year: number; week: number }[] => {
+    const all = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+    const dirty = dirtyWeekSliceKeysRef.current;
+    if (dirty.size === 0) return all;
+    return all.filter(({ year, week }) => dirty.has(weekSliceKey(year, week)));
   }, []);
   useEffect(() => {
     yearRef.current = year;
@@ -826,6 +879,7 @@ export function TimeReportPageClient({
         syncWeekRevisionAfterSave(setWeekRevisionsByKey, weekRevisionsByKeyRef, sliceKey, data.revision);
         setLoadState("loaded");
         setIsDirty(false);
+        clearDirtyWeekSliceKeys();
         savePausedForRevisionConflictRef.current = false;
         setRevisionConflictOpen(false);
         void runBatchHydrate(data.groups);
@@ -834,7 +888,7 @@ export function TimeReportPageClient({
         if (requestId !== weekLoadRequestIdRef.current) return;
         setLoadState("loaded");
       });
-  }, [consultant?.id, year, week, runBatchHydrate, viewMode]);
+  }, [consultant?.id, year, week, runBatchHydrate, viewMode, clearDirtyWeekSliceKeys]);
 
   useEffect(() => {
     if (!consultant || viewMode !== "month") return;
@@ -843,6 +897,7 @@ export function TimeReportPageClient({
     setLoadState("loading");
     setSaveError(null);
     setMonthMergedRows([]);
+    clearDirtyWeekSliceKeys();
     const weeks = getWeeksInMonthLocal(displayMonth, displayYear);
     const requestId = ++monthLoadRequestIdRef.current;
     const calDates = getCalendarDatesInMonth(displayYear, displayMonth);
@@ -874,6 +929,7 @@ export function TimeReportPageClient({
         loadStateRef.current = "loaded";
         setLoadState("loaded");
         setIsDirty(false);
+        clearDirtyWeekSliceKeys();
         savePausedForRevisionConflictRef.current = false;
         setRevisionConflictOpen(false);
         void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
@@ -897,6 +953,7 @@ export function TimeReportPageClient({
     displayYear,
     runBatchHydrate,
     customerById,
+    clearDirtyWeekSliceKeys,
   ]);
 
   useEffect(() => {
@@ -923,6 +980,7 @@ export function TimeReportPageClient({
         setSaveState("idle");
         setIsDirty(false);
         isDirtyRef.current = false;
+        clearDirtyWeekSliceKeys();
         setShowValidationHighlights(false);
       };
       const finishErr = (msg: string, validation?: boolean) => {
@@ -1013,7 +1071,7 @@ export function TimeReportPageClient({
 
       void enqueueTimeReportSave(async () => {
         try {
-          const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+          const weeks = getMonthWeeksToSave();
           const monthScope = {
             year: displayYearRef.current,
             month: displayMonthRef.current,
@@ -1105,6 +1163,8 @@ export function TimeReportPageClient({
     displayMonth,
     displayYear,
     enqueueTimeReportSave,
+    getMonthWeeksToSave,
+    clearDirtyWeekSliceKeys,
   ]);
 
   useEffect(() => {
@@ -1210,7 +1270,7 @@ export function TimeReportPageClient({
           lastLocalSaveAtRef.current = Date.now();
           delete deletedLineIdsByWeekRef.current[sk];
         } else {
-          const weeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
+          const weeks = getMonthWeeksToSave();
           const monthScope = {
             year: displayYearRef.current,
             month: displayMonthRef.current,
@@ -1265,6 +1325,7 @@ export function TimeReportPageClient({
         setSaveState("idle");
         setIsDirty(false);
         isDirtyRef.current = false;
+        clearDirtyWeekSliceKeys();
         setShowValidationHighlights(false);
         return true;
       } catch {
@@ -1275,7 +1336,20 @@ export function TimeReportPageClient({
         return false;
       }
     });
-  }, [enqueueTimeReportSave]);
+  }, [enqueueTimeReportSave, getMonthWeeksToSave, clearDirtyWeekSliceKeys]);
+
+  useEffect(() => {
+    const onPageHide = () => {
+      if (!isDirtyRef.current) return;
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current);
+        saveDebounceRef.current = null;
+      }
+      void flushSave();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [flushSave]);
 
   const reloadWeekFromServer = useCallback(() => {
     const c = consultantRef.current;
@@ -1296,6 +1370,7 @@ export function TimeReportPageClient({
         setLoadState("loaded");
         setIsDirty(false);
         isDirtyRef.current = false;
+        clearDirtyWeekSliceKeys();
         savePausedForRevisionConflictRef.current = false;
         setRevisionConflictOpen(false);
         void runBatchHydrate(data.groups);
@@ -1305,7 +1380,7 @@ export function TimeReportPageClient({
         loadStateRef.current = "loaded";
         setLoadState("loaded");
       });
-  }, [runBatchHydrate]);
+  }, [runBatchHydrate, clearDirtyWeekSliceKeys]);
 
   const reloadMonthFromServer = useCallback(() => {
     const c = consultantRef.current;
@@ -1342,6 +1417,7 @@ export function TimeReportPageClient({
         setLoadState("loaded");
         setIsDirty(false);
         isDirtyRef.current = false;
+        clearDirtyWeekSliceKeys();
         savePausedForRevisionConflictRef.current = false;
         setRevisionConflictOpen(false);
         void runBatchHydrate(pseudoCustomerGroupsForHydrate(mergedRows));
@@ -1354,7 +1430,7 @@ export function TimeReportPageClient({
         );
       }
     })();
-  }, [runBatchHydrate, customerById]);
+  }, [runBatchHydrate, customerById, clearDirtyWeekSliceKeys]);
 
   useEffect(() => {
     const checkStaleRevision = () => {
@@ -1739,8 +1815,8 @@ export function TimeReportPageClient({
   }, [viewMode, customerGroups, monthMergedRows, loadJiraDevOpsForProject]);
 
   const updateEntryInGroup = (customerId: string, entryId: string, patch: Partial<Entry>) => {
-    markDirty();
     if (viewMode === "week") {
+      markDirty();
       setCustomerGroups((prev) =>
         prev.map((g) =>
           g.customerId !== customerId
@@ -1755,6 +1831,11 @@ export function TimeReportPageClient({
       );
       return;
     }
+    const monthWeeks = getWeeksInMonthLocal(displayYearRef.current, displayMonthRef.current);
+    const row = monthMergedRowsRef.current.find(
+      (r) => r.customerId === customerId && r.rowKey === entryId
+    );
+    markDirty(row ? weekSliceKeysForMergedRow(row, monthWeeks) : undefined);
     setMonthMergedRows((prev) =>
       prev.map((r) => {
         if (r.customerId !== customerId || r.rowKey !== entryId) return r;
@@ -1780,7 +1861,7 @@ export function TimeReportPageClient({
       );
     } else {
       if (monthMergedRows.some((r) => r.customerId === customerId)) return;
-      markDirty();
+      markDirtyEntireDisplayMonth();
       setMonthMergedRows((prev) =>
         sortMonthMergedRowsByCustomerName(
           [
@@ -2154,8 +2235,8 @@ export function TimeReportPageClient({
   };
 
   const addRow = (customerId: string) => {
-    markDirty();
     if (viewMode === "week") {
+      markDirty();
       setCustomerGroups((prev) =>
         prev.map((g) =>
           g.customerId !== customerId
@@ -2165,6 +2246,7 @@ export function TimeReportPageClient({
       );
       return;
     }
+    markDirtyEntireDisplayMonth();
     const dates = getCalendarDatesInMonth(displayYear, displayMonth);
     const newRow = newMonthMergedRow(customerId, dates);
     setMonthMergedRows((prev) => {
@@ -2180,8 +2262,8 @@ export function TimeReportPageClient({
   };
 
   const duplicateRow = (customerId: string, entryId: string) => {
-    markDirty();
     if (viewMode === "week") {
+      markDirty();
       setCustomerGroups((prev) =>
         prev.map((g) => {
           if (g.customerId !== customerId) return g;
@@ -2203,6 +2285,11 @@ export function TimeReportPageClient({
       return;
     }
 
+    const monthWeeks = getWeeksInMonthLocal(displayYear, displayMonth);
+    const sourceRow = monthMergedRows.find(
+      (r) => r.customerId === customerId && r.rowKey === entryId
+    );
+    markDirty(sourceRow ? weekSliceKeysForMergedRow(sourceRow, monthWeeks) : undefined);
     const dates = getCalendarDatesInMonth(displayYear, displayMonth);
     const duplicate = (source: MonthMergedRow): MonthMergedRow => ({
       ...newMonthMergedRow(customerId, dates),
@@ -2240,8 +2327,8 @@ export function TimeReportPageClient({
   };
 
   const removeEntry = (customerId: string, entryId: string, explicitLineIds?: string[]) => {
-    markDirty();
     if (viewMode === "week") {
+      markDirty();
       const removedIds: string[] =
         explicitLineIds ??
         customerGroupsRef.current
@@ -2262,6 +2349,7 @@ export function TimeReportPageClient({
       });
       markDeletedLineIds(removedIds);
     } else {
+      markDirtyEntireDisplayMonth();
       const removedIds: string[] =
         explicitLineIds ??
         monthMergedRowsRef.current
@@ -2334,8 +2422,8 @@ export function TimeReportPageClient({
 
   const saveComment = () => {
     if (!commentState) return;
-    markDirty();
     if (commentState.kind === "week") {
+      markDirty();
       const customerId = customerIdByEntryId.get(commentState.entryId);
       if (!customerId) return;
       const entry = entryById.get(commentState.entryId);
@@ -2360,6 +2448,9 @@ export function TimeReportPageClient({
       );
     } else {
       const dates = getCalendarDatesInMonth(displayYear, displayMonth);
+      const monthWeeks = getWeeksInMonthLocal(displayYear, displayMonth);
+      const row = monthMergedRows.find((r) => r.rowKey === commentState.rowId);
+      markDirty(row ? weekSliceKeysForMergedRow(row, monthWeeks) : undefined);
       setMonthMergedRows((prev) =>
         prev.map((r) => {
           if (r.rowKey !== commentState.rowId) return r;
@@ -3498,7 +3589,12 @@ export function TimeReportPageClient({
                                     })
                                   }
                                   onCommit={(v) => {
-                                    markDirty();
+                                    markDirty(
+                                      weekSliceKeysForCalendarDate(
+                                        dateStr,
+                                        getWeeksInMonthLocal(displayYear, displayMonth)
+                                      )
+                                    );
                                     setMonthMergedRows((prev) => {
                                       return prev.map((r) =>
                                         r.rowKey !== row.rowKey
