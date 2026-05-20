@@ -32,6 +32,15 @@ export function getDisplayHours(
   return { displayHours: hours, isHidden: false };
 }
 
+function formatProjectNameWithProbability(
+  projectName: string,
+  projectId: string,
+  probMap: Map<string, number>
+): string {
+  const prob = probMap.get(projectId) ?? 100;
+  return prob === 100 ? projectName : `${projectName} (${prob}%)`;
+}
+
 function showProbabilitySymbol(
   projectId: string,
   _display: ProbabilityDisplay,
@@ -156,7 +165,11 @@ export function buildPerConsultantView(
         const roleName = firstCellWithRole?.cell?.roleName ?? "";
         rows.push({
           projectId,
-          projectName: proj?.name ?? "Unknown",
+          projectName: formatProjectNameWithProbability(
+            proj?.name ?? "Unknown",
+            projectId,
+            projectProbabilityMap
+          ),
           customerId: proj?.customer_id ?? "",
           customerName: proj?.customerName ?? "",
           customerColor: proj?.customerColor ?? DEFAULT_CUSTOMER_COLOR,
@@ -417,7 +430,11 @@ export function buildPerCustomerView(
         projectGroups.push({
           project: {
             id: projectId,
-            name: projectMap.get(projectId)?.name ?? "Unknown",
+            name: formatProjectNameWithProbability(
+              projectMap.get(projectId)?.name ?? "Unknown",
+              projectId,
+              projectProbabilityMap
+            ),
           },
           consultantRows,
           totalByWeek: projectTotalByWeek,
@@ -602,8 +619,16 @@ export function buildPerProjectView(
         id: proj.id,
         customer_id: proj.customer_id,
         customerName: proj.customerName,
-        name: proj.name,
-        label: `${proj.customerName} - ${proj.name}`,
+        name: formatProjectNameWithProbability(
+          proj.name,
+          proj.id,
+          projectProbabilityMap
+        ),
+        label: `${proj.customerName} - ${formatProjectNameWithProbability(
+          proj.name,
+          proj.id,
+          projectProbabilityMap
+        )}`,
         showProbabilitySymbol: showProbabilitySymbol(
           proj.id,
           probabilityDisplay,

@@ -9,8 +9,8 @@ export type BillableUtilizationMonthPoint = {
   actualBillableHours: number;
   /** Billable hours from allocation forecast in the month. */
   forecastBillableHours: number;
-  /** Calendar working hours in the month (denominator; no overhead or part-time adjustment). */
-  monthCalendarHours: number;
+  /** Total consultant capacity hours in the month (calendar × work %; no overhead adjustment). */
+  monthCapacityHours: number;
   /** Actual utilization: billable reported ÷ month capacity (%). */
   actualUtilizationPct: number;
   /** Forecast utilization: billable allocated ÷ month capacity (%). */

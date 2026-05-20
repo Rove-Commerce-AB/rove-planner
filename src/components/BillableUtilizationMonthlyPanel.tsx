@@ -209,7 +209,7 @@ export function BillableUtilizationMonthlyPanel({
     ...(data.points[i] ?? {
       actualBillableHours: 0,
       forecastBillableHours: 0,
-      monthCalendarHours: 0,
+      monthCapacityHours: 0,
       actualUtilizationPct: 0,
       forecastUtilizationPct: 0,
       budgetUtilizationPct: null,
@@ -238,8 +238,8 @@ export function BillableUtilizationMonthlyPanel({
       <PanelSectionTitle>BILLABLE UTILIZATION & REVENUE</PanelSectionTitle>
       <div className="space-y-6 p-3 pt-0">
         <p className="text-xs text-text-primary/75">
-          Utilization is billable hours ÷ calendar month hours (weekdays minus holidays, full
-          time — no overhead or part-time adjustment). Forecast uses planned allocation;
+          Utilization is billable hours ÷ capacity hours (calendar month × each consultant&apos;s
+          capacity %; no overhead adjustment). Forecast uses planned allocation;
           outcome from time reports. View matches the allocation page for probability on
           forecast hours and revenue.
         </p>

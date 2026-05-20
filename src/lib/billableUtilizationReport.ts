@@ -33,6 +33,10 @@ function toYmd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function workPctFromConsultant(c: { work_percentage?: number | string | null }): number {
+  return Math.max(5, Math.min(100, Number(c.work_percentage) || 100)) / 100;
+}
+
 /** Weekday working hours in a calendar month (no work %, no overhead). */
 function calendarHoursInMonth(
   year: number,
@@ -110,7 +114,7 @@ async function fetchUtilizationTargets(
 /**
  * Company-wide billable utilization per calendar month.
  * Forecast from allocations (customer projects), prorated by working day per month.
- * Denominator = full calendar month hours per consultant (no overhead / part-time).
+ * Denominator = calendar month hours × consultant capacity (work %); no overhead adjustment.
  */
 function allocationHoursForView(
   hours: number,
@@ -196,30 +200,31 @@ export async function getBillableUtilizationMonthlyReport(
     projectIds.length > 0 ? await getProjectsWithCustomer(projectIds) : [];
   const projectMap = new Map(projects.map((p) => [p.id, p]));
 
-  const calendarHoursByMonth = new Map<string, number>();
+  const capacityHoursByMonth = new Map<string, number>();
   const budgetBillableByMonth = new Map<string, number>();
   const budgetCapacityByMonth = new Map<string, number>();
 
   for (const m of calendarMonths) {
     const key = yearMonthKey(m.year, m.month);
-    let calendarTotal = 0;
+    let capacityTotal = 0;
     let budgetBillable = 0;
     let budgetCapacity = 0;
 
     for (const c of consultants) {
       const hpw = hoursPerWeekByCalendar.get(c.calendar_id) ?? 40;
       const holidays = holidaysByCalendar.get(c.calendar_id) ?? new Set();
-      const monthHours = calendarHoursInMonth(m.year, m.month, hpw, holidays);
-      calendarTotal += monthHours;
+      const calendarHours = calendarHoursInMonth(m.year, m.month, hpw, holidays);
+      const monthCapacityHours = calendarHours * workPctFromConsultant(c);
+      capacityTotal += monthCapacityHours;
 
       const targetPct = targets.get(c.id);
       if (targetPct != null && Number.isFinite(targetPct)) {
-        budgetBillable += monthHours * (targetPct / 100);
-        budgetCapacity += monthHours;
+        budgetBillable += monthCapacityHours * (targetPct / 100);
+        budgetCapacity += monthCapacityHours;
       }
     }
 
-    calendarHoursByMonth.set(key, calendarTotal);
+    capacityHoursByMonth.set(key, capacityTotal);
     budgetBillableByMonth.set(key, budgetBillable);
     budgetCapacityByMonth.set(key, budgetCapacity);
   }
@@ -342,7 +347,7 @@ export async function getBillableUtilizationMonthlyReport(
     const reported = reportedByMonth.get(key);
     const actualBillable = reported?.invoiced ?? 0;
     const forecastBillable = allocatedByMonth.get(key) ?? 0;
-    const calendarHours = calendarHoursByMonth.get(key) ?? 0;
+    const monthCapacityHours = capacityHoursByMonth.get(key) ?? 0;
     const budgetBillable = budgetBillableByMonth.get(key) ?? 0;
     const budgetCapacity = budgetCapacityByMonth.get(key) ?? 0;
     const rev = revenueByKey.get(key);
@@ -352,9 +357,9 @@ export async function getBillableUtilizationMonthlyReport(
     return {
       actualBillableHours: actualBillable,
       forecastBillableHours: forecastBillable,
-      monthCalendarHours: calendarHours,
-      actualUtilizationPct: pct(actualBillable, calendarHours),
-      forecastUtilizationPct: pct(forecastBillable, calendarHours),
+      monthCapacityHours,
+      actualUtilizationPct: pct(actualBillable, monthCapacityHours),
+      forecastUtilizationPct: pct(forecastBillable, monthCapacityHours),
       budgetUtilizationPct,
       actualRevenue: reported?.income ?? 0,
       forecastRevenue: rev?.revenue ?? 0,
