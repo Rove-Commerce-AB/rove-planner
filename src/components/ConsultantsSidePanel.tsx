@@ -145,6 +145,7 @@ export function ConsultantsSidePanel() {
                     <li key={c.id}>
                       <Link
                         href={`/consultants/${c.id}`}
+                        prefetch={false}
                         className={`flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-bg-muted/50 ${selectedConsultantId === c.id ? "bg-nav-active" : ""} ${!c.isActive ? "opacity-60" : ""}`}
                       >
                         <div

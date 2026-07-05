@@ -94,8 +94,8 @@ Always reference via tokens – never hardcode.
 ## Typography
 
 ### Fonts
-- **Primary font: GTF Ekstra** – already imported in the project. Do not re-import or change the import.
-- **Secondary font: Instrument Sans** – already imported. Do not re-import or change the import.
+- **Primary font: Instrument Sans** - imported via `next/font/google` in `src/app/layout.tsx`. Do not add manual `@font-face` rules unless the font files are committed under `public/fonts`.
+- **Secondary font: Instrument Sans** - imported via the same `next/font/google` setup. Do not re-import or change the import.
 - If a font is unavailable, fall back to `system-ui` – never substitute another web font.
 
 ### Usage

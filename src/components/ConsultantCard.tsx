@@ -16,6 +16,7 @@ export function ConsultantCard({ consultant }: Props) {
   return (
     <Link
       href={`/consultants/${consultant.id}`}
+      prefetch={false}
       className="flex flex-col rounded-lg border border-form bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
     >
       <div className="flex min-h-[140px] flex-col justify-between">

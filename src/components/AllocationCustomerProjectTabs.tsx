@@ -441,6 +441,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         </button>
                         <Link
                           href={`/customers/${row.customer.id}`}
+                          prefetch={false}
                           className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                           aria-label={`Open ${row.customer.name}`}
                         >
@@ -487,9 +488,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                             <Link
                               href={`/projects/${pg.project.id}`}
-                              onMouseEnter={() =>
-                                p.router.prefetch(`/projects/${pg.project.id}`)
-                              }
+                              prefetch={false}
                               className="inline-block min-w-0 max-w-full truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
                             >
                               {pg.project.name}
@@ -599,9 +598,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
                             <Link
                               href={`/consultants/${cr.consultantId}`}
-                              onMouseEnter={() =>
-                                p.router.prefetch(`/consultants/${cr.consultantId}`)
-                              }
+                              prefetch={false}
                               className="min-w-0 shrink truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
                             >
                               {cr.consultantName}
@@ -863,6 +860,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       </button>
                       <Link
                         href={`/projects/${row.project.id}`}
+                        prefetch={false}
                         className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                         aria-label={`Open ${row.project.label}`}
                       >
@@ -910,9 +908,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
                           <Link
                             href={`/consultants/${cr.consultantId}`}
-                            onMouseEnter={() =>
-                              p.router.prefetch(`/consultants/${cr.consultantId}`)
-                            }
+                            prefetch={false}
                             className="min-w-0 shrink truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
                           >
                             {cr.consultantName}

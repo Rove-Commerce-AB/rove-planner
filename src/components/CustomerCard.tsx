@@ -15,6 +15,7 @@ export function CustomerCard({ customer }: Props) {
   return (
     <Link
       href={`/customers/${customer.id}`}
+      prefetch={false}
       className="block rounded-lg border border-form border-l-4 bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
       style={{ borderLeftColor: color }}
     >
