@@ -8,6 +8,10 @@ export async function getProjectRates(projectId: string) {
   return q.fetchProjectRates(projectId);
 }
 
+export async function getProjectRatesByProjectIds(projectIds: string[]) {
+  return q.fetchProjectRatesByProjectIds(projectIds);
+}
+
 export async function createProjectRate(
   projectId: string,
   roleId: string,

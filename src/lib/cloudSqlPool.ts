@@ -58,6 +58,27 @@ export function isTransientCloudSqlConnectError(error: unknown): boolean {
   );
 }
 
+function classifyDbTimeoutError(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const err = error as Error & { code?: string };
+  const msg = error.message.toLowerCase();
+  if (err.code === "57014" && msg.includes("statement timeout")) {
+    return "statement_timeout";
+  }
+  if (err.code === "55P03" && msg.includes("lock timeout")) {
+    return "lock_timeout";
+  }
+  if (msg.includes("query read timeout")) return "query_timeout";
+  if (msg.includes("idle-in-transaction timeout")) {
+    return "idle_in_transaction_timeout";
+  }
+  if (msg.includes("timeout exceeded when trying to connect")) {
+    return "connection_timeout";
+  }
+  if (msg.includes("pool acquire timeout")) return "pool_acquire_timeout";
+  return null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -72,7 +93,8 @@ function buildCloudSqlPoolConfig(): PoolConfig {
 
   const sslMode = getSslMode(connectionString);
   const parsed = parse(stripSslModeQuery(connectionString));
-  const { ssl: _parsedSsl, ...rest } = parsed;
+  const { ssl: parsedSsl, ...rest } = parsed;
+  void parsedSsl;
 
   const portRaw = rest.port;
   const portNum =
@@ -165,6 +187,30 @@ function getAcquireTimeoutMs(): number {
   return parsePositiveInt(process.env.CLOUD_SQL_ACQUIRE_TIMEOUT_MS) ?? 20_000;
 }
 
+function poolStats(pool: Pool): Record<string, number> {
+  return {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  };
+}
+
+function errorDetails(error: unknown): Record<string, unknown> {
+  const timeoutKind = classifyDbTimeoutError(error);
+  if (error instanceof Error) {
+    const err = error as Error & { code?: string };
+    return {
+      error: error.message,
+      code: err.code ?? null,
+      timeoutKind,
+    };
+  }
+  return {
+    error: String(error),
+    timeoutKind,
+  };
+}
+
 async function runQueryWithAcquireTimeout(
   pool: Pool,
   args: unknown[]
@@ -193,6 +239,99 @@ async function runQueryWithAcquireTimeout(
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
+}
+
+export async function withCloudSqlClient<T>(
+  label: string,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const pool = getCloudSqlPool();
+  const start = Date.now();
+  let client: PoolClient | null = null;
+  debugLog("db-client", `${label} acquire start`, poolStats(pool));
+
+  try {
+    client = await pool.connect();
+    const acquiredAt = Date.now();
+    debugLog("db-client", `${label} acquired`, {
+      durationMs: acquiredAt - start,
+      ...poolStats(pool),
+    });
+    const result = await fn(client);
+    debugLog("db-client", `${label} ok`, {
+      durationMs: Date.now() - start,
+      workDurationMs: Date.now() - acquiredAt,
+      ...poolStats(pool),
+    });
+    return result;
+  } catch (error) {
+    debugLog(
+      "db-client",
+      `${label} failed`,
+      {
+        durationMs: Date.now() - start,
+        ...poolStats(pool),
+        ...errorDetails(error),
+      },
+      "error"
+    );
+    throw error;
+  } finally {
+    if (client) {
+      client.release();
+      debugLog("db-client", `${label} released`, poolStats(pool));
+    }
+  }
+}
+
+class TransactionRollback<T> extends Error {
+  constructor(readonly value: T) {
+    super("Transaction rollback requested");
+    this.name = "TransactionRollback";
+  }
+}
+
+export async function withCloudSqlTransaction<T>(
+  label: string,
+  fn: (
+    client: PoolClient,
+    rollback: (value: T) => Promise<never>
+  ) => Promise<T>
+): Promise<T> {
+  return withCloudSqlClient(label, async (client) => {
+    let finished = false;
+
+    const rollback = async (value: T): Promise<never> => {
+      await client.query("ROLLBACK");
+      finished = true;
+      throw new TransactionRollback(value);
+    };
+
+    try {
+      await client.query("BEGIN");
+      const result = await fn(client, rollback);
+      await client.query("COMMIT");
+      finished = true;
+      return result;
+    } catch (error) {
+      if (error instanceof TransactionRollback) {
+        return error.value as T;
+      }
+      if (!finished) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rollbackError) {
+          debugLog(
+            "db-client",
+            `${label} rollback failed`,
+            errorDetails(rollbackError),
+            "error"
+          );
+        }
+      }
+      throw error;
+    }
+  });
 }
 
 /**

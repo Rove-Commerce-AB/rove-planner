@@ -36,6 +36,7 @@ import {
   getHolidayDatesForWeek,
   getHolidayDatesForRange,
   getTimeReportEntries,
+  getTimeReportEntriesForWeeks,
   saveTimeReportEntries,
   copyEntryToWeek,
   copyTimeReportEntriesBatch,
@@ -126,8 +127,8 @@ function promiseWithTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 type TimeReportWeekPayload = Awaited<ReturnType<typeof getTimeReportEntries>>;
 
 /**
- * Sequential week fetches with cooperative abort. One server action per week avoids
- * bundling issues and matches the pre-perf load path (data-integrity hotfix).
+ * One server action loads the month weeks sequentially server-side. This keeps
+ * browser request pressure low without reintroducing parallel DB bursts.
  */
 async function fetchTimeReportWeeksSequentialUnlessAborted(
   consultantId: string,
@@ -137,19 +138,18 @@ async function fetchTimeReportWeeksSequentialUnlessAborted(
   /** Only set for month aggregate loads — ISO weeks can span two calendar months. */
   calendarMonthForLineFilter?: { year: number; month: number } | null
 ): Promise<TimeReportWeekPayload[] | null> {
-  const out: TimeReportWeekPayload[] = [];
-  for (let wi = 0; wi < weeks.length; wi++) {
-    if (shouldAbort()) return null;
-    const { year: y, week: w } = weeks[wi]!;
-    const payload = await promiseWithTimeout(
-      getTimeReportEntries(consultantId, y, w, calendarMonthForLineFilter ?? undefined),
-      TIME_REPORT_FETCH_TIMEOUT_MS,
-      `${labelPrefix} ${wi + 1}/${weeks.length} ${y}-W${w}`
-    );
-    if (shouldAbort()) return null;
-    out.push(payload);
-  }
-  return out;
+  if (shouldAbort()) return null;
+  const timeoutMs = TIME_REPORT_FETCH_TIMEOUT_MS * Math.max(1, weeks.length);
+  const payload = await promiseWithTimeout(
+    getTimeReportEntriesForWeeks(
+      consultantId,
+      weeks,
+      calendarMonthForLineFilter ?? undefined
+    ),
+    timeoutMs,
+    `${labelPrefix} ${weeks.length} week batch`
+  );
+  return shouldAbort() ? null : payload;
 }
 
 function weekSliceKeysForCalendarDate(

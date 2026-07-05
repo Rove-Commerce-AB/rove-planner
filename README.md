@@ -41,7 +41,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `CLOUD_SQL_QUERY_TIMEOUT_MS` (default: `35000`) - client-side pg query read timeout
 - `CLOUD_SQL_KEEP_ALIVE` (default: `true`)
 - `CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS` (default: `10000`)
-- `APP_DEBUG_POOL=1` — log pool `waitingCount` on slow queries (optional)
+- `APP_DEBUG_LOGS=1` - log pool stats, transaction timing, retries, and timeout labels (temporary debugging only)
 - `AUTH_DB_REFRESH_MS` — optional interval to refresh `app_users` from DB in prod (e.g. `1800000` = 30 min)
 
 Rule of thumb: `CLOUD_SQL_POOL_MAX × Cloud Run max instances` should stay **below** Cloud SQL `max_connections` with headroom (~10).
