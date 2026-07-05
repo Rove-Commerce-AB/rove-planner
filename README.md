@@ -35,9 +35,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `CLOUD_SQL_IDLE_TIMEOUT_MS` (default in production: `20000`)
 - `CLOUD_SQL_CONNECTION_TIMEOUT_MS` (default in production: `15000`)
 - `CLOUD_SQL_ACQUIRE_TIMEOUT_MS` (default: `20000`) — max wait for a free connection from the pool; logs `waitingCount` on timeout
+- `CLOUD_SQL_STATEMENT_TIMEOUT_MS` (default: `30000`) - max PostgreSQL statement runtime
+- `CLOUD_SQL_LOCK_TIMEOUT_MS` (default: `5000`) - max wait for PostgreSQL locks
+- `CLOUD_SQL_IDLE_IN_TRANSACTION_TIMEOUT_MS` (default: `30000`) - max idle time while a transaction is open
+- `CLOUD_SQL_QUERY_TIMEOUT_MS` (default: `35000`) - client-side pg query read timeout
 - `CLOUD_SQL_KEEP_ALIVE` (default: `true`)
 - `CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS` (default: `10000`)
-- `APP_DEBUG_POOL=1` — log pool `waitingCount` on slow queries (optional)
+- `APP_DEBUG_LOGS=1` - log pool stats, transaction timing, retries, and timeout labels (temporary debugging only)
 - `AUTH_DB_REFRESH_MS` — optional interval to refresh `app_users` from DB in prod (e.g. `1800000` = 30 min)
 
 Rule of thumb: `CLOUD_SQL_POOL_MAX × Cloud Run max instances` should stay **below** Cloud SQL `max_connections` with headroom (~10).
@@ -47,6 +51,22 @@ Rule of thumb: `CLOUD_SQL_POOL_MAX × Cloud Run max instances` should stay **bel
 `GET /api/health` runs `SELECT 1` with a 3s timeout. Returns `200` when the database is reachable, `503` otherwise.
 
 Configure Cloud Run **liveness probe** to this path so unhealthy instances restart instead of requiring a manual daily restart.
+
+### Diagnostic health endpoints
+
+Keep `/api/health` as the Cloud Run probe. Use these manually during incidents:
+
+- `GET /api/health/runtime` - process uptime and memory; does not touch the database.
+- `GET /api/health/pool` - Cloud SQL pool counts and safe timeout/pool config; does not run SQL.
+- `GET /api/health/db` - timed `SELECT 1`, with before/after pool counts and timeout classification.
+- `GET /api/health/db/activity` - `pg_stat_activity` summary using a separate one-off diagnostic DB connection, so it can still work when this instance's app pool is saturated. It reports active sessions, lock waits, idle-in-transaction sessions, and longest transaction/query age. It does not return SQL text. If Cloud SQL is out of connection slots globally, this endpoint can still fail.
+
+In production, detailed endpoints require `HEALTHCHECK_DIAGNOSTICS_TOKEN`. Send it as either:
+
+```bash
+curl -H "x-health-token: $HEALTHCHECK_DIAGNOSTICS_TOKEN" https://<service>/api/health/pool
+curl -H "Authorization: Bearer $HEALTHCHECK_DIAGNOSTICS_TOKEN" https://<service>/api/health/db/activity
+```
 
 ### Recommended Cloud Run settings (production)
 

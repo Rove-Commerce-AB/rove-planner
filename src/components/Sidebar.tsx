@@ -72,6 +72,7 @@ function NavLink({
   return (
     <Link
       href={href}
+      prefetch={false}
       aria-label={collapsed ? label : undefined}
       title={
         collapsed
@@ -342,6 +343,7 @@ export function Sidebar({
             {isAdmin && (
               <Link
                 href="/settings"
+                prefetch={false}
                 aria-label={effectiveCollapsed ? "Settings" : undefined}
                 title={effectiveCollapsed ? "Settings" : undefined}
                 className={`group flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-xs font-medium ${

@@ -28,6 +28,9 @@ import {
   Link2Off,
   ExternalLink,
   Loader2,
+  Save,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   getActiveProjectsForCustomer,
@@ -36,6 +39,7 @@ import {
   getHolidayDatesForWeek,
   getHolidayDatesForRange,
   getTimeReportEntries,
+  getTimeReportEntriesForWeeks,
   saveTimeReportEntries,
   copyEntryToWeek,
   copyTimeReportEntriesBatch,
@@ -126,8 +130,8 @@ function promiseWithTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 type TimeReportWeekPayload = Awaited<ReturnType<typeof getTimeReportEntries>>;
 
 /**
- * Sequential week fetches with cooperative abort. One server action per week avoids
- * bundling issues and matches the pre-perf load path (data-integrity hotfix).
+ * One server action loads the month weeks sequentially server-side. This keeps
+ * browser request pressure low without reintroducing parallel DB bursts.
  */
 async function fetchTimeReportWeeksSequentialUnlessAborted(
   consultantId: string,
@@ -137,19 +141,18 @@ async function fetchTimeReportWeeksSequentialUnlessAborted(
   /** Only set for month aggregate loads — ISO weeks can span two calendar months. */
   calendarMonthForLineFilter?: { year: number; month: number } | null
 ): Promise<TimeReportWeekPayload[] | null> {
-  const out: TimeReportWeekPayload[] = [];
-  for (let wi = 0; wi < weeks.length; wi++) {
-    if (shouldAbort()) return null;
-    const { year: y, week: w } = weeks[wi]!;
-    const payload = await promiseWithTimeout(
-      getTimeReportEntries(consultantId, y, w, calendarMonthForLineFilter ?? undefined),
-      TIME_REPORT_FETCH_TIMEOUT_MS,
-      `${labelPrefix} ${wi + 1}/${weeks.length} ${y}-W${w}`
-    );
-    if (shouldAbort()) return null;
-    out.push(payload);
-  }
-  return out;
+  if (shouldAbort()) return null;
+  const timeoutMs = TIME_REPORT_FETCH_TIMEOUT_MS * Math.max(1, weeks.length);
+  const payload = await promiseWithTimeout(
+    getTimeReportEntriesForWeeks(
+      consultantId,
+      weeks,
+      calendarMonthForLineFilter ?? undefined
+    ),
+    timeoutMs,
+    `${labelPrefix} ${weeks.length} week batch`
+  );
+  return shouldAbort() ? null : payload;
 }
 
 function weekSliceKeysForCalendarDate(
@@ -493,6 +496,95 @@ type Props = {
   initialHolidayDates: string[];
 };
 
+type TimeReportSaveState = "idle" | "saving" | "error";
+type FloatingSaveStatusState = "saved" | "pending" | "saving" | "error";
+
+function FloatingSaveStatus({
+  saveState,
+  isDirty,
+  saveError,
+}: {
+  saveState: TimeReportSaveState;
+  isDirty: boolean;
+  saveError: string | null;
+}) {
+  const status: FloatingSaveStatusState =
+    saveState === "error"
+      ? "error"
+      : saveState === "saving"
+        ? "saving"
+        : isDirty
+          ? "pending"
+          : "saved";
+  const errorMessage = saveError?.trim() || "Save failed";
+  const isError = status === "error";
+  const label =
+    status === "saving"
+      ? "Saving"
+      : status === "pending"
+        ? "Pending save"
+        : isError
+          ? "Save failed"
+          : "Saved";
+  const description =
+    status === "saving"
+      ? "Autosave is running"
+      : status === "pending"
+        ? "Changes will autosave shortly"
+        : isError
+          ? errorMessage
+          : "All changes are saved";
+  const toneClass = isError
+    ? "bg-orange-700 text-text-inverse"
+    : "bg-brand-signal text-text-inverse";
+
+  return (
+    <div className="fixed right-20 bottom-6 z-40">
+      <div
+        role={isError ? "alert" : "status"}
+        aria-live="polite"
+        aria-label={`${label}: ${description}`}
+        tabIndex={isError ? 0 : -1}
+        title={isError ? errorMessage : description}
+        className={`group/save-status relative flex h-12 w-44 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold shadow-lg transition-opacity hover:opacity-90 ${toneClass}`}
+      >
+        <span
+          className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 ${
+            status === "saving" ? "animate-pulse" : ""
+          }`}
+          aria-hidden
+        >
+          <Save className="h-4 w-4" />
+          {status === "saved" ? (
+            <CheckCircle2 className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-bg-default text-brand-signal animate-[savedCheckFade_2s_ease-out]" />
+          ) : null}
+          {isError ? (
+            <AlertTriangle className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-bg-default text-orange-700" />
+          ) : null}
+          {status === "saving" ? (
+            <span className="absolute inset-0 rounded-full border border-current opacity-40 animate-ping" />
+          ) : null}
+        </span>
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="whitespace-nowrap">{label}</span>
+          <span className="max-w-[8.5rem] truncate text-[10px] font-medium opacity-70">
+            {description}
+          </span>
+        </span>
+        {isError ? (
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute right-0 bottom-full mb-2 w-max max-w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-form bg-bg-default px-3 py-2 text-left text-[11px] font-medium leading-snug text-text-primary opacity-0 shadow-lg transition-opacity duration-150 group-hover/save-status:opacity-100 group-focus-within/save-status:opacity-100"
+            style={{ borderColor: "var(--panel-border)" }}
+          >
+            {errorMessage}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 type EditableHourTdProps = {
   dayIndex: number;
   entryId: string;
@@ -655,7 +747,7 @@ export function TimeReportPageClient({
   } | null>(null);
   const [copyToNextMonthState, setCopyToNextMonthState] = useState<"idle" | "copying" | "error">("idle");
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded">("idle");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
+  const [saveState, setSaveState] = useState<TimeReportSaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showValidationHighlights, setShowValidationHighlights] = useState(false);
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2627,6 +2719,12 @@ export function TimeReportPageClient({
 
   return (
     <div className="time-report-font-12 flex min-w-0 flex-col gap-4">
+      <FloatingSaveStatus
+        saveState={saveState}
+        isDirty={isDirty}
+        saveError={saveError}
+      />
+
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex justify-end">
           <div className="flex items-center gap-1 rounded-md p-0.5">

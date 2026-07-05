@@ -3,15 +3,19 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { getProjectsByCustomerIds } from "@/lib/projects";
 import {
   getJiraIssuesByProjectKey,
   getDevOpsWorkItemsByProject,
   getClickUpItemsByProjectKey,
 } from "@/lib/timeReportIntegrations";
-import { getCustomerRates } from "@/lib/customerRates";
-import { getProjectRates, getRolesWithRateForAllocation } from "@/lib/projectRates";
+import { getCustomerRates, getCustomerRatesByCustomerIds } from "@/lib/customerRates";
+import {
+  getProjectRates,
+  getProjectRatesByProjectIds,
+  getRolesWithRateForAllocation,
+} from "@/lib/projectRates";
 import { getCalendarHolidays } from "@/lib/calendarHolidays";
 import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
@@ -718,22 +722,28 @@ export async function saveTimeReportEntries(
     }
   }
   const [allProjectRates, allCustomerRates] = await Promise.all([
-    Promise.all(Array.from(projectIds).map(async (id) => [id, await getProjectRates(id)] as const)),
-    Promise.all(Array.from(customerIds).map(async (id) => [id, await getCustomerRates(id)] as const)),
+    getProjectRatesByProjectIds(Array.from(projectIds)),
+    getCustomerRatesByCustomerIds(Array.from(customerIds)),
   ]);
 
   const projectRoleRateMap = new Map<string, Map<string, number>>();
-  for (const [projectId, rates] of allProjectRates) {
-    const roleMap = new Map<string, number>();
-    for (const r of rates) roleMap.set(r.role_id, Number(r.rate_per_hour));
-    projectRoleRateMap.set(projectId, roleMap);
+  for (const r of allProjectRates) {
+    let roleMap = projectRoleRateMap.get(r.project_id);
+    if (!roleMap) {
+      roleMap = new Map<string, number>();
+      projectRoleRateMap.set(r.project_id, roleMap);
+    }
+    roleMap.set(r.role_id, Number(r.rate_per_hour));
   }
 
   const customerRoleRateMap = new Map<string, Map<string, number>>();
-  for (const [customerId, rates] of allCustomerRates) {
-    const roleMap = new Map<string, number>();
-    for (const r of rates) roleMap.set(r.role_id, Number(r.rate_per_hour));
-    customerRoleRateMap.set(customerId, roleMap);
+  for (const r of allCustomerRates) {
+    let roleMap = customerRoleRateMap.get(r.customer_id);
+    if (!roleMap) {
+      roleMap = new Map<string, number>();
+      customerRoleRateMap.set(r.customer_id, roleMap);
+    }
+    roleMap.set(r.role_id, Number(r.rate_per_hour));
   }
 
   const resolveRateSnapshot = (
@@ -827,10 +837,11 @@ export async function saveTimeReportEntries(
     lineShapeById.set(line.id, shape);
   }
 
-  const appUserId = await getAppUserIdForAudit();
-  const client = await cloudSqlPool.connect();
   try {
-    await client.query("BEGIN");
+    const appUserId = await getAppUserIdForAudit();
+    return await withCloudSqlTransaction<SaveTimeReportEntriesResult>(
+      `time-report save ${year}-W${week}`,
+      async (client, rollback) => {
     await client.query(
       `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
        VALUES ($1, $2, $3, 0)
@@ -846,13 +857,12 @@ export async function saveTimeReportEntries(
     );
     const currentRev = Number(revLock[0]?.revision ?? 0);
     if (currentRev !== expectedRevision) {
-      await client.query("ROLLBACK");
-      return {
+      return rollback({
         success: false,
         error: "Tidrapporten har uppdaterats någon annanstans. Ladda om innan du sparar igen.",
         code: "revision_conflict",
         currentRevision: currentRev,
-      };
+      });
     }
 
     const newRevision = currentRev + 1;
@@ -1106,17 +1116,11 @@ export async function saveTimeReportEntries(
       [newRevision, appUserId, consultantId, year, week]
     );
 
-    await client.query("COMMIT");
     return { success: true, revision: newRevision };
+      }
+    );
   } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Ignore rollback errors and return the original failure.
-    }
     return { success: false, error: e instanceof Error ? e.message : "Save failed" };
-  } finally {
-    client.release();
   }
 }
 
@@ -1368,37 +1372,29 @@ export async function copyEntryToWeek(
   );
   if (built.error) return { success: false, error: built.error };
 
-  const appUserId = await getAppUserIdForAudit();
-  const client = await cloudSqlPool.connect();
   try {
-    await client.query("BEGIN");
-    const result = await copyEntryToWeekCore(
-      client,
-      consultantId,
-      appUserId,
-      customerId,
-      targetYear,
-      targetWeek,
-      entry,
-      expectedRevision,
-      entryLineId,
-      built.toInsert
+    const appUserId = await getAppUserIdForAudit();
+    return await withCloudSqlTransaction<CopyEntryToWeekResult>(
+      `time-report copy ${targetYear}-W${targetWeek}`,
+      async (client, rollback) => {
+        const result = await copyEntryToWeekCore(
+          client,
+          consultantId,
+          appUserId,
+          customerId,
+          targetYear,
+          targetWeek,
+          entry,
+          expectedRevision,
+          entryLineId,
+          built.toInsert
+        );
+        if (!result.success) return rollback(result);
+        return result;
+      }
     );
-    if (!result.success) {
-      await client.query("ROLLBACK");
-      return result;
-    }
-    await client.query("COMMIT");
-    return result;
   } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Ignore rollback errors and return the original failure.
-    }
     return { success: false, error: e instanceof Error ? e.message : "Insert failed" };
-  } finally {
-    client.release();
   }
 }
 
@@ -1440,20 +1436,20 @@ export async function copyTimeReportEntriesBatch(
     revMap.set(k, Number(v));
   }
 
-  const client = await cloudSqlPool.connect();
   try {
-    await client.query("BEGIN");
-    const appUserId = await getAppUserIdForAudit();
+    return await withCloudSqlTransaction<CopyTimeReportEntriesBatchResult>(
+      "time-report copy batch",
+      async (client, rollback) => {
+        const appUserId = await getAppUserIdForAudit();
 
     for (const { op } of indexed) {
       const key = weekRevisionMapKey(op.targetYear, op.targetWeek);
       const expected = revMap.get(key);
       if (expected === undefined) {
-        await client.query("ROLLBACK");
-        return {
+        return rollback({
           success: false,
           error: `Saknar revision för vecka ${key}. Ladda om och försök igen.`,
-        };
+        });
       }
 
       const entryLineId = op.entry.lineId?.trim() ? op.entry.lineId.trim() : randomUUID();
@@ -1466,8 +1462,7 @@ export async function copyTimeReportEntriesBatch(
         entryLineId
       );
       if (built.error) {
-        await client.query("ROLLBACK");
-        return { success: false, error: built.error };
+        return rollback({ success: false, error: built.error });
       }
 
       const res = await copyEntryToWeekCore(
@@ -1483,23 +1478,16 @@ export async function copyTimeReportEntriesBatch(
         built.toInsert
       );
       if (!res.success) {
-        await client.query("ROLLBACK");
-        return res;
+        return rollback(res);
       }
       revMap.set(key, res.revision);
     }
 
-    await client.query("COMMIT");
     return { success: true, weekRevisions: Object.fromEntries(revMap) };
+      }
+    );
   } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Ignore rollback errors and return the original failure.
-    }
     return { success: false, error: e instanceof Error ? e.message : "Insert failed" };
-  } finally {
-    client.release();
   }
 }
 

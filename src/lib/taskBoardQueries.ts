@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 
 export type TaskBoardSummary = {
   id: string;
@@ -124,9 +124,7 @@ export async function createBoardWithCreatorMember(
     throw new Error("Title is required");
   }
 
-  const client = await cloudSqlPool.connect();
-  try {
-    await client.query("BEGIN");
+  return withCloudSqlTransaction("task-board create", async (client) => {
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO task_boards (title, created_by_app_user_id)
        VALUES ($1, $2)
@@ -141,16 +139,8 @@ export async function createBoardWithCreatorMember(
       `INSERT INTO task_board_members (board_id, app_user_id) VALUES ($1, $2)`,
       [boardId, appUserId]
     );
-    await client.query("COMMIT");
     return boardId;
-  } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 export async function updateBoardTitleAsMember(
@@ -386,9 +376,7 @@ export async function setTodoDoneState(
   appUserId: string,
   wantDone: boolean
 ): Promise<boolean> {
-  const client = await cloudSqlPool.connect();
-  try {
-    await client.query("BEGIN");
+  return withCloudSqlTransaction("task-board set todo done state", async (client) => {
     const { rows: curRows } = await client.query<{ status: string }>(
       `SELECT t.status
        FROM task_board_todos t
@@ -401,12 +389,10 @@ export async function setTodoDoneState(
       [todoId, boardId, appUserId]
     );
     if (!curRows.length) {
-      await client.query("ROLLBACK");
       return false;
     }
     const nextStatus = wantDone ? "done" : "todo";
     if (curRows[0].status === nextStatus) {
-      await client.query("COMMIT");
       return true;
     }
 
@@ -434,16 +420,8 @@ export async function setTodoDoneState(
        WHERE id = $3 AND board_id = $4`,
       [nextStatus, sortOrder, todoId, boardId]
     );
-    await client.query("COMMIT");
     return true;
-  } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 export async function listMembersForBoard(
@@ -487,9 +465,7 @@ export async function removeMemberAsCreator(
   creatorAppUserId: string,
   removeAppUserId: string
 ): Promise<boolean> {
-  const client = await cloudSqlPool.connect();
-  try {
-    await client.query("BEGIN");
+  return withCloudSqlTransaction("task-board remove member", async (client) => {
     await client.query(
       `UPDATE task_board_todos
        SET assigned_to_app_user_id = NULL
@@ -506,16 +482,8 @@ export async function removeMemberAsCreator(
          AND m.app_user_id <> b.created_by_app_user_id`,
       [boardId, creatorAppUserId, removeAppUserId]
     );
-    await client.query("COMMIT");
     return (rowCount ?? 0) > 0;
-  } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 export async function searchAppUsersForBoardInvite(

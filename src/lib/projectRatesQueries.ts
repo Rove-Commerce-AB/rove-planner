@@ -35,6 +35,19 @@ export async function fetchProjectRates(
   return rows.map(mapRow);
 }
 
+export async function fetchProjectRatesByProjectIds(
+  projectIds: string[]
+): Promise<ProjectRate[]> {
+  if (projectIds.length === 0) return [];
+
+  const { rows } = await cloudSqlPool.query(
+    `SELECT id, project_id, role_id, rate_per_hour, currency
+     FROM project_rates WHERE project_id = ANY($1::uuid[])`,
+    [projectIds]
+  );
+  return rows.map(mapRow);
+}
+
 export async function createProjectRateQuery(
   projectId: string,
   roleId: string,
