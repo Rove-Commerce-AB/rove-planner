@@ -35,6 +35,10 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `CLOUD_SQL_IDLE_TIMEOUT_MS` (default in production: `20000`)
 - `CLOUD_SQL_CONNECTION_TIMEOUT_MS` (default in production: `15000`)
 - `CLOUD_SQL_ACQUIRE_TIMEOUT_MS` (default: `20000`) — max wait for a free connection from the pool; logs `waitingCount` on timeout
+- `CLOUD_SQL_STATEMENT_TIMEOUT_MS` (default: `30000`) - max PostgreSQL statement runtime
+- `CLOUD_SQL_LOCK_TIMEOUT_MS` (default: `5000`) - max wait for PostgreSQL locks
+- `CLOUD_SQL_IDLE_IN_TRANSACTION_TIMEOUT_MS` (default: `30000`) - max idle time while a transaction is open
+- `CLOUD_SQL_QUERY_TIMEOUT_MS` (default: `35000`) - client-side pg query read timeout
 - `CLOUD_SQL_KEEP_ALIVE` (default: `true`)
 - `CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS` (default: `10000`)
 - `APP_DEBUG_POOL=1` — log pool `waitingCount` on slow queries (optional)

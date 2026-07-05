@@ -1,5 +1,5 @@
 import "server-only";
-import { Pool, type PoolConfig } from "pg";
+import { Pool, type PoolClient, type PoolConfig } from "pg";
 import { parse } from "pg-connection-string";
 import { debugLog } from "@/lib/debugLogs";
 
@@ -100,6 +100,15 @@ function buildCloudSqlPoolConfig(): PoolConfig {
   const connectionTimeoutMillis =
     parsePositiveInt(process.env.CLOUD_SQL_CONNECTION_TIMEOUT_MS) ??
     (isProd ? 15_000 : undefined);
+  const statementTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_STATEMENT_TIMEOUT_MS) ?? 30_000;
+  const lockTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_LOCK_TIMEOUT_MS) ?? 5_000;
+  const idleInTransactionSessionTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_IDLE_IN_TRANSACTION_TIMEOUT_MS) ??
+    30_000;
+  const queryTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_QUERY_TIMEOUT_MS) ?? 35_000;
   const keepAliveEnabled =
     process.env.CLOUD_SQL_KEEP_ALIVE === "false" ? false : true;
   const keepAliveInitialDelayMillis =
@@ -117,6 +126,10 @@ function buildCloudSqlPoolConfig(): PoolConfig {
     ...(max !== undefined ? { max } : {}),
     ...(idleTimeoutMillis !== undefined ? { idleTimeoutMillis } : {}),
     ...(connectionTimeoutMillis !== undefined ? { connectionTimeoutMillis } : {}),
+    statement_timeout: statementTimeout,
+    lock_timeout: lockTimeout,
+    idle_in_transaction_session_timeout: idleInTransactionSessionTimeout,
+    query_timeout: queryTimeout,
     keepAlive: keepAliveEnabled,
     keepAliveInitialDelayMillis,
   };
