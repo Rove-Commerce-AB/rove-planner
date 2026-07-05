@@ -111,6 +111,7 @@ function PersonalNextWeeksTableInner({
                   <span className="mx-1.5 opacity-50">·</span>
                   <Link
                     href={`/projects/${key.projectId}`}
+                    prefetch={false}
                     className="font-medium text-text-primary hover:underline"
                   >
                     {info.projectName}

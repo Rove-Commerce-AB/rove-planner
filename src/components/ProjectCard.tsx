@@ -28,6 +28,7 @@ export function ProjectCard({ project }: Props) {
   return (
     <Link
       href={`/projects/${project.id}`}
+      prefetch={false}
       className={`flex overflow-hidden rounded-lg border border-form bg-bg-default shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2 ${
         isInactive ? "opacity-60 grayscale" : ""
       }`}

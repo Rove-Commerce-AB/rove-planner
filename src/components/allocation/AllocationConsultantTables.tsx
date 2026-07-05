@@ -419,6 +419,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           {row.consultant.id !== TO_PLAN_CONSULTANT_ID && (
                             <Link
                               href={`/consultants/${row.consultant.id}`}
+                              prefetch={false}
                               className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                               aria-label={`Open ${row.consultant.name}`}
                             >
@@ -554,6 +555,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                     {pr.customerId ? (
                                       <Link
                                         href={`/customers/${pr.customerId}`}
+                                        prefetch={false}
                                         className="cursor-pointer hover:underline"
                                         onClick={(e) => e.stopPropagation()}
                                       >
@@ -565,6 +567,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                     {" - "}
                                     <Link
                                       href={`/projects/${pr.projectId}`}
+                                      prefetch={false}
                                       className="cursor-pointer hover:underline"
                                       onClick={(e) => e.stopPropagation()}
                                     >
@@ -984,6 +987,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           </button>
                           <Link
                             href={`/consultants/${row.consultant.id}`}
+                            prefetch={false}
                             className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                             aria-label={`Open ${row.consultant.name}`}
                           >
@@ -1090,6 +1094,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               {pr.customerId ? (
                                 <Link
                                   href={`/customers/${pr.customerId}`}
+                                  prefetch={false}
                                   className="cursor-pointer hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -1101,6 +1106,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               {" - "}
                               <Link
                                 href={`/projects/${pr.projectId}`}
+                                prefetch={false}
                                 className="cursor-pointer hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                               >

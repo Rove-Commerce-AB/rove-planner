@@ -278,6 +278,7 @@ export function AllocationBudgetDrilldownPanel({
                                 </span>
                                 <Link
                                   href={`/projects/${p.projectId}`}
+                                  prefetch={false}
                                   className="shrink-0 rounded p-0.5 text-text-primary opacity-50 hover:bg-bg-muted hover:opacity-100"
                                   aria-label={`Open ${p.projectName}`}
                                 >

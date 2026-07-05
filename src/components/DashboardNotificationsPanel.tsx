@@ -64,6 +64,7 @@ function notificationBody(n: UserNotificationRow): { text: ReactNode } {
         {projectId ? (
           <Link
             href={`/projects/${projectId}`}
+            prefetch={false}
             className="font-medium text-brand-signal hover:underline"
           >
             {who}
