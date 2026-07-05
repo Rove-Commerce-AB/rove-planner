@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { noStoreJson } from "@/app/api/health/_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +16,9 @@ export async function GET() {
       );
     });
     await Promise.race([queryPromise, timeoutPromise]);
-    return NextResponse.json({ status: "ok" }, { status: 200 });
+    return noStoreJson({ status: "ok" });
   } catch {
-    return NextResponse.json({ status: "unavailable" }, { status: 503 });
+    return noStoreJson({ status: "unavailable" }, 503);
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }

@@ -52,6 +52,22 @@ Rule of thumb: `CLOUD_SQL_POOL_MAX × Cloud Run max instances` should stay **bel
 
 Configure Cloud Run **liveness probe** to this path so unhealthy instances restart instead of requiring a manual daily restart.
 
+### Diagnostic health endpoints
+
+Keep `/api/health` as the Cloud Run probe. Use these manually during incidents:
+
+- `GET /api/health/runtime` - process uptime and memory; does not touch the database.
+- `GET /api/health/pool` - Cloud SQL pool counts and safe timeout/pool config; does not run SQL.
+- `GET /api/health/db` - timed `SELECT 1`, with before/after pool counts and timeout classification.
+- `GET /api/health/db/activity` - `pg_stat_activity` summary using a separate one-off diagnostic DB connection, so it can still work when this instance's app pool is saturated. It reports active sessions, lock waits, idle-in-transaction sessions, and longest transaction/query age. It does not return SQL text. If Cloud SQL is out of connection slots globally, this endpoint can still fail.
+
+In production, detailed endpoints require `HEALTHCHECK_DIAGNOSTICS_TOKEN`. Send it as either:
+
+```bash
+curl -H "x-health-token: $HEALTHCHECK_DIAGNOSTICS_TOKEN" https://<service>/api/health/pool
+curl -H "Authorization: Bearer $HEALTHCHECK_DIAGNOSTICS_TOKEN" https://<service>/api/health/db/activity
+```
+
 ### Recommended Cloud Run settings (production)
 
 | Setting | Typical today | Recommended | Why |

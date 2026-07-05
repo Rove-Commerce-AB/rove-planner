@@ -195,7 +195,85 @@ function poolStats(pool: Pool): Record<string, number> {
   };
 }
 
-function errorDetails(error: unknown): Record<string, unknown> {
+export function getCloudSqlPoolStats(): Record<string, number | boolean> {
+  if (!poolSingleton) {
+    return {
+      initialized: false,
+      totalCount: 0,
+      idleCount: 0,
+      waitingCount: 0,
+    };
+  }
+
+  return {
+    initialized: true,
+    ...poolStats(poolSingleton),
+  };
+}
+
+export function getCloudSqlPoolConfigSummary(): Record<string, unknown> {
+  const connectionString = process.env.CLOUD_SQL_URL;
+  const isProd = process.env.NODE_ENV === "production";
+  let connectionMode: "unset" | "unix_socket" | "tcp" | "unknown" = "unset";
+  let sslMode: string | null = null;
+
+  if (connectionString) {
+    sslMode = getSslMode(connectionString);
+    try {
+      const parsed = parse(stripSslModeQuery(connectionString));
+      connectionMode = (parsed.host ?? "").startsWith("/cloudsql/")
+        ? "unix_socket"
+        : "tcp";
+    } catch {
+      connectionMode = "unknown";
+    }
+  }
+
+  const keepAliveEnabled =
+    process.env.CLOUD_SQL_KEEP_ALIVE === "false" ? false : true;
+
+  return {
+    hasConnectionString: Boolean(connectionString),
+    connectionMode,
+    enforceUnixSocket:
+      isProd && process.env.CLOUD_SQL_ENFORCE_UNIX_SOCKET !== "false",
+    sslMode,
+    useSsl:
+      connectionString != null
+        ? sslMode !== "disable" && connectionMode === "tcp"
+        : null,
+    rejectUnauthorized:
+      process.env.CLOUD_SQL_SSL_REJECT_UNAUTHORIZED === "true",
+    poolMax: parsePositiveInt(process.env.CLOUD_SQL_POOL_MAX) ?? (isProd ? 5 : 10),
+    idleTimeoutMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_IDLE_TIMEOUT_MS) ??
+      (isProd ? 20_000 : null),
+    connectionTimeoutMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_CONNECTION_TIMEOUT_MS) ??
+      (isProd ? 15_000 : null),
+    acquireTimeoutMillis: getAcquireTimeoutMs(),
+    statementTimeoutMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_STATEMENT_TIMEOUT_MS) ?? 30_000,
+    lockTimeoutMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_LOCK_TIMEOUT_MS) ?? 5_000,
+    idleInTransactionTimeoutMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_IDLE_IN_TRANSACTION_TIMEOUT_MS) ??
+      30_000,
+    queryTimeoutMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_QUERY_TIMEOUT_MS) ?? 35_000,
+    keepAlive: keepAliveEnabled,
+    keepAliveInitialDelayMillis:
+      parsePositiveInt(process.env.CLOUD_SQL_KEEP_ALIVE_INITIAL_DELAY_MS) ??
+      10_000,
+    queryRetryCount:
+      parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_COUNT) ?? 2,
+    queryRetryDelayMs:
+      parsePositiveInt(process.env.CLOUD_SQL_QUERY_RETRY_DELAY_MS) ?? 150,
+    debugLogs: process.env.APP_DEBUG_LOGS === "1",
+  };
+}
+
+export function getCloudSqlErrorDetails(error: unknown): Record<string, unknown> {
   const timeoutKind = classifyDbTimeoutError(error);
   if (error instanceof Error) {
     const err = error as Error & { code?: string };
@@ -209,6 +287,45 @@ function errorDetails(error: unknown): Record<string, unknown> {
     error: String(error),
     timeoutKind,
   };
+}
+
+function errorDetails(error: unknown): Record<string, unknown> {
+  return getCloudSqlErrorDetails(error);
+}
+
+async function connectWithAcquireTimeout(
+  pool: Pool,
+  acquireTimeoutMs = getAcquireTimeoutMs()
+): Promise<PoolClient> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+
+  const connectPromise = pool.connect();
+  connectPromise.then(
+    (client) => {
+      if (timedOut) {
+        client.release();
+      }
+    },
+    () => {}
+  );
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      reject(
+        new Error(
+          `Pool acquire timeout after ${acquireTimeoutMs}ms (waitingCount=${pool.waitingCount}, totalCount=${pool.totalCount}, idleCount=${pool.idleCount})`
+        )
+      );
+    }, acquireTimeoutMs);
+  });
+
+  try {
+    return await Promise.race([connectPromise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 async function runQueryWithAcquireTimeout(
@@ -251,7 +368,7 @@ export async function withCloudSqlClient<T>(
   debugLog("db-client", `${label} acquire start`, poolStats(pool));
 
   try {
-    client = await pool.connect();
+    client = await connectWithAcquireTimeout(pool);
     const acquiredAt = Date.now();
     debugLog("db-client", `${label} acquired`, {
       durationMs: acquiredAt - start,
@@ -281,6 +398,82 @@ export async function withCloudSqlClient<T>(
       client.release();
       debugLog("db-client", `${label} released`, poolStats(pool));
     }
+  }
+}
+
+export async function withCloudSqlDiagnosticClient<T>(
+  label: string,
+  fn: (client: PoolClient) => Promise<T>,
+  timeoutMs = 3_000
+): Promise<T> {
+  const baseConfig = buildCloudSqlPoolConfig();
+  const connectionTimeoutMillis =
+    parsePositiveInt(process.env.CLOUD_SQL_DIAGNOSTIC_CONNECTION_TIMEOUT_MS) ??
+    timeoutMs;
+  const statementTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_DIAGNOSTIC_STATEMENT_TIMEOUT_MS) ??
+    timeoutMs;
+  const lockTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_DIAGNOSTIC_LOCK_TIMEOUT_MS) ??
+    Math.min(timeoutMs, 1_000);
+  const queryTimeout =
+    parsePositiveInt(process.env.CLOUD_SQL_DIAGNOSTIC_QUERY_TIMEOUT_MS) ??
+    timeoutMs;
+  const baseApplicationName =
+    typeof baseConfig.application_name === "string" &&
+    baseConfig.application_name.trim()
+      ? baseConfig.application_name.trim()
+      : "rove-planner";
+  const diagnosticPool = new Pool({
+    ...baseConfig,
+    max: 1,
+    idleTimeoutMillis: 1_000,
+    connectionTimeoutMillis,
+    statement_timeout: statementTimeout,
+    lock_timeout: lockTimeout,
+    query_timeout: queryTimeout,
+    application_name: `${baseApplicationName}:health-diagnostics`,
+  });
+  const start = Date.now();
+  let client: PoolClient | null = null;
+  debugLog("db-client", `${label} diagnostic acquire start`);
+
+  try {
+    client = await connectWithAcquireTimeout(
+      diagnosticPool,
+      connectionTimeoutMillis
+    );
+    const acquiredAt = Date.now();
+    debugLog("db-client", `${label} diagnostic acquired`, {
+      durationMs: acquiredAt - start,
+    });
+    const result = await fn(client);
+    debugLog("db-client", `${label} diagnostic ok`, {
+      durationMs: Date.now() - start,
+      workDurationMs: Date.now() - acquiredAt,
+    });
+    return result;
+  } catch (error) {
+    debugLog(
+      "db-client",
+      `${label} diagnostic failed`,
+      {
+        durationMs: Date.now() - start,
+        ...errorDetails(error),
+      },
+      "error"
+    );
+    throw error;
+  } finally {
+    if (client) client.release();
+    await diagnosticPool.end().catch((error: unknown) => {
+      debugLog(
+        "db-client",
+        `${label} diagnostic pool close failed`,
+        errorDetails(error),
+        "error"
+      );
+    });
   }
 }
 
