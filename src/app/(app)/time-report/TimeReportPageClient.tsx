@@ -855,7 +855,7 @@ export function TimeReportPageClient({
   }, []);
 
   const markDirtyEntireDisplayMonth = useCallback(() => {
-    const keys = getWeeksInMonthLocal(displayYearRef.current, displayMonthRef.current).map(
+    const keys = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current).map(
       ({ year: y, week: w }) => weekSliceKey(y, w)
     );
     markDirty(keys);
@@ -1923,7 +1923,7 @@ export function TimeReportPageClient({
       );
       return;
     }
-    const monthWeeks = getWeeksInMonthLocal(displayYearRef.current, displayMonthRef.current);
+    const monthWeeks = getWeeksInMonthLocal(displayMonthRef.current, displayYearRef.current);
     const row = monthMergedRowsRef.current.find(
       (r) => r.customerId === customerId && r.rowKey === entryId
     );
@@ -2377,7 +2377,7 @@ export function TimeReportPageClient({
       return;
     }
 
-    const monthWeeks = getWeeksInMonthLocal(displayYear, displayMonth);
+    const monthWeeks = getWeeksInMonthLocal(displayMonth, displayYear);
     const sourceRow = monthMergedRows.find(
       (r) => r.customerId === customerId && r.rowKey === entryId
     );
@@ -2540,7 +2540,7 @@ export function TimeReportPageClient({
       );
     } else {
       const dates = getCalendarDatesInMonth(displayYear, displayMonth);
-      const monthWeeks = getWeeksInMonthLocal(displayYear, displayMonth);
+      const monthWeeks = getWeeksInMonthLocal(displayMonth, displayYear);
       const row = monthMergedRows.find((r) => r.rowKey === commentState.rowId);
       markDirty(row ? weekSliceKeysForMergedRow(row, monthWeeks) : undefined);
       setMonthMergedRows((prev) =>
@@ -3690,7 +3690,7 @@ export function TimeReportPageClient({
                                     markDirty(
                                       weekSliceKeysForCalendarDate(
                                         dateStr,
-                                        getWeeksInMonthLocal(displayYear, displayMonth)
+                                        getWeeksInMonthLocal(displayMonth, displayYear)
                                       )
                                     );
                                     setMonthMergedRows((prev) => {
