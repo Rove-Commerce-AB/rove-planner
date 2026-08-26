@@ -129,7 +129,13 @@ export async function fetchCustomerById(
 
   const projectsByCustomer = new Map<
     string,
-    { id: string; name: string; is_active: boolean; type: string }[]
+    {
+      id: string;
+      name: string;
+      is_active: boolean;
+      type: string;
+      probability: number | null;
+    }[]
   >();
   try {
     const projects = await fetchProjectsByCustomerIds([data.id]);
@@ -140,6 +146,7 @@ export async function fetchCustomerById(
         name: p.name,
         is_active: p.is_active,
         type: p.type ?? "customer",
+        probability: p.probability,
       });
       projectsByCustomer.set(p.customer_id, list);
     }
@@ -175,6 +182,7 @@ export async function fetchCustomerById(
       name: p.name,
       isActive: p.is_active,
       type: p.type as ProjectType,
+      probability: p.probability,
     })),
   };
 }
@@ -339,7 +347,13 @@ export async function fetchCustomersWithDetails(): Promise<
 
   const projectsByCustomer = new Map<
     string,
-    { id: string; name: string; is_active: boolean; type: string }[]
+    {
+      id: string;
+      name: string;
+      is_active: boolean;
+      type: string;
+      probability: number | null;
+    }[]
   >();
   try {
     const projects = await fetchProjectsByCustomerIds(
@@ -352,6 +366,7 @@ export async function fetchCustomersWithDetails(): Promise<
         name: p.name,
         is_active: p.is_active,
         type: p.type ?? "customer",
+        probability: p.probability,
       });
       projectsByCustomer.set(p.customer_id, list);
     }
@@ -388,6 +403,7 @@ export async function fetchCustomersWithDetails(): Promise<
         name: p.name,
         isActive: p.is_active,
         type: p.type as ProjectType,
+        probability: p.probability,
       })),
     };
   });

@@ -94,6 +94,8 @@ export type CustomerProjectSummary = {
   name: string;
   isActive: boolean;
   type: ProjectType;
+  /** 1–100; null treated as 100. */
+  probability: number | null;
 };
 
 export type CustomerWithDetails = {
