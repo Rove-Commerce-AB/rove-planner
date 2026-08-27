@@ -66,10 +66,17 @@ export function DataAgentChat() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      inputRef.current?.focus();
+    }
+  }, [loading]);
 
   const canSubmit = !loading && question.trim().length > 0;
 
@@ -159,12 +166,14 @@ export function DataAgentChat() {
       <form onSubmit={handleSubmit} className="mt-4 flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <Input
+            ref={inputRef}
             id="data-agent-question"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Ask a question"
             disabled={loading}
             autoComplete="off"
+            autoFocus
           />
         </div>
         <Button type="submit" disabled={!canSubmit} className="mt-0 shrink-0">
