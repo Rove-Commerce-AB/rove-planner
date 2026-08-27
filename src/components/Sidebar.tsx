@@ -16,6 +16,7 @@ import {
   LogOut,
   Home,
   Bell,
+  Sparkles,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useSidePanel } from "@/contexts/SidePanelContext";
@@ -316,16 +317,25 @@ export function Sidebar({
             </div>
           )}
 
-          {/* 7. Reports */}
-          {isAdmin && (
+          {/* 7. Insights, Reports */}
+          {!isSubcontractor && (
             <div className="space-y-px">
               <NavLink
-                href="/reports"
-                label="Reports"
-                icon={BarChart2}
+                href="/insights"
+                label="Insights"
+                icon={Sparkles}
                 pathname={pathname}
                 collapsed={effectiveCollapsed}
               />
+              {isAdmin && (
+                <NavLink
+                  href="/reports"
+                  label="Reports"
+                  icon={BarChart2}
+                  pathname={pathname}
+                  collapsed={effectiveCollapsed}
+                />
+              )}
             </div>
           )}
         </nav>

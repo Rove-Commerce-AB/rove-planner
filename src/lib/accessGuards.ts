@@ -23,3 +23,16 @@ export async function assertAdmin() {
     throw new Error("Unauthorized");
   }
 }
+
+/**
+ * Data agenten kan svara på frågor över hela verksamheten (alla kunder,
+ * alla konsulter, alla allokeringar) — inte scopead per användare som de
+ * flesta read-vyerna. Default: alla roller utom subcontractor. Byt till
+ * samma mönster som assertAdmin() om ni vill börja snävare (bara admins).
+ */
+export async function assertCanUseDataAgent() {
+  const user = await getCurrentAppUser();
+  if (!user || user.role === "subcontractor") {
+    throw new Error("Unauthorized");
+  }
+}
