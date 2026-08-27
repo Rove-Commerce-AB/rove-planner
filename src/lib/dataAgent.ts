@@ -11,12 +11,15 @@ export type { DataAgentAnswer, DataAgentTable };
 
 const CLOUD_PLATFORM_SCOPE =
   "https://www.googleapis.com/auth/cloud-platform";
+const SQL_LOGIN_SCOPE = "https://www.googleapis.com/auth/sqlservice.login";
 
 let googleAuth: GoogleAuth | null = null;
 
 function getGoogleAuth(): GoogleAuth {
   if (!googleAuth) {
-    googleAuth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] });
+    googleAuth = new GoogleAuth({
+      scopes: [CLOUD_PLATFORM_SCOPE, SQL_LOGIN_SCOPE],
+    });
   }
   return googleAuth;
 }
@@ -69,6 +72,11 @@ export async function askDataAgent(question: string): Promise<DataAgentAnswer> {
     body: JSON.stringify({
       parent,
       messages: [{ userMessage: { text: trimmed } }],
+      credentials: {
+        oauth: {
+          token: { accessToken },
+        },
+      },
       dataAgentContext: {
         dataAgent: `${parent}/dataAgents/${agentId}`,
       },
