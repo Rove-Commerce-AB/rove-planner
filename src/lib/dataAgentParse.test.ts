@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseDataAgentStream, parseStreamEvents } from "./dataAgentParse";
+import {
+  buildChatMessages,
+  parseDataAgentStream,
+  parseStreamEvents,
+} from "./dataAgentParse";
 
 describe("parseStreamEvents", () => {
   it("parses a JSON array", () => {
@@ -109,5 +113,41 @@ describe("parseDataAgentStream", () => {
     expect(() => parseDataAgentStream("{}")).toThrow(
       "The data agent did not return an answer"
     );
+  });
+});
+
+describe("buildChatMessages", () => {
+  it("appends the new question after prior user and agent turns", () => {
+    expect(
+      buildChatMessages("vilka kunder är han allokerad på?", [
+        { role: "user", text: "hur mycket är Simon allokerad i december?" },
+        { role: "agent", text: "Simon är allokerad totalt 34 timmar." },
+      ])
+    ).toEqual([
+      {
+        userMessage: {
+          text: "hur mycket är Simon allokerad i december?",
+        },
+      },
+      {
+        systemMessage: {
+          text: { parts: ["Simon är allokerad totalt 34 timmar."] },
+        },
+      },
+      { userMessage: { text: "vilka kunder är han allokerad på?" } },
+    ]);
+  });
+
+  it("keeps only the last 10 history turns", () => {
+    const history = Array.from({ length: 12 }, (_, i) => ({
+      role: (i % 2 === 0 ? "user" : "agent") as "user" | "agent",
+      text: `turn ${i}`,
+    }));
+    const messages = buildChatMessages("now", history);
+    expect(messages).toHaveLength(11);
+    expect(messages[0]).toEqual({ userMessage: { text: "turn 2" } });
+    expect(messages[messages.length - 1]).toEqual({
+      userMessage: { text: "now" },
+    });
   });
 });

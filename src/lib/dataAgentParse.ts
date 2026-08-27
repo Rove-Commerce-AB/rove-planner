@@ -2,6 +2,38 @@ export type DataAgentTable = { headers: string[]; rows: unknown[][] };
 
 export type DataAgentAnswer = { text: string; table: DataAgentTable | null };
 
+export type DataAgentHistoryTurn = {
+  role: "user" | "agent";
+  text: string;
+};
+
+const MAX_HISTORY_TURNS = 10;
+const MAX_TURN_CHARS = 2000;
+
+/** Prior user/agent text only — no tables. Used for follow-ups like "han". */
+export function buildChatMessages(
+  question: string,
+  history: DataAgentHistoryTurn[] = []
+): Array<Record<string, unknown>> {
+  const prior = history
+    .filter((turn) => turn.role === "user" || turn.role === "agent")
+    .map((turn) => ({
+      role: turn.role,
+      text: turn.text.trim().slice(0, MAX_TURN_CHARS),
+    }))
+    .filter((turn) => turn.text.length > 0)
+    .slice(-MAX_HISTORY_TURNS);
+
+  return [
+    ...prior.map((turn) =>
+      turn.role === "user"
+        ? { userMessage: { text: turn.text } }
+        : { systemMessage: { text: { parts: [turn.text] } } }
+    ),
+    { userMessage: { text: question } },
+  ];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

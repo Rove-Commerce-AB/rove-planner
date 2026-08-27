@@ -78,11 +78,19 @@ export function DataAgentChat() {
     const text = question.trim();
     if (!text || loading) return;
 
+    const history = messages
+      .filter(
+        (message): message is ChatMessage & { role: "user" | "agent" } =>
+          (message.role === "user" || message.role === "agent") &&
+          Boolean(message.text.trim())
+      )
+      .map((message) => ({ role: message.role, text: message.text }));
+
     setQuestion("");
     setMessages((prev) => [...prev, { role: "user", text }]);
     setLoading(true);
     try {
-      const answer = await askDataAgentAction(text);
+      const answer = await askDataAgentAction(text, history);
       setMessages((prev) => [
         ...prev,
         { role: "agent", text: answer.text, table: answer.table },

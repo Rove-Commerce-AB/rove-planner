@@ -2,12 +2,14 @@ import "server-only";
 
 import { GoogleAuth } from "google-auth-library";
 import {
+  buildChatMessages,
   parseDataAgentStream,
   type DataAgentAnswer,
+  type DataAgentHistoryTurn,
   type DataAgentTable,
 } from "@/lib/dataAgentParse";
 
-export type { DataAgentAnswer, DataAgentTable };
+export type { DataAgentAnswer, DataAgentHistoryTurn, DataAgentTable };
 
 const CLOUD_PLATFORM_SCOPE =
   "https://www.googleapis.com/auth/cloud-platform";
@@ -51,7 +53,10 @@ async function getAccessToken(): Promise<string> {
   return token;
 }
 
-export async function askDataAgent(question: string): Promise<DataAgentAnswer> {
+export async function askDataAgent(
+  question: string,
+  history: DataAgentHistoryTurn[] = []
+): Promise<DataAgentAnswer> {
   const trimmed = question.trim();
   if (!trimmed) {
     throw new Error("Question is empty");
@@ -71,7 +76,7 @@ export async function askDataAgent(question: string): Promise<DataAgentAnswer> {
     },
     body: JSON.stringify({
       parent,
-      messages: [{ userMessage: { text: trimmed } }],
+      messages: buildChatMessages(trimmed, history),
       credentials: {
         oauth: {
           token: { accessToken },
