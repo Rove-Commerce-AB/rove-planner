@@ -72,3 +72,31 @@ export function timeGridColumnCellInteractionProps(
     },
   };
 }
+
+/** Full-row hover/focus highlight for time-report (and similar) grids. */
+export function useTimeGridRowHighlight(): {
+  rowHoverHandlers: (
+    rowKey: string
+  ) => Pick<
+    HTMLAttributes<HTMLTableRowElement>,
+    "onMouseEnter" | "onMouseLeave" | "onFocusCapture" | "onBlurCapture"
+  >;
+  rowHoverClass: (rowKey: string) => string;
+} {
+  const [hoverRowKey, setHoverRowKey] = useState<string | null>(null);
+
+  return {
+    rowHoverHandlers: (rowKey: string) => ({
+      onMouseEnter: () => setHoverRowKey(rowKey),
+      onMouseLeave: () => setHoverRowKey(null),
+      onFocusCapture: () => setHoverRowKey(rowKey),
+      onBlurCapture: (e: FocusEvent<HTMLTableRowElement>) => {
+        const next = e.relatedTarget as Node | null;
+        if (next && e.currentTarget.contains(next)) return;
+        setHoverRowKey(null);
+      },
+    }),
+    rowHoverClass: (rowKey: string) =>
+      hoverRowKey === rowKey ? "time-grid-row-hover" : "",
+  };
+}
