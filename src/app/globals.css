@@ -186,6 +186,12 @@ textarea.border-form {
   ) !important;
   box-shadow: inset 0 -4px 0 0 var(--color-brand-blue) !important;
 }
+
+/* Time report: highlight the hovered/focused hour-entry row (same light blue as Date header). */
+.time-report-tables tbody tr.time-grid-row-hover > td {
+  box-shadow: inset 0 0 0 9999px
+    color-mix(in srgb, var(--color-brand-blue) 28%, transparent);
+}
 table thead th.time-grid-header-column-active {
   background: color-mix(
     in srgb,

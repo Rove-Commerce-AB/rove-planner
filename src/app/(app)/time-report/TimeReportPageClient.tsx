@@ -86,6 +86,7 @@ import {
 import { TimeReportHourCell } from "./TimeReportHourCell";
 import {
   useTimeGridColumnHighlight,
+  useTimeGridRowHighlight,
   timeGridColumnCellInteractionProps,
 } from "@/components/TimeGridColumnHighlight";
 
@@ -698,6 +699,7 @@ export function TimeReportPageClient({
 }: Props) {
   const { highlightedColumnIndex, setHighlightedColumnIndex } =
     useTimeGridColumnHighlight();
+  const { rowHoverHandlers, rowHoverClass } = useTimeGridRowHighlight();
   const [year, setYear] = useState(initialYear);
   const [week, setWeek] = useState(initialWeek);
   const [holidayDates, setHolidayDates] = useState<string[]>(initialHolidayDates);
@@ -2999,7 +3001,8 @@ export function TimeReportPageClient({
                     {group.entries.map((entry) => (
                         <tr
                           key={entry.id}
-                          className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
+                          className={`border-b border-border-subtle bg-bg-default ${rowHoverClass(entry.id)}`}
+                          {...rowHoverHandlers(entry.id)}
                         >
                           <td
                             className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-1"
@@ -3456,7 +3459,8 @@ export function TimeReportPageClient({
                           return (
                             <tr
                               key={row.rowKey}
-                              className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
+                              className={`border-b border-border-subtle bg-bg-default ${rowHoverClass(row.rowKey)}`}
+                              {...rowHoverHandlers(row.rowKey)}
                             >
                               <td
                                 className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5"
