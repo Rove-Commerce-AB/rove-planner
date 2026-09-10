@@ -86,7 +86,7 @@ Read DESIGN_SYSTEM.md and UI_PATTERNS.md section 6.
 - Token-based colors only
 - Allocation pills: status success/warning/danger/muted as specified
 - Current week: `accent/primary-subtle` and `accent/primary`
-- Sticky header uses `table/header` (sage), comfortable lists round the top corners (`radius/lg`)
+- Sticky header uses `table/header` (`blue/100`), comfortable lists round the top corners (`radius/lg`)
 - Sort lives in column headers (`sort` prop); the table does not reorder rows
 
 Show the diff. Wait for approval.

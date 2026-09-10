@@ -19,7 +19,7 @@ const compact = {
 
 /** Comfortable density: default for overview lists (Figma). */
 const comfortable = {
-  header: "px-4 py-3 text-[12px] font-semibold text-text-primary first:rounded-tl-lg last:rounded-tr-lg",
+  header: "h-[50px] px-4 align-middle text-heading-xs text-text-primary first:rounded-tl-lg last:rounded-tr-lg",
   cell: "px-4 py-4 text-sm text-text-primary",
   cellSecondary: "px-4 py-4 text-sm text-text-secondary",
   row: "border-b border-border-default last:border-b-0",
@@ -120,14 +120,14 @@ function HeaderLabel({
       <button
         type="button"
         onClick={() => sort.onSort(column.id)}
-        className="inline-flex cursor-pointer items-center gap-1 text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
+        className="inline-flex h-full min-h-[50px] cursor-pointer items-center gap-2 text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
       >
         {column.header}
         {isSorted ? (
           sort.direction === "asc" ? (
-            <ChevronUp className="h-3 w-3 text-text-secondary" aria-hidden />
+            <ChevronUp className="h-4 w-4 text-text-secondary" aria-hidden />
           ) : (
-            <ChevronDown className="h-3 w-3 text-text-secondary" aria-hidden />
+            <ChevronDown className="h-4 w-4 text-text-secondary" aria-hidden />
           )
         ) : null}
       </button>
@@ -170,10 +170,17 @@ export function DataTable<T>({
     <div
       className={
         density === "comfortable"
-          ? "overflow-x-auto rounded-t-lg bg-bg-default"
-          : "overflow-x-auto"
+          ? "rounded-t-lg bg-bg-default shadow-primary"
+          : undefined
       }
     >
+      <div
+        className={
+          density === "comfortable"
+            ? "overflow-x-auto rounded-t-lg"
+            : "overflow-x-auto"
+        }
+      >
       <table className={`w-full min-w-[200px] border-separate border-spacing-0 text-sm ${className}`.trim()}>
         <colgroup>
           {columns.map((col) => (
@@ -250,7 +257,7 @@ export function DataTable<T>({
                         handleRowClick(row);
                       }
                     }}
-                    className={`${styles.row} cursor-pointer transition-colors hover:bg-interactive-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset ${
+                    className={`${styles.row} cursor-pointer transition-colors hover:bg-interactive-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset ${
                       selectedRowId === id ? "bg-nav-active" : ""
                     }`}
                   >
@@ -268,6 +275,7 @@ export function DataTable<T>({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

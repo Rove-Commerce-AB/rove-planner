@@ -175,8 +175,8 @@
   --color-focus-default: var(--color-blue-600);
   --color-focus-subtle: var(--color-blue-100);
 
-  /* Overview list table header — Figma sage (Consultants list), not green/200 */
-  --color-table-header: #c4d7c1;
+  /* Overview list table header — blue/100 */
+  --color-table-header: var(--color-blue-100);
 
   /* Initials avatars — saturated fill, inverse initials */
   --color-avatar-1-bg: var(--color-blue-500);
@@ -325,7 +325,7 @@
   --color-focus-default: var(--color-blue-400);
   --color-focus-subtle: var(--color-blue-900);
 
-  --color-table-header: var(--color-green-900);
+  --color-table-header: var(--color-blue-900);
 
   --color-avatar-1-bg: var(--color-blue-500);
   --color-avatar-1-fg: var(--color-white);

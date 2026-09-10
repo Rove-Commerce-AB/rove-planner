@@ -150,12 +150,12 @@ Foreground status color on the matching `*-subtle` background.
 
 | Token | Light | Dark | Use |
 |-------|-------|------|-----|
-| Table header fill | `table/header` `#c4d7c1` (Figma sage) | `table/header` (green/900) | DataTable sticky header. Figma trumps the green/200 ramp. |
-| Table header text | `text/primary`, semibold | `text/primary`, semibold | Label/M |
+| Table header fill | `table/header` `blue/100` | `table/header` (`blue/900`) | DataTable sticky header |
+| Table header text | `text/primary`, semibold | `text/primary`, semibold | Heading/XS (13px) |
 | Table body | `surface/default` (white) on `surface/page` | `surface/default` | Overview lists — not a bordered Panel |
 | Table header radius | `radius/lg` on top corners | `radius/lg` on top corners | Comfortable overview lists only |
 | Row divider | `border/default` | `border/default` | Hairline between rows on white, none under the last row, no vertical rules |
-| Row hover | `interactive/secondary-hover` | `interactive/secondary-hover` | |
+| Row hover | `interactive/secondary` (`zinc/100`) | `interactive/secondary` | |
 | Selected row | `nav/active` | `nav/active` | Overlay detail is open for that row |
 
 ### Segmented control
@@ -261,9 +261,9 @@ Letter-spacing is **0** on all styles. `textCase` is original (no `uppercase` ut
 | Heading/L | SemiBold 600 | 20px | Drawer / detail titles |
 | Heading/M | SemiBold 600 | 15px | Panel titles |
 | Heading/S | SemiBold 600 | 14px | Subsection titles |
-| Heading/XS | SemiBold 600 | 13px | Compact section titles |
+| Heading/XS | SemiBold 600 | 13px | Compact section titles, overview table headers |
 | Label/L | Medium 500 | 13px | Emphasized UI labels, primary nav |
-| Label/M | Medium 500 | 12px | Controls, table headers, buttons |
+| Label/M | Medium 500 | 12px | Controls, buttons |
 | Label/S | SemiBold 600 | 11px | Compact labels, badges |
 | Label/XS | SemiBold 600 | 10px | Tiny labels |
 | Body/L | Regular 400 | 13px | Default readable body |
@@ -331,13 +331,13 @@ Overview **list pages** use **comfortable** table density (Figma). Compact remai
 | Gap between fields in a section | 4–8px |
 | Label-to-value spacing | 4px |
 | Overview list table row | comfortable (`px-4 py-3.5`) |
-| Overview list table header | comfortable (`px-4 py-3`), `radius/lg` on top corners |
+| Overview list table header | 50px tall (`px-4`), `radius/lg` on top corners |
 | Operational grid row | compact |
 | Drawer padding | 24px (`px-6`) |
 | Drawer identity row | label left, value box 14.5rem right (`py-3`) |
 | Drawer summary row | semibold label, unboxed value (`py-3.5`) |
 
-Do not wrap overview list tables in a bordered `Panel`. The table body is `surface/default` on `surface/page`. Comfortable headers use Figma sage `table/header` (`#c4d7c1`) and `radius/lg` on the top corners only; compact operational grids stay square.
+Do not wrap overview list tables in a bordered `Panel`. The table body is `surface/default` on `surface/page`. Comfortable headers use `table/header` (`blue/100`) and `radius/lg` on the top corners only; compact operational grids stay square.
 
 ---
 
@@ -392,5 +392,5 @@ Hierarchy comes from spacing, type, and tokens – not heavy borders.
 
 - Tailwind utilities that reference these tokens
 - Small token adjustments in `tokens.css` only, with a comment
-- Overview `table/header` light sage `#c4d7c1` is defined in `tokens.css` from Figma (not green/200)
+- Overview `table/header` is `blue/100` in `tokens.css`
 - Inline styles **only** for user-defined database colors, and for **percentage widths** on meters (`CapacityBar`)

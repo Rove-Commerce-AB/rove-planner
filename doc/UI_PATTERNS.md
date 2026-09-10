@@ -25,7 +25,7 @@ If grouping is needed (e.g. Internal / External):
 - Unselected segmented options use `interactive/secondary-hover`; only the selected option is `interactive/primary`.
 
 ### Don't
-- Do not wrap the overview table in a bordered `Panel`. The table is white (`surface/default`) on the gray page canvas, with a sage header.
+- Do not wrap the overview table in a bordered `Panel`. The table is white (`surface/default`) on the gray page canvas, with a `blue/100` header.
 - Do not create multiple different table styles across pages.
 - Do not use “Show inactive” text links when `SegmentedControl` can replace them.
 - Do not add a “Showing n of m” footer unless Figma specifies it.
@@ -58,18 +58,18 @@ No raw `<table>` markup in pages or features.
 - Receives fully prepared data only
 
 ### Visual behavior
-- Sticky header on `table/header` (Figma sage `#c4d7c1`, not green/200)
-- Header type: Label/M, **semibold**, `text/primary`
-- Comfortable density: table sits on `surface/default`, top corners `radius/lg`, header clipped to those corners
+- Sticky header on `table/header` (`blue/100`)
+- Header type: Heading/XS, **semibold**, `text/primary`
+- Comfortable density: table sits on `surface/default`, top corners `radius/lg`, header clipped to those corners, `shadow/primary` under the table
 - Row dividers: `border/default` (visible hairline on white). No divider under the last row. No vertical rules.
 - Sortable columns render a chevron in the header of the active sort column only
-- Row hover: `interactive/secondary-hover`
+- Row hover: `interactive/secondary` (`zinc/100`)
 - Selected row (overlay open): `nav/active`
 - Focus-visible uses `focus/default` or `accent/focus`
 - Actions column: fixed width, right-aligned, icon buttons only
 
 ### Table typography
-- Header: Label/M, semibold, `text/primary`
+- Header: Heading/XS, semibold, `text/primary`
 - Primary cell (name/title): Body/M, `text/primary`, **semibold**
 - Secondary cell (team, role, metadata): Body/M, `text/secondary`
 - Numbers: Body/M + `tabular-nums`

@@ -37,7 +37,7 @@ Confirm:
 - Uses DataTable component where there is a table
 - Has loading/empty/error states
 - List pages: `PageHeader` on the canvas, `SegmentedControl` + `DataTable` (no Panel frame)
-- Overview tables: Figma sage `table/header` (`#c4d7c1`), white body, rounded top corners, sort in column headers, `border/default` row dividers
+- Overview tables: `table/header` (`blue/100`), white body, rounded top corners, sort in column headers, `border/default` row dividers
 - Segmented control (`SegmentedControl`): selected `interactive/primary`, default `interactive/secondary-hover`
 - No heavy gridlines, has hover/focus states
 - Comfortable density on overview lists; compact only on operational grids
