@@ -21,7 +21,7 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
     unreadNotificationCount > 99 ? "99+" : String(unreadNotificationCount);
 
   return (
-    <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle bg-bg-default px-8">
+    <header className="flex shrink-0 items-center justify-between border-b border-border-default bg-bg-default px-8">
       <nav aria-label="Breadcrumb" className="min-w-0">
         <ol className="flex min-w-0 items-center gap-1.5 text-xs">
           {crumbs.map((crumb, index) => {
@@ -72,18 +72,17 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
             ? `Notifications (${unreadNotificationCount} unread)`
             : "Notifications"
         }
-        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-nav-hover ${
+        className={`relative flex shrink-0 items-center justify-center rounded-md px-3 py-3 transition-colors hover:bg-nav-hover ${
           notificationsActive
             ? "bg-nav-active text-nav-active-accent"
             : "text-text-primary/70 hover:text-text-primary"
         }`}
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-5 w-5" />
         {hasUnread && (
-          <span
-            className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-status-danger"
-            aria-hidden
-          />
+          <span className="absolute right-1 top-1 box-border inline-flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-bg-default bg-status-danger px-1 text-label-s leading-none text-text-inverse tabular-nums">
+            {unreadLabel}
+          </span>
         )}
       </Link>
     </header>
