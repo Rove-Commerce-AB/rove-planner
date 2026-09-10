@@ -173,7 +173,7 @@ export function ProjectsPageClient({ projects, error }: Props) {
           ) : (
             <Panel className="mt-6">
               <h2
-                className={`bg-bg-muted/40 px-4 py-3 text-base font-semibold text-text-primary shadow-panel-header`}
+                className="ds-shadow-sm bg-bg-muted/40 px-4 py-3 text-heading-m text-text-primary"
               >
                 Projects
               </h2>

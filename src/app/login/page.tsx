@@ -17,8 +17,8 @@ function LoginForm() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center p-6">
       <Panel className="w-full max-w-sm p-8">
-        <h1 className="text-xl font-semibold text-text-primary">
-          Log in to Rove Planner
+        <h1 className="text-heading-m text-text-primary">
+          Log in to Rove Apps
         </h1>
         <p className="mt-2 text-sm text-text-primary opacity-70">
           Sign in with your Google account to continue.

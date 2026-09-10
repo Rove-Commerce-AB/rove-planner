@@ -179,7 +179,7 @@ export function EditConsultantModal({
         <div className="flex items-center justify-between">
           <h2
             id="edit-consultant-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Edit consultant
           </h2>

@@ -83,7 +83,7 @@ export function AddCalendarModal({ isOpen, onClose, onSuccess }: Props) {
         <div className="flex items-center justify-between">
           <h2
             id="add-calendar-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Add calendar
           </h2>

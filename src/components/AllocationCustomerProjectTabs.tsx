@@ -9,6 +9,7 @@ import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ChevronLeft, Percent, ExternalLink } from "lucide-react";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
+import { consultantHref, customerHref } from "@/lib/routes";
 
 export type EditingCellCustomerProject = {
   customerId: string;
@@ -440,7 +441,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                           <span className="font-medium text-text-primary">{row.customer.name}</span>
                         </button>
                         <Link
-                          href={`/customers/${row.customer.id}`}
+                          href={customerHref(row.customer.id)}
                           prefetch={false}
                           className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                           aria-label={`Open ${row.customer.name}`}
@@ -541,7 +542,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                             return (
                               <td
                                 key={`${w.year}-${w.week}`}
-                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} cursor-crosshair select-none px-1 py-1 text-center text-[9px] tabular-nums text-text-primary hover:bg-brand-blue/50 ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
+                                className={`${showLeftBorder ? "border-l border-grid-light " : ""}${hasBooking ? "border-r border-grid-light" : ""} cursor-crosshair select-none px-1 py-1 text-center text-[9px] tabular-nums text-text-primary ${p.isCurrentWeek(data.weeks[i]) ? "current-week-cell border-l border-r bg-brand-signal/15" : ""} ${isProjectDragRange ? "drag-range-cell border-t border-b border-brand-signal bg-brand-signal/20" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   setCustomerDragState({
@@ -597,7 +598,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                         <td className="border-r border-grid-light-subtle px-2 py-1 pl-14 text-text-primary">
                           <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
                             <Link
-                              href={`/consultants/${cr.consultantId}`}
+                              href={consultantHref(cr.consultantId)}
                               prefetch={false}
                               className="min-w-0 shrink truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
                             >
@@ -907,7 +908,7 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                       <td className="border-r border-grid-light-subtle px-2 py-1 pl-8 text-text-primary">
                         <div className="flex min-w-0 items-center gap-1 whitespace-nowrap text-text-primary">
                           <Link
-                            href={`/consultants/${cr.consultantId}`}
+                            href={consultantHref(cr.consultantId)}
                             prefetch={false}
                             className="min-w-0 shrink truncate rounded-sm font-medium text-text-primary underline-offset-2 outline-offset-2 hover:bg-bg-muted/50 hover:underline"
                           >

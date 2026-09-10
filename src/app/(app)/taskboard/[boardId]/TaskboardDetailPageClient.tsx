@@ -329,7 +329,7 @@ export function TaskboardDetailPageClient({
       </div>
 
       <section className="w-full min-w-0 space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
+        <h2 className="text-heading-s text-text-muted">
           Todos
         </h2>
         <form
@@ -403,7 +403,7 @@ export function TaskboardDetailPageClient({
             )}
             {doneTodos.length > 0 ? (
               <div className="mt-8 space-y-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
+                <h3 className="text-heading-xs text-text-muted">
                   Completed
                 </h3>
                 <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle bg-bg-muted/30 px-3 py-1">

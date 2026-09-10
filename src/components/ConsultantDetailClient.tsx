@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { updateConsultant } from "@/lib/consultantsClient";
 import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
+import { ROUTES } from "@/lib/routes";
 import type { ConsultantForEdit } from "@/lib/consultantsClient";
 import {
   ConfirmModal,
   DetailPageHeader,
-  FieldLabel,
+  DetailFieldStack,
+  DrawerFieldRow,
   FieldValue,
   InlineEditFieldContainer,
   InlineEditStatus,
@@ -16,6 +18,7 @@ import {
   Panel,
   PanelSectionTitle,
   Select,
+  CapacityBar,
   SAVED_DURATION_MS,
   editInputClass,
   editTriggerClass,
@@ -25,7 +28,6 @@ import { getCalendars } from "@/lib/calendarsClient";
 import { getTeams } from "@/lib/teamsClient";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
-import { useSidePanel } from "@/contexts/SidePanelContext";
 
 const WORK_PERCENTAGE_OPTIONS = Array.from(
   { length: 20 },
@@ -36,8 +38,6 @@ const OVERHEAD_PERCENTAGE_OPTIONS = Array.from(
   { length: 21 },
   (_, i) => i * 5
 ); // 0, 5, ..., 100
-
-const tableBorder = "border-panel";
 
 type EditField =
   | "name"
@@ -55,11 +55,52 @@ type EditField =
 type Props = {
   consultant: ConsultantForEdit;
   isAdmin?: boolean;
+  /** When true, skip the page header (the SideDrawer already shows the name). */
+  embedded?: boolean;
 };
 
-export function ConsultantDetailClient({ consultant: initial, isAdmin = false }: Props) {
+function ConsultantField({
+  embedded,
+  label,
+  variant = "field",
+  children,
+}: {
+  embedded: boolean;
+  label: string;
+  variant?: "field" | "summary";
+  children: ReactNode;
+}) {
+  if (embedded) {
+    return (
+      <DrawerFieldRow label={label} variant={variant}>
+        {children}
+      </DrawerFieldRow>
+    );
+  }
+  return <DetailFieldStack label={label}>{children}</DetailFieldStack>;
+}
+
+function ConsultantValue({
+  embedded,
+  children,
+  className = "",
+}: {
+  embedded: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
+  if (embedded) {
+    return <span className={`truncate ${className}`.trim()}>{children}</span>;
+  }
+  return <FieldValue className={className}>{children}</FieldValue>;
+}
+
+export function ConsultantDetailClient({
+  consultant: initial,
+  isAdmin = false,
+  embedded = false,
+}: Props) {
   const router = useRouter();
-  const { refreshConsultants } = useSidePanel();
   const [name, setName] = useState(initial.name);
   const [roleId, setRoleId] = useState(initial.role_id);
   const [email, setEmail] = useState(initial.email ?? "");
@@ -207,7 +248,6 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
         default:
           break;
       }
-      refreshConsultants();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -263,7 +303,7 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
     try {
       await deleteConsultantAction(initial.id);
       setShowDeleteConfirm(false);
-      router.push("/");
+      router.push(ROUTES.consultants);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
@@ -278,7 +318,6 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
     try {
       await updateConsultant(initial.id, { is_external: !isExternal });
       setIsExternal(!isExternal);
-      refreshConsultants();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -325,12 +364,462 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
     ...teams.map((t) => ({ value: t.id, label: t.name })),
   ];
 
+  const hoursPerWeek =
+    calendars.find((c) => c.id === calendarId)?.hours_per_week ?? 40;
+  const dateTriggerClass = embedded ? "" : "text-brand-signal";
+
+  const nameField = (
+    <ConsultantField embedded={embedded} label="Name">
+      <InlineEditFieldContainer
+        isEditing={editingField === "name"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "name"}
+        displayContent={
+          <InlineEditTrigger boxed={embedded} onClick={() => startEdit("name", name)}>
+            <ConsultantValue embedded={embedded}>{name}</ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <input
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => commitEdit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className={editInputClass}
+            autoFocus
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const teamField = (
+    <ConsultantField embedded={embedded} label="Team">
+      <InlineEditFieldContainer
+        isEditing={editingField === "team"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "team"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            showChevron={embedded}
+            onClick={() => startEdit("team", teamId ?? "")}
+          >
+            <ConsultantValue embedded={embedded}>
+              {teamOptions.find((o) => o.value === (teamId ?? ""))?.label ??
+                initial.teamName ??
+                "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <Select
+            value={editValue}
+            onValueChange={(v) => {
+              setEditValue(v);
+              commitEdit(v);
+            }}
+            onBlur={() => commitEdit()}
+            variant="inlineEdit"
+            options={teamOptions}
+            placeholder="No team"
+            className="min-w-0 flex-1 w-full"
+            triggerClassName={editTriggerClass}
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const roleField = (
+    <ConsultantField embedded={embedded} label="Role">
+      <InlineEditFieldContainer
+        isEditing={editingField === "role"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "role"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            showChevron={embedded}
+            onClick={() => startEdit("role", roleId)}
+          >
+            <ConsultantValue embedded={embedded}>
+              {roleOptions.find((o) => o.value === roleId)?.label ?? initial.roleName ?? "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <Select
+            value={editValue}
+            onValueChange={(v) => {
+              setEditValue(v);
+              commitEdit(v);
+            }}
+            onBlur={() => commitEdit()}
+            variant="inlineEdit"
+            options={roleOptions}
+            placeholder="Select role"
+            className="min-w-0 flex-1 w-full"
+            triggerClassName={editTriggerClass}
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const emailField = (
+    <ConsultantField embedded={embedded} label="Email">
+      <InlineEditFieldContainer
+        isEditing={editingField === "email"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "email"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            className={email ? "" : "text-text-primary opacity-70"}
+            onClick={() => startEdit("email", email)}
+          >
+            <ConsultantValue embedded={embedded} className={email ? "text-text-link" : ""}>
+              {email || "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <input
+            type="email"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => commitEdit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className={editInputClass}
+            autoFocus
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const calendarTimeField = (
+    <ConsultantField embedded={embedded} label="Calendar time" variant="summary">
+      <span className="text-sm font-medium tabular-nums text-text-primary">{hoursPerWeek}h</span>
+    </ConsultantField>
+  );
+
+  const capacityField = (
+    <ConsultantField embedded={embedded} label="Capacity" variant={embedded ? "summary" : "field"}>
+      <InlineEditFieldContainer
+        isEditing={editingField === "workPercentage"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        className={embedded ? "w-[14.5rem]" : ""}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "workPercentage"}
+        displayContent={
+          embedded ? (
+            <button
+              type="button"
+              onClick={() => startEdit("workPercentage", String(workPercentage))}
+              className="flex cursor-pointer items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
+            >
+              <CapacityBar value={workPercentage} size="drawer" />
+            </button>
+          ) : (
+            <InlineEditTrigger onClick={() => startEdit("workPercentage", String(workPercentage))}>
+              <FieldValue>{workPercentage}%</FieldValue>
+            </InlineEditTrigger>
+          )
+        }
+        editContent={
+          <Select
+            value={editValue}
+            onValueChange={(v) => {
+              setEditValue(v);
+              commitEdit(v);
+            }}
+            onBlur={() => commitEdit()}
+            variant="inlineEdit"
+            options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
+              value: String(p),
+              label: `${p}%`,
+            }))}
+            placeholder="Select"
+            className="min-w-0 w-full flex-1"
+            triggerClassName={editTriggerClass}
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const overheadField = (
+    <ConsultantField embedded={embedded} label={embedded ? "Overhead" : "Overhead (%)"} variant={embedded ? "summary" : "field"}>
+      <InlineEditFieldContainer
+        isEditing={editingField === "overheadPercentage"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        className={embedded ? "w-[14.5rem]" : ""}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "overheadPercentage"}
+        displayContent={
+          embedded ? (
+            <button
+              type="button"
+              onClick={() =>
+                startEdit("overheadPercentage", String(overheadPercentage ?? 0))
+              }
+              className="flex cursor-pointer items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
+            >
+              <CapacityBar value={overheadPercentage ?? 0} size="drawer" />
+            </button>
+          ) : (
+            <InlineEditTrigger
+              onClick={() =>
+                startEdit("overheadPercentage", String(overheadPercentage ?? 0))
+              }
+            >
+              <FieldValue>{overheadPercentage ?? 0}%</FieldValue>
+            </InlineEditTrigger>
+          )
+        }
+        editContent={
+          <Select
+            value={editValue}
+            onValueChange={(v) => {
+              setEditValue(v);
+              commitEdit(v);
+            }}
+            onBlur={() => commitEdit()}
+            variant="inlineEdit"
+            options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
+              value: String(p),
+              label: `${p}%`,
+            }))}
+            placeholder="Select"
+            className="min-w-0 flex-1 w-full"
+            triggerClassName={editTriggerClass}
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const startDateField = (
+    <ConsultantField embedded={embedded} label="Start date">
+      <InlineEditFieldContainer
+        isEditing={editingField === "startDate"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "startDate"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            className={embedded || !startDate ? "" : dateTriggerClass}
+            onClick={() => startEdit("startDate", startDate)}
+          >
+            <ConsultantValue embedded={embedded} className={!startDate ? "opacity-70" : ""}>
+              {startDate || "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <input
+            type="date"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => commitEdit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className={editInputClass}
+            autoFocus
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const endDateField = (
+    <ConsultantField embedded={embedded} label="End date">
+      <InlineEditFieldContainer
+        isEditing={editingField === "endDate"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "endDate"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            className={embedded || !endDate ? "" : dateTriggerClass}
+            onClick={() => startEdit("endDate", endDate)}
+          >
+            <ConsultantValue embedded={embedded} className={!endDate ? "opacity-70" : ""}>
+              {endDate || "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <input
+            type="date"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => commitEdit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className={editInputClass}
+            autoFocus
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const birthDateField = (
+    <ConsultantField embedded={embedded} label="Date of birth">
+      <InlineEditFieldContainer
+        isEditing={editingField === "birthDate"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "birthDate"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            className={embedded || !birthDate ? "" : dateTriggerClass}
+            onClick={() => startEdit("birthDate", birthDate)}
+          >
+            <ConsultantValue embedded={embedded} className={!birthDate ? "opacity-70" : ""}>
+              {birthDate || "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <input
+            type="date"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => commitEdit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            className={editInputClass}
+            autoFocus
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const calendarField = (
+    <ConsultantField embedded={embedded} label="Calendar">
+      <InlineEditFieldContainer
+        isEditing={editingField === "calendar"}
+        onRequestClose={commitEdit}
+        hideAccessory={embedded}
+        reserveStatusRow={!embedded}
+        showSavedIndicator={showSaved && lastSavedFieldRef.current === "calendar"}
+        displayContent={
+          <InlineEditTrigger
+            boxed={embedded}
+            showChevron={embedded}
+            onClick={() => startEdit("calendar", calendarId)}
+          >
+            <ConsultantValue embedded={embedded}>
+              {calendarOptions.find((o) => o.value === calendarId)?.label ??
+                initial.calendarName ??
+                "—"}
+            </ConsultantValue>
+          </InlineEditTrigger>
+        }
+        editContent={
+          <Select
+            value={editValue}
+            onValueChange={(v) => {
+              setEditValue(v);
+              commitEdit(v);
+            }}
+            onBlur={() => commitEdit()}
+            variant="inlineEdit"
+            options={calendarOptions}
+            placeholder="Select calendar"
+            className="min-w-0 flex-1 w-full"
+            triggerClassName={editTriggerClass}
+          />
+        }
+        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      />
+    </ConsultantField>
+  );
+
+  const typeField = (
+    <ConsultantField embedded={embedded} label="Type">
+      <button
+        type="button"
+        onClick={toggleExternal}
+        disabled={submitting}
+        className="inline-flex cursor-pointer rounded-full bg-interactive-secondary px-3 py-1 text-xs font-medium text-text-primary hover:bg-interactive-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isExternal ? "External" : "Internal"}
+      </button>
+    </ConsultantField>
+  );
+
   return (
     <>
-      <DetailPageHeader
-        avatar={<span>{initials}</span>}
-        title={name}
-      />
+      {!embedded && (
+        <DetailPageHeader
+          avatar={<span>{initials}</span>}
+          title={name}
+        />
+      )}
 
       {error && (
         <p className="mb-4 text-sm text-danger" role="alert">
@@ -338,409 +827,75 @@ export function ConsultantDetailClient({ consultant: initial, isAdmin = false }:
         </p>
       )}
 
-      <Panel>
-        <PanelSectionTitle>GENERAL INFORMATION</PanelSectionTitle>
-        <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 p-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="min-w-0">
-            <FieldLabel>Name</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "name"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "name"}
-                displayContent={
-                  <InlineEditTrigger onClick={() => startEdit("name", name)}>
-                    <FieldValue>{name}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <input
-                    type="text"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={() => commitEdit()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitEdit();
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelEdit();
-                      }
-                    }}
-                    className={editInputClass}
-                    autoFocus
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+      {embedded ? (
+        <div className="flex min-h-full flex-1 flex-col">
+          <div className="px-6">
+            {nameField}
+            {teamField}
+            {roleField}
+            {emailField}
+            {startDateField}
+            {endDateField}
+            {isAdmin ? birthDateField : null}
+          </div>
+          <div className="border-t border-border-subtle px-6">
+            {calendarTimeField}
+            {capacityField}
+            {overheadField}
+          </div>
+          <div className="border-t border-border-subtle px-6">
+            {calendarField}
+            {typeField}
+          </div>
+          {isAdmin ? (
+            <div className="mt-auto border-t border-border-subtle px-6 pb-6 pt-2">
+              <DetailPageDeleteFooter
+                onRequestDelete={() => setShowDeleteConfirm(true)}
+                disabled={submitting || deleting}
+                label="Delete consultant"
+                className="pt-2"
               />
             </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Email</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "email"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "email"}
-                displayContent={
-                  <InlineEditTrigger
-                    className={email ? "text-brand-signal" : "text-text-primary opacity-70"}
-                    onClick={() => startEdit("email", email)}
-                  >
-                    <FieldValue>{email || "—"}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <input
-                    type="email"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={() => commitEdit()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitEdit();
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelEdit();
-                      }
-                    }}
-                    className={editInputClass}
-                    autoFocus
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Default role</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "role"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "role"}
-                displayContent={
-                  <InlineEditTrigger onClick={() => startEdit("role", roleId)}>
-                    <FieldValue>{roleOptions.find((o) => o.value === roleId)?.label ?? initial.roleName ?? "—"}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <Select
-                    value={editValue}
-                    onValueChange={(v) => {
-                      setEditValue(v);
-                      commitEdit(v);
-                    }}
-                    onBlur={() => commitEdit()}
-                    variant="inlineEdit"
-                    options={roleOptions}
-                    placeholder="Select role"
-                    className="min-w-0 flex-1 w-full"
-                    triggerClassName={editTriggerClass}
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Team</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "team"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "team"}
-                displayContent={
-                  <InlineEditTrigger onClick={() => startEdit("team", teamId ?? "")}>
-                    <FieldValue>{teamOptions.find((o) => o.value === (teamId ?? ""))?.label ?? initial.teamName ?? "—"}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <Select
-                    value={editValue}
-                    onValueChange={(v) => {
-                      setEditValue(v);
-                      commitEdit(v);
-                    }}
-                    onBlur={() => commitEdit()}
-                    variant="inlineEdit"
-                    options={teamOptions}
-                    placeholder="No team"
-                    className="min-w-0 flex-1 w-full"
-                    triggerClassName={editTriggerClass}
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Capacity</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "workPercentage"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "workPercentage"}
-                displayContent={
-                  <InlineEditTrigger
-                    onClick={() =>
-                      startEdit("workPercentage", String(workPercentage))
-                    }
-                  >
-                    <FieldValue>{workPercentage}%</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <Select
-                    value={editValue}
-                    onValueChange={(v) => {
-                      setEditValue(v);
-                      commitEdit(v);
-                    }}
-                    onBlur={() => commitEdit()}
-                    variant="inlineEdit"
-                    options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
-                      value: String(p),
-                      label: `${p}%`,
-                    }))}
-                    placeholder="Select"
-                    className="min-w-0 flex-1 w-full"
-                    triggerClassName={editTriggerClass}
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Overhead (%)</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "overheadPercentage"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "overheadPercentage"}
-                displayContent={
-                  <InlineEditTrigger
-                    onClick={() =>
-                      startEdit(
-                        "overheadPercentage",
-                        String(overheadPercentage ?? 0)
-                      )
-                    }
-                  >
-                    <FieldValue>{overheadPercentage ?? 0}%</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <Select
-                    value={editValue}
-                    onValueChange={(v) => {
-                      setEditValue(v);
-                      commitEdit(v);
-                    }}
-                    onBlur={() => commitEdit()}
-                    variant="inlineEdit"
-                    options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
-                      value: String(p),
-                      label: `${p}%`,
-                    }))}
-                    placeholder="Select"
-                    className="min-w-0 flex-1 w-full"
-                    triggerClassName={editTriggerClass}
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Start date</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "startDate"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "startDate"}
-                displayContent={
-                  <InlineEditTrigger
-                    className={startDate ? "text-brand-signal" : "text-text-primary opacity-70"}
-                    onClick={() => startEdit("startDate", startDate)}
-                  >
-                    <FieldValue>{startDate || "—"}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <input
-                    type="date"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={() => commitEdit()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitEdit();
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelEdit();
-                      }
-                    }}
-                    className={editInputClass}
-                    autoFocus
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>End date</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "endDate"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "endDate"}
-                displayContent={
-                  <InlineEditTrigger
-                    className={endDate ? "text-brand-signal" : "text-text-primary opacity-70"}
-                    onClick={() => startEdit("endDate", endDate)}
-                  >
-                    <FieldValue>{endDate || "—"}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <input
-                    type="date"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={() => commitEdit()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitEdit();
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelEdit();
-                      }
-                    }}
-                    className={editInputClass}
-                    autoFocus
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          {isAdmin && (
-            <div className="min-w-0">
-              <FieldLabel>Date of birth</FieldLabel>
-              <div className="mt-0.5">
-                <InlineEditFieldContainer
-                  isEditing={editingField === "birthDate"}
-                  onRequestClose={commitEdit}
-                  showSavedIndicator={showSaved && lastSavedFieldRef.current === "birthDate"}
-                  displayContent={
-                    <InlineEditTrigger
-                      className={birthDate ? "text-brand-signal" : "text-text-primary opacity-70"}
-                      onClick={() => startEdit("birthDate", birthDate)}
-                    >
-                      <FieldValue>{birthDate || "—"}</FieldValue>
-                    </InlineEditTrigger>
-                  }
-                  editContent={
-                    <input
-                      type="date"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      onBlur={() => commitEdit()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitEdit();
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          cancelEdit();
-                        }
-                      }}
-                      className={editInputClass}
-                      autoFocus
-                    />
-                  }
-                  statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="min-w-0">
-            <FieldLabel>Calendar</FieldLabel>
-            <div className="mt-0.5">
-              <InlineEditFieldContainer
-                isEditing={editingField === "calendar"}
-                onRequestClose={commitEdit}
-                showSavedIndicator={showSaved && lastSavedFieldRef.current === "calendar"}
-                displayContent={
-                  <InlineEditTrigger onClick={() => startEdit("calendar", calendarId)}>
-                    <FieldValue>{calendarOptions.find((o) => o.value === calendarId)?.label ?? initial.calendarName ?? "—"}</FieldValue>
-                  </InlineEditTrigger>
-                }
-                editContent={
-                  <Select
-                    value={editValue}
-                    onValueChange={(v) => {
-                      setEditValue(v);
-                      commitEdit(v);
-                    }}
-                    onBlur={() => commitEdit()}
-                    variant="inlineEdit"
-                    options={calendarOptions}
-                    placeholder="Select calendar"
-                    className="min-w-0 flex-1 w-full"
-                    triggerClassName={editTriggerClass}
-                  />
-                }
-                statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <FieldLabel>Type</FieldLabel>
-            <div className="mt-0.5">
-              <button
-                type="button"
-                onClick={toggleExternal}
-                disabled={submitting}
-                className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isExternal ? "External" : "Internal"}
-              </button>
-            </div>
-          </div>
+          ) : null}
         </div>
-      </Panel>
+      ) : (
+        <Panel>
+          <PanelSectionTitle>GENERAL INFORMATION</PanelSectionTitle>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 p-3 sm:grid-cols-2 lg:grid-cols-3">
+            {nameField}
+            {emailField}
+            {roleField}
+            {teamField}
+            {capacityField}
+            {overheadField}
+            {startDateField}
+            {endDateField}
+            {isAdmin ? birthDateField : null}
+            {calendarField}
+            {typeField}
+          </div>
+        </Panel>
+      )}
+
+      {isAdmin && !embedded && (
+        <DetailPageDeleteFooter
+          onRequestDelete={() => setShowDeleteConfirm(true)}
+          disabled={submitting || deleting}
+          label="Delete consultant"
+          className="pt-4"
+        />
+      )}
 
       {isAdmin && (
-        <>
-          <DetailPageDeleteFooter
-            onRequestDelete={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-            label="Delete consultant"
-          />
-
-          <ConfirmModal
-            isOpen={showDeleteConfirm}
-            title="Delete consultant"
-            message={`Delete ${name}? This cannot be undone.`}
-            confirmLabel="Delete"
-            variant="danger"
-            onClose={() => setShowDeleteConfirm(false)}
-            onConfirm={handleDelete}
-          />
-        </>
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          title="Delete consultant"
+          message={`Delete ${name}? This cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        />
       )}
     </>
   );

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
+import { ROUTES } from "@/lib/routes";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Plus, Trash2 } from "lucide-react";
 import {
@@ -29,7 +30,6 @@ import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerWithDetails } from "@/types";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
-import { useSidePanel } from "@/contexts/SidePanelContext";
 import { CustomerDetailProjectsPanel } from "./customer-detail/CustomerDetailProjectsPanel";
 import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 
@@ -67,7 +67,6 @@ export function CustomerDetailClient({
   isAdmin = false,
 }: Props) {
   const router = useRouter();
-  const { refreshCustomers } = useSidePanel();
   const [name, setName] = useState(initialCustomer.name);
   const [accountManagerId, setAccountManagerId] = useState<string | null>(
     initialCustomer.accountManagerId ?? null
@@ -193,7 +192,6 @@ export function CustomerDetailClient({
         default:
           break;
       }
-      if (field !== "logoUrl") refreshCustomers();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -267,7 +265,6 @@ export function CustomerDetailClient({
     try {
       await updateCustomerAction(initialCustomer.id, { is_internal: !isInternal });
       setIsInternal(!isInternal);
-      refreshCustomers();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -282,7 +279,7 @@ export function CustomerDetailClient({
     try {
       await deleteCustomerAction(initialCustomer.id);
       setShowDeleteConfirm(false);
-      router.push("/customers");
+      router.push(ROUTES.customers);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");

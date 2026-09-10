@@ -1,30 +1,34 @@
 # UI Patterns (Contract)
+
 This document is binding. If it conflicts with other docs, DESIGN_SYSTEM.md wins.
+
+Colors, type, radius, and shadows in this file refer to **semantic tokens** in DESIGN_SYSTEM.md (`accent/*`, `interactive/*`, `status/*`, `surface/*`, `text/*`, `border/*`). Do not use retired names (`brand.signal`, `--color-accent-dim`, `--color-status-ok`).
 
 ---
 
 ## 1) Overview list page (mandatory structure)
 
 ```
-Panel
-  PanelHeader     (title, optional subtitle/metrics, right-aligned CTA)
-  PanelToolbar    (left: search + filters, right: primary CTA)
-  PanelContent
-    DataTable
-    optional: Pagination (rare – prefer scroll)
+PageHeader        (Heading/XL title + Body/L description, right-aligned primary CTA)
+Toolbar           (search + filter chips on one row)
+DataTable         (on the page canvas — no Panel frame)
 ```
 
 If grouping is needed (e.g. Internal / External):
-- Use `PanelSection` per group with a section header + its own DataTable.
+- Prefer filter chips over stacked `PanelSection` groups when the same columns apply.
 
 ### Do
-- Keep search inside PanelToolbar, never floating above the panel.
-- One primary CTA in `brand.signal`.
-- Secondary controls use ghost or secondary variant.
+- Put the page title on the canvas (`PageHeader`), not inside `PanelHeader`.
+- Search and filter chips share one toolbar row. Search is not full-bleed.
+- Sort in the **column header** (arrow on the active column), not a separate toolbar Sort control.
+- One primary CTA: `interactive/primary` (or `accent/primary` inside an accent app). Default button size, not compact.
+- Unselected filter chips use `surface/subtle`; only the selected chip is inverse.
 
 ### Don't
-- Do not place inputs or controls outside the panel.
+- Do not wrap the overview table in a bordered `Panel`. The table is white (`surface/default`) on the gray page canvas, with a sage header.
 - Do not create multiple different table styles across pages.
+- Do not use “Show inactive” text links when filter chips can replace them.
+- Do not add a “Showing n of m” footer unless Figma specifies it.
 
 ---
 
@@ -41,9 +45,10 @@ No raw `<table>` markup in pages or features.
 | `getRowId`    | `(row) => string`                     |                                        |
 | `rowHref`     | `(row) => string` (optional)          | use OR onRowClick, not both            |
 | `onRowClick`  | `(row) => void` (optional)            | use OR rowHref, not both               |
+| `sort`        | `{ columnId, direction, onSort }` (optional) | header sort control; page owns order   |
 | `emptyState`  | `{ title, description, action }`      |                                        |
 | `loading`     | boolean                               | shows skeleton rows                    |
-| `density`     | `"compact"` \| `"comfortable"`        | default: `"compact"`                   |
+| `density`     | `"compact"` \| `"comfortable"`        | default: `"comfortable"`               |
 | `stickyHeader`| boolean                               | default: `true` inside panel           |
 
 ### DataTable is "dumb"
@@ -53,16 +58,21 @@ No raw `<table>` markup in pages or features.
 - Receives fully prepared data only
 
 ### Visual behavior
-- Sticky header
-- Subtle row dividers (token-based, not heavy gridlines)
-- Row hover (subtle background shift)
-- Focus-visible state on rows
+- Sticky header on `table/header` (Figma sage `#c4d7c1`, not green/200)
+- Header type: Label/M, **semibold**, `text/primary`
+- Comfortable density: table sits on `surface/default`, top corners `radius/lg`, header clipped to those corners
+- Row dividers: `border/default` (visible hairline on white). No divider under the last row. No vertical rules.
+- Sortable columns render a chevron in the header of the active sort column only
+- Row hover: `interactive/secondary-hover`
+- Selected row (overlay open): `nav/active`
+- Focus-visible uses `focus/default` or `accent/focus`
 - Actions column: fixed width, right-aligned, icon buttons only
 
 ### Table typography
-- Header: secondary font, `text-xs`, slightly elevated background
-- Primary cell (name/title): primary font, `text-sm`
-- Secondary cell text: `text-xs` or `text-sm`, `--color-text-secondary`, secondary font allowed
+- Header: Label/M, semibold, `text/primary`
+- Primary cell (name/title): Body/M, `text/primary`, **semibold**
+- Secondary cell (team, role, metadata): Body/M, `text/secondary`
+- Numbers: Body/M + `tabular-nums`
 
 ---
 
@@ -74,11 +84,20 @@ No raw `<table>` markup in pages or features.
 | Empty   | `EmptyState` component inside the panel, with CTA          |
 | Error   | Inline Callout/Alert inside the panel (not toast-only)      |
 
+Status callouts:
+- Info: `status/info` on `status/info-subtle`
+- Success: `status/success` on `status/success-subtle`
+- Warning: `status/warning` on `status/warning-subtle`
+- Danger: `status/danger` on `status/danger-subtle`
+
 ---
 
 ## 4) Row interaction (choose one per table, be consistent)
 
-**Option A (preferred):** Whole row navigates to detail. Optional icon-button actions on the right.
+**Option A (preferred):** Whole row navigates to detail. Optional icon-button actions on the right. For Settings master data (Consultants and Customers), row navigation opens a **right SideDrawer overlay** and updates the URL (`/settings/[resource]/[id]`) so the row is linkable. Back, X, Escape, and overlay click return to the list URL.
+
+Keep the list in a **shared layout** so opening a row does not remount the page. Open the drawer immediately on click (local state + `router.push` with `scroll: false`). The drawer **slides in from the right**; the overlay fades. Do not show a full-page loading state on that navigation.
+
 **Option B:** Explicit actions column only. Row itself is not clickable.
 
 Do not mix unclear click targets. If a row has clickable sub-elements, use Option B.
@@ -88,9 +107,9 @@ Do not mix unclear click targets. If a row has clickable sub-elements, use Optio
 ## 5) Empty state copy pattern
 
 ```
-Title:       What is missing (noun phrase)
-Description: Why it matters or what to do next (one sentence)
-CTA:         brand.signal button ("Add [thing]")
+Title:       What is missing (noun phrase)     → Heading/S
+Description: Why it matters or what to do next → Body/M, text/secondary
+CTA:         Primary button ("Add [thing]")    → Label/M
 ```
 
 Example:
@@ -106,41 +125,69 @@ The allocation grid (week columns × consultant rows) is a specialized DataTable
 It follows all DataTable rules plus:
 
 - **Week columns**: fixed minimum width, center-aligned values.
-- **Current week column**: visually highlighted using `--color-accent-dim` background. Header cell uses accent color text and a bottom border in `--color-accent`.
-- **Month group headers**: span multiple week columns, separated by a visible column divider using `--color-border-strong`.
-- **Allocation pills**: small rounded cells (not raw text). Color-coded:
-  - 100%: `--color-status-ok` text on `--color-status-ok-bg`
-  - >100%: `--color-status-over` text on `--color-status-over-bg`
-  - 75–99%: `--color-status-warn` text on `--color-status-warn-bg`
-  - <75%: `--color-text-muted` on subtle neutral background
+- **Row + column hover**: overlay `interactive/primary` (saturated), never `*-subtle` — subtle tokens read as white on the grid.
+- **Current week column**: `accent/primary-subtle` background. Header uses `accent/primary-text` and a bottom border in `accent/primary`.
+- **Month group headers**: span multiple week columns, separated by `border/strong`.
+- **Allocation pills**: small cells with `radius/sm`. Color-coded:
+  - 100%: `status/success` on `status/success-subtle`
+  - >100%: `status/danger` on `status/danger-subtle`
+  - 75–99%: `status/warning` on `status/warning-subtle`
+  - <75%: `text/tertiary` on `surface/subtle`
   - Empty: transparent, no text
-- **Consultant name column**: sticky left. Contains avatar (initials circle) + name + team (secondary text).
+- **Consultant name column**: sticky left. Avatar (initials circle, `radius/full`) + name (Body/M) + team (Body/S, `text/secondary`).
 - **Sticky header**: both the month row and the week-number row must be sticky.
-- **Summary row** (week total / revenue total): uses `--color-bg-elevated` background, secondary font, monospace numbers.
+- **Summary row** (week total / revenue total): `surface/subtle`, Label/S, `tabular-nums`.
+
+Planner views currently share the default `interactive/*` accent with the rest of Rove Apps. Do not set `data-app="planner"` until a dedicated Planner theme is wanted.
 
 ---
 
 ## 7) Consultant list (example composition)
 
-### Columns
-| Column           | Style                                           |
-|------------------|-------------------------------------------------|
-| Name             | Avatar (initials) + name (primary) + team (secondary) |
-| Role             | Single line, primary text                       |
-| Email            | Secondary style                                 |
-| Calendar         | Secondary style                                 |
-| Week allocation  | Compact badge or progress indicator             |
-| Projects         | Secondary style, truncated with tooltip         |
-| Actions          | Icon button (edit), fixed-width column          |
+### Page chrome
+- Title: Consultants (Heading/XL). Description: “Manage your consultant team members and their assignments.”
+- Search placeholder: “Search consultants…” (fixed width, not full row).
+- Filter chips on the same row as search. All (n), each team (n) with the `Team` prefix stripped (`Stockholm (8)`), External resources. Inactive consultants are hidden from the table (direct URL can still open the drawer).
+- Sort: clickable column headers. Default Name ascending. Active column shows a chevron.
 
-### Interaction
-Prefer Option A: row navigates to detail, icon button for edit.
+### Columns
+| Column | Style |
+|--------|--------|
+| Name     | `InitialsAvatar` (32px, saturated + inverse initials) + name (semibold, `text/primary`) |
+| Team     | Body/M, `text/secondary` (strip leading `Team `) |
+| Role     | Body/M, `text/secondary` |
+| Capacity | `CapacityBar` from work % |
+| Overhead | `CapacityBar` from overhead % |
+
+Column order is Name, Team, Role, Capacity, Overhead. There is no Calendar column in the list.
+
+### Drawer
+- Header: 40px avatar, name (Heading/L bold) and `status/success-subtle` pill on the **same line** (`{role} · {team}` with a success dot), then “Consultant since {Mon D, YYYY}”. Close is a bordered icon button.
+- Tabs: Overview + Projects (Projects is an empty state until that data exists). Active tab is semibold `text/primary` with a 2px underline under the label (`px-1`, `gap-6`).
+- Identity rows (Name, Team, Role, Email, Start date, End date, Date of birth): `DrawerFieldRow` — gray label left, value in a **right column** (`14.5rem`) inside a always-visible bordered box. Team/Role show a chevron. Email uses `text/link`. No phone field. No per-row dividers.
+- Section dividers are **full-width** `border/subtle` lines (edge to edge), not inset with the field padding. Groups: identity → metrics → calendar/type → delete.
+- Metrics: **Calendar time** (`{n}h`), **Capacity** and **Overhead** (`CapacityBar` size `drawer`) with semibold `text/primary` labels and unboxed values on the right.
+- Calendar and Type stay in the last group. Type is a ghost pill (`interactive/secondary`).
+- **Delete consultant** sits at the bottom of the drawer (`mt-auto`).
+- Animation: slide in from the right; list stays mounted.
 
 ---
 
 ## 8) Density defaults (mandatory)
 
-- **Compact is the default** for all dashboard and overview pages.
-- Follow the compact spacing rules in DESIGN_SYSTEM.md exactly.
-- Do not increase row height, toolbar padding, or panel padding on overview pages.
-- **Comfortable density** is opt-in only, for text-heavy views where readability outweighs density.
+- **Comfortable is the default** for overview list tables (Consultants and Customers).
+- **Compact** is for operational grids (allocation) and dense tool chrome.
+- Follow the spacing table in DESIGN_SYSTEM.md.
+- Do not wrap overview tables in a `Panel` to “add structure”.
+
+---
+
+## 9) App chrome
+
+- Shared sidebar and footer (Home, Log out) use `interactive/*` and zinc surfaces. Active nav uses `nav/active` + `nav/active-accent` in every app.
+- A top bar spans the content column: breadcrumbs (`Rove Apps / … / current page`) on the left, Notifications bell on the right. Unread state is a `status/danger` dot. The bell links to `/notifications`.
+- Settings sits in the main nav below the apps, after a `border/subtle` divider. It is an accordion like the apps (no start page): General (admin), Consultants, Customers. Visible to everyone except subcontractors; General is admin-only.
+- The sidebar stays expanded in layout. Collapse/expand is not available yet.
+- App groups in the sidebar are accordions. Child labels align with the parent app label (same icon column + gap).
+- Placeholder apps are not clickable and use `text/disabled` / `icon/disabled`.
+- Primary actions inside Planner use `accent/*`. Primary actions on Home / Time report / settings use `interactive/*` until those apps have their own theme.

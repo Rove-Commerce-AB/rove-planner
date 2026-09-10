@@ -1,0 +1,450 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import {
+  Button,
+  ConfirmModal,
+  IconButton,
+  InitialsAvatar,
+  Input,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui";
+import { AddCustomerConsultantModal } from "@/components/AddCustomerConsultantModal";
+import { AddCustomerRateModal } from "@/components/AddCustomerRateModal";
+import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
+import { CustomerRatesTab } from "@/components/CustomerRatesTab";
+import { groupCustomerProjectsForList } from "@/lib/customerProjectsList";
+import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
+import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
+import { createProject } from "@/lib/projectsClient";
+import type { CustomerProjectSummary, CustomerWithDetails } from "@/types";
+
+type CustomerTab = "overview" | "projects" | "consultants" | "rates";
+
+type Props = {
+  customer: CustomerWithDetails;
+  assignedConsultants: CustomerConsultant[];
+  allConsultants: { id: string; name: string }[];
+  isAdmin: boolean;
+};
+
+function ProjectGroup({
+  title,
+  projects,
+  tone = "default",
+  onOpen,
+}: {
+  title: string;
+  projects: CustomerProjectSummary[];
+  tone?: "default" | "pipeline" | "inactive";
+  onOpen: (id: string) => void;
+}) {
+  if (projects.length === 0) return null;
+
+  const dotClass =
+    tone === "inactive"
+      ? "bg-text-tertiary"
+      : tone === "pipeline"
+        ? "bg-status-warning"
+        : "bg-status-success";
+
+  return (
+    <section>
+      <h3 className="mb-2 text-heading-xs text-text-secondary">
+        {title} ({projects.length})
+      </h3>
+      <ul className="space-y-2">
+        {projects.map((project) => (
+          <li key={project.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(project.id)}
+              className={`flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-bg-default px-3 py-3 text-left transition-colors hover:bg-interactive-secondary ${
+                tone === "inactive" ? "opacity-65" : ""
+              }`}
+            >
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+                {project.name}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-text-tertiary">
+                {project.probability ?? 100}%
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function NewProjectForm({
+  customerId,
+  onCancel,
+  onCreated,
+}: {
+  customerId: string;
+  onCancel: () => void;
+  onCreated: () => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Project name is required");
+      return;
+    }
+
+    setError(null);
+    setSubmitting(true);
+    try {
+      await createProject({
+        name: trimmed,
+        customer_id: customerId,
+      });
+      router.refresh();
+      onCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create project");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSubmit();
+      }}
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6"
+    >
+      <div>
+        <p className="text-overline text-text-tertiary">Projects</p>
+        <h2 className="mt-1 text-heading-l text-text-primary">New project</h2>
+      </div>
+
+      <div className="mt-6">
+        <label
+          htmlFor="drawer-project-name"
+          className="mb-1.5 block text-label-m text-text-primary"
+        >
+          Project name
+        </label>
+        <Input
+          id="drawer-project-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Enter project name"
+          autoFocus
+        />
+      </div>
+
+      {error ? (
+        <p className="mt-3 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-auto flex justify-end gap-2 pt-8">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Creating…" : "Create project"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export function CustomerDrawerContent({
+  customer,
+  assignedConsultants,
+  allConsultants,
+  isAdmin,
+}: Props) {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<CustomerTab>("overview");
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [showInactiveProjects, setShowInactiveProjects] = useState(false);
+  const [addConsultantOpen, setAddConsultantOpen] = useState(false);
+  const [addRateOpen, setAddRateOpen] = useState(false);
+  const [ratesError, setRatesError] = useState<string | null>(null);
+  const [consultantError, setConsultantError] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<CustomerConsultant | null>(
+    null
+  );
+  const [removing, setRemoving] = useState(false);
+  const { confirmed, pipeline, inactive } = groupCustomerProjectsForList(
+    customer.projects
+  );
+
+  function returnToProjects() {
+    setCreatingProject(false);
+    setActiveTab("projects");
+  }
+
+  async function confirmRemoveConsultant() {
+    if (!removeTarget) return;
+    setConsultantError(null);
+    setRemoving(true);
+    try {
+      await removeConsultantFromCustomer(customer.id, removeTarget.id);
+      setRemoveTarget(null);
+      router.refresh();
+    } catch (e) {
+      setConsultantError(
+        e instanceof Error ? e.message : "Failed to remove consultant"
+      );
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  if (creatingProject) {
+    return (
+      <NewProjectForm
+        customerId={customer.id}
+        onCancel={returnToProjects}
+        onCreated={returnToProjects}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as CustomerTab)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <TabsList className="shrink-0 px-6 !gap-6">
+          <TabsTrigger value="overview" className="px-1 !px-1">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="projects" className="px-1 !px-1">
+            Projects
+          </TabsTrigger>
+          <TabsTrigger value="consultants" className="px-1 !px-1">
+            Consultants
+          </TabsTrigger>
+          <TabsTrigger value="rates" className="px-1 !px-1">
+            Rates/Tasks
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent
+          value="overview"
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
+          <CustomerDrawerOverview
+            customer={customer}
+            allConsultants={allConsultants}
+            isAdmin={isAdmin}
+          />
+        </TabsContent>
+
+        <TabsContent
+          value="projects"
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+        >
+          <div className="space-y-6">
+            <ProjectGroup
+              title="Confirmed"
+              projects={confirmed}
+              onOpen={(id) => router.push(`/projects/${id}`)}
+            />
+            <ProjectGroup
+              title="Pipeline"
+              projects={pipeline}
+              tone="pipeline"
+              onOpen={(id) => router.push(`/projects/${id}`)}
+            />
+
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => setCreatingProject(true)}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Create new project
+            </Button>
+
+            {inactive.length > 0 ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowInactiveProjects((show) => !show)}
+                  className="flex w-full items-center justify-between rounded-lg border border-border-subtle bg-bg-default px-3 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-interactive-secondary hover:text-text-primary"
+                  aria-expanded={showInactiveProjects}
+                >
+                  <span>Inactive projects ({inactive.length})</span>
+                  {showInactiveProjects ? (
+                    <ChevronUp className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" aria-hidden />
+                  )}
+                </button>
+                {showInactiveProjects ? (
+                  <div className="mt-3">
+                    <ProjectGroup
+                      title="Inactive"
+                      projects={inactive}
+                      tone="inactive"
+                      onOpen={(id) => router.push(`/projects/${id}`)}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {customer.projects.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                No projects for this customer yet.
+              </p>
+            ) : null}
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="consultants"
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-heading-s text-text-primary">
+              Assigned consultants
+            </h2>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddConsultantOpen(true)}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Add
+            </Button>
+          </div>
+
+          {consultantError ? (
+            <p className="mt-3 text-sm text-danger" role="alert">
+              {consultantError}
+            </p>
+          ) : null}
+
+          {assignedConsultants.length > 0 ? (
+            <ul className="mt-4 divide-y divide-border-subtle">
+              {assignedConsultants.map((consultant) => (
+                <li
+                  key={consultant.id}
+                  className="flex items-center gap-3 py-3"
+                >
+                  <InitialsAvatar
+                    name={consultant.name}
+                    initials={consultant.name
+                      .split(" ")
+                      .map((part) => part[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2)}
+                    size="sm"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+                    {consultant.name}
+                  </span>
+                  <IconButton
+                    variant="ghostDanger"
+                    aria-label={`Remove ${consultant.name}`}
+                    onClick={() => setRemoveTarget(consultant)}
+                    disabled={removing}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </IconButton>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-text-secondary">
+              No consultants assigned.
+            </p>
+          )}
+        </TabsContent>
+
+        <TabsContent
+          value="rates"
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-heading-s text-text-primary">Rates/Tasks</h2>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddRateOpen(true)}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Add rate
+            </Button>
+          </div>
+          {ratesError ? (
+            <p className="mt-3 text-sm text-danger" role="alert">
+              {ratesError}
+            </p>
+          ) : null}
+          <div className="mt-4">
+            <CustomerRatesTab
+              mode="edit"
+              customerId={customer.id}
+              onError={setRatesError}
+              showDescription={false}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <AddCustomerConsultantModal
+        isOpen={addConsultantOpen}
+        onClose={() => setAddConsultantOpen(false)}
+        onSuccess={() => {
+          setConsultantError(null);
+          router.refresh();
+        }}
+        customerId={customer.id}
+        existingConsultants={assignedConsultants}
+      />
+
+      <AddCustomerRateModal
+        isOpen={addRateOpen}
+        onClose={() => setAddRateOpen(false)}
+        onSuccess={() => router.refresh()}
+        customerId={customer.id}
+      />
+
+      <ConfirmModal
+        isOpen={removeTarget != null}
+        title="Remove consultant"
+        message={
+          removeTarget
+            ? `Remove ${removeTarget.name} from this customer?`
+            : ""
+        }
+        confirmLabel="Remove"
+        variant="primary"
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={confirmRemoveConsultant}
+      />
+    </>
+  );
+}

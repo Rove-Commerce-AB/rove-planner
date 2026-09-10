@@ -8,6 +8,7 @@ import {
   notifyFeatureRequestImplemented,
 } from "@/lib/userNotifications";
 import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
+import { ROUTES } from "@/lib/routes";
 
 type LinearConfig = {
   apiKey: string;
@@ -39,7 +40,7 @@ async function createLinearIssueForFeatureRequest(args: {
 
   const title = args.content.length > 120 ? `${args.content.slice(0, 117)}...` : args.content;
   const descriptionLines = [
-    "Created from Rove Planner feature request.",
+    "Created from Rove Apps feature request.",
     "",
     `Requested by: ${args.submittedByEmail ?? "unknown"}`,
     "",
@@ -170,7 +171,7 @@ export async function setFeatureRequestImplemented(
       contentPreview: preview,
     });
   }
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }
 
 export async function declineFeatureRequest(
@@ -213,7 +214,7 @@ export async function declineFeatureRequest(
     });
   }
 
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }
 
 export async function createFeatureRequest(content: string): Promise<void> {
@@ -236,7 +237,7 @@ export async function createFeatureRequest(content: string): Promise<void> {
     console.error("[featureRequests] Failed to create Linear issue", error);
   }
 
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }
 
 export async function updateFeatureRequest(
@@ -252,11 +253,11 @@ export async function updateFeatureRequest(
     [id, trimmed]
   );
   if (!rowCount) throw new Error("Update failed");
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }
 
 export async function deleteFeatureRequest(id: string): Promise<void> {
   await assertNotSubcontractorForWrite();
   await cloudSqlPool.query(`DELETE FROM feature_requests WHERE id = $1`, [id]);
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }

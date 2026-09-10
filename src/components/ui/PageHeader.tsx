@@ -15,13 +15,13 @@ export function PageHeader({
   className = "",
 }: Props) {
   return (
-    <header className={`flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ${className}`.trim()}>
+    <header className={`flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between ${className}`.trim()}>
       <div>
-        <h1 className="text-2xl font-bold text-text-primary" title={titleTooltip}>
+        <h1 className="text-heading-xl text-text-primary" title={titleTooltip}>
           {title}
         </h1>
         {description && (
-          <p className="mt-1 text-sm text-text-primary opacity-70">{description}</p>
+          <p className="mt-1.5 text-[13px] text-text-secondary">{description}</p>
         )}
       </div>
       {children}

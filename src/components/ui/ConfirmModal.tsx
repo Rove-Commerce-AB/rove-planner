@@ -35,7 +35,7 @@ export function ConfirmModal({
           className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-bg-default p-6 shadow-xl focus:outline-none"
           onEscapeKeyDown={onClose}
         >
-          <AlertDialog.Title className="text-lg font-semibold text-text-primary">
+          <AlertDialog.Title className="text-heading-m text-text-primary">
             {title}
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-4 text-sm text-text-primary opacity-90">

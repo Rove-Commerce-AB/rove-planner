@@ -150,7 +150,7 @@ export function EditProjectModal({
         <div className="flex items-center justify-between">
           <h2
             id="edit-project-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Edit project
           </h2>

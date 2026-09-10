@@ -1,4 +1,7 @@
-import { AppLayoutClient } from "@/components/AppLayoutClient";
+import { Sidebar } from "@/components/Sidebar";
+import { AppTopBar } from "@/components/AppTopBar";
+import { FeatureRequestFab } from "@/components/FeatureRequestFab";
+import { AppThemeAttr } from "@/components/AppThemeAttr";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import {
@@ -37,13 +40,20 @@ export default async function AppLayout({
       : 0;
 
   return (
-    <AppLayoutClient
-      isAdmin={isAdmin}
-      canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
-      isSubcontractor={isSubcontractor}
-      unreadNotificationCount={unreadNotificationCount}
-    >
-      {children}
-    </AppLayoutClient>
+    <div className="flex h-screen overflow-hidden">
+      <AppThemeAttr />
+      <Sidebar
+        isAdmin={isAdmin}
+        canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
+        isSubcontractor={isSubcontractor}
+      />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <AppTopBar unreadNotificationCount={unreadNotificationCount} />
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-page p-8">
+          {children}
+        </main>
+      </div>
+      <FeatureRequestFab />
+    </div>
   );
 }

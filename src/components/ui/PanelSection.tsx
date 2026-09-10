@@ -28,7 +28,7 @@ export function PanelSection({
         {(title ?? icon ?? description) && (
           <div className="mb-1.5">
             {(title ?? icon) && (
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-text-primary">
+              <h2 className="flex items-center gap-2 text-heading-m text-text-primary">
                 {icon}
                 {title}
               </h2>

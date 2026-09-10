@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { deleteProject } from "@/lib/projects";
 import { assertAdmin } from "@/lib/accessGuards";
+import { ROUTES, customerHref } from "@/lib/routes";
 
 export async function revalidateProjects() {
   revalidatePath("/projects");
@@ -17,8 +18,8 @@ export async function deleteProjectAction(
   revalidatePath("/projects");
   revalidatePath(`/projects/${id}`);
   if (customerId) {
-    revalidatePath(`/customers/${customerId}`);
+    revalidatePath(customerHref(customerId));
   }
-  revalidatePath("/allocation");
+  revalidatePath(ROUTES.allocation);
   revalidatePath("/reports");
 }

@@ -79,10 +79,10 @@ function formatDateTime(iso: string) {
 function TrafficDot({ light }: { light: TrafficLight }) {
   const color =
     light === "red"
-      ? "bg-red-500"
+      ? "bg-status-danger"
       : light === "yellow"
-        ? "bg-amber-400"
-        : "bg-emerald-500";
+        ? "bg-status-warning"
+        : "bg-status-success";
   return (
     <span
       className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${color}`}
@@ -122,10 +122,10 @@ function TrafficLightToggle({
         <span
           className={`block h-4 w-4 rounded-full ${
             latest.traffic_light === "red"
-              ? "bg-red-500"
+              ? "bg-status-danger"
               : latest.traffic_light === "yellow"
-                ? "bg-amber-400"
-                : "bg-emerald-500"
+                ? "bg-status-warning"
+                : "bg-status-success"
           }`}
         />
       ) : (
@@ -338,7 +338,7 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
             key={weekKey}
             className={parsed == null ? "mt-8" : undefined}
           >
-            <h2 className="border-b border-border-subtle pb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <h2 className="border-b border-border-subtle pb-1 text-heading-xs text-text-muted">
               {heading}
             </h2>
             {groupRows.map((row, rowIndex) => {
@@ -487,8 +487,8 @@ export function CustomerStatusPageClient({ initialRows }: Props) {
         onOpenChange={closeHistory}
         title={editDraft ? "Edit status" : historyName || "History"}
         subtitle="Customer status"
-        contentClassName="fixed left-1/2 top-1/2 z-50 w-full max-w-[min(100vw-2rem,44rem)] max-h-[min(90vh,32rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[20px] border border-border-subtle bg-bg-default p-6 shadow-[0_14px_36px_rgba(0,0,0,0.12)] focus:outline-none flex flex-col"
-        titleClassName="pr-10 text-lg"
+        contentClassName="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,32rem)] w-full max-w-[min(100vw-2rem,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-default p-6 shadow-xl focus:outline-none"
+        titleClassName="pr-10"
       >
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
           {editDraft && historyCustomerId ? (

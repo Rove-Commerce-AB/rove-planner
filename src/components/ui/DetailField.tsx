@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import { Check, AlertCircle } from "lucide-react";
+import { Check, AlertCircle, ChevronDown } from "lucide-react";
 import {
   inlineEditTriggerClass,
+  drawerEditTriggerClass,
   INLINE_EDIT_VALUE_ROW_MIN_H,
   INLINE_EDIT_STATUS_ROW_MIN_H,
 } from "./inlineEditStyles";
@@ -72,6 +73,8 @@ type InlineEditFieldContainerProps = {
   showSavedIndicator?: boolean;
   /** When false, the status row (min-h strip) is not rendered so the value can be vertically centered. Default true. */
   reserveStatusRow?: boolean;
+  /** When true, skip the reserved checkmark column (drawer rows). */
+  hideAccessory?: boolean;
   /** Called when user clicks outside the container while editing (e.g. commit or cancel). */
   onRequestClose?: () => void;
 };
@@ -84,6 +87,7 @@ export function InlineEditFieldContainer({
   className = "",
   showSavedIndicator = false,
   reserveStatusRow = true,
+  hideAccessory = false,
   onRequestClose,
 }: InlineEditFieldContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -116,10 +120,11 @@ export function InlineEditFieldContainer({
         data-inline-edit-value-row
       >
         <span className="min-w-0 flex-1">{isEditing ? editContent : displayContent}</span>
-        {/* Fixed-width slot so checkmark never causes layout shift */}
-        <span className="inline-flex w-6 shrink-0 items-center justify-end" aria-hidden>
-          {!isEditing && showSavedIndicator ? <SavedCheckmark /> : null}
-        </span>
+        {!hideAccessory && (
+          <span className="inline-flex w-6 shrink-0 items-center justify-end" aria-hidden>
+            {!isEditing && showSavedIndicator ? <SavedCheckmark /> : null}
+          </span>
+        )}
       </div>
       {reserveStatusRow && (
         <div
@@ -158,7 +163,7 @@ export function FieldLabel({ children, className = "" }: Props) {
 export function FieldValue({ children, className = "" }: Props) {
   return (
     <span
-      className={`text-sm font-semibold text-text-primary ${className}`.trim()}
+      className={`truncate text-sm font-semibold text-text-primary ${className}`.trim()}
     >
       {children}
     </span>
@@ -170,6 +175,10 @@ type InlineEditTriggerProps = {
   children: React.ReactNode;
   /** Extra classes (e.g. for empty-state text color) */
   className?: string;
+  /** Always-visible value box (drawer). */
+  boxed?: boolean;
+  /** Dropdown affordance on the right of the box. */
+  showChevron?: boolean;
 };
 
 /**
@@ -180,14 +189,19 @@ export function InlineEditTrigger({
   onClick,
   children,
   className = "",
+  boxed = false,
+  showChevron = false,
 }: InlineEditTriggerProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`group ${inlineEditTriggerClass} ${className}`.trim()}
+      className={`group ${boxed ? drawerEditTriggerClass : inlineEditTriggerClass} ${className}`.trim()}
     >
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {showChevron ? (
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden />
+      ) : null}
     </button>
   );
 }
@@ -215,6 +229,49 @@ export function DetailBadgeFieldRow({
         </div>
         <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`} aria-hidden />
       </div>
+    </div>
+  );
+}
+
+/** Stacked label-above-value for full detail pages. */
+export function DetailFieldStack({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <FieldLabel>{label}</FieldLabel>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  );
+}
+
+/** Figma drawer row: label left, value box in a right column. */
+export function DrawerFieldRow({
+  label,
+  children,
+  variant = "field",
+}: {
+  label: string;
+  children: React.ReactNode;
+  variant?: "field" | "summary";
+}) {
+  if (variant === "summary") {
+    return (
+      <div className="flex items-center justify-between gap-4 py-3.5">
+        <span className="text-[13px] font-semibold text-text-primary">{label}</span>
+        <div className="min-w-0 shrink-0">{children}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <span className="shrink-0 text-[13px] text-text-secondary">{label}</span>
+      <div className="w-[14.5rem] shrink-0">{children}</div>
     </div>
   );
 }

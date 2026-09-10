@@ -312,10 +312,9 @@ export function AddAllocationModal({
       title={dialogTitle}
       subtitle={dialogSubtitle}
       overlayClassName="bg-black/25 backdrop-blur-0"
-      contentClassName="max-w-[400px] rounded-2xl border-[0.5px] border-black/10 p-8 shadow-[0_4px_24px_rgba(0,0,0,0.10)]"
-      subtitleClassName="mb-1 text-[11px] tracking-[0.08em] text-[#999]"
-      titleClassName={lockConsultant ? "!text-[20px] !font-medium tracking-[-0.015em] text-[#1a1a1a]" : "text-xl font-medium text-[#1a1a1a]"}
-      closeClassName="right-6 top-6 p-1 text-[#bbb] opacity-100 hover:bg-transparent hover:text-[#888] focus:ring-0 focus:border-transparent"
+      contentClassName="max-w-[400px] rounded-2xl border border-border-subtle p-8"
+      subtitleClassName="mb-1"
+      closeClassName="right-6 top-6 p-1 text-text-tertiary opacity-100 hover:bg-transparent hover:text-text-secondary focus:border-transparent focus:ring-0"
     >
       <form
         onSubmit={(e) => {
@@ -347,7 +346,7 @@ export function AddAllocationModal({
                 }}
                 placeholder="Select consultant"
                 variant="modal"
-                triggerClassName={`mt-1.5 h-10 rounded-lg border-[#e5e5e3] px-3 text-sm ${modalSelectTriggerClass}`}
+                triggerClassName={`mt-1.5 h-10 rounded-lg border-form px-3 text-sm ${modalSelectTriggerClass}`}
                 options={[
                   { value: "", label: "Select consultant" },
                   { value: TO_PLAN_CONSULTANT_ID, label: "To plan" },
@@ -387,7 +386,7 @@ export function AddAllocationModal({
                 onValueChange={setProjectId}
                 placeholder="Select project"
                 variant="modal"
-                triggerClassName={`mt-1.5 h-10 rounded-lg border-[#e5e5e3] px-3 text-sm ${modalSelectTriggerClass}`}
+                triggerClassName={`mt-1.5 h-10 rounded-lg border-form px-3 text-sm ${modalSelectTriggerClass}`}
                 options={[...projects]
                   .sort((a, b) => a.customerName.localeCompare(b.customerName))
                   .map((p) => ({
@@ -416,7 +415,7 @@ export function AddAllocationModal({
               }
               disabled={projects.find((p) => p.id === projectId)?.type !== "customer"}
               variant="modal"
-              triggerClassName={`mt-1.5 h-10 rounded-lg border-[#e5e5e3] px-3 text-sm ${modalSelectTriggerClass}`}
+              triggerClassName={`mt-1.5 h-10 rounded-lg border-form px-3 text-sm ${modalSelectTriggerClass}`}
               options={roles.map((r) => ({ value: r.id, label: r.name }))}
             />
             </div>
@@ -438,7 +437,7 @@ export function AddAllocationModal({
                 value={fromWeek}
                 onChange={(e) => setFromWeek(parseInt(e.target.value, 10) || 1)}
                 onFocus={(e) => e.target.select()}
-                className={`${modalInputClass} mt-1.5 h-10 rounded-lg border-[#e5e5e3] px-3 !text-sm font-medium leading-none`}
+                className={`${modalInputClass} mt-1.5 h-10 rounded-lg border-form px-3 !text-sm font-medium leading-none`}
               />
             </div>
             <div>
@@ -456,7 +455,7 @@ export function AddAllocationModal({
                 value={toWeek}
                 onChange={(e) => setToWeek(parseInt(e.target.value, 10) || 1)}
                 onFocus={(e) => e.target.select()}
-                className={`${modalInputClass} mt-1.5 h-10 rounded-lg border-[#e5e5e3] px-3 !text-sm font-medium leading-none`}
+                className={`${modalInputClass} mt-1.5 h-10 rounded-lg border-form px-3 !text-sm font-medium leading-none`}
               />
             </div>
           </div>
@@ -465,14 +464,14 @@ export function AddAllocationModal({
             <label className="block text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
               Type
             </label>
-            <div className="mt-1.5 grid h-9 grid-cols-2 overflow-hidden rounded-lg border border-[#e5e5e3] bg-[#faf9f8]">
+            <div className="mt-1.5 grid h-9 grid-cols-2 overflow-hidden rounded-lg border border-form bg-surface-subtle">
               <button
                 type="button"
                 onClick={() => setInputMode("hours")}
                 className={`text-[13px] transition-colors ${
                   inputMode === "hours"
-                    ? "bg-white text-[#1a1a1a] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                    : "text-[#aaa] hover:text-[#1a1a1a]"
+                    ? "ds-shadow-xs bg-surface-raised font-medium text-text-primary"
+                    : "text-text-tertiary hover:text-text-primary"
                 }`}
               >
                 Hours / week
@@ -480,10 +479,10 @@ export function AddAllocationModal({
               <button
                 type="button"
                 onClick={() => setInputMode("percent")}
-                className={`border-l border-[#e5e5e3] text-[13px] transition-colors ${
+                className={`border-l border-form text-[13px] transition-colors ${
                   inputMode === "percent"
-                    ? "bg-white text-[#1a1a1a] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                    : "text-[#aaa] hover:text-[#1a1a1a]"
+                    ? "ds-shadow-xs bg-surface-raised font-medium text-text-primary"
+                    : "text-text-tertiary hover:text-text-primary"
                 }`}
               >
                 % of week
@@ -505,7 +504,7 @@ export function AddAllocationModal({
                   value={hoursPerWeek}
                   onChange={(e) => setHoursPerWeek(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  className={`mt-1.5 h-10 w-20 rounded-lg border border-[#e5e5e3] bg-bg-default px-3 !text-sm font-medium leading-none text-[#1a1a1a] ${modalFocusClass}`}
+                  className={`mt-1.5 h-10 w-20 rounded-lg border border-form bg-bg-default px-3 !text-sm font-medium leading-none text-text-primary ${modalFocusClass}`}
                 />
               </div>
             ) : (
@@ -525,17 +524,17 @@ export function AddAllocationModal({
                   value={percent}
                   onChange={(e) => setPercent(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  className={`mt-1.5 h-10 w-20 rounded-lg border border-[#e5e5e3] bg-bg-default px-3 !text-sm font-medium leading-none text-[#1a1a1a] ${modalFocusClass}`}
+                  className={`mt-1.5 h-10 w-20 rounded-lg border border-form bg-bg-default px-3 !text-sm font-medium leading-none text-text-primary ${modalFocusClass}`}
                 />
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-2 pt-3">
-            <Button type="button" variant="secondary" onClick={handleClose} className="h-10 flex-1 rounded-lg border-[#e5e5e3] text-sm font-normal text-[#888] hover:bg-[#faf9f8]">
+            <Button type="button" variant="secondary" onClick={handleClose} className="h-10 flex-1 text-sm font-normal">
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} className="h-10 flex-[2] rounded-lg bg-[#E8622A] text-sm font-medium text-white hover:bg-[#d45520]">
+            <Button type="submit" disabled={submitting} className="h-10 flex-[2] text-sm font-medium">
               {submitting ? "Adding…" : "Add"}
             </Button>
           </div>

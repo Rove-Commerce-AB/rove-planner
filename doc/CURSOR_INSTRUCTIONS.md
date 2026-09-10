@@ -1,208 +1,116 @@
-# Cursor-instruktioner: implementera mörkt tema
+# Cursor instructions: implement the Rove Apps token contract
 
-Följ stegen i ordning. Vänta på godkännande mellan varje steg.
+Follow DESIGN_SYSTEM.md. Do not use the retired palette (`brand.signal`, `#FF6136`, lilac, old gray ramps).
 
----
-
-## Steg 1 – Uppdatera styrdokumenten
-
-Ersätt de befintliga filerna med de uppdaterade versionerna:
-- `DESIGN_SYSTEM.md`
-- `UI_PATTERNS.md`
-
-Committa dem separat: `docs: update design system with dark theme token contract`
+Wait for approval between steps.
 
 ---
 
-## Steg 2 – Prompt till Cursor: tokens.css
+## Step 1 – Docs (done when DESIGN_SYSTEM.md and UI_PATTERNS.md match the portal export)
 
-Använd denna prompt exakt:
+Contract files:
+- `doc/DESIGN_SYSTEM.md`
+- `doc/UI_PATTERNS.md`
+- `doc/AI_UI_CHECKLIST.md`
 
 ---
+
+## Step 2 – tokens.css
 
 Read DESIGN_SYSTEM.md carefully before starting.
 
-Task: add dark mode token values to `styles/tokens.css`.
+Task: replace `styles/tokens.css` with primitives, semantic light/dark values, radius, and shadows from DESIGN_SYSTEM.md.
 
 Rules:
-- Do NOT change any existing light mode values.
-- Add a `.dark { }` block with overrides for all tokens
-  listed in the "Dark theme token values" table in
-  DESIGN_SYSTEM.md.
-- brand.signal (#FF6136) must NOT appear in the dark block.
-  It does not change between modes.
+- Primitives first; semantic tokens reference primitives.
+- `:root` = light. `.dark` = dark semantic + accent overrides.
+- `[data-app="planner"]`, `[data-app="work"]`, `[data-app="future"]` set accent tokens.
+- Do not keep `brand.signal`, `brand.lilac`, or undocumented hex.
 - Do not touch any file other than `styles/tokens.css`.
-- Do not change any component, page, or config file.
 
-Show me the complete updated tokens.css when done.
-I will approve before you continue.
+Show the complete updated tokens.css. Wait for approval.
 
----
-
-Granska outputen. Kontrollera:
-- [ ] Ingen hex-färg utanför tokens.css
-- [ ] brand.signal saknas i .dark-blocket (det ska inte vara där)
-- [ ] Alla tokens från tabellen finns med
-- [ ] Inga andra filer har rörts
-
----
-
-## Steg 3 – Prompt till Cursor: Tailwind-config
-
----
-
-Read DESIGN_SYSTEM.md before starting.
-
-Task: register the new dark-mode tokens in `tailwind.config`
-so they are accessible as Tailwind utility classes.
-
-Rules:
-- Only update `tailwind.config`.
-- Map the CSS variables from tokens.css to Tailwind color names.
-- Do not add any colors that are not already in tokens.css.
-- Do not touch any component or page file.
-
-Show me only the changed section of tailwind.config.
-I will approve before you continue.
-
----
-
-## Steg 4 – Prompt till Cursor: dark mode toggle
-
----
-
-Read DESIGN_SYSTEM.md before starting.
-
-Task: implement dark mode toggling via a `dark` class
-on the `<html>` element.
-
-Rules:
-- Add a `ThemeProvider` or equivalent that:
-  1. Reads the user's saved preference from localStorage
-     (key: "theme", values: "light" | "dark")
-  2. Falls back to `prefers-color-scheme` if no saved value
-  3. Applies the `dark` class to `<html>` immediately on load
-     (before paint, to avoid flash)
-  4. Exposes a `useTheme()` hook or context for toggling
-- Add a toggle button component in `src/components/ui/ThemeToggle.tsx`
-- Do not hardcode any colors in these files.
-- Do not change any page layout or existing component.
-
-Show me the new files only. I will approve before you continue.
-
----
-
-## Steg 5 – Prompt till Cursor: Panel-komponenten
-
----
-
-Read DESIGN_SYSTEM.md and UI_PATTERNS.md before starting.
-
-Task: update the Panel component family so it respects
-the dark mode tokens.
-
-Components to update (in src/components/ui/):
-- Panel
-- PanelHeader
-- PanelToolbar
-- PanelSection
-- PanelContent
-
-Rules:
-- Only change Tailwind class names that reference color tokens.
-- Do NOT change component structure, props, or logic.
-- Do NOT change spacing or density (compact stays compact).
-- All colors must come from Tailwind token classes,
-  not inline styles or hardcoded values.
-- Do not touch any page or feature file.
-
-Show me the diff for each file. I will approve before you continue.
-
----
-
-## Steg 6 – Prompt till Cursor: DataTable-komponenten
-
----
-
-Read DESIGN_SYSTEM.md and UI_PATTERNS.md before starting.
-
-Task: update DataTable (src/components/ui/DataTable.tsx)
-so it respects dark mode tokens.
-
-Rules:
-- Only change color-related Tailwind classes.
-- Allocation pills must follow the color rules in
-  UI_PATTERNS.md section 6 (status ok/warn/over/muted).
-- Current week column highlight: use --color-accent-dim bg.
-- Sticky header background must update in dark mode.
-- Do NOT change component API, props, logic, or structure.
-- Do NOT change density or row height.
-- Do not touch any page or feature file.
-
-Show me the diff. I will approve before you continue.
-
----
-
-## Steg 7 – Prompt till Cursor: övriga UI-komponenter
-
----
-
-Read DESIGN_SYSTEM.md before starting.
-
-Task: audit all remaining components in src/components/ui/
-and update any that have hardcoded colors or light-only
-Tailwind classes.
-
-For each component:
-- Replace hardcoded colors with token-based Tailwind classes.
-- Do NOT change structure, props, or logic.
-- Skip components that already use only token-based classes.
-
-List every file you change and show the diff.
-I will approve before you continue.
-
----
-
-## Steg 8 – Prompt till Cursor: slutkontroll
-
----
-
-Audit the entire codebase for dark mode compliance.
 Check:
-1. Any hardcoded hex values outside styles/tokens.css
-   (exception: brand.signal in CTA buttons is allowed
-   since it does not change between modes)
-2. Any inline styles that are not user-defined DB colors
-3. Any component that uses bg-white, text-black,
-   border-gray-* or similar non-token Tailwind classes
-   that will break in dark mode
-
-Report every violation with file + line number.
-Do not fix anything yet. I will review the list first.
+- [ ] No hex outside tokens.css after this step (this file is the exception)
+- [ ] Every semantic token in DESIGN_SYSTEM.md exists
+- [ ] Light and dark values match the tables
+- [ ] Radius and shadow tokens match the tables
 
 ---
 
-När du fått listan: fixa en fil i taget och granska resultatet
-innan du fortsätter till nästa.
+## Step 3 – Tailwind
+
+Read DESIGN_SYSTEM.md before starting.
+
+Task: map the new CSS variables to Tailwind in the Tailwind config (or CSS `@theme` if that is what the repo uses).
+
+Rules:
+- Only token names from DESIGN_SYSTEM.md
+- Do not add colors that are not in tokens.css
+- Do not touch components or pages
+
+Show only the changed config section. Wait for approval.
 
 ---
 
-## Om Cursor börjar göra för mycket
+## Step 4 – Theme + app accent
 
-Avbryt och använd:
+Read DESIGN_SYSTEM.md before starting.
 
-"Stop. Undo all changes from this session.
-I will restart this step with a narrower scope."
+Task:
+- Theme toggle: `dark` class on `<html>`, `localStorage` key `"theme"`, fallback `prefers-color-scheme`, no flash
+- Set `data-app` from the active app only when that app has a dedicated theme (none today; omit on Planner, shell, and Time report)
+
+Do not hardcode colors. Show new/changed files only. Wait for approval.
 
 ---
 
-## Commit-ordning
+## Step 5 – Panel family
 
-1. `docs: update design system with dark theme token contract`
-2. `style: add dark mode tokens to tokens.css`
-3. `style: register dark tokens in tailwind.config`
-4. `feat: add ThemeProvider and ThemeToggle`
-5. `style: update Panel components for dark mode`
-6. `style: update DataTable for dark mode`
-7. `style: update remaining ui components for dark mode`
-8. `fix: resolve dark mode audit violations`
+Read DESIGN_SYSTEM.md and UI_PATTERNS.md.
+
+Update Panel, PanelHeader, PanelToolbar, PanelSection, PanelContent:
+- Color, radius, shadow classes only
+- Compact density unchanged
+- No structure/prop/logic changes
+- No page files
+
+Show diffs. Wait for approval.
+
+---
+
+## Step 6 – DataTable
+
+Read DESIGN_SYSTEM.md and UI_PATTERNS.md section 6.
+
+- Token-based colors only
+- Allocation pills: status success/warning/danger/muted as specified
+- Current week: `accent/primary-subtle` and `accent/primary`
+- Sticky header uses `table/header` (sage), comfortable lists round the top corners (`radius/lg`)
+- Sort lives in column headers (`sort` prop); the table does not reorder rows
+
+Show the diff. Wait for approval.
+
+---
+
+## Step 7 – Remaining `src/components/ui/`
+
+Audit remaining UI components. Replace hardcoded or retired colors with tokens. Skip files that already comply. List every changed file and show diffs. Wait for approval.
+
+---
+
+## Step 8 – Audit
+
+Report violations, do not fix yet:
+1. Hex/rgba outside `styles/tokens.css` (exception: DB user colors)
+2. Inline styles that are not DB colors
+3. Retired tokens (`brand.signal`, `bg-white`, `text-black`, `border-gray-*`, DM Mono)
+4. Type sizes, radii, or shadows not in DESIGN_SYSTEM.md
+
+Then fix one file at a time after review.
+
+---
+
+If the agent scopes too wide:
+
+"Stop. Undo all changes from this session. I will restart this step with a narrower scope."

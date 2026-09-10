@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { createCustomerAction } from "@/app/(app)/customers/actions";
+import { customerHref } from "@/lib/routes";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { Button, modalInputClass } from "@/components/ui";
 
@@ -35,7 +36,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
       });
       onSuccess();
       onClose();
-      await router.push(`/customers/${customer.id}`);
+      await router.push(customerHref(customer.id));
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add customer");
@@ -74,7 +75,7 @@ export function AddCustomerModal({ isOpen, onClose, onSuccess }: Props) {
         <div className="flex items-center justify-between">
           <h2
             id="add-customer-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Add customer
           </h2>

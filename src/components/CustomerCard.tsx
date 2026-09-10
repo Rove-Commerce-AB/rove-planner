@@ -4,6 +4,7 @@ import Link from "next/link";
 import { User, FolderKanban } from "lucide-react";
 import type { CustomerWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import { customerHref } from "@/lib/routes";
 
 type Props = {
   customer: CustomerWithDetails;
@@ -14,7 +15,7 @@ export function CustomerCard({ customer }: Props) {
 
   return (
     <Link
-      href={`/customers/${customer.id}`}
+      href={customerHref(customer.id)}
       prefetch={false}
       className="block rounded-lg border border-form border-l-4 bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
       style={{ borderLeftColor: color }}
@@ -38,7 +39,7 @@ export function CustomerCard({ customer }: Props) {
             </div>
           )}
           <div className="min-w-0">
-            <h3 className="font-semibold text-text-primary">{customer.name}</h3>
+            <h3 className="text-heading-m text-text-primary">{customer.name}</h3>
             <span className="inline-block rounded-full bg-brand-lilac/40 px-2 py-0.5 text-xs text-text-primary">
               {customer.activeProjectCount} active project
               {customer.activeProjectCount !== 1 ? "s" : ""}

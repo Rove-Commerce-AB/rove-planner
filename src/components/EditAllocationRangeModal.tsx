@@ -215,7 +215,7 @@ export function EditAllocationRangeModal({
         <div className="flex items-center justify-between">
           <h2
             id="edit-allocation-range-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Edit allocation
           </h2>

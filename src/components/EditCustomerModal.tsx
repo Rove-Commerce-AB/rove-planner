@@ -131,7 +131,7 @@ export function EditCustomerModal({
         <div className="flex items-center justify-between">
           <h2
             id="edit-customer-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Edit customer
           </h2>

@@ -8,7 +8,7 @@ export default async function InsightsPage() {
 
   return (
     <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-3xl flex-col p-6">
-      <h1 className="mb-4 text-lg font-semibold text-text-primary">
+      <h1 className="mb-4 text-heading-xl text-text-primary">
         Ask the data
       </h1>
       <DataAgentChat />

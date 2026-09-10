@@ -5,8 +5,7 @@ type Props = {
   className?: string;
 };
 
-const titleClasses =
-  "text-xs font-medium uppercase tracking-wider text-text-primary opacity-65";
+const titleClasses = "text-heading-xs text-text-primary opacity-65";
 
 /** Fixed height; border below matches panel border; margin for spacing under header. */
 const headerRowClasses =

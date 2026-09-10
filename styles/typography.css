@@ -1,11 +1,128 @@
-/* styles/typography.css */
+/* Rove typography tokens and reusable text-style classes.
+   The source export does not define line heights, so these classes inherit
+   line-height from their context instead of introducing new design values. */
 
 :root {
-  --font-primary: var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
-  --font-secondary: var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
+  --font-family-sans:
+    var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --font-size-9: 9px;
+  --font-size-10: 10px;
+  --font-size-11: 11px;
+  --font-size-12: 12px;
+  --font-size-13: 13px;
+  --font-size-14: 14px;
+  --font-size-15: 15px;
+  --font-size-20: 20px;
+  --font-size-22: 22px;
+
+  --letter-spacing-default: 0;
+
+  /* Compatibility aliases used by the existing application. */
+  --font-primary: var(--font-family-sans);
+  --font-secondary: var(--font-family-sans);
 }
 
 html {
-  font-family: var(--font-primary);
   color: var(--color-text-primary);
+  font-family: var(--font-family-sans);
+}
+
+.text-caption,
+.text-overline,
+.text-heading-xl,
+.text-heading-l,
+.text-heading-m,
+.text-heading-s,
+.text-heading-xs,
+.text-label-l,
+.text-label-m,
+.text-label-s,
+.text-label-xs,
+.text-body-l,
+.text-body-m,
+.text-body-s,
+.text-body-xs {
+  font-family: var(--font-family-sans);
+  letter-spacing: var(--letter-spacing-default);
+  text-transform: none;
+}
+
+.text-caption {
+  font-size: var(--font-size-10);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-overline {
+  font-size: var(--font-size-9);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-heading-xl {
+  font-size: var(--font-size-22);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-heading-l {
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-heading-m {
+  font-size: var(--font-size-15);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-heading-s {
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-heading-xs {
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-label-l {
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-label-m {
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-label-s {
+  font-size: var(--font-size-11);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-label-xs {
+  font-size: var(--font-size-10);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-body-l {
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-body-m {
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-body-s {
+  font-size: var(--font-size-11);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-body-xs {
+  font-size: var(--font-size-10);
+  font-weight: var(--font-weight-regular);
 }

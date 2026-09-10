@@ -8,18 +8,18 @@ export default auth((req) => {
   const isAuthCallback = pathname.startsWith("/auth/");
   const isAccessDenied = pathname === "/access-denied";
 
-  // Ej inloggad → /login
+  // Unauthenticated → /login
   if (!req.auth && !isLogin && !isAuthCallback) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Inloggad men inte i app_users → /access-denied
-  // (Auth.js signIn-callback blockerar redan, men som extra skydd)
+  // Signed in but not in app_users → /access-denied
+  // (Auth.js signIn callback already blocks this; extra guard)
   if (req.auth && !req.auth.user.appUserId && !isAccessDenied && !isLogin) {
     return NextResponse.redirect(new URL("/access-denied", req.url));
   }
 
-  // Inloggad försöker nå /login → dashboard
+  // Signed in user hitting /login → Home
   if (req.auth && isLogin) {
     return NextResponse.redirect(new URL("/", req.url));
   }

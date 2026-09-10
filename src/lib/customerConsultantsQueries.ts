@@ -5,6 +5,39 @@ export type CustomerConsultant = {
   name: string;
 };
 
+export type CustomerConsultantsByCustomerId = Record<
+  string,
+  CustomerConsultant[]
+>;
+
+export async function getConsultantsByCustomerIds(
+  customerIds: string[]
+): Promise<CustomerConsultantsByCustomerId> {
+  const uniqueCustomerIds = [...new Set(customerIds)].filter(Boolean);
+  if (uniqueCustomerIds.length === 0) return {};
+
+  const { rows } = await cloudSqlPool.query<{
+    customer_id: string;
+    id: string;
+    name: string;
+  }>(
+    `SELECT cc.customer_id, c.id, c.name
+     FROM customer_consultants cc
+     JOIN consultants c ON c.id = cc.consultant_id
+     WHERE cc.customer_id = ANY($1::uuid[])
+     ORDER BY c.name`,
+    [uniqueCustomerIds]
+  );
+
+  const result: CustomerConsultantsByCustomerId = Object.fromEntries(
+    uniqueCustomerIds.map((customerId) => [customerId, []])
+  );
+  for (const row of rows) {
+    result[row.customer_id]?.push({ id: row.id, name: row.name });
+  }
+  return result;
+}
+
 export async function getConsultantsByCustomerId(
   customerId: string
 ): Promise<CustomerConsultant[]> {

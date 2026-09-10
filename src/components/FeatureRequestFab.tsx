@@ -75,7 +75,7 @@ export function FeatureRequestFab() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-lg bg-brand-signal px-3 py-1.5 text-sm font-medium text-text-inverse hover:opacity-90 disabled:opacity-50"
+                className="rounded-lg bg-brand-signal px-3 py-1.5 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-primary-hover active:bg-accent-primary-active disabled:opacity-50"
               >
                 {submitting ? "Sending…" : "Send"}
               </button>
@@ -86,7 +86,7 @@ export function FeatureRequestFab() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-signal text-text-inverse shadow-lg transition-opacity hover:opacity-90"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-signal text-text-inverse shadow-lg transition-colors hover:bg-accent-primary-hover active:bg-accent-primary-active"
           aria-label="Send feature request"
           title="Feature request"
         >

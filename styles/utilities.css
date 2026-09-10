@@ -1,0 +1,53 @@
+/* Reusable, framework-independent Rove design-system utilities. */
+
+.ds-shadow-xs {
+  box-shadow: var(--shadow-xs);
+}
+
+.ds-shadow-sm {
+  box-shadow: var(--shadow-sm);
+}
+
+.ds-shadow-md {
+  box-shadow: var(--shadow-md);
+}
+
+.ds-shadow-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.ds-shadow-xl {
+  box-shadow: var(--shadow-xl);
+}
+
+.ds-shadow-primary {
+  box-shadow: var(--shadow-primary);
+}
+
+.ds-radius-sm {
+  border-radius: var(--radius-sm);
+}
+
+.ds-radius-md {
+  border-radius: var(--radius-md);
+}
+
+.ds-radius-lg {
+  border-radius: var(--radius-lg);
+}
+
+.ds-radius-xl {
+  border-radius: var(--radius-xl);
+}
+
+.ds-radius-2xl {
+  border-radius: var(--radius-2xl);
+}
+
+.ds-radius-full {
+  border-radius: var(--radius-full);
+}
+
+.ds-tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

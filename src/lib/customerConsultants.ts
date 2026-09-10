@@ -2,7 +2,14 @@ import "server-only";
 
 import * as q from "./customerConsultantsQueries";
 
-export type { CustomerConsultant } from "./customerConsultantsQueries";
+export type {
+  CustomerConsultant,
+  CustomerConsultantsByCustomerId,
+} from "./customerConsultantsQueries";
+
+export async function getConsultantsByCustomerIds(customerIds: string[]) {
+  return q.getConsultantsByCustomerIds(customerIds);
+}
 
 export async function getConsultantsByCustomerId(customerId: string) {
   return q.getConsultantsByCustomerId(customerId);

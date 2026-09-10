@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Mail, Calendar, Users } from "lucide-react";
 import type { ConsultantWithDetails } from "@/types";
+import { consultantHref } from "@/lib/routes";
 
 type Props = {
   consultant: ConsultantWithDetails;
@@ -15,7 +16,7 @@ export function ConsultantCard({ consultant }: Props) {
 
   return (
     <Link
-      href={`/consultants/${consultant.id}`}
+      href={consultantHref(consultant.id)}
       prefetch={false}
       className="flex flex-col rounded-lg border border-form bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-signal focus:ring-offset-2"
     >
@@ -27,7 +28,7 @@ export function ConsultantCard({ consultant }: Props) {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-text-primary">{consultant.name}</h3>
+                <h3 className="text-heading-m text-text-primary">{consultant.name}</h3>
                 {consultant.isExternal && (
                   <span className="rounded-sm bg-brand-blue/60 px-1.5 py-0.5 text-xs font-medium text-text-primary">
                     External

@@ -6,7 +6,7 @@ import { AllocationPageWrapper } from "@/components/AllocationPageWrapper";
 import { AllocationViewportAdapter } from "@/components/AllocationViewportAdapter";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 
-const FALLBACK_WEEKS = 12;
+const FALLBACK_WEEKS = 52;
 
 type Props = {
   searchParams: Promise<{ year?: string; from?: string; to?: string }>;
@@ -24,7 +24,7 @@ export default async function AllocationPage({ searchParams }: Props) {
 
   const weekFrom = fromParam ?? Math.max(1, currentWeek - 2);
   const weekTo =
-    toParam ?? Math.min(52, weekFrom + FALLBACK_WEEKS - 1);
+    toParam ?? ((weekFrom + FALLBACK_WEEKS - 2) % 52) + 1;
 
   let data = null;
   let error: string | null = null;

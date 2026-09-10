@@ -21,8 +21,8 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
   );
 
   return (
-    <div className="rounded border border-form bg-panel px-4 py-4">
-      <h3 className="mb-3 text-sm font-medium text-text-primary">
+    <div className="rounded-sm border border-form bg-panel px-4 py-4">
+      <h3 className="mb-3 text-heading-s text-text-primary">
         Recent allocation changes
       </h3>
       {loading ? (
@@ -55,11 +55,11 @@ export function AllocationHistoryTable({ entries, loading }: Props) {
                     <span
                       className={
                         entry.action === "create" || entry.action === "bulk"
-                          ? "text-green-600"
+                          ? "text-status-success"
                           : entry.action === "delete"
-                            ? "text-red-600"
+                            ? "text-status-danger"
                             : entry.action === "update"
-                              ? "text-amber-600"
+                              ? "text-status-warning"
                               : "text-text-primary"
                       }
                     >

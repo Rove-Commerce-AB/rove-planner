@@ -5,7 +5,7 @@ Use this after refactors or releases that touch the listed areas. Check items th
 ## Auth and session
 
 - [ ] Unauthenticated user cannot access app routes (redirect or error as designed).
-- [ ] Google (or configured) sign-in completes and lands on the expected home/dashboard.
+- [ ] Google (or configured) sign-in completes and lands on Home (`/`).
 - [ ] Sign out clears session; protected routes behave correctly when revisiting.
 - [ ] Refresh while logged in keeps the session (no unexpected “logged out” state).
 
@@ -25,10 +25,10 @@ Use this after refactors or releases that touch the listed areas. Check items th
 - [ ] Copy/previous week or similar shortcuts (if present) do not corrupt other weeks.
 - [ ] Project manager time report view (if applicable): filters, save, and PM-only rows behave as before.
 
-## Dashboard
+## Home
 
-- [ ] Main KPIs and charts load without errors for a user with typical data.
-- [ ] Read-only behavior: no unintended edits from dashboard widgets.
+- [ ] Personal upcoming allocations load without errors for a user with typical data.
+- [ ] Read-only behavior: no unintended edits from Home widgets.
 - [ ] Date or period filters (if any) update figures consistently.
 
 ## Detail pages (project, customer, consultant)

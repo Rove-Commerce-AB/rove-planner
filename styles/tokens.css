@@ -1,75 +1,406 @@
 /* styles/tokens.css */
-/* Rove Design System – Design Tokens */
+/* Rove Apps design tokens – primitives, semantic light/dark, app accents.
+   Raw palettes live here only. Components must use semantic tokens. */
 
 :root {
-    /* === Brand colors === */
-    --color-brand-signal: #ff6136; /* CTA / signal */
-    --color-brand-lilac: #eec5ff;  /* Accent background */
-    --color-brand-blue: #c9e8ff;   /* Accent background */
-    --color-accent-1: #3b82f6;
-    --color-customer-default: #3b82f6; /* Default when customer has no color – same as accent-1 */
-    --color-accent-2: #22c55e;
-    --color-accent-3: #a855f7;
-    --color-accent-4: #f97316;
-  
-    /* === Neutrals === */
-    --color-white: #ffffff;
-    --color-black: #000000;
-    --color-gray-900: #262626;
-    --color-gray-100: #f4edea;
-    --color-gray-050: #f3e7e2;
-  
-    /* === Semantic === */
-    --color-bg-default: var(--color-white);
-    --color-bg-page: var(--color-bg-content);
-    --color-bg-muted: var(--color-gray-100);
-    --color-border-default: #e5e1dc;          /* Soft gray – low contrast, never harsh */
-    --color-border-subtle: #ebe8e4;           /* Very light – dividers, sidebar */
-    --color-border-form: #f2efec;             /* Form controls: inputs, selects, buttons – very light, less prominent. Use for all interactive form elements so borders stay consistent and non-harsh. */
-    --color-tabs-border: #ebe9e8;            /* Tabs divider line – light, discrete */
-    /* Allocation table – soft mid-gray, less prominent lines */
-    --color-grid-border: #e5e1dc;
-    --color-grid-border-light: #ebe8e4;
-    --color-grid-border-subtle: #efebe8;
-    --color-grid-border-light-subtle: #f2efec;
-    --color-grid-row: #f2eeeb;         /* Allocation table – subtle row dividers */
-    --color-allocation-thead: #f2f1f0; /* Allocation table header – neutral light gray, discrete (no warm/beige) */
-    --color-text-primary: #404040; /* Soft gray, not pure black */
-    --color-text-inverse: var(--color-white);
-    --color-text-muted: #9ca3af; /* placeholder, secondary text */
-    --color-danger: #dc2626; /* Destructive actions */
-    --color-success: #16a34a; /* Optimal allocation */
-    --color-warning: #d97706; /* Under-allocation */
-  
-    /* === Focus === */
-    --color-focus-ring: var(--color-brand-signal);
-    --focus-ring-offset: 2px;
+  /* === Primitives === */
+  --color-zinc-50: #fafafb;
+  --color-zinc-100: #f3f3f5;
+  --color-zinc-200: #e4e5e8;
+  --color-zinc-300: #cfd0d5;
+  --color-zinc-400: #a1a3aa;
+  --color-zinc-500: #71737a;
+  --color-zinc-600: #54565c;
+  --color-zinc-700: #3f4146;
+  --color-zinc-800: #292b2f;
+  --color-zinc-900: #18191c;
+  --color-zinc-950: #0d0e10;
 
-    /* === Radius === */
-    --radius: 4px;         /* Default for inline “rounded” */
-    --radius-sm: 4px;      /* Badges, chips, small controls, color picker */
-    --radius-md: 6px;     /* Inputs, nav items, dropdown items */
-    --radius-lg: 8px;     /* Buttons, cards, modals, panels */
-    --radius-panel: 8px;  /* Panel container (same as lg for homogeneity) */
+  --color-blue-50: #f4f6fe;
+  --color-blue-100: #e7ebfc;
+  --color-blue-200: #ccd4f7;
+  --color-blue-300: #aab8f0;
+  --color-blue-400: #8499e5;
+  --color-blue-500: #657dd4;
+  --color-blue-600: #5067bc;
+  --color-blue-700: #43549a;
+  --color-blue-800: #38457d;
+  --color-blue-900: #303a67;
+  --color-blue-950: #1d233d;
 
-    /* === Layout (prototype) === */
-    --color-bg-content: #fafafa;             /* Right content area – light gray (lagom) */
-    --color-nav-active: #d8d8d8;             /* Active nav item bg – slightly darker than before */
-    --color-nav-active-accent: #d0cdc9;      /* Left border accent for active item */
-    --color-nav-hover: #e4e4e4;              /* Nav item hover bg – toward black vs #eee */
+  --color-orange-50: #fff4ed;
+  --color-orange-100: #ffe4d3;
+  --color-orange-200: #ffc6a5;
+  --color-orange-300: #ff9f6b;
+  --color-orange-400: #f97835;
+  --color-orange-500: #ef6518;
+  --color-orange-600: #e9560c;
+  --color-orange-700: #c94208;
+  --color-orange-800: #a3360b;
+  --color-orange-900: #7f2b0d;
+  --color-orange-950: #451205;
 
-    /* === Panel (control panel / dashboard) === */
-    --panel-bg: var(--color-white);          /* Panels – white on light gray content area */
-    --panel-border: #e8e4e0;                  /* Soft gray – subtle, low-contrast frame */
-    --section-divider: var(--color-border-default);
-    /* Elevated panel header: visible drop shadow under the header toward content */
-    --panel-header-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --color-green-50: #f2f8f3;
+  --color-green-100: #ddeee0;
+  --color-green-200: #b9d9bf;
+  --color-green-300: #91bf9b;
+  --color-green-400: #6aa678;
+  --color-green-500: #4f8e60;
+  --color-green-600: #3d764d;
+  --color-green-700: #315f3e;
+  --color-green-800: #294f35;
+  --color-green-900: #203f2b;
+  --color-green-950: #10261a;
 
-    /* === Spacing (compact dashboard default) === */
-    --space-xs: 4px;
-    --space-sm: 6px;
-    --space-md: 12px;
-    --space-lg: 16px;
-    --space-xl: 24px;
-  }
-  
+  --color-amber-50: #fffbea;
+  --color-amber-100: #fff5ce;
+  --color-amber-200: #ffe99f;
+  --color-amber-300: #ffd96e;
+  --color-amber-400: #fdc545;
+  --color-amber-500: #f5aa28;
+  --color-amber-600: #d98715;
+  --color-amber-700: #b46610;
+  --color-amber-800: #935115;
+  --color-amber-900: #794417;
+  --color-amber-950: #482409;
+
+  --color-red-50: #fff1f1;
+  --color-red-100: #ffe2e2;
+  --color-red-200: #ffcaca;
+  --color-red-300: #ffa8a8;
+  --color-red-400: #f97c7c;
+  --color-red-500: #ea5656;
+  --color-red-600: #d43535;
+  --color-red-700: #b32929;
+  --color-red-800: #942525;
+  --color-red-900: #7c2626;
+  --color-red-950: #440f0f;
+
+  --color-purple-50: #f5f1ff;
+  --color-purple-100: #ece5ff;
+  --color-purple-200: #dbceff;
+  --color-purple-300: #c4afff;
+  --color-purple-400: #a989ff;
+  --color-purple-500: #9067f4;
+  --color-purple-600: #7b4ce1;
+  --color-purple-700: #6739c5;
+  --color-purple-800: #5631a4;
+  --color-purple-900: #482a87;
+  --color-purple-950: #291554;
+
+  --color-teal-50: #edfdfb;
+  --color-teal-100: #dbf9f6;
+  --color-teal-200: #bbf1ed;
+  --color-teal-300: #94e5e0;
+  --color-teal-400: #6ad1cc;
+  --color-teal-500: #4ab8b3;
+  --color-teal-600: #359996;
+  --color-teal-700: #2e7c7b;
+  --color-teal-800: #2a6363;
+  --color-teal-900: #275152;
+  --color-teal-950: #132f31;
+
+  --color-cyan-50: #edfaff;
+  --color-cyan-100: #dbf3ff;
+  --color-cyan-200: #bce8ff;
+  --color-cyan-300: #93d9ff;
+  --color-cyan-400: #68c5f9;
+  --color-cyan-500: #49ade9;
+  --color-cyan-600: #3390d0;
+  --color-cyan-700: #2b75aa;
+  --color-cyan-800: #275e89;
+  --color-cyan-900: #254e70;
+  --color-cyan-950: #142d45;
+
+  --color-pink-50: #fff1f6;
+  --color-pink-100: #ffe3ed;
+  --color-pink-200: #ffcadd;
+  --color-pink-300: #ffa6c6;
+  --color-pink-400: #fb7ca8;
+  --color-pink-500: #ef568a;
+  --color-pink-600: #db326a;
+  --color-pink-700: #ba2455;
+  --color-pink-800: #9a214a;
+  --color-pink-900: #802042;
+  --color-pink-950: #4a0c20;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  /* === Semantic – light === */
+  --color-surface-page: var(--color-zinc-50);
+  --color-surface-default: var(--color-white);
+  --color-surface-subtle: var(--color-zinc-100);
+  --color-surface-raised: var(--color-white);
+  --color-surface-sunken: var(--color-zinc-100);
+  --color-surface-inverse: var(--color-zinc-900);
+
+  --color-text-primary: var(--color-zinc-900);
+  --color-text-secondary: var(--color-zinc-600);
+  --color-text-tertiary: var(--color-zinc-400);
+  --color-text-disabled: var(--color-zinc-300);
+  --color-text-inverse: var(--color-white);
+  --color-text-link: var(--color-blue-600);
+
+  --color-border-subtle: var(--color-zinc-100);
+  --color-border-default: var(--color-zinc-200);
+  --color-border-strong: var(--color-zinc-400);
+  --color-border-inverse: var(--color-zinc-800);
+  --color-border-focus: var(--color-blue-600);
+
+  --color-icon-primary: var(--color-zinc-900);
+  --color-icon-secondary: var(--color-zinc-600);
+  --color-icon-tertiary: var(--color-zinc-400);
+  --color-icon-disabled: var(--color-zinc-300);
+  --color-icon-inverse: var(--color-white);
+
+  --color-interactive-primary: var(--color-blue-500);
+  --color-interactive-primary-hover: var(--color-blue-600);
+  --color-interactive-primary-active: var(--color-blue-700);
+  --color-interactive-primary-subtle: var(--color-blue-50);
+  --color-interactive-secondary: var(--color-zinc-100);
+  --color-interactive-secondary-hover: var(--color-zinc-200);
+  --color-interactive-disabled: var(--color-zinc-100);
+  --color-interactive-disabled-text: var(--color-zinc-300);
+
+  --color-status-info: var(--color-blue-600);
+  --color-status-info-subtle: var(--color-blue-50);
+  --color-status-success: var(--color-green-600);
+  --color-status-success-subtle: var(--color-green-50);
+  --color-status-warning: var(--color-amber-600);
+  --color-status-warning-subtle: var(--color-amber-50);
+  --color-status-danger: var(--color-red-600);
+  --color-status-danger-subtle: var(--color-red-50);
+
+  --color-focus-default: var(--color-blue-600);
+  --color-focus-subtle: var(--color-blue-100);
+
+  /* Overview list table header — Figma sage (Consultants list), not green/200 */
+  --color-table-header: #c4d7c1;
+
+  /* Initials avatars — saturated fill, inverse initials */
+  --color-avatar-1-bg: var(--color-blue-500);
+  --color-avatar-1-fg: var(--color-white);
+  --color-avatar-2-bg: var(--color-orange-500);
+  --color-avatar-2-fg: var(--color-white);
+  --color-avatar-3-bg: var(--color-purple-500);
+  --color-avatar-3-fg: var(--color-white);
+  --color-avatar-4-bg: var(--color-teal-500);
+  --color-avatar-4-fg: var(--color-white);
+  --color-avatar-5-bg: var(--color-pink-500);
+  --color-avatar-5-fg: var(--color-white);
+  --color-avatar-6-bg: var(--color-red-500);
+  --color-avatar-6-fg: var(--color-white);
+
+  /* Default accent = shared interactive (shell / Time report) */
+  --color-accent-primary: var(--color-interactive-primary);
+  --color-accent-primary-hover: var(--color-interactive-primary-hover);
+  --color-accent-primary-active: var(--color-interactive-primary-active);
+  --color-accent-primary-subtle: var(--color-interactive-primary-subtle);
+  --color-accent-primary-text: var(--color-blue-700);
+  --color-accent-focus: var(--color-interactive-primary);
+
+  /* === Radius === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+  --radius: var(--radius-sm);
+  --radius-panel: var(--radius-lg);
+
+  /* === Shadows === */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
+  --shadow-primary: 0 4px 16px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+
+  /* === Spacing (4px base scale) === */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-40: 40px;
+  --space-48: 48px;
+  --space-64: 64px;
+
+  /* Compatibility aliases for existing and legacy consumers. */
+  --space-xs: var(--space-4);
+  --space-sm: var(--space-8);
+  --space-md: var(--space-12);
+  --space-lg: var(--space-16);
+  --space-xl: var(--space-24);
+
+  --focus-ring-offset: 2px;
+
+  /* === Compatibility aliases (existing classes / globals) === */
+  --color-brand-signal: var(--color-accent-primary);
+  --color-brand-lilac: var(--color-accent-primary-subtle);
+  --color-brand-blue: var(--color-accent-primary-subtle);
+  --color-accent-1: var(--color-interactive-primary);
+  --color-accent-2: var(--color-green-600);
+  --color-accent-3: var(--color-purple-600);
+  --color-accent-4: var(--color-orange-500);
+  --color-customer-default: var(--color-interactive-primary);
+  --color-bg-default: var(--color-surface-default);
+  --color-bg-content: var(--color-surface-page);
+  --color-bg-page: var(--color-surface-page);
+  --color-bg-muted: var(--color-surface-subtle);
+  --color-border-form: var(--color-border-default);
+  --color-tabs-border: var(--color-border-subtle);
+  --color-grid-border: var(--color-border-default);
+  --color-grid-border-light: var(--color-border-subtle);
+  --color-grid-border-subtle: var(--color-border-subtle);
+  --color-grid-border-light-subtle: var(--color-border-subtle);
+  --color-grid-row: var(--color-border-subtle);
+  --color-allocation-thead: var(--color-surface-subtle);
+  --color-text-muted: var(--color-text-tertiary);
+  --color-danger: var(--color-status-danger);
+  --color-success: var(--color-status-success);
+  --color-warning: var(--color-status-warning);
+  --color-focus-ring: var(--color-accent-focus);
+  --color-nav-active: var(--color-interactive-primary-subtle);
+  --color-nav-active-accent: var(--color-interactive-primary);
+  --color-nav-hover: var(--color-interactive-secondary-hover);
+  --panel-bg: var(--color-surface-raised);
+  --panel-border: var(--color-border-default);
+  --section-divider: var(--color-border-default);
+  --panel-header-shadow: var(--shadow-sm);
+  --color-gray-900: var(--color-zinc-900);
+  --color-gray-100: var(--color-zinc-100);
+  --color-gray-050: var(--color-zinc-50);
+}
+
+.dark {
+  --color-surface-page: var(--color-zinc-950);
+  --color-surface-default: var(--color-zinc-900);
+  --color-surface-subtle: var(--color-zinc-800);
+  --color-surface-raised: var(--color-zinc-800);
+  --color-surface-sunken: var(--color-zinc-950);
+  --color-surface-inverse: var(--color-zinc-50);
+
+  --color-text-primary: var(--color-zinc-50);
+  --color-text-secondary: var(--color-zinc-400);
+  --color-text-tertiary: var(--color-zinc-500);
+  --color-text-disabled: var(--color-zinc-600);
+  --color-text-inverse: var(--color-zinc-900);
+  --color-text-link: var(--color-blue-400);
+
+  --color-border-subtle: var(--color-zinc-800);
+  --color-border-default: var(--color-zinc-700);
+  --color-border-strong: var(--color-zinc-500);
+  --color-border-inverse: var(--color-zinc-200);
+  --color-border-focus: var(--color-blue-400);
+
+  --color-icon-primary: var(--color-zinc-50);
+  --color-icon-secondary: var(--color-zinc-400);
+  --color-icon-tertiary: var(--color-zinc-500);
+  --color-icon-disabled: var(--color-zinc-600);
+  --color-icon-inverse: var(--color-zinc-900);
+
+  --color-interactive-primary: var(--color-blue-500);
+  --color-interactive-primary-hover: var(--color-blue-600);
+  --color-interactive-primary-active: var(--color-blue-700);
+  --color-interactive-primary-subtle: var(--color-blue-950);
+  --color-interactive-secondary: var(--color-zinc-800);
+  --color-interactive-secondary-hover: var(--color-zinc-700);
+  --color-interactive-disabled: var(--color-zinc-800);
+  --color-interactive-disabled-text: var(--color-zinc-600);
+
+  --color-status-info: var(--color-blue-400);
+  --color-status-info-subtle: var(--color-blue-950);
+  --color-status-success: var(--color-green-400);
+  --color-status-success-subtle: var(--color-green-950);
+  --color-status-warning: var(--color-amber-400);
+  --color-status-warning-subtle: var(--color-amber-950);
+  --color-status-danger: var(--color-red-400);
+  --color-status-danger-subtle: var(--color-red-950);
+
+  --color-focus-default: var(--color-blue-400);
+  --color-focus-subtle: var(--color-blue-900);
+
+  --color-table-header: var(--color-green-900);
+
+  --color-avatar-1-bg: var(--color-blue-500);
+  --color-avatar-1-fg: var(--color-white);
+  --color-avatar-2-bg: var(--color-orange-500);
+  --color-avatar-2-fg: var(--color-white);
+  --color-avatar-3-bg: var(--color-purple-500);
+  --color-avatar-3-fg: var(--color-white);
+  --color-avatar-4-bg: var(--color-teal-500);
+  --color-avatar-4-fg: var(--color-white);
+  --color-avatar-5-bg: var(--color-pink-500);
+  --color-avatar-5-fg: var(--color-white);
+  --color-avatar-6-bg: var(--color-red-500);
+  --color-avatar-6-fg: var(--color-white);
+
+  --color-accent-primary: var(--color-interactive-primary);
+  --color-accent-primary-hover: var(--color-interactive-primary-hover);
+  --color-accent-primary-active: var(--color-interactive-primary-active);
+  --color-accent-primary-subtle: var(--color-interactive-primary-subtle);
+  --color-accent-primary-text: var(--color-blue-400);
+  --color-accent-focus: var(--color-interactive-primary);
+}
+
+/* Planner – orange accent */
+:root[data-app="planner"] {
+  --color-accent-primary: var(--color-orange-600);
+  --color-accent-primary-hover: var(--color-orange-700);
+  --color-accent-primary-active: var(--color-orange-800);
+  --color-accent-primary-subtle: var(--color-orange-50);
+  --color-accent-primary-text: var(--color-orange-700);
+  --color-accent-focus: var(--color-orange-600);
+}
+
+html.dark[data-app="planner"] {
+  --color-accent-primary: var(--color-orange-500);
+  --color-accent-primary-hover: var(--color-orange-400);
+  --color-accent-primary-active: var(--color-orange-300);
+  --color-accent-primary-subtle: var(--color-orange-950);
+  --color-accent-primary-text: var(--color-orange-400);
+  --color-accent-focus: var(--color-orange-400);
+}
+
+/* Rove Work – blue accent */
+:root[data-app="work"] {
+  --color-accent-primary: var(--color-blue-500);
+  --color-accent-primary-hover: var(--color-blue-600);
+  --color-accent-primary-active: var(--color-blue-700);
+  --color-accent-primary-subtle: var(--color-blue-50);
+  --color-accent-primary-text: var(--color-blue-700);
+  --color-accent-focus: var(--color-blue-500);
+}
+
+html.dark[data-app="work"] {
+  --color-accent-primary: var(--color-blue-500);
+  --color-accent-primary-hover: var(--color-blue-600);
+  --color-accent-primary-active: var(--color-blue-700);
+  --color-accent-primary-subtle: var(--color-blue-950);
+  --color-accent-primary-text: var(--color-blue-400);
+  --color-accent-focus: var(--color-blue-500);
+}
+
+/* Future App – purple accent */
+:root[data-app="future"] {
+  --color-accent-primary: var(--color-purple-600);
+  --color-accent-primary-hover: var(--color-purple-700);
+  --color-accent-primary-active: var(--color-purple-800);
+  --color-accent-primary-subtle: var(--color-purple-50);
+  --color-accent-primary-text: var(--color-purple-700);
+  --color-accent-focus: var(--color-purple-600);
+}
+
+html.dark[data-app="future"] {
+  --color-accent-primary: var(--color-purple-500);
+  --color-accent-primary-hover: var(--color-purple-400);
+  --color-accent-primary-active: var(--color-purple-300);
+  --color-accent-primary-subtle: var(--color-purple-950);
+  --color-accent-primary-text: var(--color-purple-400);
+  --color-accent-focus: var(--color-purple-400);
+}

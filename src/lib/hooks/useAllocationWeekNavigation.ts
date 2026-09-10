@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { useRouter } from "next/navigation";
 import { addWeeksToYearWeek } from "@/lib/dateUtils";
+import { ROUTES } from "@/lib/routes";
 
 const SHIFT_WEEKS = 4;
 
@@ -35,7 +36,7 @@ export function useAllocationWeekNavigation(
       if (embedMode) {
         return `/projects/${embedMode.projectId}?${q}`;
       }
-      return `/allocation?${q}`;
+      return `${ROUTES.allocation}?${q}`;
     },
     [embedMode]
   );

@@ -615,7 +615,7 @@ function AllocationPageClientImpl({
     return (
       <div>
         {!embedMode && (
-          <h1 className="text-2xl font-bold text-text-primary">Allocation</h1>
+          <h1 className="text-heading-xl text-text-primary">Allocation</h1>
         )}
         <p className={embedMode ? "text-danger" : "mt-4 text-danger"}>{error}</p>
       </div>

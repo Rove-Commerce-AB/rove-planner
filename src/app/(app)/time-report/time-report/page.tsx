@@ -4,8 +4,8 @@ import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { getCustomersByIds, getInternalCustomerId } from "@/lib/customers";
 import { getCurrentCalendarYearMonth, getCurrentYearWeek } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui";
-import { TimeReportWithColumnHighlight } from "./TimeReportWithColumnHighlight";
-import { getHolidayDatesForWeek } from "./actions";
+import { TimeReportWithColumnHighlight } from "../TimeReportWithColumnHighlight";
+import { getHolidayDatesForWeek } from "../actions";
 
 export const dynamic = "force-dynamic";
 

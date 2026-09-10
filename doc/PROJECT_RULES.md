@@ -2,9 +2,10 @@ IMPORTANT:
 This document defines mandatory rules for this project.
 All AI-generated code must follow these rules.
 
-Rove Planner – Architecture & Development Guidelines
+Rove Apps – Architecture & Development Guidelines
 
-Detta dokument beskriver arkitekturprinciper, struktur och regler för utvecklingen av Rove Planner.
+Detta dokument beskriver arkitekturprinciper, struktur och regler för utvecklingen av Rove Apps.
+Planner och Time report är appar inuti Rove Apps.
 Syftet är att hålla koden enkel, konsekvent och lätt att vidareutveckla, även för icke-tekniska utvecklare med AI-stöd (Cursor).
 
 1. Övergripande mål
@@ -98,7 +99,8 @@ lib/allocations.ts
 Pages och klientkomponenter får inte öppna egna databasanslutningar utanför det mönstret.
 
 8. UI-principer
-Dashboard är read-only
+Visuella regler (färg, typografi, radie, skuggor, accent per app) står i doc/DESIGN_SYSTEM.md och doc/UI_PATTERNS.md – de vinner över äldre token-namn i koden.
+Dashboard/Home är read-only
 CRUD sker via formulär och modaler
 Tabellen är “dum” → får färdig data
 Accordion & scroll prioriteras framför pagination
@@ -148,5 +150,5 @@ Ingen fakturering i v1
 “Make it boring, predictable and easy to change.”
 
 15. Språk
-Hela sajten skall vara på engelska. Det är endast skärmdumparna som är på svenska, men dessa ska översättas. Även kod och all namnstandard ska vara engelska.
+Hela sajten skall vara på engelska, inklusive produktnamnet **Rove Apps**. Det är endast skärmdumparna som är på svenska, men dessa ska översättas. Även kod och all namnstandard ska vara engelska.
 Använd "customer" och inte "client"

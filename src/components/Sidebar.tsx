@@ -4,69 +4,55 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart2,
-  Users,
-  Building2,
   CalendarCheck,
-  ClipboardList,
+  ChevronRight,
   Clock,
-  FolderKanban,
-  LayoutDashboard,
   Settings,
   LogOut,
   Home,
-  Bell,
+  Briefcase,
+  MessageCircle,
   Sparkles,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
-import { useSidePanel } from "@/contexts/SidePanelContext";
+import { ROUTES } from "@/lib/routes";
 
-/** 3.25rem rail − w-8 icon, split evenly → icon centered in collapsed strip without layout shift on expand. */
+/** 10px left padding so the w-8 icon column is centered in the rail. */
 const SIDEBAR_RAIL_PAD_X = "10px";
 
-const navGroup1 = [
-  { href: "/", label: "Dashboard", icon: Home },
-] as const;
+type IconType = React.ComponentType<{ className?: string }>;
 
-const allocationNav = {
-  href: "/allocation",
-  label: "Allocation",
-  icon: CalendarCheck,
-} as const;
-
-/** Customers first, then Consultants — sidebar group 5. */
-const sidePanelNav = [
-  { panel: "customers" as const, label: "Customers", icon: Building2 },
-  { panel: "consultants" as const, label: "Consultants", icon: Users },
-] as const;
+function pathMatches(
+  pathname: string,
+  href: string,
+  activeMatch: "exact" | "prefix"
+) {
+  if (href === "/") return pathname === "/";
+  if (activeMatch === "prefix") {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+  return pathname === href;
+}
 
 function NavLink({
   href,
   label,
   icon: Icon,
   pathname,
-  collapsed,
   badgeCount,
   activeMatch = "exact",
+  indent = false,
 }: {
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon?: IconType;
   pathname: string;
-  collapsed: boolean;
   badgeCount?: number;
   activeMatch?: "exact" | "prefix";
+  indent?: boolean;
 }) {
-  const isActive =
-    href === "/"
-      ? pathname === "/"
-      : activeMatch === "prefix"
-        ? pathname === href || pathname.startsWith(`${href}/`)
-        : pathname === href;
-  const labelExpandedClass =
-    "flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left text-xs max-w-[10rem] whitespace-nowrap";
-  const showBadge =
-    typeof badgeCount === "number" && badgeCount > 0;
+  const isActive = pathMatches(pathname, href, activeMatch);
+  const showBadge = typeof badgeCount === "number" && badgeCount > 0;
   const badgeLabel =
     badgeCount != null && badgeCount > 99 ? "99+" : String(badgeCount ?? "");
 
@@ -74,106 +60,99 @@ function NavLink({
     <Link
       href={href}
       prefetch={false}
-      aria-label={collapsed ? label : undefined}
-      title={
-        collapsed
-          ? showBadge
-            ? `${label} (${badgeCount} unread)`
-            : label
-          : undefined
-      }
-      className={`group relative flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-xs font-medium ${
-        collapsed ? "gap-0" : "gap-1.5"
-      } ${
+      className={`group relative flex h-8 w-full min-w-0 items-center justify-start gap-1.5 rounded-md py-0 text-xs font-medium ${
         isActive
-          ? collapsed
-            ? "font-semibold text-[color:var(--color-accent-1)]"
-            : "bg-brand-blue font-semibold text-[color:var(--color-accent-1)]"
+          ? "bg-nav-active font-semibold text-nav-active-accent"
           : "text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
       }`}
     >
-      <span
-        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
-          isActive && collapsed ? "bg-brand-blue" : ""
-        }`}
-      >
-        <Icon className={`h-4 w-4 ${isActive ? "text-[color:var(--color-accent-1)]" : ""}`} />
-        {collapsed && showBadge && (
-          <span
-            className="absolute -right-1 -top-1 box-border inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-text-primary/25 bg-brand-blue px-0.5 text-center text-[9px] font-semibold leading-none text-text-primary tabular-nums"
-            aria-hidden
-          >
-            <span className="flex -translate-y-px items-center justify-center leading-none">
-              {badgeLabel}
-            </span>
-          </span>
-        )}
-      </span>
-      {!collapsed ? (
-        <span className={labelExpandedClass}>
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <span className="truncate">{label}</span>
-            {showBadge && (
-              <span
-                className="box-border inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default/80 px-0.5 text-center text-[10px] font-semibold leading-none text-text-primary tabular-nums"
-                aria-label={`${badgeCount} unread notifications`}
-              >
-                <span className="flex -translate-x-px items-center justify-center leading-none">
-                  {badgeLabel}
-                </span>
-              </span>
-            )}
-          </span>
+      {Icon ? (
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
+          <Icon
+            className={`h-4 w-4 ${isActive ? "text-nav-active-accent" : ""}`}
+          />
         </span>
+      ) : indent ? (
+        <span className="h-8 w-8 shrink-0" aria-hidden />
       ) : null}
+      <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left text-xs max-w-[10rem] whitespace-nowrap">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{label}</span>
+          {showBadge && (
+            <span
+              className="box-border inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default/80 px-0.5 text-center text-[10px] font-semibold leading-none text-text-primary tabular-nums"
+              aria-label={`${badgeCount} unread notifications`}
+            >
+              <span className="flex -translate-x-px items-center justify-center leading-none">
+                {badgeLabel}
+              </span>
+            </span>
+          )}
+        </span>
+      </span>
     </Link>
   );
 }
 
-function NavPanelButton({
-  panel,
+function AppGroup({
   label,
   icon: Icon,
-  collapsed,
+  open,
+  onToggle,
+  children,
 }: {
-  panel: "customers" | "consultants";
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  collapsed: boolean;
+  icon: IconType;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
 }) {
-  const { panel: openPanel, togglePanel } = useSidePanel();
-  const isActive = openPanel === panel;
   return (
-    <button
-      type="button"
-      onClick={() => togglePanel(panel)}
-      aria-label={collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
-      className={`group flex h-8 w-full min-w-0 cursor-pointer items-center justify-start rounded-md py-0 text-left text-xs font-medium ${
-        collapsed ? "gap-0" : "gap-1.5"
-      } ${
-        isActive
-          ? collapsed
-            ? "font-semibold text-[color:var(--color-accent-1)]"
-            : "bg-brand-blue font-semibold text-[color:var(--color-accent-1)]"
-          : "text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
-      }`}
-    >
-      <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
-          isActive && collapsed ? "bg-brand-blue" : ""
-        }`}
+    <div className="space-y-px">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex h-8 w-full min-w-0 cursor-pointer items-center justify-start gap-1.5 rounded-md py-0 text-left text-xs font-medium text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
       >
-        <Icon
-          className={`h-4 w-4 ${isActive ? "text-[color:var(--color-accent-1)]" : ""}`}
-        />
-      </span>
-      {!collapsed ? (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
+          <Icon className="h-4 w-4" />
+        </span>
         <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
           {label}
         </span>
-      ) : null}
-    </button>
+        <ChevronRight
+          className={`mr-1 h-3.5 w-3.5 shrink-0 text-text-primary/50 transition-transform duration-120 ${
+            open ? "rotate-90" : ""
+          }`}
+          aria-hidden
+        />
+      </button>
+      {open ? children : null}
+    </div>
+  );
+}
+
+function NavPlaceholder({
+  label,
+  icon: Icon,
+}: {
+  label: string;
+  icon: IconType;
+}) {
+  return (
+    <div
+      aria-disabled
+      title={`${label} (coming soon)`}
+      className="flex h-8 w-full min-w-0 cursor-default items-center justify-start gap-1.5 rounded-md py-0 text-xs font-medium text-text-primary/40"
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -181,222 +160,187 @@ type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
   isSubcontractor?: boolean;
-  unreadNotificationCount?: number;
 };
 
 export function Sidebar({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
   isSubcontractor = false,
-  unreadNotificationCount = 0,
 }: SidebarProps) {
-  const showRestrictedNavigation = !isSubcontractor;
-
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
+  const [openApps, setOpenApps] = useState<{
+    planner: boolean;
+    timeReport: boolean;
+    settings: boolean;
+  }>({ planner: false, timeReport: false, settings: false });
+
+  const plannerActive = pathMatches(pathname, ROUTES.allocation, "prefix");
+  const timeReportChildActive =
+    pathMatches(pathname, ROUTES.timeReport, "exact") ||
+    pathMatches(pathname, ROUTES.timeApproval, "prefix");
+  const settingsChildActive = pathname.startsWith("/settings");
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    setOpenApps((prev) => ({
+      planner: plannerActive ? true : prev.planner,
+      timeReport: timeReportChildActive ? true : prev.timeReport,
+      settings: settingsChildActive ? true : prev.settings,
+    }));
+  }, [pathname, plannerActive, timeReportChildActive, settingsChildActive]);
 
   async function handleSignOut() {
     await signOut({ callbackUrl: "/login" });
   }
 
-  const effectiveCollapsed = mounted ? !isHovering : true;
+  const showTimeApproval =
+    !isSubcontractor && (isAdmin || canSeeTimeReportProjectManager);
 
-  const settingsActive = pathname === "/settings";
+  const navPadX = {
+    paddingLeft: SIDEBAR_RAIL_PAD_X,
+    paddingRight: "0.375rem",
+  };
 
-  const navPadX = effectiveCollapsed
-    ? { paddingLeft: SIDEBAR_RAIL_PAD_X, paddingRight: SIDEBAR_RAIL_PAD_X }
-    : { paddingLeft: SIDEBAR_RAIL_PAD_X, paddingRight: "0.375rem" };
-
-  /** Same horizontal origin as `nav` so footer icons do not shift when expanding. */
   const footerPad = {
     paddingLeft: SIDEBAR_RAIL_PAD_X,
-    paddingRight: effectiveCollapsed ? SIDEBAR_RAIL_PAD_X : "0.375rem",
+    paddingRight: "0.375rem",
     paddingTop: "0.375rem",
     paddingBottom: "0.375rem",
   };
 
   return (
-    <aside className="flex h-screen w-[3.25rem] flex-shrink-0 flex-col bg-bg-default">
-      <div
-        className={`relative z-40 flex h-screen flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default transition-[width] duration-120 ease-out ${
-          effectiveCollapsed ? "w-[3.25rem]" : "w-52"
-        }`}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
+    <aside className="flex h-screen w-52 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default">
+      <nav
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-1.5 pt-2 [scrollbar-gutter:stable]"
+        style={navPadX}
       >
-        <nav
-          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-1.5 pt-2 [scrollbar-gutter:stable]"
-          style={navPadX}
-        >
-          {/* 1. Dashboard */}
-          <div className="space-y-px">
-            {navGroup1.map((item) => (
-              <NavLink
-                key={item.href}
-                pathname={pathname}
-                collapsed={effectiveCollapsed}
-                {...item}
-              />
-            ))}
-          </div>
+        <div className="flex h-8 w-full min-w-0 items-center justify-start gap-1.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+            <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-text-primary text-[9px] font-bold leading-none text-bg-default">
+              R
+            </span>
+          </span>
+          <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-text-primary">
+            Rove Apps
+          </span>
+        </div>
 
-          {/* 2. Time report, Time approval */}
+        <div className="space-y-px">
+          <NavLink href={ROUTES.home} label="Home" icon={Home} pathname={pathname} />
+        </div>
+
+        {!isSubcontractor && (
+          <AppGroup
+            label="Planner"
+            icon={CalendarCheck}
+            open={openApps.planner}
+            onToggle={() =>
+              setOpenApps((prev) => ({ ...prev, planner: !prev.planner }))
+            }
+          >
+            <NavLink
+              href={ROUTES.allocation}
+              label="Allocation"
+              pathname={pathname}
+              indent
+              activeMatch="prefix"
+            />
+          </AppGroup>
+        )}
+
+        <AppGroup
+          label="Time report"
+          icon={Clock}
+          open={openApps.timeReport}
+          onToggle={() =>
+            setOpenApps((prev) => ({
+              ...prev,
+              timeReport: !prev.timeReport,
+            }))
+          }
+        >
+          <NavLink
+            href={ROUTES.timeReport}
+            label="Time report"
+            pathname={pathname}
+            indent
+          />
+          {showTimeApproval && (
+            <NavLink
+              href={ROUTES.timeApproval}
+              label="Time approval"
+              pathname={pathname}
+              indent
+              activeMatch="prefix"
+            />
+          )}
+        </AppGroup>
+
+        {!isSubcontractor && (
           <div className="space-y-px">
             <NavLink
-              href="/time-report"
-              label="Time report"
-              icon={Clock}
+              href={ROUTES.insights}
+              label="Insights"
+              icon={Sparkles}
               pathname={pathname}
-              collapsed={effectiveCollapsed}
+              activeMatch="prefix"
             />
-            {!isSubcontractor &&
-              (isAdmin || canSeeTimeReportProjectManager) && (
-                <NavLink
-                  href="/time-report/project-manager"
-                  label="Time approval"
-                  icon={FolderKanban}
-                  pathname={pathname}
-                  collapsed={effectiveCollapsed}
-                />
-              )}
+            <NavPlaceholder label="Rove Work" icon={Briefcase} />
+            <NavPlaceholder label="Rove Support" icon={MessageCircle} />
           </div>
+        )}
 
-          {/* 3. Allocation */}
-          {showRestrictedNavigation && (
-            <div className="space-y-px">
-              <NavLink
-                pathname={pathname}
-                collapsed={effectiveCollapsed}
-                {...allocationNav}
-              />
-            </div>
-          )}
-
-          {/* 4. Customer status */}
-          {!isSubcontractor && (
-            <div className="space-y-px">
-              <NavLink
-                href="/customer-status"
-                label="Customer status"
-                icon={ClipboardList}
-                pathname={pathname}
-                collapsed={effectiveCollapsed}
-              />
-            </div>
-          )}
-
-          {/* 5. Taskboard */}
-          {!isSubcontractor && (
-            <div className="space-y-px">
-              <NavLink
-                href="/taskboard"
-                label="Taskboard"
-                icon={LayoutDashboard}
-                pathname={pathname}
-                collapsed={effectiveCollapsed}
-                activeMatch="prefix"
-              />
-            </div>
-          )}
-
-          {/* 6. Customers, Consultants */}
-          {showRestrictedNavigation && (
-            <div className="space-y-px">
-              {sidePanelNav.map((item) => (
-                <NavPanelButton
-                  key={item.panel}
-                  collapsed={effectiveCollapsed}
-                  {...item}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* 7. Insights, Reports */}
-          {!isSubcontractor && (
-            <div className="space-y-px">
-              <NavLink
-                href="/insights"
-                label="Insights"
-                icon={Sparkles}
-                pathname={pathname}
-                collapsed={effectiveCollapsed}
-              />
+        {!isSubcontractor && (
+          <div className="border-t border-border-subtle pt-4">
+            <AppGroup
+              label="Settings"
+              icon={Settings}
+              open={openApps.settings}
+              onToggle={() =>
+                setOpenApps((prev) => ({
+                  ...prev,
+                  settings: !prev.settings,
+                }))
+              }
+            >
               {isAdmin && (
                 <NavLink
-                  href="/reports"
-                  label="Reports"
-                  icon={BarChart2}
+                  href={ROUTES.settings}
+                  label="General"
                   pathname={pathname}
-                  collapsed={effectiveCollapsed}
+                  indent
                 />
               )}
-            </div>
-          )}
-        </nav>
-
-        <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
-          <div className="space-y-px" style={footerPad}>
-            <NavLink
-              href="/notifications"
-              label="Notifications"
-              icon={Bell}
-              pathname={pathname}
-              collapsed={effectiveCollapsed}
-              badgeCount={unreadNotificationCount}
-            />
-            {isAdmin && (
-              <Link
-                href="/settings"
-                prefetch={false}
-                aria-label={effectiveCollapsed ? "Settings" : undefined}
-                title={effectiveCollapsed ? "Settings" : undefined}
-                className={`group flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-xs font-medium ${
-                  effectiveCollapsed ? "gap-0" : "gap-1.5"
-                } ${
-                  settingsActive
-                    ? effectiveCollapsed
-                      ? "font-semibold text-[color:var(--color-accent-1)]"
-                      : "bg-brand-blue font-semibold text-[color:var(--color-accent-1)]"
-                    : "text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
-                    settingsActive && effectiveCollapsed ? "bg-brand-blue" : ""
-                  }`}
-                >
-                  <Settings
-                    className={`h-4 w-4 ${settingsActive ? "text-[color:var(--color-accent-1)]" : ""}`}
-                  />
-                </span>
-                {!effectiveCollapsed ? (
-                  <span className="min-w-0 flex-1 truncate text-left">Settings</span>
-                ) : null}
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={handleSignOut}
-              aria-label={effectiveCollapsed ? "Log out" : undefined}
-              title={effectiveCollapsed ? "Log out" : undefined}
-              className={`group flex h-8 w-full min-w-0 items-center justify-start rounded-md py-0 text-left text-xs font-medium text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90 ${
-                effectiveCollapsed ? "gap-0" : "gap-1.5"
-              }`}
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-                <LogOut className="h-4 w-4" />
-              </span>
-              {!effectiveCollapsed ? (
-                <span className="min-w-0 flex-1 truncate text-left">Log out</span>
-              ) : null}
-            </button>
+              <NavLink
+                href={ROUTES.consultants}
+                label="Consultants"
+                pathname={pathname}
+                indent
+                activeMatch="prefix"
+              />
+              <NavLink
+                href={ROUTES.customers}
+                label="Customers"
+                pathname={pathname}
+                indent
+                activeMatch="prefix"
+              />
+            </AppGroup>
           </div>
+        )}
+      </nav>
+
+      <div className="flex flex-shrink-0 flex-col border-t border-border-subtle bg-bg-default">
+        <div className="space-y-px" style={footerPad}>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="group flex h-8 w-full min-w-0 cursor-pointer items-center justify-start gap-1.5 rounded-md py-0 text-left text-xs font-medium text-text-primary/80 transition-colors hover:bg-nav-hover hover:text-text-primary/90"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+              <LogOut className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-left">Log out</span>
+          </button>
         </div>
       </div>
     </aside>

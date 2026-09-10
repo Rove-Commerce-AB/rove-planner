@@ -431,7 +431,7 @@ export function SettingsPageClient({
   return (
     <>
       <PageHeader
-        title="Settings"
+        title="General"
         description="Manage calendars, roles and system configuration"
         className="mb-6"
       />

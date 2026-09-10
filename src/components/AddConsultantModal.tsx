@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { createConsultantAndRevalidate } from "@/app/(app)/consultants/actions";
+import { consultantHref } from "@/lib/routes";
 import { getRoles } from "@/lib/rolesClient";
 import { useEscToClose } from "@/lib/useEscToClose";
 import { getCalendars } from "@/lib/calendarsClient";
@@ -57,7 +58,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
       resetForm();
       onClose();
       onSuccess();
-      window.location.href = `/consultants/${result.id}`;
+      window.location.href = consultantHref(result.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add consultant");
     } finally {
@@ -97,7 +98,7 @@ export function AddConsultantModal({ isOpen, onClose, onSuccess }: Props) {
         <div className="flex items-center justify-between">
           <h2
             id="add-consultant-title"
-            className="text-lg font-semibold text-text-primary"
+            className="text-heading-m text-text-primary"
           >
             Add consultant
           </h2>

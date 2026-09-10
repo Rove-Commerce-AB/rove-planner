@@ -41,7 +41,7 @@ export function ProjectCard({ project }: Props) {
       <div className="flex-1 p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-text-primary">{project.name}</h3>
+            <h3 className="text-heading-m text-text-primary">{project.name}</h3>
             {isInactive && (
               <span className="mt-1 inline-block rounded-full bg-bg-muted px-2 py-0.5 text-xs font-medium text-text-primary opacity-80">
                 Inactive

@@ -60,7 +60,7 @@ export function DetailPageHeader({
         </div>
         {title != null && title !== "" && (
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-2xl font-bold text-text-primary">
+            <h1 className="truncate text-heading-l text-text-primary">
               {title}
             </h1>
             {subtitle != null && (

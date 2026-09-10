@@ -4,6 +4,7 @@ import { cache } from "react";
 import { auth } from "@/auth";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { revalidatePath } from "next/cache";
+import { ROUTES } from "@/lib/routes";
 
 export type AppUser = {
   id: string;
@@ -62,7 +63,7 @@ export async function addAppUser(formData: FormData) {
     [email, name, role]
   );
 
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }
 
 export async function removeAppUser(id: string) {
@@ -73,7 +74,7 @@ export async function removeAppUser(id: string) {
 
   await cloudSqlPool.query("DELETE FROM app_users WHERE id = $1", [id]);
 
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }
 
 export async function updateAppUser(args: {
@@ -122,5 +123,5 @@ export async function updateAppUser(args: {
     values
   );
 
-  revalidatePath("/settings");
+  revalidatePath(ROUTES.settings);
 }

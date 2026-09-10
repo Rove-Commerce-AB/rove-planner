@@ -8,8 +8,8 @@ const instrumentSans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Rove Planner",
-  description: "Resource planning and allocation",
+  title: "Rove Apps",
+  description: "Internal apps for planning, time reporting, and more",
 };
 
 export default function RootLayout({

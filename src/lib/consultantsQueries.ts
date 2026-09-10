@@ -11,14 +11,28 @@ import * as roles from "./rolesQueries";
 import * as teams from "./teamsQueries";
 import type { ConsultantWithDetails } from "@/types";
 
-export type ConsultantListItem = {
+export type ConsultantForEdit = {
   id: string;
   name: string;
-  initials: string;
-  teamId: string | null;
+  email: string | null;
+  role_id: string;
+  roleName: string;
+  calendar_id: string;
+  calendarName: string;
+  team_id: string | null;
   teamName: string | null;
   isExternal: boolean;
+  workPercentage: number;
+  overheadPercentage: number;
+  startDate: string | null;
+  endDate: string | null;
+  birthDate: string | null;
+};
+
+export type ConsultantListItem = ConsultantForEdit & {
+  initials: string;
   isActive: boolean;
+  hoursPerWeek: number;
 };
 
 export type CreateConsultantInput = {
@@ -155,23 +169,17 @@ export async function deleteConsultantQuery(id: string): Promise<void> {
   await cloudSqlPool.query(`DELETE FROM consultants WHERE id = $1`, [id]);
 }
 
-export type ConsultantForEdit = {
-  id: string;
-  name: string;
-  email: string | null;
-  role_id: string;
-  roleName: string;
-  calendar_id: string;
-  calendarName: string;
-  team_id: string | null;
-  teamName: string | null;
-  isExternal: boolean;
-  workPercentage: number;
-  overheadPercentage: number;
-  startDate: string | null;
-  endDate: string | null;
-  birthDate: string | null;
-};
+function clampPercent(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(Math.max(min, Math.min(max, n)));
+}
+
+function isConsultantActive(endDate: string | null, today: Date): boolean {
+  if (!endDate) return true;
+  const parsed = new Date(endDate);
+  return Number.isNaN(parsed.getTime()) || parsed >= today;
+}
 
 export async function fetchConsultantByEmail(
   email: string
@@ -223,11 +231,6 @@ export async function fetchConsultantById(
   const roleMap = new Map(rolesData.map((r) => [r.id, r.name]));
   const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
   const calendarMap = new Map(calendarsData.map((cal) => [cal.id, cal.name]));
-  const workPct =
-    Math.max(5, Math.min(100, Number(c.work_percentage) ?? 100)) / 100;
-  const overheadPct =
-    Math.max(0, Math.min(100, Number(c.overhead_percentage) ?? 0)) / 100;
-
   return {
     id: c.id,
     name: c.name,
@@ -239,8 +242,8 @@ export async function fetchConsultantById(
     team_id: c.team_id ?? null,
     teamName: c.team_id ? teamMap.get(c.team_id) ?? null : null,
     isExternal: c.is_external ?? false,
-    workPercentage: Math.round(workPct * 100),
-    overheadPercentage: Math.round(overheadPct * 100),
+    workPercentage: clampPercent(c.work_percentage, 5, 100, 100),
+    overheadPercentage: clampPercent(c.overhead_percentage, 0, 100, 0),
     startDate: c.start_date ?? null,
     endDate: c.end_date ?? null,
     birthDate: c.birth_date ?? null,
@@ -266,40 +269,68 @@ export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
   const { rows } = await cloudSqlPool.query<{
     id: string;
     name: string;
+    email: string | null;
+    role_id: string;
+    role_name: string | null;
+    calendar_id: string;
+    calendar_name: string | null;
+    hours_per_week: string | number | null;
     team_id: string | null;
+    team_name: string | null;
     is_external: boolean;
+    work_percentage: string | number | null;
+    overhead_percentage: string | number | null;
+    start_date: string | null;
     end_date: string | null;
+    birth_date: string | null;
   }>(
-    `SELECT id, name, team_id, is_external, end_date::text AS end_date FROM consultants ORDER BY name`
+    `SELECT
+       c.id,
+       c.name,
+       c.email,
+       c.role_id,
+       r.name AS role_name,
+       c.calendar_id,
+       cal.name AS calendar_name,
+       cal.hours_per_week,
+       c.team_id,
+       t.name AS team_name,
+       c.is_external,
+       c.work_percentage,
+       c.overhead_percentage,
+       c.start_date::text AS start_date,
+       c.end_date::text AS end_date,
+       c.birth_date::text AS birth_date
+     FROM consultants c
+     LEFT JOIN roles r ON r.id = c.role_id
+     LEFT JOIN calendars cal ON cal.id = c.calendar_id
+     LEFT JOIN teams t ON t.id = c.team_id
+     ORDER BY c.name`
   );
-  if (!rows.length) return [];
 
-  const teamsData = await teams.fetchTeams();
-  const teamMap = new Map(teamsData.map((t) => [t.id, t.name]));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const getInitialsFromName = (name: string) =>
-    name
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-
-  return rows.map((r) => {
-    const endDate = r.end_date ? new Date(r.end_date) : null;
-    const isActive = !endDate || endDate >= today;
-    return {
-      id: r.id,
-      name: r.name,
-      initials: getInitialsFromName(r.name),
-      teamId: r.team_id ?? null,
-      teamName: r.team_id ? teamMap.get(r.team_id) ?? null : null,
-      isExternal: r.is_external ?? false,
-      isActive,
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role_id: r.role_id,
+    roleName: r.role_name ?? "Unknown",
+    calendar_id: r.calendar_id,
+    calendarName: r.calendar_name ?? "Unknown",
+    team_id: r.team_id ?? null,
+    teamName: r.team_name ?? null,
+    isExternal: r.is_external ?? false,
+    workPercentage: clampPercent(r.work_percentage, 5, 100, 100),
+    overheadPercentage: clampPercent(r.overhead_percentage, 0, 100, 0),
+    startDate: r.start_date ?? null,
+    endDate: r.end_date ?? null,
+    birthDate: r.birth_date ?? null,
+    initials: getInitials(r.name),
+    isActive: isConsultantActive(r.end_date, today),
+    hoursPerWeek: Number(r.hours_per_week) || DEFAULT_HOURS_PER_WEEK,
+  }));
 }
 
 export async function fetchConsultantNamesByIds(

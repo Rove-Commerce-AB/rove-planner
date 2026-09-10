@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FolderKanban } from "lucide-react";
 import type { Project } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import { ROUTES } from "@/lib/routes";
 import { Panel } from "@/components/ui";
 
 type Props = {
@@ -22,9 +23,9 @@ export function ActiveProjects({ projects }: Props) {
   return (
     <Panel>
       <div
-        className={`flex items-center gap-2 bg-bg-muted/40 px-4 py-3 shadow-panel-header`}
+        className="ds-shadow-sm flex items-center gap-2 bg-bg-muted/40 px-4 py-3"
       >
-        <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+        <h2 className="flex items-center gap-2 text-heading-xs text-text-primary opacity-70">
           <FolderKanban className="h-4 w-4" />
           Active projects
         </h2>
@@ -38,7 +39,7 @@ export function ActiveProjects({ projects }: Props) {
           projects.map((p) => (
             <Link
               key={p.id}
-              href="/allocation"
+              href={ROUTES.allocation}
               className="block rounded-lg border border-panel bg-bg-default p-3 transition-colors hover:border-brand-lilac/50"
             >
               <div className="flex items-start gap-2">

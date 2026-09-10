@@ -6,6 +6,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { getCurrentAppUser } from "./appUsers";
 import { addConsultantToCustomer } from "./customerConsultants";
 import { getInternalCustomerId } from "./customers";
+import { ROUTES, consultantHref } from "./routes";
 import * as q from "./consultantsQueries";
 
 export type {
@@ -39,8 +40,9 @@ export async function updateConsultant(id: string, input: q.UpdateConsultantInpu
   const updated = await q.updateConsultantQuery(id, input);
   if (!updated) return;
   revalidateTag("allocation-consultants", "max");
-  revalidatePath("/consultants");
-  revalidatePath("/allocation");
+  revalidatePath(ROUTES.consultants);
+  revalidatePath(consultantHref(id));
+  revalidatePath(ROUTES.allocation);
 }
 
 export async function deleteConsultant(id: string) {
@@ -65,9 +67,9 @@ export async function getConsultantsWithDefaultRole() {
   return q.fetchConsultantsWithDefaultRole();
 }
 
-export async function getConsultantsList() {
+export const getConsultantsList = cache(async () => {
   return q.fetchConsultantsList();
-}
+});
 
 export async function getConsultantNamesByIds(ids: string[]) {
   return q.fetchConsultantNamesByIds(ids);

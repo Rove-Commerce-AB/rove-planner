@@ -15,7 +15,7 @@ const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible
 /** Stable class so modal-form-discreet can exclude primary/danger actions from grey border. */
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    `btn-primary bg-brand-signal text-text-inverse hover:opacity-90 ${focusRing}`,
+    `btn-primary bg-brand-signal text-text-inverse hover:bg-accent-primary-hover active:bg-accent-primary-active ${focusRing}`,
   danger: `btn-danger bg-danger text-text-inverse hover:opacity-90 ${focusRing}`,
   secondary:
     `border border-form bg-bg-default text-text-primary hover:bg-bg-muted ${focusRing}`,
@@ -30,7 +30,7 @@ const sizeClasses: Record<ButtonSize, string> = {
   sm: "rounded-md px-3 py-1.5 text-xs font-medium",
 };
 
-const baseClasses = "cursor-pointer inline-flex items-center justify-center gap-2 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed";
+const baseClasses = "cursor-pointer inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
 export const Button = forwardRef<HTMLButtonElement, Props>(
   ({ variant = "primary", size = "default", className = "", children, disabled, asChild, ...props }, ref) => {

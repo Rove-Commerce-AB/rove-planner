@@ -111,7 +111,7 @@ export default async function DashboardPage() {
             href="/"
             className="mt-4 inline-block text-brand-signal hover:underline"
           >
-            Go to Dashboard →
+            Go to Home →
           </Link>
         </div>
       </Panel>
@@ -148,7 +148,7 @@ export default async function DashboardPage() {
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl">
         <PageHeader
-          title="Dashboard"
+          title="Home"
           description={pageDescription}
           className="mb-6"
         />

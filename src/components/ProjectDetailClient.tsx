@@ -12,6 +12,7 @@ import {
 import { deleteProjectAction } from "@/app/(app)/projects/actions";
 import { getCustomers } from "@/lib/customersClient";
 import { getConsultantsList } from "@/lib/consultantsClient";
+import { ROUTES, customerHref } from "@/lib/routes";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
@@ -482,9 +483,9 @@ export function ProjectDetailClient({
       setShowDeleteConfirm(false);
       const customerId = initial.customer_id;
       if (customerId) {
-        router.push(`/customers/${customerId}`);
+        router.push(customerHref(customerId));
       } else {
-        router.push("/customers");
+        router.push(ROUTES.customers);
       }
       router.refresh();
     } catch (e) {
@@ -588,7 +589,7 @@ export function ProjectDetailClient({
     <>
       <div className="mx-auto w-full max-w-3xl">
         <DetailPageHeader
-          backHref={`/customers/${initial.customer_id}`}
+          backHref={customerHref(initial.customer_id)}
           backLabel={`Back to ${initial.customerName ?? "Customer"}`}
           avatar={
             <div

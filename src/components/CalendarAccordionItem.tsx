@@ -203,7 +203,7 @@ export function CalendarAccordionItem({
             </div>
           </div>
 
-          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-primary opacity-70">
+          <h4 className="mb-2 text-heading-xs text-text-primary opacity-70">
             Holidays
           </h4>
           <div className="ds-dropdown-list-scroll mb-4 max-h-48 rounded-md border border-panel">
@@ -276,7 +276,7 @@ export function CalendarAccordionItem({
               type="button"
               onClick={handleAddHoliday}
               disabled={saving}
-              className="inline-flex items-center gap-1 rounded-lg bg-brand-signal px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg bg-brand-signal px-3 py-2 text-sm font-medium text-text-inverse transition-colors hover:bg-accent-primary-hover active:bg-accent-primary-active disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               Add

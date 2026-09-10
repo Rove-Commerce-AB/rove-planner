@@ -1,5 +1,5 @@
 import { PageLoading } from "@/components/ui";
 
-export default function ConsultantDetailLoading() {
+export default function ConsultantsLoading() {
   return <PageLoading />;
 }

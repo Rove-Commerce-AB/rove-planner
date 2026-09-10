@@ -2,30 +2,29 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 
-const tableBorder = "border-panel";
+const tableBorder = "border-border-subtle";
 
-/** Compact density: tight rows and headers; header matches PanelSectionTitle on detail panels. */
+/** Compact density: tight rows for operational grids. */
 const compact = {
-  header:
-    "px-3 py-2 text-[11px] font-medium text-text-primary opacity-65",
+  header: "px-3 py-2 text-xs font-medium text-text-secondary",
   cell: "px-3 py-1 text-sm text-text-primary",
-  cellSecondary: "px-3 py-1 text-sm text-text-primary opacity-70",
-  row: `border-b ${tableBorder}`,
-  headerRow: `border-b ${tableBorder} bg-bg-muted/20`,
+  cellSecondary: "px-3 py-1 text-sm text-text-secondary",
+  row: `border-b ${tableBorder} last:border-b-0`,
+  headerRow: `border-b ${tableBorder} bg-table-header`,
   emptyCell: "px-3 py-2 text-center text-sm text-text-primary opacity-60",
 } as const;
 
-/** Comfortable density: more vertical space; header matches PanelSectionTitle. */
+/** Comfortable density: default for overview lists (Figma). */
 const comfortable = {
-  header:
-    "px-3 py-2 text-[11px] font-medium text-text-primary opacity-65",
-  cell: "px-3 py-2 text-sm text-text-primary",
-  cellSecondary: "px-3 py-2 text-sm text-text-primary opacity-70",
-  row: `border-b ${tableBorder}`,
-  headerRow: `border-b ${tableBorder} bg-bg-muted/20`,
-  emptyCell: "px-3 py-4 text-center text-sm text-text-primary opacity-60",
+  header: "px-4 py-3 text-[12px] font-semibold text-text-primary first:rounded-tl-lg last:rounded-tr-lg",
+  cell: "px-4 py-4 text-sm text-text-primary",
+  cellSecondary: "px-4 py-4 text-sm text-text-secondary",
+  row: "border-b border-border-default last:border-b-0",
+  headerRow: "bg-table-header",
+  emptyCell: "px-4 py-6 text-center text-sm text-text-secondary",
 } as const;
 
 export type Density = "compact" | "comfortable";
@@ -42,6 +41,14 @@ export type DataTableColumn<T> = {
   width?: string;
   /** If true, cell uses secondary (de-emphasized) styling. */
   secondary?: boolean;
+  /** If true, header is a sort control when `sort` is passed. */
+  sortable?: boolean;
+};
+
+export type DataTableSort = {
+  columnId: string;
+  direction: "asc" | "desc";
+  onSort: (columnId: string) => void;
 };
 
 export type EmptyStateConfig = {
@@ -61,10 +68,14 @@ export type DataTableProps<T> = {
   onRowClick?: (row: T) => void;
   emptyState?: EmptyStateConfig;
   loading?: boolean;
-  /** Default "compact". Use "comfortable" only for text-heavy views. */
+  /** Default "comfortable" for overview lists. Use "compact" for dense grids. */
   density?: Density;
   /** Default true when used inside a scrollable panel. */
   stickyHeader?: boolean;
+  /** If set, that row uses the nav-active surface (e.g. overlay detail is open). */
+  selectedRowId?: string;
+  /** Optional header sort. Page owns the data order; the table only renders the control. */
+  sort?: DataTableSort;
   className?: string;
 };
 
@@ -81,6 +92,49 @@ function SkeletonRow({ colCount, density }: { colCount: number; density: Density
   );
 }
 
+function HeaderLabel({
+  column,
+  sort,
+  className,
+}: {
+  column: DataTableColumn<unknown>;
+  sort?: DataTableSort;
+  className: string;
+}) {
+  const align =
+    column.align === "right"
+      ? "text-right"
+      : column.align === "center"
+        ? "text-center"
+        : "text-left";
+
+  if (!column.sortable || !sort) {
+    return <th className={`${className} ${align}`}>{column.header}</th>;
+  }
+
+  const isSorted = sort.columnId === column.id;
+  const ariaSort = isSorted ? (sort.direction === "asc" ? "ascending" : "descending") : "none";
+
+  return (
+    <th className={`${className} ${align}`} aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => sort.onSort(column.id)}
+        className="inline-flex cursor-pointer items-center gap-1 text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
+      >
+        {column.header}
+        {isSorted ? (
+          sort.direction === "asc" ? (
+            <ChevronUp className="h-3 w-3 text-text-secondary" aria-hidden />
+          ) : (
+            <ChevronDown className="h-3 w-3 text-text-secondary" aria-hidden />
+          )
+        ) : null}
+      </button>
+    </th>
+  );
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -89,13 +143,16 @@ export function DataTable<T>({
   onRowClick,
   emptyState,
   loading = false,
-  density = "compact",
+  density = "comfortable",
   stickyHeader = true,
+  selectedRowId,
+  sort,
   className = "",
 }: DataTableProps<T>) {
   const router = useRouter();
   const styles = density === "compact" ? compact : comfortable;
-  const handleRowClick = onRowClick ?? (rowHref ? (row: T) => router.push(rowHref(row) ?? "#") : undefined);
+  const handleRowClick =
+    onRowClick ?? (rowHref ? (row: T) => router.push(rowHref(row) ?? "#") : undefined);
   const isInteractive = Boolean(handleRowClick);
 
   if (!loading && rows.length === 0 && emptyState) {
@@ -109,34 +166,37 @@ export function DataTable<T>({
     );
   }
 
-  const table = (
-    <div className="overflow-x-auto">
-      <table className={`w-full min-w-[200px] text-sm ${className}`.trim()}>
+  return (
+    <div
+      className={
+        density === "comfortable"
+          ? "overflow-x-auto rounded-t-lg bg-bg-default"
+          : "overflow-x-auto"
+      }
+    >
+      <table className={`w-full min-w-[200px] border-separate border-spacing-0 text-sm ${className}`.trim()}>
         <colgroup>
           {columns.map((col) => (
             <col key={col.id} style={col.width ? { width: col.width } : undefined} />
           ))}
         </colgroup>
         <thead
-          className={
-            stickyHeader ? "sticky top-0 z-10 bg-bg-muted/20" : undefined
-          }
+          className={[
+            "bg-table-header",
+            density === "comfortable" ? "rounded-t-lg" : "",
+            stickyHeader ? "sticky top-0 z-10" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
           <tr className={styles.headerRow}>
             {columns.map((col) => (
-              <th
+              <HeaderLabel
                 key={col.id}
-                className={`${styles.header} ${
-                  col.align === "right"
-                    ? "text-right"
-                    : col.align === "center"
-                      ? "text-center"
-                      : "text-left"
-                }`}
-                style={col.width ? { width: col.width } : undefined}
-              >
-                {col.header}
-              </th>
+                column={col as DataTableColumn<unknown>}
+                sort={sort}
+                className={styles.header}
+              />
             ))}
           </tr>
         </thead>
@@ -163,12 +223,12 @@ export function DataTable<T>({
                         col.secondary
                           ? styles.cellSecondary
                           : `${styles.cell} ${
-                                col.align === "right"
-                                  ? "text-right"
-                                  : col.align === "center"
-                                    ? "text-center"
-                                    : "text-left"
-                              }`
+                              col.align === "right"
+                                ? "text-right"
+                                : col.align === "center"
+                                  ? "text-center"
+                                  : "text-left"
+                            }`
                       }
                     >
                       {col.cell(row)}
@@ -190,7 +250,9 @@ export function DataTable<T>({
                         handleRowClick(row);
                       }
                     }}
-                    className={`${styles.row} cursor-pointer transition-colors hover:bg-bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset`}
+                    className={`${styles.row} cursor-pointer transition-colors hover:bg-interactive-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset ${
+                      selectedRowId === id ? "bg-nav-active" : ""
+                    }`}
                   >
                     {content}
                   </tr>
@@ -208,6 +270,4 @@ export function DataTable<T>({
       </table>
     </div>
   );
-
-  return table;
 }

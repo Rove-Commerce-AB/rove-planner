@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { ROUTES } from "@/lib/routes";
 
 const LEFT_COL_WIDTH = 300;
 const MIN_WEEK_WIDTH = 29;
@@ -46,7 +47,9 @@ export function AllocationViewportAdapter({
           ? weekFrom + clamped - 1
           : weekFrom + clamped - 1 - 52;
 
-      router.replace(`/allocation?year=${year}&from=${newFrom}&to=${newTo}`);
+      router.replace(
+        `${ROUTES.allocation}?year=${year}&from=${newFrom}&to=${newTo}`
+      );
     },
     [year, weekFrom, weekTo, router]
   );

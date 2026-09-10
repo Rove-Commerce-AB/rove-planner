@@ -32,6 +32,7 @@ import {
   useTimeGridColumnHighlight,
   timeGridColumnCellInteractionProps,
 } from "@/components/TimeGridColumnHighlight";
+import { consultantHref, customerHref } from "@/lib/routes";
 
 type PerConsultantRow = ReturnType<typeof buildPerConsultantView>[number];
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
@@ -418,7 +419,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                           </button>
                           {row.consultant.id !== TO_PLAN_CONSULTANT_ID && (
                             <Link
-                              href={`/consultants/${row.consultant.id}`}
+                              href={consultantHref(row.consultant.id)}
                               prefetch={false}
                               className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                               aria-label={`Open ${row.consultant.name}`}
@@ -460,7 +461,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] && !isToPlan ? (embedMode ? (pct > 0 ? "bg-success/20" : "") : getAllocationCellBgClass(pct)) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -554,7 +555,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                                   <>
                                     {pr.customerId ? (
                                       <Link
-                                        href={`/customers/${pr.customerId}`}
+                                        href={customerHref(pr.customerId)}
                                         prefetch={false}
                                         className="cursor-pointer hover:underline"
                                         onClick={(e) => e.stopPropagation()}
@@ -986,7 +987,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                             )}
                           </button>
                           <Link
-                            href={`/consultants/${row.consultant.id}`}
+                            href={consultantHref(row.consultant.id)}
                             prefetch={false}
                             className="shrink-0 rounded p-0.5 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100"
                             aria-label={`Open ${row.consultant.name}`}
@@ -1023,7 +1024,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         return (
                           <td
                             key={`${w.year}-${w.week}`}
-                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${!isDragRange ? "hover:!bg-brand-blue/50" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
+                            className={`${showLeftBorder ? "border-l border-grid-light-subtle " : ""}${hasBooking ? "border-r border-grid-light-subtle" : ""} px-1 py-1 text-center text-[10px] tabular-nums overflow-hidden select-none cursor-crosshair ${!isDragRange && row.consultant.unavailableByWeek[i] ? "!bg-[var(--color-border-default)] text-text-primary" : ""} ${!isDragRange && !row.consultant.unavailableByWeek[i] ? getAllocationCellBgClass(pct) : ""} ${isCurrentWeek(w) && !row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isCurrentWeek(w) && row.consultant.unavailableByWeek[i] ? "current-week-cell border-l border-r" : ""} ${isDragRange ? "drag-range-cell border-t border-b" : ""} ${isDragLeft ? "border-l" : ""} ${isDragRight ? "border-r" : ""} ${allocColHoverClass(i)}`}
                             title={title}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -1093,7 +1094,7 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                               )}
                               {pr.customerId ? (
                                 <Link
-                                  href={`/customers/${pr.customerId}`}
+                                  href={customerHref(pr.customerId)}
                                   prefetch={false}
                                   className="cursor-pointer hover:underline"
                                   onClick={(e) => e.stopPropagation()}

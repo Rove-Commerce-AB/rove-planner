@@ -69,7 +69,7 @@ export function TaskboardListPageClient({ boards }: Props) {
                 className="flex h-full min-h-[7.5rem] w-full flex-col rounded-xl border border-border-subtle bg-bg-default p-5 shadow-sm transition-colors hover:border-brand-signal/50 hover:bg-bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-content)]"
               >
                 <h2
-                  className="line-clamp-2 min-h-0 flex-1 text-base font-semibold leading-snug text-text-primary"
+                  className="line-clamp-2 min-h-0 flex-1 text-heading-s leading-snug text-text-primary"
                   title={b.title}
                 >
                   {b.title}

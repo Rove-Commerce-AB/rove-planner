@@ -55,6 +55,7 @@ import type {
 } from "@/types";
 import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import {
   getISOWeekDateRangeLocal,
   addWeeksToYearWeekLocal,
@@ -535,7 +536,7 @@ function FloatingSaveStatus({
           ? errorMessage
           : "All changes are saved";
   const toneClass = isError
-    ? "bg-orange-700 text-text-inverse"
+    ? "bg-status-warning text-text-inverse"
     : "bg-brand-signal text-text-inverse";
 
   return (
@@ -559,7 +560,7 @@ function FloatingSaveStatus({
             <CheckCircle2 className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-bg-default text-brand-signal animate-[savedCheckFade_2s_ease-out]" />
           ) : null}
           {isError ? (
-            <AlertTriangle className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-bg-default text-orange-700" />
+            <AlertTriangle className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-bg-default text-status-warning" />
           ) : null}
           {status === "saving" ? (
             <span className="absolute inset-0 rounded-full border border-current opacity-40 animate-ping" />
@@ -936,9 +937,9 @@ export function TimeReportPageClient({
   }, [calendarId, year, week, viewMode, displayMonth, displayYear]);
 
   useEffect(() => {
-    document.body.classList.add("time-report-font-12");
+    document.body.classList.add("time-report-portals-font-12");
     return () => {
-      document.body.classList.remove("time-report-font-12");
+      document.body.classList.remove("time-report-portals-font-12");
     };
   }, []);
 
@@ -2941,7 +2942,7 @@ export function TimeReportPageClient({
                   {customerGroups.map((group, groupIndex) => {
                 const customer = customerById.get(group.customerId);
                 const name = customer?.name ?? "—";
-                const color = customer?.color ?? "#3b82f6";
+                const color = customer?.color ?? DEFAULT_CUSTOMER_COLOR;
                 const customerDayTotals = dayTotals(group.entries);
                 const customerWeekTotal = groupTotalHours(group.entries);
 
@@ -3391,7 +3392,7 @@ export function TimeReportPageClient({
                   {monthRowsByCustomer.map(({ customerId, rows }, groupIndex) => {
                     const customer = customerById.get(customerId);
                     const name = customer?.name ?? "—";
-                    const color = customer?.color ?? "#3b82f6";
+                    const color = customer?.color ?? DEFAULT_CUSTOMER_COLOR;
                     const customerMonthDayTotals = monthCalendarDates.map((dateStr) =>
                       rows.reduce((sum, row) => sum + (row.hoursByDate[dateStr] ?? 0), 0)
                     );

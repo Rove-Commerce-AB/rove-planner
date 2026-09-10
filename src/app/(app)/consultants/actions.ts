@@ -4,11 +4,11 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import {
   createConsultant,
   deleteConsultant,
-  getConsultantsList,
   linkNewInternalConsultantToInternalCustomer,
   type CreateConsultantInput,
 } from "@/lib/consultants";
 import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
+import { ROUTES, customerHref, consultantHref } from "@/lib/routes";
 
 export async function createConsultantAndRevalidate(
   input: CreateConsultantInput
@@ -21,25 +21,21 @@ export async function createConsultantAndRevalidate(
     input
   );
   if (internalCustomerId) {
-    revalidatePath("/customers");
-    revalidatePath(`/customers/${internalCustomerId}`);
+    revalidatePath(ROUTES.customers);
+    revalidatePath(customerHref(internalCustomerId));
   }
 
   revalidateTag("allocation-consultants", "max");
-  revalidatePath("/consultants");
-  revalidatePath("/allocation");
+  revalidatePath(ROUTES.consultants);
+  revalidatePath(consultantHref(result.id));
+  revalidatePath(ROUTES.allocation);
   return result;
-}
-
-/** For side panel list; call from client. */
-export async function getConsultantsListAction() {
-  return getConsultantsList();
 }
 
 export async function deleteConsultantAction(id: string): Promise<void> {
   await assertAdmin();
   await deleteConsultant(id);
   revalidateTag("allocation-consultants", "max");
-  revalidatePath("/consultants");
-  revalidatePath("/allocation");
+  revalidatePath(ROUTES.consultants);
+  revalidatePath(ROUTES.allocation);
 }

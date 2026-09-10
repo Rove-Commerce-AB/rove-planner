@@ -6,6 +6,10 @@ export { Combobox, type ComboboxOption } from "./Combobox";
 export { Switch } from "./Switch";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Dialog } from "./Dialog";
+export { SideDrawer } from "./SideDrawer";
+export { FilterChip } from "./FilterChip";
+export { InitialsAvatar } from "./InitialsAvatar";
+export { CapacityBar } from "./CapacityBar";
 export { ConfirmModal } from "./ConfirmModal";
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./Accordion";
 export { EmptyState } from "./EmptyState";
@@ -20,6 +24,8 @@ export {
   FieldLabel,
   FieldValue,
   DetailBadgeFieldRow,
+  DetailFieldStack,
+  DrawerFieldRow,
   InlineEditFieldContainer,
   InlineEditTrigger,
   InlineEditStatus,
@@ -32,6 +38,7 @@ export {
   editInputListClass,
   editTriggerClass,
   inlineEditTriggerClass,
+  drawerEditTriggerClass,
   inlineEditTriggerListClass,
   inlineEditTriggerListClassRowHover,
   INLINE_EDIT_VALUE_ROW_MIN_H,
@@ -47,6 +54,7 @@ export {
   DataTable,
   type DataTableColumn,
   type DataTableProps,
+  type DataTableSort,
   type Density,
   type EmptyStateConfig,
 } from "./DataTable";

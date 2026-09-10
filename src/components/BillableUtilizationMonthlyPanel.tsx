@@ -305,7 +305,7 @@ export function BillableUtilizationMonthlyPanel({
         ) : (
           <>
             <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+              <h3 className="mb-2 text-heading-xs text-text-muted">
                 Utilization (%)
               </h3>
               <div className="h-[260px] w-full min-h-0">
@@ -375,9 +375,9 @@ export function BillableUtilizationMonthlyPanel({
                         type="monotone"
                         dataKey="budgetUtilizationPct"
                         name="Budget target"
-                        stroke="rgb(234, 179, 8)"
+                        stroke="var(--color-status-warning)"
                         strokeWidth={2}
-                        dot={{ r: 3, fill: "rgb(234, 179, 8)" }}
+                        dot={{ r: 3, fill: "var(--color-status-warning)" }}
                         connectNulls={false}
                       />
                     )}
@@ -414,7 +414,7 @@ export function BillableUtilizationMonthlyPanel({
             </div>
 
             <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+              <h3 className="mb-2 text-heading-xs text-text-muted">
                 Revenue (SEK)
               </h3>
               <div className="h-[260px] w-full min-h-0">

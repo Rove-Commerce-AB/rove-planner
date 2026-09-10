@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { ROUTES } from "@/lib/routes";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import type { AllocationHistoryDetails } from "@/types";
 
@@ -231,7 +232,7 @@ export async function deleteAllocationWithHistory(allocationId: string): Promise
   await cloudSqlPool.query(`DELETE FROM allocations WHERE id = $1`, [
     allocationId,
   ]);
-  revalidatePath("/allocation");
+  revalidatePath(ROUTES.allocation);
 }
 
 export async function deleteAllocationsWithHistory(allocationIds: string[]): Promise<void> {
@@ -251,7 +252,7 @@ export async function deleteAllocationsWithHistory(allocationIds: string[]): Pro
     await cloudSqlPool.query(`DELETE FROM allocations WHERE id = ANY($1::uuid[])`, [
       allocationIds,
     ]);
-    revalidatePath("/allocation");
+    revalidatePath(ROUTES.allocation);
     return;
   }
   const firstId = allocs[0].id;
@@ -282,5 +283,5 @@ export async function deleteAllocationsWithHistory(allocationIds: string[]): Pro
   await cloudSqlPool.query(`DELETE FROM allocations WHERE id = ANY($1::uuid[])`, [
     allocationIds,
   ]);
-  revalidatePath("/allocation");
+  revalidatePath(ROUTES.allocation);
 }

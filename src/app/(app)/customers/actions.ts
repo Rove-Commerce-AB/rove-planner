@@ -5,7 +5,6 @@ import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
-  getCustomersWithDetails,
 } from "@/lib/customers";
 import type {
   CreateCustomerInput,
@@ -13,10 +12,11 @@ import type {
 } from "@/lib/customers";
 import type { Customer } from "@/lib/customers";
 import { assertAdmin, assertNotSubcontractorForWrite } from "@/lib/accessGuards";
+import { ROUTES, customerHref } from "@/lib/routes";
 
 export async function revalidateCustomers() {
   await assertNotSubcontractorForWrite();
-  revalidatePath("/customers");
+  revalidatePath(ROUTES.customers);
 }
 
 export async function createCustomerAction(
@@ -24,7 +24,7 @@ export async function createCustomerAction(
 ): Promise<Customer> {
   await assertNotSubcontractorForWrite();
   const customer = await createCustomer(input);
-  revalidatePath("/customers");
+  revalidatePath(ROUTES.customers);
   return customer;
 }
 
@@ -34,18 +34,13 @@ export async function updateCustomerAction(
 ): Promise<Customer> {
   await assertNotSubcontractorForWrite();
   const customer = await updateCustomer(id, input);
-  revalidatePath("/customers");
-  revalidatePath(`/customers/${id}`);
+  revalidatePath(ROUTES.customers);
+  revalidatePath(customerHref(id));
   return customer;
 }
 
 export async function deleteCustomerAction(id: string): Promise<void> {
   await assertAdmin();
   await deleteCustomer(id);
-  revalidatePath("/customers");
-}
-
-/** For side panel list; call from client. */
-export async function getCustomersListAction() {
-  return getCustomersWithDetails();
+  revalidatePath(ROUTES.customers);
 }

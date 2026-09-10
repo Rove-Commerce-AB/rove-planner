@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getAllocationData } from "@/app/(app)/allocation/actions";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { AllocationPageClient } from "./AllocationPageClient";
+import { ROUTES } from "@/lib/routes";
 
 type Props = {
   data: AllocationPageData | null;
@@ -56,7 +57,7 @@ export function AllocationPageWrapper({
         setWeekFrom(newWeekFrom);
         setWeekTo(newWeekTo);
         const q = `year=${newYear}&from=${newWeekFrom}&to=${newWeekTo}`;
-        router.replace(`/allocation?${q}`, { scroll: false });
+        router.replace(`${ROUTES.allocation}?${q}`, { scroll: false });
       } finally {
         setLoading(false);
       }

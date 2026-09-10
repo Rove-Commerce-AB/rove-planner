@@ -12,11 +12,11 @@ export default function AccessDeniedPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-6">
       <Panel className="w-full max-w-sm p-8">
-        <h1 className="text-xl font-semibold text-text-primary">
+        <h1 className="text-heading-m text-text-primary">
           Access denied
         </h1>
         <p className="mt-2 text-sm text-text-primary opacity-70">
-          You do not have permission to use this app. Contact an
+          You do not have permission to use Rove Apps. Contact an
           administrator if you believe this is an error.
         </p>
         <Button

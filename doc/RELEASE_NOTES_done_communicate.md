@@ -1,8 +1,8 @@
-Release notes — Rove Planner (Done → Communicate) — paste into Slack (English)
+Release notes — Rove Apps (Done → Communicate) — paste into Slack (English)
 
 ---
 
-*Rove Planner — what’s shipping*
+*Rove Apps — what’s shipping*
 
 *Time reporting*
 • *Row totals* — Each time-report row can show total hours (aligned with day and customer targets), so you can compare time spent on a task to the estimate in one place.
@@ -19,7 +19,7 @@ Release notes — Rove Planner (Done → Communicate) — paste into Slack (Engl
 
 *Plain copy (no Slack markdown) — same content*
 
-Rove Planner — what’s shipping
+Rove Apps — what’s shipping
 
 Time reporting
 - Row totals: each row can show total hours so you can compare time on a task to the estimate.

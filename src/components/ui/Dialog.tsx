@@ -31,11 +31,11 @@ export function Dialog({
   const defaultOverlayClass =
     "fixed inset-0 z-50 bg-black/18 backdrop-blur-[1px]";
   const defaultContentClass =
-    "fixed left-1/2 top-1/2 z-50 w-full max-w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-[20px] border border-border-subtle bg-bg-default p-8 shadow-[0_14px_36px_rgba(0,0,0,0.12)] focus:outline-none";
+    "fixed left-1/2 top-1/2 z-50 w-full max-w-[540px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-subtle bg-bg-default p-8 shadow-xl focus:outline-none";
   const defaultSubtitleClass =
-    "pr-10 text-xs font-medium tracking-[0.14em] uppercase text-text-muted";
-  const defaultTitleClass = `pr-10 leading-tight font-semibold text-text-primary ${
-    subtitle ? "text-[44px]" : "text-lg"
+    "pr-10 text-overline text-text-muted";
+  const defaultTitleClass = `pr-10 leading-tight text-text-primary ${
+    subtitle ? "text-heading-l" : "text-heading-m"
   }`;
   const defaultCloseClass =
     "absolute right-4 top-4 rounded-sm border border-transparent p-1 text-text-primary opacity-60 hover:bg-bg-muted hover:opacity-100 focus:outline-none focus:border-form focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset";
