@@ -53,7 +53,7 @@ import type {
   TaskOption,
   TimeReportCopyBatchOperation,
 } from "@/types";
-import { Button, Select, Combobox, Dialog, IconButton } from "@/components/ui";
+import { Button, Select, Combobox, Dialog, IconButton, SegmentedControl } from "@/components/ui";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import {
@@ -2728,26 +2728,18 @@ export function TimeReportPageClient({
 
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex justify-end">
-          <div className="flex items-center gap-1 rounded-md p-0.5">
-            <Button
-              type="button"
-              variant={viewMode === "month" ? "primary" : "secondary"}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => void switchToMonthView()}
-            >
-              Month
-            </Button>
-            <Button
-              type="button"
-              variant={viewMode === "week" ? "primary" : "secondary"}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => void switchToWeekView()}
-            >
-              Week
-            </Button>
-          </div>
+          <SegmentedControl
+            aria-label="Time report view"
+            value={viewMode}
+            onChange={(mode) => {
+              if (mode === "month") void switchToMonthView();
+              else void switchToWeekView();
+            }}
+            options={[
+              { value: "month", label: "Month" },
+              { value: "week", label: "Week" },
+            ]}
+          />
         </div>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex min-w-0 flex-1 flex-col items-start gap-2">

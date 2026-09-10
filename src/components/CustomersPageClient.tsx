@@ -10,9 +10,9 @@ import {
   Button,
   DataTable,
   EmptyState,
-  FilterChip,
   Input,
   PageHeader,
+  SegmentedControl,
   SideDrawer,
   type DataTableColumn,
 } from "@/components/ui";
@@ -228,9 +228,15 @@ export function CustomersPageClient({
     setSortDirection("asc");
   }
 
-  function toggleCustomerFilter(filter: CustomerFilter) {
-    setCustomerFilter((current) => (current === filter ? "all" : filter));
-  }
+  const customerFilterOptions = useMemo(
+    () => [
+      { value: "all" as const, label: "All", count: counts.all },
+      { value: "active" as const, label: "Active", count: counts.active },
+      { value: "inactive" as const, label: "Inactive", count: counts.inactive },
+      { value: "internal" as const, label: "Internal", count: counts.internal },
+    ],
+    [counts]
+  );
 
   function openCustomer(id: string) {
     router.push(customerHref(id), { scroll: false });
@@ -292,40 +298,13 @@ export function CustomersPageClient({
                   className="pl-9"
                 />
               </div>
-              <div
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-                role="group"
+              <SegmentedControl
+                className="min-w-0 flex-1"
                 aria-label="Filter customers"
-              >
-                <FilterChip
-                  selected={customerFilter === "all"}
-                  onClick={() => toggleCustomerFilter("all")}
-                  count={counts.all}
-                >
-                  All
-                </FilterChip>
-                <FilterChip
-                  selected={customerFilter === "active"}
-                  onClick={() => toggleCustomerFilter("active")}
-                  count={counts.active}
-                >
-                  Active
-                </FilterChip>
-                <FilterChip
-                  selected={customerFilter === "inactive"}
-                  onClick={() => toggleCustomerFilter("inactive")}
-                  count={counts.inactive}
-                >
-                  Inactive
-                </FilterChip>
-                <FilterChip
-                  selected={customerFilter === "internal"}
-                  onClick={() => toggleCustomerFilter("internal")}
-                  count={counts.internal}
-                >
-                  Internal
-                </FilterChip>
-              </div>
+                value={customerFilter}
+                onChange={setCustomerFilter}
+                options={customerFilterOptions}
+              />
             </div>
 
             {visibleCustomers.length === 0 ? (

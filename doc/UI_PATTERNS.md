@@ -10,24 +10,24 @@ Colors, type, radius, and shadows in this file refer to **semantic tokens** in D
 
 ```
 PageHeader        (Heading/XL title + Body/L description, right-aligned primary CTA)
-Toolbar           (search + filter chips on one row)
+Toolbar           (search + SegmentedControl on one row)
 DataTable         (on the page canvas — no Panel frame)
 ```
 
 If grouping is needed (e.g. Internal / External):
-- Prefer filter chips over stacked `PanelSection` groups when the same columns apply.
+- Prefer `SegmentedControl` over stacked `PanelSection` groups when the same columns apply.
 
 ### Do
 - Put the page title on the canvas (`PageHeader`), not inside `PanelHeader`.
-- Search and filter chips share one toolbar row. Search is not full-bleed.
+- Search and `SegmentedControl` share one toolbar row. Search is not full-bleed.
 - Sort in the **column header** (arrow on the active column), not a separate toolbar Sort control.
 - One primary CTA: `interactive/primary` (or `accent/primary` inside an accent app). Default button size, not compact.
-- Unselected filter chips use `surface/subtle`; only the selected chip is inverse.
+- Unselected segmented options use `interactive/secondary-hover`; only the selected option is `interactive/primary`.
 
 ### Don't
 - Do not wrap the overview table in a bordered `Panel`. The table is white (`surface/default`) on the gray page canvas, with a sage header.
 - Do not create multiple different table styles across pages.
-- Do not use “Show inactive” text links when filter chips can replace them.
+- Do not use “Show inactive” text links when `SegmentedControl` can replace them.
 - Do not add a “Showing n of m” footer unless Figma specifies it.
 
 ---
@@ -147,7 +147,7 @@ Planner views currently share the default `interactive/*` accent with the rest o
 ### Page chrome
 - Title: Consultants (Heading/XL). Description: “Manage your consultant team members and their assignments.”
 - Search placeholder: “Search consultants…” (fixed width, not full row).
-- Filter chips on the same row as search. All (n), each team (n) with the `Team` prefix stripped (`Stockholm (8)`), External resources. Inactive consultants are hidden from the table (direct URL can still open the drawer).
+- `SegmentedControl` on the same row as search. All (n), each team (n) with the `Team` prefix stripped (`Stockholm (8)`), External resources. Inactive consultants are hidden from the table (direct URL can still open the drawer).
 - Sort: clickable column headers. Default Name ascending. Active column shows a chevron.
 
 ### Columns

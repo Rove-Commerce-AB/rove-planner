@@ -10,10 +10,10 @@ import {
   CapacityBar,
   DataTable,
   EmptyState,
-  FilterChip,
   InitialsAvatar,
   Input,
   PageHeader,
+  SegmentedControl,
   SideDrawer,
   Tabs,
   TabsContent,
@@ -100,8 +100,6 @@ export function ConsultantsPageClient({
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [activeConsultants]);
-
-  const externalCount = activeConsultants.filter((c) => c.isExternal).length;
 
   const visibleConsultants = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -194,9 +192,18 @@ export function ConsultantsPageClient({
     setSortDirection("asc");
   }
 
-  function toggleTeamFilter(filter: TeamFilter) {
-    setTeamFilter((current) => (current === filter ? "all" : filter));
-  }
+  const teamFilterOptions = useMemo(
+    () => [
+      { value: "all" as const, label: "All", count: activeConsultants.length },
+      ...teamFilters.map((team) => ({
+        value: team.id,
+        label: team.name,
+        count: team.count,
+      })),
+      { value: "external" as const, label: "External resources" },
+    ],
+    [activeConsultants.length, teamFilters]
+  );
 
   function openConsultant(id: string) {
     setOpenId(id);
@@ -260,32 +267,13 @@ export function ConsultantsPageClient({
                   className="pl-9"
                 />
               </div>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2" role="group" aria-label="Filter by team">
-                <FilterChip
-                  selected={teamFilter === "all"}
-                  onClick={() => toggleTeamFilter("all")}
-                  count={activeConsultants.length}
-                >
-                  All
-                </FilterChip>
-                {teamFilters.map((team) => (
-                  <FilterChip
-                    key={team.id}
-                    selected={teamFilter === team.id}
-                    onClick={() => toggleTeamFilter(team.id)}
-                    count={team.count}
-                  >
-                    {team.name}
-                  </FilterChip>
-                ))}
-                <FilterChip
-                  selected={teamFilter === "external"}
-                  onClick={() => toggleTeamFilter("external")}
-                  count={externalCount}
-                >
-                  External resources
-                </FilterChip>
-              </div>
+              <SegmentedControl
+                className="min-w-0 flex-1"
+                aria-label="Filter by team"
+                value={teamFilter}
+                onChange={setTeamFilter}
+                options={teamFilterOptions}
+              />
             </div>
 
             {visibleConsultants.length === 0 ? (

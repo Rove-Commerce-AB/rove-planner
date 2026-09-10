@@ -158,17 +158,18 @@ Foreground status color on the matching `*-subtle` background.
 | Row hover | `interactive/secondary-hover` | `interactive/secondary-hover` | |
 | Selected row | `nav/active` | `nav/active` | Overlay detail is open for that row |
 
-### Filter chips
+### Segmented control
 
-Pills on list toolbars (All / team / External). Not the same as `OptionSegments`.
+Exclusive pills on list toolbars (`SegmentedControl`). Not the same as `OptionSegments`.
 
-| State | Surface | Text |
-|-------|---------|------|
-| Selected | `surface/inverse` | `text/inverse` |
-| Default | `surface/subtle` | `text/secondary` |
-| Hover (default) | `interactive/secondary` | `text/primary` |
+| State | Surface | Text | Type |
+|-------|---------|------|------|
+| Selected | `interactive/primary` | `text/inverse` | Label/M |
+| Hover (selected) | `interactive/primary-hover` | `text/inverse` | Label/M |
+| Default | `interactive/secondary-hover` | `text/secondary` | Body/M |
+| Hover (default) | `interactive/secondary-hover` | `text/primary` | Body/M |
 
-Radius: `full`. Type: Label/M. Optional count in the label: `All (18)`.
+Radius: `full`. Padding: 14px 8px. Gap: 8px (`space/8`). Optional count in the label: `All (18)`.
 
 ### Avatars (initials)
 

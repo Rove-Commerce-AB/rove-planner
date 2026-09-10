@@ -36,9 +36,9 @@ Confirm:
 - English UI copy
 - Uses DataTable component where there is a table
 - Has loading/empty/error states
-- List pages: `PageHeader` on the canvas, filter chips + `DataTable` (no Panel frame)
+- List pages: `PageHeader` on the canvas, `SegmentedControl` + `DataTable` (no Panel frame)
 - Overview tables: Figma sage `table/header` (`#c4d7c1`), white body, rounded top corners, sort in column headers, `border/default` row dividers
-- Filter chips: selected inverse, default `surface/subtle`
+- Segmented control (`SegmentedControl`): selected `interactive/primary`, default `interactive/secondary-hover`
 - No heavy gridlines, has hover/focus states
 - Comfortable density on overview lists; compact only on operational grids
 - Colors/type/radius/shadow only from DESIGN_SYSTEM.md

@@ -8,6 +8,10 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Dialog } from "./Dialog";
 export { SideDrawer } from "./SideDrawer";
 export { FilterChip } from "./FilterChip";
+export {
+  SegmentedControl,
+  type SegmentedControlOption,
+} from "./SegmentedControl";
 export { InitialsAvatar } from "./InitialsAvatar";
 export { CapacityBar } from "./CapacityBar";
 export { ConfirmModal } from "./ConfirmModal";

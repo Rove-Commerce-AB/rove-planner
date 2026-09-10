@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
-import { Select, Tabs, TabsList, TabsTrigger, PageHeader, Dialog, Button } from "@/components/ui";
+import { Select, PageHeader, Dialog, Button, SegmentedControl } from "@/components/ui";
 import {
   createAllocation,
   updateAllocation,
@@ -870,33 +870,26 @@ function AllocationPageClientImpl({
         />
       )}
 
-      {!embedMode && (mounted ? (
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) =>
-            setActiveTab(v as "consultant" | "customer" | "project" | "history")
-          }
-          className="mb-4"
-        >
-          <TabsList className="w-full">
-            <TabsTrigger value="consultant">Consultant</TabsTrigger>
-            <TabsTrigger value="customer">Customer</TabsTrigger>
-            <TabsTrigger value="project">Project</TabsTrigger>
-            <TabsTrigger value="history" className="ml-auto">
-              Allocation history
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      ) : (
-        <div className="mb-4 flex w-full gap-2 border-b border-[var(--color-tabs-border)] px-1 py-2" aria-hidden="true">
-          <span className="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-primary opacity-70">
-            Consultant
-          </span>
-          <span className="ml-auto px-4 py-2 text-sm text-text-primary opacity-70">
-            Allocation history
-          </span>
+      {!embedMode && (
+        <div className="mb-4 flex w-full flex-wrap items-center justify-between gap-2">
+          <SegmentedControl
+            aria-label="Allocation view"
+            value={activeTab}
+            onChange={setActiveTab}
+            options={[
+              { value: "consultant", label: "Consultant" },
+              { value: "customer", label: "Customer" },
+              { value: "project", label: "Project" },
+            ]}
+          />
+          <SegmentedControl
+            aria-label="Allocation history"
+            value={activeTab}
+            onChange={setActiveTab}
+            options={[{ value: "history", label: "Allocation history" }]}
+          />
         </div>
-      ))}
+      )}
 
       {data && !embedMode && (
         <div className="mb-3 flex flex-wrap items-center gap-2 px-2">
