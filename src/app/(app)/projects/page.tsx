@@ -15,7 +15,7 @@ export default async function ProjectsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div>
       <div className="max-w-6xl">
         <ProjectsPageClient projects={projects} error={error} />
       </div>

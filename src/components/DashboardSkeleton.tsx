@@ -1,6 +1,6 @@
 export function DashboardSkeleton() {
   return (
-    <div className="p-6">
+    <div>
       <header className="mb-6">
         <div className="h-8 w-48 animate-pulse rounded bg-bg-muted" />
         <div className="mt-2 h-4 w-32 animate-pulse rounded bg-bg-muted" />

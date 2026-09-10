@@ -87,7 +87,7 @@ export default async function ProjectPage({ params, searchParams }: Props) {
   });
 
   return (
-    <div className="p-6">
+    <div>
       <ProjectDetailClient
         project={project}
         allocationData={allocationData}

@@ -49,7 +49,7 @@ export default async function ProjectManagerTimeReportPage() {
   const month = now.getMonth() + 1;
 
   return (
-    <div className="p-6">
+    <div>
       <ProjectManagerTimeReportClient
         isAdmin={isAdmin}
         consultantId={consultant?.id ?? null}

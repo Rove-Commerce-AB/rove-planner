@@ -624,7 +624,7 @@ function AllocationPageClientImpl({
 
   if (!data) {
     return (
-      <div className={embedMode ? "py-4" : "p-6"}>
+      <div className={embedMode ? "py-4" : ""}>
         <div className="mb-6 h-8 w-48 animate-pulse rounded bg-bg-muted" />
         <div className="mb-4 h-4 w-64 animate-pulse rounded bg-bg-muted" />
         <div className="h-64 animate-pulse rounded-lg border border-border bg-bg-default" />

@@ -12,8 +12,8 @@ export default async function NotificationsPage() {
     appUserId != null ? await getNotificationsForCurrentUser(50) : [];
 
   return (
-    <div className="p-6">
-      <div className="mx-auto w-full max-w-2xl">
+    <div>
+      <div className="w-full max-w-2xl">
         <PageHeader title="Notifications" className="mb-6" />
         <Panel>
           <PanelSectionTitle>Recent</PanelSectionTitle>

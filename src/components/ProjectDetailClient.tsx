@@ -587,7 +587,7 @@ export function ProjectDetailClient({
 
   return (
     <>
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="w-full max-w-3xl">
         <DetailPageHeader
           backHref={customerHref(initial.customer_id)}
           backLabel={`Back to ${initial.customerName ?? "Customer"}`}
@@ -1079,7 +1079,7 @@ export function ProjectDetailClient({
 
       {isAdmin && (
         <DetailPageDeleteFooter
-          className="mx-auto w-full max-w-3xl pt-4"
+          className="w-full max-w-3xl pt-4"
           onRequestDelete={() => setShowDeleteConfirm(true)}
           disabled={submitting || deleting}
           label="Delete project"

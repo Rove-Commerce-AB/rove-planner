@@ -44,8 +44,8 @@ export default async function TaskboardBoardPage({ params }: Props) {
   const isCreator = board.created_by_app_user_id === appUserId;
 
   return (
-    <div className="p-6">
-      <div className="mx-auto w-full max-w-[min(100vw-3rem,80rem)]">
+    <div>
+      <div className="w-full max-w-[80rem]">
         <TaskboardDetailPageClient
           boardId={boardId}
           initialTitle={board.title}

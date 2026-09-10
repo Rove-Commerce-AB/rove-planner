@@ -41,7 +41,7 @@ export default async function AllocationPage({ searchParams }: Props) {
       weekFrom={weekFrom}
       weekTo={weekTo}
     >
-      <div className="p-6">
+      <div>
         <AllocationPageWrapper
           data={data}
           error={error}

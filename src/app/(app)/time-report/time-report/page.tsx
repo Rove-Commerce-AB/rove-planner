@@ -39,7 +39,7 @@ export default async function TimeReportPage() {
   const customers = await getCustomersByIds(customerIds);
 
   return (
-    <div className="p-6">
+    <div>
       <PageHeader title="Time report" className="mb-6" />
       <TimeReportWithColumnHighlight
         consultant={consultant}

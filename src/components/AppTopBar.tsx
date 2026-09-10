@@ -21,7 +21,7 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
     unreadNotificationCount > 99 ? "99+" : String(unreadNotificationCount);
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-b border-border-default bg-bg-default px-8">
+    <header className="flex shrink-0 items-center justify-between border-b border-border-default bg-bg-default px-(--space-32)">
       <nav aria-label="Breadcrumb" className="min-w-0">
         <ol className="flex min-w-0 items-center gap-1.5 text-xs">
           {crumbs.map((crumb, index) => {

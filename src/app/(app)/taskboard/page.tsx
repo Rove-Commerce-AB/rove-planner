@@ -40,8 +40,8 @@ export default async function TaskboardPage() {
   }));
 
   return (
-    <div className="p-6">
-      <div className="mx-auto w-full max-w-[min(100vw-3rem,72rem)]">
+    <div>
+      <div className="w-full max-w-[72rem]">
         <PageHeader title="Taskboard" className="mb-6" />
         <TaskboardListPageClient boards={boards} />
       </div>

@@ -114,8 +114,8 @@ export default async function ReportsPage() {
   const roleOccupancyRows = occupancyBundle.byRole;
 
   return (
-    <div className="p-6">
-      <div className="mx-auto max-w-6xl">
+    <div>
+      <div className="max-w-6xl">
         <PageHeader
           title="Reports"
           description={`Week ${data.currentWeek}, ${data.currentYear}`}

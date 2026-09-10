@@ -25,8 +25,8 @@ export default async function CustomerStatusPage() {
   }));
 
   return (
-    <div className="p-6">
-      <div className="mx-auto w-full max-w-[min(100vw-3rem,56rem)]">
+    <div>
+      <div className="w-full max-w-[56rem]">
         <PageHeader title="Customer status" className="mb-6" />
         <CustomerStatusPageClient initialRows={initialRows} />
       </div>
