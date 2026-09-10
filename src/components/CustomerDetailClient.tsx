@@ -566,7 +566,7 @@ export function CustomerDetailClient({
 
               <DetailBadgeFieldRow label="Internal customer">
                 <Badge
-                  variant={isInternal ? "active" : "inactive"}
+                  variant="muted"
                   interactive
                   onClick={handleToggleInternal}
                   disabled={submitting}

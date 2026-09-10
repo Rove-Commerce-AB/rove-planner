@@ -146,6 +146,18 @@ Primary CTA in the shell: `interactive/primary` with `text/inverse`.
 
 Foreground status color on the matching `*-subtle` background.
 
+### Status badges
+
+`Badge` uses one color mapping for status, health, and probability labels.
+
+| Meaning | Variants | Surface | Text |
+|---------|----------|---------|------|
+| Active / success / high | `active`, `success`, `high` | `status/success-subtle` | `status/success` |
+| Medium / warning / inactive | `medium`, `warning`, `inactive` | `status/warning-subtle` | `status/warning` |
+| Low / error | `low`, `error` | `status/danger-subtle` | `status/danger` |
+
+Non-status chips (Internal / Standard) use `muted` (`surface/subtle` + `text/secondary`). Radius: `full`. Type: Label/M.
+
 ### Table
 
 | Token | Light | Dark | Use |

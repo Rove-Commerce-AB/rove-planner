@@ -5,6 +5,7 @@ import { User, FolderKanban } from "lucide-react";
 import type { CustomerWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { customerHref } from "@/lib/routes";
+import { Badge } from "@/components/ui";
 
 type Props = {
   customer: CustomerWithDetails;
@@ -65,9 +66,9 @@ export function CustomerCard({ customer }: Props) {
               </span>
             </div>
             {customer.primaryProject.isActive && (
-              <span className="rounded-full bg-brand-blue/60 px-2 py-0.5 text-xs font-medium text-text-primary">
+              <Badge variant="active" className="px-2 py-0.5">
                 Active
-              </span>
+              </Badge>
             )}
           </div>
         </div>

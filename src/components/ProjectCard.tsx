@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Building2, Calendar, Users } from "lucide-react";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import { Badge } from "@/components/ui";
 
 type Props = {
   project: ProjectWithDetails;
@@ -43,9 +44,9 @@ export function ProjectCard({ project }: Props) {
           <div className="min-w-0 flex-1">
             <h3 className="text-heading-m text-text-primary">{project.name}</h3>
             {isInactive && (
-              <span className="mt-1 inline-block rounded-full bg-bg-muted px-2 py-0.5 text-xs font-medium text-text-primary opacity-80">
+              <Badge variant="inactive" className="mt-1 px-2 py-0.5">
                 Inactive
-              </span>
+              </Badge>
             )}
           </div>
         </div>

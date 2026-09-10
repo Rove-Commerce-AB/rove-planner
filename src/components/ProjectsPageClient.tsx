@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { revalidateProjects } from "@/app/(app)/projects/actions";
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { ProjectsPageHeader } from "./ProjectsPageHeader";
-import { EmptyState, Panel } from "@/components/ui";
+import { EmptyState, Panel, Badge } from "@/components/ui";
 import type { ProjectWithDetails } from "@/types";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 
@@ -269,9 +269,9 @@ export function ProjectsPageClient({ projects, error }: Props) {
                                   {project.name}
                                 </span>
                                 {isInactive && (
-                                  <span className="ml-2 rounded-full bg-bg-muted px-2 py-0.5 text-xs font-medium text-text-primary opacity-80">
+                                  <Badge variant="inactive" className="ml-2 px-2 py-0.5">
                                     Inactive
-                                  </span>
+                                  </Badge>
                                 )}
                               </div>
                             </div>
@@ -279,15 +279,15 @@ export function ProjectsPageClient({ projects, error }: Props) {
                           <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>
                             {project.customerName}
                           </td>
-                          <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>
+                          <td className={`border-b ${tableBorder} px-4 py-3`}>
                             {project.isActive ? (
-                              <span className="rounded-full bg-brand-blue/60 px-2 py-0.5 text-xs font-medium text-text-primary">
+                              <Badge variant="active" className="px-2 py-0.5">
                                 Active
-                              </span>
+                              </Badge>
                             ) : (
-                              <span className="text-text-primary opacity-70">
+                              <Badge variant="inactive" className="px-2 py-0.5">
                                 Inactive
-                              </span>
+                              </Badge>
                             )}
                           </td>
                           <td className={`border-b ${tableBorder} px-4 py-3 text-text-primary opacity-90`}>

@@ -377,7 +377,7 @@ export function CustomerDrawerOverview({
           </DrawerFieldRow>
           <DrawerFieldRow label="Type">
             <Badge
-              variant={isInternal ? "active" : "inactive"}
+              variant="muted"
               interactive
               onClick={() => void toggleType()}
               disabled={submitting}

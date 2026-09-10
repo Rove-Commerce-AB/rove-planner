@@ -51,7 +51,7 @@ export {
   modalSelectTriggerClass,
   modalFocusClass,
 } from "./inlineEditStyles";
-export { Badge } from "./Badge";
+export { Badge, type BadgeVariant, type BadgeTone } from "./Badge";
 export { OptionSegments } from "./OptionSegments";
 export { DetailPageHeader } from "./DetailPageHeader";
 export {
