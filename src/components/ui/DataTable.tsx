@@ -11,6 +11,7 @@ const tableBorder = "border-border-subtle";
 const compact = {
   header: "px-3 py-2 text-xs font-medium text-text-secondary",
   cell: "px-3 py-1 text-sm text-text-primary",
+  cellPrimary: "px-3 py-1 text-sm font-medium text-text-primary",
   cellSecondary: "px-3 py-1 text-sm text-text-secondary",
   row: `border-b ${tableBorder} last:border-b-0`,
   headerRow: `border-b ${tableBorder} bg-table-header`,
@@ -20,11 +21,12 @@ const compact = {
 /** Comfortable density: default for overview lists (Figma). */
 const comfortable = {
   header: "h-[50px] px-4 align-middle text-heading-xs text-text-primary first:rounded-tl-lg last:rounded-tr-lg",
-  cell: "px-4 py-4 text-sm text-text-primary",
-  cellSecondary: "px-4 py-4 text-sm text-text-secondary",
+  cell: "px-4 py-4 text-body-l text-text-primary",
+  cellPrimary: "px-4 py-4 text-label-l text-text-primary",
+  cellSecondary: "px-4 py-4 text-body-l text-text-secondary",
   row: "border-b border-border-default last:border-b-0",
   headerRow: "bg-table-header",
-  emptyCell: "px-4 py-6 text-center text-sm text-text-secondary",
+  emptyCell: "px-4 py-6 text-center text-body-l text-text-secondary",
 } as const;
 
 export type Density = "compact" | "comfortable";
@@ -223,24 +225,28 @@ export function DataTable<T>({
               const id = getRowId(row);
               const content = (
                 <>
-                  {columns.map((col) => (
+                  {columns.map((col, index) => {
+                    const typeClass =
+                      index === 0
+                        ? styles.cellPrimary
+                        : col.secondary
+                          ? styles.cellSecondary
+                          : styles.cell;
+                    const alignClass =
+                      col.align === "right"
+                        ? "text-right"
+                        : col.align === "center"
+                          ? "text-center"
+                          : "text-left";
+                    return (
                     <td
                       key={col.id}
-                      className={
-                        col.secondary
-                          ? styles.cellSecondary
-                          : `${styles.cell} ${
-                              col.align === "right"
-                                ? "text-right"
-                                : col.align === "center"
-                                  ? "text-center"
-                                  : "text-left"
-                            }`
-                      }
+                      className={`${typeClass} ${alignClass}`}
                     >
                       {col.cell(row)}
                     </td>
-                  ))}
+                    );
+                  })}
                 </>
               );
 

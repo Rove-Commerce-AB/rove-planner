@@ -174,7 +174,7 @@ export function CustomersPageClient({
       cell: (customer) => (
         <span className="flex min-w-0 items-center gap-3">
           <CustomerAvatar customer={customer} />
-          <span className="truncate font-semibold">{customer.name}</span>
+          <span className="truncate">{customer.name}</span>
         </span>
       ),
     },

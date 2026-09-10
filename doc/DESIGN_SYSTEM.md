@@ -165,6 +165,8 @@ Non-status chips (Internal / Standard) use `muted` (`surface/subtle` + `text/sec
 | Table header fill | `table/header` `blue/100` | `table/header` (`blue/900`) | DataTable sticky header |
 | Table header text | `text/primary`, semibold | `text/primary`, semibold | Heading/XS (13px) |
 | Table body | `surface/default` (white) on `surface/page` | `surface/default` | Overview lists — not a bordered Panel |
+| Table body col 1 | `text/primary`, Label/L | `text/primary`, Label/L | Name / identity |
+| Table body other | `text/primary` or `text/secondary`, Body/L | same | Metadata, numbers |
 | Table header radius | `radius/lg` on top corners | `radius/lg` on top corners | Comfortable overview lists only |
 | Row divider | `border/default` | `border/default` | Hairline between rows on white, none under the last row, no vertical rules |
 | Row hover | `interactive/secondary` (`zinc/100`) | `interactive/secondary` | |
@@ -274,12 +276,12 @@ Letter-spacing is **0** on all styles. `textCase` is original (no `uppercase` ut
 | Heading/M | SemiBold 600 | 15px | Panel titles |
 | Heading/S | SemiBold 600 | 14px | Subsection titles |
 | Heading/XS | SemiBold 600 | 13px | Compact section titles, overview table headers |
-| Label/L | Medium 500 | 13px | Emphasized UI labels, primary nav |
+| Label/L | Medium 500 | 13px | Emphasized UI labels, primary nav, table column 1 |
 | Label/M | Medium 500 | 12px | Controls, buttons |
 | Label/S | SemiBold 600 | 11px | Compact labels, badges |
 | Label/XS | SemiBold 600 | 10px | Tiny labels |
-| Body/L | Regular 400 | 13px | Default readable body |
-| Body/M | Regular 400 | 12px | Default UI / table body |
+| Body/L | Regular 400 | 13px | Default readable body / table body (columns 2+) |
+| Body/M | Regular 400 | 12px | Default UI |
 | Body/S | Regular 400 | 11px | Helper text |
 | Body/XS | Regular 400 | 10px | Fine print |
 | Caption | Regular 400 | 10px | Captions |

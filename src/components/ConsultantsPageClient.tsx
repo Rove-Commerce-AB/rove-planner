@@ -150,7 +150,7 @@ export function ConsultantsPageClient({
       cell: (c) => (
         <span className="flex min-w-0 items-center gap-3">
           <InitialsAvatar name={c.name} initials={c.initials} size="sm" />
-          <span className="truncate font-semibold">{c.name}</span>
+          <span className="truncate">{c.name}</span>
         </span>
       ),
     },

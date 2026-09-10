@@ -70,9 +70,9 @@ No raw `<table>` markup in pages or features.
 
 ### Table typography
 - Header: Heading/XS, semibold, `text/primary`
-- Primary cell (name/title): Body/M, `text/primary`, **semibold**
-- Secondary cell (team, role, metadata): Body/M, `text/secondary`
-- Numbers: Body/M + `tabular-nums`
+- Column 1 (name/title): Label/L, `text/primary`
+- Other cells: Body/L (`text/primary`, or `text/secondary` for metadata)
+- Numbers: Body/L + `tabular-nums`
 
 ---
 
@@ -153,9 +153,9 @@ Planner views currently share the default `interactive/*` accent with the rest o
 ### Columns
 | Column | Style |
 |--------|--------|
-| Name     | `InitialsAvatar` (32px, saturated + inverse initials) + name (semibold, `text/primary`) |
-| Team     | Body/M, `text/secondary` (strip leading `Team `) |
-| Role     | Body/M, `text/secondary` |
+| Name     | `InitialsAvatar` (32px, saturated + inverse initials) + name (Label/L, `text/primary`) |
+| Team     | Body/L, `text/secondary` (strip leading `Team `) |
+| Role     | Body/L, `text/secondary` |
 | Capacity | `CapacityBar` from work % |
 | Overhead | `CapacityBar` from overhead % |
 
