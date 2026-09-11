@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
 import { CustomerDrawerContent } from "@/components/CustomerDrawerContent";
+import { CustomerFavicon } from "@/components/CustomerFavicon";
 import {
   Badge,
   Button,
@@ -20,10 +21,15 @@ import type {
   CustomerConsultant,
   CustomerConsultantsByCustomerId,
 } from "@/lib/customerConsultantsQueries";
+import type {
+  CustomerAppUser,
+  CustomerAppUsersByCustomerId,
+} from "@/lib/customerAppUsersQueries";
 import { ROUTES, customerHref } from "@/lib/routes";
+import { compareTextSv } from "@/lib/sort";
 import type { CustomerWithDetails } from "@/types";
 
-type CustomerFilter = "all" | "active" | "inactive" | "internal";
+type CustomerFilter = "all" | `account-manager:${string}`;
 type SortKey =
   | "name"
   | "accountManager"
@@ -32,10 +38,49 @@ type SortKey =
   | "status";
 type SortDirection = "asc" | "desc";
 
+function sortCustomers(
+  list: CustomerWithDetails[],
+  sortKey: SortKey,
+  sortDirection: SortDirection
+): CustomerWithDetails[] {
+  const direction = sortDirection === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => {
+    switch (sortKey) {
+      case "accountManager":
+        return (
+          direction *
+            compareTextSv(
+              a.accountManagerName ?? "",
+              b.accountManagerName ?? ""
+            ) || compareTextSv(a.name, b.name)
+        );
+      case "activeProjects":
+        return (
+          direction * (a.activeProjectCount - b.activeProjectCount) ||
+          compareTextSv(a.name, b.name)
+        );
+      case "type":
+        return (
+          direction * Number(a.isInternal) - direction * Number(b.isInternal) ||
+          compareTextSv(a.name, b.name)
+        );
+      case "status":
+        return (
+          direction * Number(a.isActive) - direction * Number(b.isActive) ||
+          compareTextSv(a.name, b.name)
+        );
+      default:
+        return direction * compareTextSv(a.name, b.name);
+    }
+  });
+}
+
 type Props = {
   customers: CustomerWithDetails[];
   consultantsByCustomer: CustomerConsultantsByCustomerId;
+  usersByCustomer: CustomerAppUsersByCustomerId;
   allConsultants: { id: string; name: string }[];
+  allCustomerUsers: CustomerAppUser[];
   error: string | null;
   isAdmin?: boolean;
 };
@@ -78,8 +123,10 @@ function CustomerAvatar({
 
 export function CustomersPageClient({
   customers,
-  consultantsByCustomer,
-  allConsultants,
+  consultantsByCustomer = {},
+  usersByCustomer = {},
+  allConsultants = [],
+  allCustomerUsers = [],
   error,
   isAdmin = false,
 }: Props) {
@@ -100,23 +147,18 @@ export function CustomersPageClient({
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("asc");
+  const [showInactive, setShowInactive] = useState(false);
 
-  const counts = useMemo(
-    () => ({
-      all: customers.length,
-      active: customers.filter((customer) => customer.isActive).length,
-      inactive: customers.filter((customer) => !customer.isActive).length,
-      internal: customers.filter((customer) => customer.isInternal).length,
-    }),
-    [customers]
-  );
-
-  const visibleCustomers = useMemo(() => {
+  const matchingCustomers = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const filtered = customers.filter((customer) => {
-      if (customerFilter === "active" && !customer.isActive) return false;
-      if (customerFilter === "inactive" && customer.isActive) return false;
-      if (customerFilter === "internal" && !customer.isInternal) return false;
+    return customers.filter((customer) => {
+      if (
+        customerFilter !== "all" &&
+        customer.accountManagerId !==
+          customerFilter.slice("account-manager:".length)
+      ) {
+        return false;
+      }
       if (!query) return true;
       return (
         customer.name.toLowerCase().includes(query) ||
@@ -125,37 +167,29 @@ export function CustomersPageClient({
         (customer.contactEmail ?? "").toLowerCase().includes(query)
       );
     });
+  }, [customerFilter, customers, search]);
 
-    return [...filtered].sort((a, b) => {
-      const direction = sortDirection === "asc" ? 1 : -1;
-      switch (sortKey) {
-        case "accountManager":
-          return (
-            direction *
-              (a.accountManagerName ?? "").localeCompare(
-                b.accountManagerName ?? ""
-              ) || a.name.localeCompare(b.name)
-          );
-        case "activeProjects":
-          return (
-            direction * (a.activeProjectCount - b.activeProjectCount) ||
-            a.name.localeCompare(b.name)
-          );
-        case "type":
-          return (
-            direction * Number(a.isInternal) - direction * Number(b.isInternal) ||
-            a.name.localeCompare(b.name)
-          );
-        case "status":
-          return (
-            direction * Number(a.isActive) - direction * Number(b.isActive) ||
-            a.name.localeCompare(b.name)
-          );
-        default:
-          return direction * a.name.localeCompare(b.name);
-      }
-    });
-  }, [customerFilter, customers, search, sortDirection, sortKey]);
+  const activeCustomers = useMemo(
+    () =>
+      sortCustomers(
+        matchingCustomers.filter((customer) => customer.isActive),
+        sortKey,
+        sortDirection
+      ),
+    [matchingCustomers, sortDirection, sortKey]
+  );
+  const inactiveCustomers = useMemo(
+    () =>
+      sortCustomers(
+        matchingCustomers.filter((customer) => !customer.isActive),
+        sortKey,
+        sortDirection
+      ),
+    [matchingCustomers, sortDirection, sortKey]
+  );
+  const tableRows = showInactive
+    ? [...activeCustomers, ...inactiveCustomers]
+    : activeCustomers;
 
   const selectedCustomer =
     routeId == null
@@ -164,7 +198,11 @@ export function CustomersPageClient({
   const assignedConsultants: CustomerConsultant[] =
     selectedCustomer == null
       ? []
-      : consultantsByCustomer[selectedCustomer.id] ?? [];
+      : consultantsByCustomer?.[selectedCustomer.id] ?? [];
+  const assignedUsers: CustomerAppUser[] =
+    selectedCustomer == null
+      ? []
+      : usersByCustomer?.[selectedCustomer.id] ?? [];
 
   const columns: DataTableColumn<CustomerWithDetails>[] = [
     {
@@ -172,8 +210,12 @@ export function CustomersPageClient({
       header: "Name",
       sortable: true,
       cell: (customer) => (
-        <span className="flex min-w-0 items-center gap-3">
-          <CustomerAvatar customer={customer} />
+        <span className="flex min-w-0 items-center gap-2">
+          <CustomerFavicon
+            name={customer.name}
+            url={customer.url}
+            color={customer.color}
+          />
           <span className="truncate">{customer.name}</span>
         </span>
       ),
@@ -229,13 +271,40 @@ export function CustomersPageClient({
   }
 
   const customerFilterOptions = useMemo(
-    () => [
-      { value: "all" as const, label: "All", count: counts.all },
-      { value: "active" as const, label: "Active", count: counts.active },
-      { value: "inactive" as const, label: "Inactive", count: counts.inactive },
-      { value: "internal" as const, label: "Internal", count: counts.internal },
-    ],
-    [counts]
+    () => {
+      const activeCustomersForFilters = customers.filter(
+        (customer) => customer.isActive
+      );
+      const accountManagers = new Map<
+        string,
+        { name: string; count: number }
+      >();
+
+      for (const customer of activeCustomersForFilters) {
+        if (!customer.accountManagerId || !customer.accountManagerName) continue;
+        const current = accountManagers.get(customer.accountManagerId);
+        accountManagers.set(customer.accountManagerId, {
+          name: customer.accountManagerName,
+          count: (current?.count ?? 0) + 1,
+        });
+      }
+
+      return [
+        {
+          value: "all" as const,
+          label: "All",
+          count: activeCustomersForFilters.length,
+        },
+        ...[...accountManagers.entries()]
+          .sort(([, a], [, b]) => compareTextSv(a.name, b.name))
+          .map(([id, accountManager]) => ({
+            value: `account-manager:${id}` as const,
+            label: accountManager.name,
+            count: accountManager.count,
+          })),
+      ];
+    },
+    [customers]
   );
 
   function openCustomer(id: string) {
@@ -303,26 +372,50 @@ export function CustomersPageClient({
                 aria-label="Filter customers"
                 value={customerFilter}
                 onChange={setCustomerFilter}
+                allowDeselectTo="all"
                 options={customerFilterOptions}
               />
             </div>
 
-            {visibleCustomers.length === 0 ? (
+            {matchingCustomers.length === 0 ? (
               <p className="px-1 py-6 text-sm text-text-secondary">
                 No customers match this filter.
               </p>
             ) : (
               <DataTable
                 columns={columns}
-                rows={visibleCustomers}
+                rows={tableRows}
                 getRowId={(customer) => customer.id}
                 onRowClick={(customer) => openCustomer(customer.id)}
                 selectedRowId={routeId ?? undefined}
+                getRowClassName={(customer) =>
+                  customer.isActive ? undefined : "opacity-70"
+                }
                 sort={{
                   columnId: sortKey,
                   direction: sortDirection,
                   onSort: handleSort,
                 }}
+                footer={
+                  inactiveCustomers.length > 0 ? (
+                    <div className="border-t border-border-default px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowInactive((show) => !show)}
+                        className="w-full rounded-md py-2 text-center text-sm font-medium text-text-primary opacity-70 transition-colors hover:bg-interactive-secondary hover:opacity-100"
+                        aria-label={
+                          showInactive
+                            ? "Hide inactive customers"
+                            : "Show inactive customers"
+                        }
+                      >
+                        {showInactive
+                          ? "Hide inactive"
+                          : `Show inactive (${inactiveCustomers.length})`}
+                      </button>
+                    </div>
+                  ) : undefined
+                }
               />
             )}
           </>
@@ -369,7 +462,9 @@ export function CustomersPageClient({
             key={selectedCustomer.id}
             customer={selectedCustomer}
             assignedConsultants={assignedConsultants}
+            assignedUsers={assignedUsers}
             allConsultants={allConsultants}
+            allCustomerUsers={allCustomerUsers}
             isAdmin={isAdmin}
           />
         ) : routeId != null ? (

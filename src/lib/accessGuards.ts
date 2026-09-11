@@ -5,14 +5,14 @@ import { getCurrentAppUser } from "@/lib/appUsers";
 
 export async function redirectSubcontractorToAccessDenied() {
   const user = await getCurrentAppUser();
-  if (user?.role === "subcontractor") {
+  if (user?.role === "subcontractor" || user?.role === "customer") {
     redirect("/access-denied");
   }
 }
 
 export async function assertNotSubcontractorForWrite() {
   const user = await getCurrentAppUser();
-  if (!user || user.role === "subcontractor") {
+  if (!user || user.role === "subcontractor" || user.role === "customer") {
     throw new Error("Unauthorized");
   }
 }
@@ -32,7 +32,7 @@ export async function assertAdmin() {
  */
 export async function assertCanUseDataAgent() {
   const user = await getCurrentAppUser();
-  if (!user || user.role === "subcontractor") {
+  if (!user || user.role === "subcontractor" || user.role === "customer") {
     throw new Error("Unauthorized");
   }
 }

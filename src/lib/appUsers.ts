@@ -2,9 +2,14 @@
 
 import { cache } from "react";
 import { auth } from "@/auth";
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
-import { revalidatePath } from "next/cache";
+import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { ROUTES } from "@/lib/routes";
+import {
+  isRoveLoginRole,
+  type AppKey,
+  type AppUserRole as PeopleAppUserRole,
+} from "@/lib/peopleTypes";
 
 export type AppUser = {
   id: string;
@@ -14,12 +19,14 @@ export type AppUser = {
   created_at: string;
 };
 
-export type AppUserRole = "admin" | "member" | "subcontractor";
+export type AppUserRole = PeopleAppUserRole;
 
 export type CurrentAppUser = {
+  id: string;
   email: string;
   role: AppUserRole;
   name: string | null;
+  appKeys: AppKey[];
 } | null;
 
 export const getCurrentAppUser = cache(async (): Promise<CurrentAppUser> => {
@@ -27,9 +34,11 @@ export const getCurrentAppUser = cache(async (): Promise<CurrentAppUser> => {
   if (!session?.user?.email) return null;
 
   return {
+    id: session.user.appUserId,
     email: session.user.email,
     role: session.user.role as AppUserRole,
     name: session.user.name ?? null,
+    appKeys: session.user.appKeys ?? [],
   };
 });
 
@@ -54,16 +63,34 @@ export async function addAppUser(formData: FormData) {
   const role = ((formData.get("role") as string) || "member") as AppUserRole;
 
   if (!email) throw new Error("Email is required");
-  if (role !== "admin" && role !== "member" && role !== "subcontractor") {
+  if (!isRoveLoginRole(role)) {
     throw new Error("Invalid role");
   }
 
-  await cloudSqlPool.query(
-    "INSERT INTO app_users (email, name, role) VALUES ($1, $2, $3)",
-    [email, name, role]
-  );
+  await withCloudSqlTransaction("app-users-add", async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO app_users (email, name, role)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [email, name, role]
+    );
+    const appUserId = rows[0]?.id;
+    if (!appUserId) throw new Error("Failed to create user");
+    const appKeys =
+      role === "subcontractor"
+        ? ["time_report"]
+        : ["planner", "time_report", "insights"];
+    await client.query(
+      `INSERT INTO app_user_apps (app_user_id, app_id)
+       SELECT $1, id FROM apps WHERE key = ANY($2::text[])`,
+      [appUserId, appKeys]
+    );
+  });
 
+  revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.settings);
+  revalidateTag("allocation-consultants", "max");
+  revalidatePath(ROUTES.allocation);
 }
 
 export async function removeAppUser(id: string) {
@@ -74,6 +101,7 @@ export async function removeAppUser(id: string) {
 
   await cloudSqlPool.query("DELETE FROM app_users WHERE id = $1", [id]);
 
+  revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.settings);
 }
 
@@ -106,11 +134,24 @@ export async function updateAppUser(args: {
   }
 
   if (args.role !== undefined) {
-    if (args.role !== "admin" && args.role !== "member" && args.role !== "subcontractor") {
+    const { rows: currentRows } = await cloudSqlPool.query<{ role: string }>(
+      "SELECT role FROM app_users WHERE id = $1",
+      [args.id]
+    );
+    const currentRole = currentRows[0]?.role;
+    if (currentRole === "customer" || args.role === "customer") {
+      if (currentRole !== args.role) {
+        throw new Error(
+          "A customer user cannot be changed to a Rove role, or the reverse"
+        );
+      }
+    } else if (!isRoveLoginRole(args.role)) {
       throw new Error("Invalid role");
     }
-    setParts.push(`role = $${idx++}`);
-    values.push(args.role);
+    if (currentRole !== args.role) {
+      setParts.push(`role = $${idx++}`);
+      values.push(args.role);
+    }
   }
 
   if (setParts.length === 0) return;
@@ -118,10 +159,39 @@ export async function updateAppUser(args: {
   setParts.push(`updated_at = now()`);
   values.push(args.id);
 
-  await cloudSqlPool.query(
-    `UPDATE app_users SET ${setParts.join(", ")} WHERE id = $${idx}`,
-    values
-  );
+  await withCloudSqlTransaction("app-users-update", async (client) => {
+    await client.query(
+      `UPDATE app_users SET ${setParts.join(", ")} WHERE id = $${idx}`,
+      values
+    );
+    await client.query(
+      `UPDATE consultants c
+       SET name = COALESCE(NULLIF(trim(u.name), ''), u.email),
+           email = u.email,
+           updated_at = now()
+       FROM app_users u
+       WHERE c.app_user_id = u.id
+         AND u.id = $1`,
+      [args.id]
+    );
+    if (args.role === "subcontractor") {
+      await client.query(
+        `DELETE FROM app_user_apps
+         WHERE app_user_id = $1
+           AND app_id NOT IN (SELECT id FROM apps WHERE key = 'time_report')`,
+        [args.id]
+      );
+      await client.query(
+        `INSERT INTO app_user_apps (app_user_id, app_id)
+         SELECT $1, id FROM apps WHERE key = 'time_report'
+         ON CONFLICT (app_user_id, app_id) DO NOTHING`,
+        [args.id]
+      );
+    }
+  });
 
+  revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.settings);
+  revalidateTag("allocation-consultants", "max");
+  revalidatePath(ROUTES.allocation);
 }

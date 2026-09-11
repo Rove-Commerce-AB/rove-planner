@@ -55,18 +55,21 @@ export default async function DashboardPage() {
   const session = await auth();
   const appUserId = session?.user?.appUserId;
   const isSubcontractor = appUser?.role === "subcontractor";
+  const isCustomerUser = appUser?.role === "customer";
 
   const myTasks =
-    appUser != null && appUserId != null && !isSubcontractor
+    appUser != null && appUserId != null && !isSubcontractor && !isCustomerUser
       ? await listOpenTodosAssignedToUser(appUserId)
       : [];
 
-  const { consultant, weeks, rows } = await getPersonalDashboardData();
+  const { consultant, weeks, rows } = isCustomerUser
+    ? { consultant: null, weeks: [], rows: [] }
+    : await getPersonalDashboardData();
   const { year: currentYear, week: currentWeek } = getCurrentYearWeek();
   const monthSpans = getMonthSpansForWeeks(weeks);
 
   const myTasksPanel =
-    appUser != null && appUserId != null && !isSubcontractor ? (
+    appUser != null && appUserId != null && !isSubcontractor && !isCustomerUser ? (
       <Panel className="mt-6">
         <PanelSectionTitle>My tasks</PanelSectionTitle>
         <div className="p-3 pt-0">
@@ -95,17 +98,29 @@ export default async function DashboardPage() {
       </Panel>
     ) : null;
 
-  const pageDescription = consultant?.name ?? "Your upcoming allocations";
+  const pageDescription = isCustomerUser
+    ? "Customer access"
+    : consultant?.name ?? "Your upcoming allocations";
 
   let mainContent: ReactNode;
-  if (!consultant) {
+  if (isCustomerUser) {
     mainContent = (
       <Panel>
         <div className="p-6 text-center">
           <p className="text-text-primary">
-            Your login is not linked to a consultant. Ask an admin to set your
-            email on your consultant profile (under Consultants) so you can see
-            your allocations here.
+            You are signed in as a customer user. Rove apps are not available
+            on this account.
+          </p>
+        </div>
+      </Panel>
+    );
+  } else if (!consultant) {
+    mainContent = (
+      <Panel>
+        <div className="p-6 text-center">
+          <p className="text-text-primary">
+            Your login does not have a consultant profile. Ask an admin to add
+            one under Settings → People so you can see your allocations here.
           </p>
           <Link
             href="/"

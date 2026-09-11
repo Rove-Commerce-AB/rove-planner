@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { ROUTES } from "@/lib/routes";
+import type { AppKey } from "@/lib/peopleTypes";
 
 /** 10px left padding so the w-8 icon column is centered in the rail. */
 const SIDEBAR_RAIL_PAD_X = "10px";
@@ -161,12 +162,16 @@ type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
   isSubcontractor?: boolean;
+  isCustomerUser?: boolean;
+  appKeys?: AppKey[];
 };
 
 export function Sidebar({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
   isSubcontractor = false,
+  isCustomerUser = false,
+  appKeys = [],
 }: SidebarProps) {
   const pathname = usePathname();
   const [openApps, setOpenApps] = useState<{
@@ -209,7 +214,7 @@ export function Sidebar({
   };
 
   return (
-    <aside className="relative z-20 flex h-screen w-52 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default shadow-lg">
+    <aside className="relative z-20 flex h-full w-52 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default shadow-lg">
       <nav
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-1.5 pt-2 [scrollbar-gutter:stable]"
         style={navPadX}
@@ -225,9 +230,9 @@ export function Sidebar({
           </span>
         </div>
 
-        <div className="flex flex-col gap-px">
+        <div className="flex flex-col gap-2">
           <NavLink href={ROUTES.home} label="Home" icon={Home} pathname={pathname} />
-          {!isSubcontractor && (
+          {!isSubcontractor && appKeys.includes("planner") && (
             <AppGroup
               label="Planner"
               icon={CalendarCheck}
@@ -245,49 +250,61 @@ export function Sidebar({
               />
             </AppGroup>
           )}
-          <AppGroup
-            label="Time report"
-            icon={Clock}
-            open={openApps.timeReport}
-            onToggle={() =>
-              setOpenApps((prev) => ({
-                ...prev,
-                timeReport: !prev.timeReport,
-              }))
-            }
-          >
-            <NavLink
-              href={ROUTES.timeReport}
+          {appKeys.includes("time_report") && (
+            <AppGroup
               label="Time report"
-              pathname={pathname}
-              indent
-            />
-            {showTimeApproval && (
+              icon={Clock}
+              open={openApps.timeReport}
+              onToggle={() =>
+                setOpenApps((prev) => ({
+                  ...prev,
+                  timeReport: !prev.timeReport,
+                }))
+              }
+            >
               <NavLink
-                href={ROUTES.timeApproval}
-                label="Time approval"
+                href={ROUTES.timeReport}
+                label="Time report"
                 pathname={pathname}
                 indent
-                activeMatch="prefix"
               />
-            )}
-          </AppGroup>
-          {!isSubcontractor && (
+              {showTimeApproval && (
+                <NavLink
+                  href={ROUTES.timeApproval}
+                  label="Time approval"
+                  pathname={pathname}
+                  indent
+                  activeMatch="prefix"
+                />
+              )}
+            </AppGroup>
+          )}
+          {!isSubcontractor && !isCustomerUser && (
             <>
-              <NavLink
-                href={ROUTES.insights}
-                label="Insights"
-                icon={Sparkles}
-                pathname={pathname}
-                activeMatch="prefix"
-              />
-              <NavPlaceholder label="Rove Work" icon={Briefcase} />
+              {appKeys.includes("insights") && (
+                <NavLink
+                  href={ROUTES.insights}
+                  label="Insights"
+                  icon={Sparkles}
+                  pathname={pathname}
+                  activeMatch="prefix"
+                />
+              )}
+              {appKeys.includes("work") && (
+                <NavLink
+                  href={ROUTES.work}
+                  label="Rove Work"
+                  icon={Briefcase}
+                  pathname={pathname}
+                  activeMatch="prefix"
+                />
+              )}
               <NavPlaceholder label="Rove Support" icon={MessageCircle} />
             </>
           )}
         </div>
 
-        {!isSubcontractor && (
+        {!isSubcontractor && !isCustomerUser && (
           <div className="border-t border-border-subtle pt-4">
             <AppGroup
               label="Settings"
@@ -301,20 +318,22 @@ export function Sidebar({
               }
             >
               {isAdmin && (
-                <NavLink
-                  href={ROUTES.settings}
-                  label="General"
-                  pathname={pathname}
-                  indent
-                />
+                <>
+                  <NavLink
+                    href={ROUTES.settings}
+                    label="General"
+                    pathname={pathname}
+                    indent
+                  />
+                  <NavLink
+                    href={ROUTES.people}
+                    label="People"
+                    pathname={pathname}
+                    indent
+                    activeMatch="prefix"
+                  />
+                </>
               )}
-              <NavLink
-                href={ROUTES.consultants}
-                label="Consultants"
-                pathname={pathname}
-                indent
-                activeMatch="prefix"
-              />
               <NavLink
                 href={ROUTES.customers}
                 label="Customers"

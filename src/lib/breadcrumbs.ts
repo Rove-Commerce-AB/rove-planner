@@ -33,6 +33,9 @@ export function breadcrumbsForPathname(pathname: string): Breadcrumb[] {
     if (pathname.startsWith(ROUTES.settings)) {
       return [root, settings, { label: "General" }];
     }
+    if (pathname.startsWith(ROUTES.people)) {
+      return [root, settings, { label: "People" }];
+    }
     if (pathname.startsWith(ROUTES.consultants)) {
       return [root, settings, { label: "Consultants" }];
     }
@@ -56,6 +59,10 @@ export function breadcrumbsForPathname(pathname: string): Breadcrumb[] {
 
   if (pathname.startsWith("/insights")) {
     return [root, { label: "Insights" }];
+  }
+
+  if (pathname.startsWith(ROUTES.work)) {
+    return [root, { label: "Rove Work" }];
   }
 
   if (pathname.startsWith("/reports")) {

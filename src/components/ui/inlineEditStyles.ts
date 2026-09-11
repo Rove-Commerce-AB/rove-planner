@@ -26,6 +26,10 @@ export const editInputListClass =
 export const editTriggerClass =
   `w-full min-w-0 rounded-md border border-form bg-bg-default px-2 py-0 text-sm leading-normal text-text-primary focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset`;
 
+/** Always-on drawer Select: matches the boxed drawer value, including hover. */
+export const drawerSelectTriggerClass =
+  `w-full min-w-0 rounded-md border border-form bg-bg-default px-2.5 py-0 text-sm font-medium leading-normal text-text-primary hover:bg-interactive-secondary focus:border-brand-signal focus:ring-2 focus:ring-brand-signal/20 focus:ring-inset`;
+
 /** Display trigger: min-h-8 matches inline-edit Select trigger; py-0 avoids growing past that for single-line values. */
 export const inlineEditTriggerClass =
   `flex w-full min-w-0 cursor-pointer items-center gap-2 min-h-8 box-border rounded-md border border-transparent px-1 py-0 text-left text-sm font-semibold leading-normal text-text-primary transition-colors hover:bg-bg-muted/50 hover:border-form focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset`;

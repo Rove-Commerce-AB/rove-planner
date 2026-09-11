@@ -13,6 +13,7 @@ import type { ConsultantWithDetails } from "@/types";
 
 export type ConsultantForEdit = {
   id: string;
+  app_user_id: string | null;
   name: string;
   email: string | null;
   role_id: string;
@@ -36,6 +37,7 @@ export type ConsultantListItem = ConsultantForEdit & {
 };
 
 export type CreateConsultantInput = {
+  app_user_id?: string | null;
   name: string;
   email?: string | null;
   role_id: string;
@@ -68,11 +70,12 @@ export async function createConsultantQuery(
 ): Promise<{ id: string; name: string }> {
   const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
     `INSERT INTO consultants (
-       name, email, role_id, calendar_id, team_id, is_external,
+       app_user_id, name, email, role_id, calendar_id, team_id, is_external,
        work_percentage, overhead_percentage, start_date, end_date, birth_date
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING id, name`,
     [
+      input.app_user_id ?? null,
       input.name.trim(),
       input.email?.trim() || null,
       input.role_id,
@@ -181,18 +184,19 @@ function isConsultantActive(endDate: string | null, today: Date): boolean {
   return Number.isNaN(parsed.getTime()) || parsed >= today;
 }
 
-export async function fetchConsultantByEmail(
-  email: string
+export async function fetchConsultantByAppUserId(
+  appUserId: string
 ): Promise<{ id: string; name: string; calendar_id: string } | null> {
-  const normalized = email?.trim().toLowerCase();
-  if (!normalized) return null;
   const { rows } = await cloudSqlPool.query<{
     id: string;
     name: string;
     calendar_id: string;
   }>(
-    `SELECT id, name, calendar_id FROM consultants WHERE lower(email) = $1 LIMIT 1`,
-    [normalized]
+    `SELECT id, name, calendar_id
+     FROM consultants
+     WHERE app_user_id = $1
+     LIMIT 1`,
+    [appUserId]
   );
   return rows[0] ?? null;
 }
@@ -201,13 +205,14 @@ export async function fetchConsultantById(
   id: string
 ): Promise<ConsultantForEdit | null> {
   const { rows } = await cloudSqlPool.query(
-    `SELECT id, name, email, role_id, calendar_id, team_id, is_external,
+    `SELECT id, app_user_id, name, email, role_id, calendar_id, team_id, is_external,
             work_percentage, overhead_percentage, start_date::text, end_date::text, birth_date::text
      FROM consultants WHERE id = $1`,
     [id]
   );
   const c = rows[0] as {
     id: string;
+    app_user_id: string | null;
     name: string;
     email: string | null;
     role_id: string;
@@ -233,6 +238,7 @@ export async function fetchConsultantById(
   const calendarMap = new Map(calendarsData.map((cal) => [cal.id, cal.name]));
   return {
     id: c.id,
+    app_user_id: c.app_user_id ?? null,
     name: c.name,
     email: c.email,
     role_id: c.role_id,
@@ -268,6 +274,7 @@ export async function fetchConsultantsWithDefaultRole(): Promise<
 export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
   const { rows } = await cloudSqlPool.query<{
     id: string;
+    app_user_id: string | null;
     name: string;
     email: string | null;
     role_id: string;
@@ -286,6 +293,7 @@ export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
   }>(
     `SELECT
        c.id,
+       c.app_user_id,
        c.name,
        c.email,
        c.role_id,
@@ -313,6 +321,7 @@ export async function fetchConsultantsList(): Promise<ConsultantListItem[]> {
 
   return rows.map((r) => ({
     id: r.id,
+    app_user_id: r.app_user_id ?? null,
     name: r.name,
     email: r.email,
     role_id: r.role_id,

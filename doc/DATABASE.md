@@ -9,18 +9,49 @@ Terminology: we use **customer** (never client).
 
 ## app_users
 
-Authenticated application users (linked to auth by email).
+Authenticated application users. Google sign-in resolves the account by email;
+all internal relationships use the account UUID.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
 | email | text | NOT NULL, UNIQUE |
-| role | text | NOT NULL, default `member`; check: `admin`, `member`, `subcontractor` |
+| role | text | NOT NULL, default `member`; check: `admin`, `member`, `subcontractor`, `customer` |
 | name | text | nullable |
 | created_at | timestamptz | NOT NULL, default now() |
 | updated_at | timestamptz | NOT NULL, default now() |
 
 Application code may map legacy DB values (e.g. `underkonsult`) to `subcontractor`.
+
+---
+
+## apps
+
+Catalogue of assignable Rove apps.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| key | text | NOT NULL, UNIQUE; `planner`, `time_report`, `insights`, `work` |
+| name | text | NOT NULL |
+| created_at | timestamptz | NOT NULL, default now() |
+| updated_at | timestamptz | NOT NULL, default now() |
+
+`work` is added by [`scripts/20260911_rove_work_app.sql`](../scripts/20260911_rove_work_app.sql) and is not auto-granted.
+
+---
+
+## app_user_apps
+
+Many-to-many app access assigned to login accounts.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| app_id | uuid | PK part, FK → `apps.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default now() |
+
+Application actions require every **Rove** account (`admin`, `member`, `subcontractor`) to retain at least one app. `customer` accounts must have none of the Rove apps.
 
 ---
 
@@ -32,13 +63,14 @@ Customer / company.
 |--------|------|--------|
 | id | uuid | PK |
 | name | text | NOT NULL |
-| contact_name | text | nullable |
-| contact_email | text | nullable |
+| contact_name | text | nullable; denormalized from the contact user when `contact_app_user_id` is set |
+| contact_email | text | nullable; denormalized from the contact user when `contact_app_user_id` is set |
 | color | text | default `#3b82f6` |
 | logo_url | text | nullable |
 | is_internal | boolean | NOT NULL, default false; max one row should be true |
 | is_active | boolean | NOT NULL, default true |
 | account_manager_id | uuid | nullable, FK → `consultants.id` |
+| contact_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL; must be a `customer` user assigned to this customer |
 | url | text | nullable (e.g. website for favicon / links) |
 | created_at | timestamptz | NOT NULL |
 | updated_at | timestamptz | NOT NULL |
@@ -104,6 +136,7 @@ Allocatable person; default role, calendar, optional team.
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK |
+| app_user_id | uuid | nullable, UNIQUE when present; FK → `app_users.id`, ON DELETE SET NULL |
 | name | text | NOT NULL |
 | email | text | nullable |
 | role_id | uuid | NOT NULL, FK → `roles.id` |
@@ -217,13 +250,36 @@ Project-level rates per role (override customer rates when present).
 
 ## customer_consultants
 
-Which consultants may work on which customers (used e.g. for allocation / time-report access).
+Which consultants may work on which customers. Source of truth for planning,
+time reporting, and which customers a consultant sees in Rove apps.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | customer_id | uuid | PK part, FK → `customers.id` |
 | consultant_id | uuid | PK part, FK → `consultants.id` |
 | created_at | timestamptz | NOT NULL |
+
+---
+
+## customer_app_users
+
+Which **customer users** belong to which customers. These accounts can log in
+and be chosen as the customer contact. They are never allocatable and never
+receive Rove apps (Planner, Time report, Insights, Work).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| customer_id | uuid | PK part, FK → `customers.id`, ON DELETE CASCADE |
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default now() |
+
+A person is either a consultant or a customer user, never both. Rows cannot
+reference the internal (Rove) customer. Enforced with triggers
+(`enforce_customer_user_rules`). Unlinking a user who is the contact clears
+`customers.contact_app_user_id`. The app also rejects marking a customer
+internal while it still has customer users.
+
+DDL: [`scripts/20260911_customer_users.sql`](../scripts/20260911_customer_users.sql).
 
 ---
 
@@ -329,8 +385,14 @@ DDL script: [`sql/20260418_user_notifications.sql`](sql/20260418_user_notificati
 ## Relationship summary (short)
 
 - **customers** → **projects** → **allocations** / **time_report_entries**  
+- **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts have none  
+- **app_users** → zero or one **consultants** profile via `consultants.app_user_id` (not allowed when `role = customer`)  
 - **consultants** ↔ **customers** via **customer_consultants**; **allocations** link consultant + project + week (+ optional role)  
+- **customer** role **app_users** ↔ **customers** via **customer_app_users**; `customers.contact_app_user_id` picks one of those users  
 - **customer_rates** / **project_rates** + **roles** drive pricing; **time_report_entries** can store **rate_snapshot** at save  
 - **jira_issues** / **devops_work_items** integrate with **projects** for issue pickers  
 
-Authorization and row-level rules are enforced in **application code** (Auth.js + `app_users` + checks in `src/lib/`), not in this DDL excerpt.
+Authorization and row-level rules are enforced in **application code**
+(Auth.js + `app_users` + `app_user_apps` + checks in `src/lib/`), not in this
+DDL excerpt. See [`PEOPLE_MIGRATION.md`](PEOPLE_MIGRATION.md) for rollout and
+backfill details.

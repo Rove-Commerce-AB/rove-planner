@@ -4,6 +4,12 @@ import {
   getConsultantsByCustomerIds,
   type CustomerConsultantsByCustomerId,
 } from "@/lib/customerConsultants";
+import {
+  getCustomerUsers,
+  getCustomerUsersByCustomerIds,
+  type CustomerAppUser,
+  type CustomerAppUsersByCustomerId,
+} from "@/lib/customerAppUsers";
 import { getCustomersWithDetails } from "@/lib/customers";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
 import { CustomersPageClient } from "@/components/CustomersPageClient";
@@ -20,7 +26,9 @@ export default async function CustomersLayout({
   const user = await getCurrentAppUser();
   let customers: Awaited<ReturnType<typeof getCustomersWithDetails>> = [];
   let consultantsByCustomer: CustomerConsultantsByCustomerId = {};
+  let usersByCustomer: CustomerAppUsersByCustomerId = {};
   let allConsultants: { id: string; name: string }[] = [];
+  let allCustomerUsers: CustomerAppUser[] = [];
   let error: string | null = null;
 
   try {
@@ -30,10 +38,12 @@ export default async function CustomersLayout({
   }
 
   if (!error) {
-    const [customerConsultantsResult, consultantsResult] =
+    const [customerConsultantsResult, consultantsResult, usersResult, allUsersResult] =
       await Promise.allSettled([
         getConsultantsByCustomerIds(customers.map((customer) => customer.id)),
         getConsultantsWithDefaultRole(),
+        getCustomerUsersByCustomerIds(customers.map((customer) => customer.id)),
+        getCustomerUsers(),
       ]);
 
     if (customerConsultantsResult.status === "fulfilled") {
@@ -45,6 +55,12 @@ export default async function CustomersLayout({
         name: consultant.name,
       }));
     }
+    if (usersResult.status === "fulfilled") {
+      usersByCustomer = usersResult.value;
+    }
+    if (allUsersResult.status === "fulfilled") {
+      allCustomerUsers = allUsersResult.value;
+    }
   }
 
   return (
@@ -52,7 +68,9 @@ export default async function CustomersLayout({
       <CustomersPageClient
         customers={customers}
         consultantsByCustomer={consultantsByCustomer}
+        usersByCustomer={usersByCustomer}
         allConsultants={allConsultants}
+        allCustomerUsers={allCustomerUsers}
         error={error}
         isAdmin={user?.role === "admin"}
       />

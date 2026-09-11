@@ -1,0 +1,48 @@
+import type { ConsultantListItem } from "@/lib/consultants";
+import type { PersonCustomerLink } from "@/lib/customerAppUsersQueries";
+
+export const APP_KEYS = ["planner", "time_report", "insights", "work"] as const;
+export type AppKey = (typeof APP_KEYS)[number];
+
+export const APP_LABELS: Record<AppKey, string> = {
+  planner: "Planner",
+  time_report: "Time report",
+  insights: "Insights",
+  work: "Work",
+};
+
+export function isAppKey(value: string): value is AppKey {
+  return (APP_KEYS as readonly string[]).includes(value);
+}
+
+export type AppUserRole = "admin" | "member" | "subcontractor" | "customer";
+
+export const ROVE_LOGIN_ROLES = ["admin", "member", "subcontractor"] as const;
+export type RoveLoginRole = (typeof ROVE_LOGIN_ROLES)[number];
+
+export function isAppUserRole(value: string): value is AppUserRole {
+  return (
+    value === "admin" ||
+    value === "member" ||
+    value === "subcontractor" ||
+    value === "customer"
+  );
+}
+
+export function isRoveLoginRole(value: string): value is RoveLoginRole {
+  return (
+    value === "admin" || value === "member" || value === "subcontractor"
+  );
+}
+
+export type PersonListItem = {
+  key: string;
+  appUserId: string | null;
+  consultantId: string | null;
+  name: string;
+  email: string | null;
+  userRole: AppUserRole | null;
+  appKeys: AppKey[];
+  consultant: ConsultantListItem | null;
+  customers: PersonCustomerLink[];
+};

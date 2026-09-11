@@ -46,6 +46,18 @@ export function Dialog({
         <DialogPrimitive.Overlay className={`${defaultOverlayClass} ${overlayClassName ?? ""}`.trim()} />
         <DialogPrimitive.Content
           className={`${defaultContentClass} ${contentClassName ?? ""}`.trim()}
+          onOpenAutoFocus={(event) => {
+            const root = event.currentTarget;
+            if (!(root instanceof HTMLElement)) return;
+            const preferred =
+              root.querySelector<HTMLElement>("[autofocus]") ??
+              root.querySelector<HTMLElement>(
+                "input, textarea, select, [role='combobox']"
+              );
+            if (!preferred) return;
+            event.preventDefault();
+            preferred.focus();
+          }}
           onPointerDownOutside={(e) => {
             const target = e.target;
             const el =

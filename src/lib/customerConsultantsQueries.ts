@@ -3,6 +3,7 @@ import { cloudSqlPool } from "@/lib/cloudSqlPool";
 export type CustomerConsultant = {
   id: string;
   name: string;
+  appUserId: string | null;
 };
 
 export type CustomerConsultantsByCustomerId = Record<
@@ -20,8 +21,9 @@ export async function getConsultantsByCustomerIds(
     customer_id: string;
     id: string;
     name: string;
+    app_user_id: string | null;
   }>(
-    `SELECT cc.customer_id, c.id, c.name
+    `SELECT cc.customer_id, c.id, c.name, c.app_user_id
      FROM customer_consultants cc
      JOIN consultants c ON c.id = cc.consultant_id
      WHERE cc.customer_id = ANY($1::uuid[])
@@ -33,7 +35,11 @@ export async function getConsultantsByCustomerIds(
     uniqueCustomerIds.map((customerId) => [customerId, []])
   );
   for (const row of rows) {
-    result[row.customer_id]?.push({ id: row.id, name: row.name });
+    result[row.customer_id]?.push({
+      id: row.id,
+      name: row.name,
+      appUserId: row.app_user_id,
+    });
   }
   return result;
 }
@@ -52,12 +58,17 @@ export async function getConsultantsByCustomerId(
   const { rows: consultants } = await cloudSqlPool.query<{
     id: string;
     name: string;
+    app_user_id: string | null;
   }>(
-    `SELECT id, name FROM consultants WHERE id = ANY($1::uuid[]) ORDER BY name`,
+    `SELECT id, name, app_user_id FROM consultants WHERE id = ANY($1::uuid[]) ORDER BY name`,
     [consultantIds]
   );
 
-  return consultants.map((c) => ({ id: c.id, name: c.name }));
+  return consultants.map((c) => ({
+    id: c.id,
+    name: c.name,
+    appUserId: c.app_user_id,
+  }));
 }
 
 export async function addConsultantToCustomer(

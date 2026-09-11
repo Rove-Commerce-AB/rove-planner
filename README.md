@@ -1,6 +1,6 @@
 ## Rove Apps (this repo)
 
-Planner and Time report are apps inside Rove Apps.
+Planner, Time report, and Insights are apps inside Rove Apps.
 
 - **Platform:** Next.js app hosted on Google Cloud Run.
 - **Database:** PostgreSQL on Google Cloud SQL. Set `CLOUD_SQL_URL` in `.env.local` (see `src/lib/cloudSqlPool.ts`). Schema notes: [`doc/DATABASE.md`](doc/DATABASE.md).

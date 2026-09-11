@@ -41,22 +41,21 @@ export async function updateConsultant(id: string, input: q.UpdateConsultantInpu
   if (!updated) return;
   revalidateTag("allocation-consultants", "max");
   revalidatePath(ROUTES.consultants);
+  revalidatePath(ROUTES.people);
   revalidatePath(consultantHref(id));
   revalidatePath(ROUTES.allocation);
 }
 
 export async function deleteConsultant(id: string) {
-  return q.deleteConsultantQuery(id);
-}
-
-export async function getConsultantByEmail(email: string) {
-  return q.fetchConsultantByEmail(email);
+  const result = await q.deleteConsultantQuery(id);
+  revalidatePath(ROUTES.people);
+  return result;
 }
 
 export const getConsultantForCurrentUser = cache(async () => {
   const user = await getCurrentAppUser();
-  if (!user?.email) return null;
-  return q.fetchConsultantByEmail(user.email);
+  if (!user?.id) return null;
+  return q.fetchConsultantByAppUserId(user.id);
 });
 
 export async function getConsultantById(id: string) {

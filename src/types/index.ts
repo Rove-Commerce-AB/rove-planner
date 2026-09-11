@@ -101,6 +101,7 @@ export type CustomerProjectSummary = {
 export type CustomerWithDetails = {
   id: string;
   name: string;
+  contactAppUserId: string | null;
   contactName: string | null;
   contactEmail: string | null;
   accountManagerId: string | null;

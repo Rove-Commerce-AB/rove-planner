@@ -38,7 +38,7 @@ export function SideDrawer({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="side-drawer-overlay fixed inset-0 z-50 bg-black/25" />
         <DialogPrimitive.Content
-          className="side-drawer-content fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border-subtle bg-bg-default shadow-lg focus:outline-none"
+          className="side-drawer-content fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[40rem] flex-col border-l border-border-subtle bg-bg-default shadow-lg focus:outline-none"
           onPointerDownOutside={(e) => {
             const el = eventTargetElement(e.target);
             if (

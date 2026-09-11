@@ -7,7 +7,6 @@ import { Plus, Trash2 } from "lucide-react";
 import { getRoles, deleteRole, updateRole } from "@/lib/rolesClient";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
 import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
-import { removeAppUser, updateAppUser, type AppUser, type AppUserRole } from "@/lib/appUsers";
 import {
   Button,
   Dialog,
@@ -20,9 +19,7 @@ import {
   PanelSectionTitle,
   SAVED_DURATION_MS,
   INLINE_EDIT_STATUS_ROW_MIN_H,
-  Select,
   editInputListClass,
-  editTriggerClass,
   inlineEditTriggerListClassRowHover,
   modalInputClass,
 } from "@/components/ui";
@@ -38,9 +35,6 @@ import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import { SettingsCalendarsSection } from "./settings/SettingsCalendarsSection";
 import { SettingsFeatureRequestsSection } from "./settings/SettingsFeatureRequestsSection";
 
-const AddAppUserModal = dynamic(() =>
-  import("./AddAppUserModal").then((mod) => mod.AddAppUserModal)
-);
 const AddRoleModal = dynamic(() =>
   import("./AddRoleModal").then((mod) => mod.AddRoleModal)
 );
@@ -51,14 +45,10 @@ const AddCalendarModal = dynamic(() =>
   import("./AddCalendarModal").then((mod) => mod.AddCalendarModal)
 );
 
-type CurrentAppUser = { email: string; role: string; name: string | null } | null;
-
 type Props = {
   roles: Awaited<ReturnType<typeof getRoles>>;
   teams: Awaited<ReturnType<typeof getTeams>>;
   calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>>;
-  appUsers: AppUser[];
-  currentAppUser: CurrentAppUser;
   featureRequests: FeatureRequest[];
   error: string | null;
 };
@@ -67,17 +57,12 @@ export function SettingsPageClient({
   roles: initialRoles,
   teams: initialTeams,
   calendars: initialCalendars,
-  appUsers: initialAppUsers,
-  currentAppUser,
   featureRequests: initialFeatureRequests,
   error,
 }: Props) {
   const router = useRouter();
-  const isAdmin = currentAppUser?.role === "admin";
   const [mounted, setMounted] = useState(false);
   const [addRoleOpen, setAddRoleOpen] = useState(false);
-  const [appUserToDelete, setAppUserToDelete] = useState<AppUser | null>(null);
-  const [addAppUserModalOpen, setAddAppUserModalOpen] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [editingRoleValue, setEditingRoleValue] = useState("");
   const [savingRole, setSavingRole] = useState(false);
@@ -115,14 +100,6 @@ export function SettingsPageClient({
   const [featureRequestToDecline, setFeatureRequestToDecline] = useState<FeatureRequest | null>(null);
   const [declineCommentValue, setDeclineCommentValue] = useState("");
   const [declineCommentError, setDeclineCommentError] = useState<string | null>(null);
-  const [editingAppUserId, setEditingAppUserId] = useState<string | null>(null);
-  const [editingAppUserField, setEditingAppUserField] = useState<"name" | "email" | "role" | null>(null);
-  const [editingAppUserValue, setEditingAppUserValue] = useState("");
-  const [savingAppUser, setSavingAppUser] = useState(false);
-  const [showSavedAppUser, setShowSavedAppUser] = useState(false);
-  const [appUserInlineError, setAppUserInlineError] = useState<string | null>(null);
-  const savedAppUserTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedAppUserRef = useRef<{ id: string; field: "name" | "email" | "role" } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -133,7 +110,6 @@ export function SettingsPageClient({
       if (savedRoleTimeoutRef.current) clearTimeout(savedRoleTimeoutRef.current);
       if (savedTeamTimeoutRef.current) clearTimeout(savedTeamTimeoutRef.current);
       if (savedFeatureRequestTimeoutRef.current) clearTimeout(savedFeatureRequestTimeoutRef.current);
-      if (savedAppUserTimeoutRef.current) clearTimeout(savedAppUserTimeoutRef.current);
     };
   }, []);
 
@@ -161,84 +137,6 @@ export function SettingsPageClient({
 
   const handleSuccess = () => {
     router.refresh();
-  };
-
-  const handleAppUserDelete = async () => {
-    if (!appUserToDelete) return;
-    try {
-      await removeAppUser(appUserToDelete.id);
-      setAppUserToDelete(null);
-      router.refresh();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Could not remove user");
-    }
-  };
-
-  const startAppUserEdit = (u: AppUser, field: "name" | "email" | "role") => {
-    setAppUserInlineError(null);
-    setEditingAppUserId(u.id);
-    setEditingAppUserField(field);
-    if (field === "name") setEditingAppUserValue(u.name ?? "");
-    if (field === "email") setEditingAppUserValue(u.email);
-    if (field === "role") setEditingAppUserValue(u.role);
-  };
-
-  const cancelAppUserEdit = () => {
-    setEditingAppUserId(null);
-    setEditingAppUserField(null);
-    setEditingAppUserValue("");
-    setAppUserInlineError(null);
-  };
-
-  const saveAppUserInline = async (u: AppUser) => {
-    if (!editingAppUserId || !editingAppUserField || editingAppUserId !== u.id) return;
-
-    const field = editingAppUserField;
-    const raw = editingAppUserValue;
-    const trimmed = raw.trim();
-
-    // Skip no-op edits
-    if (
-      (field === "name" && (u.name ?? "") === trimmed) ||
-      (field === "email" && u.email === trimmed) ||
-      (field === "role" && u.role === trimmed)
-    ) {
-      cancelAppUserEdit();
-      return;
-    }
-
-    if (field === "email" && !trimmed) {
-      setAppUserInlineError("Email is required");
-      return;
-    }
-
-    setSavingAppUser(true);
-    setAppUserInlineError(null);
-    try {
-      if (field === "name") {
-        await updateAppUser({ id: u.id, name: trimmed || null });
-      } else if (field === "email") {
-        await updateAppUser({ id: u.id, email: trimmed });
-      } else {
-        await updateAppUser({ id: u.id, role: trimmed as AppUserRole });
-      }
-
-      lastSavedAppUserRef.current = { id: u.id, field };
-      setShowSavedAppUser(true);
-      if (savedAppUserTimeoutRef.current) clearTimeout(savedAppUserTimeoutRef.current);
-      savedAppUserTimeoutRef.current = setTimeout(() => {
-        savedAppUserTimeoutRef.current = null;
-        lastSavedAppUserRef.current = null;
-        setShowSavedAppUser(false);
-      }, SAVED_DURATION_MS);
-
-      cancelAppUserEdit();
-      router.refresh();
-    } catch (e) {
-      setAppUserInlineError(e instanceof Error ? e.message : "Failed to update user");
-    } finally {
-      setSavingAppUser(false);
-    }
   };
 
   const saveFeatureRequestInline = async (originalContent: string) => {
@@ -443,182 +341,6 @@ export function SettingsPageClient({
       )}
 
       <div className="flex flex-col gap-5">
-        {isAdmin && (
-          <Panel>
-            <PanelSectionTitle
-              action={
-                <IconButton
-                  aria-label="Add user"
-                  onClick={() => setAddAppUserModalOpen(true)}
-                  className="text-text-muted hover:text-text-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                </IconButton>
-              }
-            >
-              ACCESS / USERS
-            </PanelSectionTitle>
-            <div className="overflow-x-auto p-3 pt-0">
-              <table className="w-full table-fixed border-collapse">
-                <colgroup>
-                  <col className="w-[38%]" />
-                  <col className="w-[38%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[6%]" />
-                </colgroup>
-                <thead>
-                  <tr className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
-                    <th className="px-2 py-1 text-left">Name</th>
-                    <th className="px-2 py-1 text-left">Email</th>
-                    <th className="px-2 py-1 text-left">Rights</th>
-                    <th className="px-2 py-1 text-right" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {initialAppUsers.map((u) => (
-                    <tr key={u.id} className="align-top transition-colors hover:bg-bg-muted/50">
-                      <td className="px-2 py-1">
-                        <div className="min-h-[2rem] flex items-center gap-2">
-                          {editingAppUserId === u.id && editingAppUserField === "name" ? (
-                            <input
-                              type="text"
-                              value={editingAppUserValue}
-                              onChange={(e) => setEditingAppUserValue(e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              onBlur={() => saveAppUserInline(u)}
-                              className={editInputListClass}
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") saveAppUserInline(u);
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  cancelAppUserEdit();
-                                }
-                              }}
-                            />
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startAppUserEdit(u, "name")}
-                                className={inlineEditTriggerListClassRowHover}
-                              >
-                                {u.name || "—"}
-                              </button>
-                              {showSavedAppUser &&
-                                lastSavedAppUserRef.current?.id === u.id &&
-                                lastSavedAppUserRef.current?.field === "name" && <SavedCheckmark />}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1">
-                        <div className="min-h-[2rem] flex items-center gap-2">
-                          {editingAppUserId === u.id && editingAppUserField === "email" ? (
-                            <input
-                              type="email"
-                              value={editingAppUserValue}
-                              onChange={(e) => setEditingAppUserValue(e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              onBlur={() => saveAppUserInline(u)}
-                              className={editInputListClass}
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") saveAppUserInline(u);
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  cancelAppUserEdit();
-                                }
-                              }}
-                            />
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startAppUserEdit(u, "email")}
-                                className={inlineEditTriggerListClassRowHover}
-                              >
-                                {u.email}
-                              </button>
-                              {showSavedAppUser &&
-                                lastSavedAppUserRef.current?.id === u.id &&
-                                lastSavedAppUserRef.current?.field === "email" && <SavedCheckmark />}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1">
-                        <div className="min-h-[2rem] flex items-center gap-2">
-                          {editingAppUserId === u.id && editingAppUserField === "role" ? (
-                            <Select
-                              value={editingAppUserValue}
-                              onValueChange={(v) => setEditingAppUserValue(v)}
-                              onBlur={() => saveAppUserInline(u)}
-                              variant="inlineEdit"
-                              options={[
-                                { value: "member", label: "Member" },
-                                { value: "subcontractor", label: "Subcontractor" },
-                                { value: "admin", label: "Admin" },
-                              ]}
-                              className="min-w-0 flex-1 w-full"
-                              triggerClassName={editTriggerClass}
-                            />
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startAppUserEdit(u, "role")}
-                                className={inlineEditTriggerListClassRowHover}
-                              >
-                                {u.role === "admin"
-                                  ? "Admin"
-                                  : u.role === "subcontractor"
-                                    ? "Subcontractor"
-                                    : "Member"}
-                              </button>
-                              {showSavedAppUser &&
-                                lastSavedAppUserRef.current?.id === u.id &&
-                                lastSavedAppUserRef.current?.field === "role" && <SavedCheckmark />}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1">
-                        <div className="flex min-h-[2rem] items-center justify-end gap-2">
-                          {editingAppUserId === u.id ? (
-                            <div className={`shrink-0 ${INLINE_EDIT_STATUS_ROW_MIN_H}`}>
-                              <InlineEditStatus
-                                status={
-                                  savingAppUser
-                                    ? "saving"
-                                    : showSavedAppUser
-                                      ? "saved"
-                                      : appUserInlineError
-                                        ? "error"
-                                        : "idle"
-                                }
-                                message={appUserInlineError}
-                              />
-                            </div>
-                          ) : null}
-                          <IconButton
-                            variant="ghostDanger"
-                            onClick={() => setAppUserToDelete(u)}
-                            aria-label={`Remove ${u.email}`}
-                            className="shrink-0"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </IconButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        )}
-
         <Panel>
           <PanelSectionTitle
             action={
@@ -818,12 +540,6 @@ export function SettingsPageClient({
         />
       </div>
 
-      <AddAppUserModal
-        isOpen={addAppUserModalOpen}
-        onClose={() => setAddAppUserModalOpen(false)}
-        onSuccess={() => router.refresh()}
-      />
-
       <AddRoleModal
         isOpen={addRoleOpen}
         onClose={() => setAddRoleOpen(false)}
@@ -860,20 +576,6 @@ export function SettingsPageClient({
         isOpen={addCalendarOpen}
         onClose={() => setAddCalendarOpen(false)}
         onSuccess={handleSuccess}
-      />
-
-      <ConfirmModal
-        isOpen={appUserToDelete !== null}
-        title="Remove user"
-        message={
-          appUserToDelete
-            ? `Remove ${appUserToDelete.email} from the access list? They will no longer be able to log in.`
-            : ""
-        }
-        confirmLabel="Remove"
-        variant="primary"
-        onClose={() => setAppUserToDelete(null)}
-        onConfirm={handleAppUserDelete}
       />
 
       <ConfirmModal

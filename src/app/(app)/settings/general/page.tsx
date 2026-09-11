@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getRoles } from "@/lib/roles";
 import { getTeams } from "@/lib/teams";
 import { getCalendarsWithHolidayCount } from "@/lib/calendars";
-import { getCurrentAppUser, getAppUsersForAdmin } from "@/lib/appUsers";
+import { getCurrentAppUser } from "@/lib/appUsers";
 import { getFeatureRequests } from "@/lib/featureRequests";
 import { SettingsPageClient } from "@/components/SettingsPageClient";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
@@ -18,19 +18,15 @@ export default async function SettingsPage() {
   let roles: Awaited<ReturnType<typeof getRoles>> = [];
   let teams: Awaited<ReturnType<typeof getTeams>> = [];
   let calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>> = [];
-  let appUsers: Awaited<ReturnType<typeof getAppUsersForAdmin>> = [];
-  let currentAppUser: Awaited<ReturnType<typeof getCurrentAppUser>> = null;
   let featureRequests: Awaited<ReturnType<typeof getFeatureRequests>> = [];
   let error: string | null = null;
 
   try {
-    [roles, teams, calendars, currentAppUser, appUsers, featureRequests] =
+    [roles, teams, calendars, featureRequests] =
       await Promise.all([
         getRoles(),
         getTeams(),
         getCalendarsWithHolidayCount(),
-        getCurrentAppUser(),
-        getAppUsersForAdmin(),
         getFeatureRequests(),
       ]);
   } catch (e) {
@@ -44,8 +40,6 @@ export default async function SettingsPage() {
           roles={roles}
           teams={teams}
           calendars={calendars}
-          appUsers={appUsers}
-          currentAppUser={currentAppUser}
           featureRequests={featureRequests}
           error={error}
         />

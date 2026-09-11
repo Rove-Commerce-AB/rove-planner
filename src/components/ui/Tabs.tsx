@@ -11,7 +11,7 @@ const TabsList = forwardRef<
 >(({ className = "", ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
-    className={`flex gap-2 border-b border-[var(--color-tabs-border)] ${className}`}
+    className={`flex flex-nowrap gap-2 border-b border-[var(--color-tabs-border)] ${className}`}
     {...props}
   />
 ));
@@ -23,7 +23,7 @@ const TabsTrigger = forwardRef<
 >(({ className = "", ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
-    className={`cursor-pointer border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary data-[state=active]:border-text-primary data-[state=active]:text-text-primary ${className}`}
+    className={`cursor-pointer shrink-0 whitespace-nowrap border-b-2 border-transparent px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary data-[state=active]:border-text-primary data-[state=active]:text-text-primary ${className}`}
     {...props}
   />
 ));

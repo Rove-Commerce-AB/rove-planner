@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getConsultantByEmail } from "@/lib/consultants";
+import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
@@ -12,9 +12,7 @@ export default async function ProjectManagerTimeReportPage() {
 
   const appUser = await getCurrentAppUser();
   const isAdmin = appUser?.role === "admin";
-  const consultant = appUser?.email
-    ? await getConsultantByEmail(appUser.email)
-    : null;
+  const consultant = appUser ? await getConsultantForCurrentUser() : null;
   if (!consultant?.id && !isAdmin) redirect("/access-denied");
 
   const projectsData = consultant?.id

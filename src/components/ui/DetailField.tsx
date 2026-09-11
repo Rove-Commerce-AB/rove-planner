@@ -2,9 +2,11 @@
 
 import { useRef, useEffect } from "react";
 import { Check, AlertCircle, ChevronDown } from "lucide-react";
+import { Select, type SelectOption } from "./Select";
 import {
   inlineEditTriggerClass,
   drawerEditTriggerClass,
+  drawerSelectTriggerClass,
   INLINE_EDIT_VALUE_ROW_MIN_H,
   INLINE_EDIT_STATUS_ROW_MIN_H,
 } from "./inlineEditStyles";
@@ -273,5 +275,36 @@ export function DrawerFieldRow({
       <span className="shrink-0 text-[13px] text-text-secondary">{label}</span>
       <div className="w-[14.5rem] shrink-0">{children}</div>
     </div>
+  );
+}
+
+/** Drawer dropdown: always interactive so the first click opens the menu. */
+export function DrawerSelectField({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  disabled,
+  isLoading,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  isLoading?: boolean;
+}) {
+  return (
+    <Select
+      value={value}
+      onValueChange={onValueChange}
+      options={options}
+      placeholder={placeholder}
+      disabled={disabled}
+      isLoading={isLoading}
+      variant="inlineEdit"
+      className="min-w-0 w-full flex-1"
+      triggerClassName={drawerSelectTriggerClass}
+    />
   );
 }

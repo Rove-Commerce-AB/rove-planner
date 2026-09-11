@@ -48,11 +48,10 @@ async function getAppUserIdByEmail(email: string): Promise<string | null> {
 
 async function getAppUserIdForConsultant(consultantId: string): Promise<string | null> {
   const { rows } = await cloudSqlPool.query<{ id: string }>(
-    `SELECT au.id
-     FROM app_users au
-     INNER JOIN consultants c ON c.email IS NOT NULL
-       AND lower(trim(c.email)) = lower(trim(au.email))
+    `SELECT c.app_user_id AS id
+     FROM consultants c
      WHERE c.id = $1
+       AND c.app_user_id IS NOT NULL
      LIMIT 1`,
     [consultantId]
   );

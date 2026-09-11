@@ -6,25 +6,24 @@ import {
   Badge,
   ConfirmModal,
   DrawerFieldRow,
+  DrawerSelectField,
   InlineEditFieldContainer,
   InlineEditStatus,
   InlineEditTrigger,
   SAVED_DURATION_MS,
-  Select,
   editInputClass,
-  editTriggerClass,
 } from "@/components/ui";
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { DetailPageDeleteFooter } from "@/components/detail/DetailPageDeleteFooter";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import { ROUTES } from "@/lib/routes";
+import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import type { CustomerWithDetails } from "@/types";
 
 type EditField =
   | "name"
   | "url"
-  | "contactName"
-  | "contactEmail"
+  | "contact"
   | "accountManager"
   | "logoUrl"
   | "color"
@@ -33,19 +32,22 @@ type EditField =
 type Props = {
   customer: CustomerWithDetails;
   allConsultants: { id: string; name: string }[];
+  assignedUsers: CustomerAppUser[];
   isAdmin: boolean;
 };
 
 export function CustomerDrawerOverview({
   customer,
-  allConsultants,
+  allConsultants = [],
+  assignedUsers = [],
   isAdmin,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(customer.name);
   const [url, setUrl] = useState(customer.url ?? "");
-  const [contactName, setContactName] = useState(customer.contactName ?? "");
-  const [contactEmail, setContactEmail] = useState(customer.contactEmail ?? "");
+  const [contactAppUserId, setContactAppUserId] = useState(
+    customer.contactAppUserId ?? ""
+  );
   const [accountManagerId, setAccountManagerId] = useState(
     customer.accountManagerId ?? ""
   );
@@ -66,6 +68,10 @@ export function CustomerDrawerOverview({
   const [lastSavedField, setLastSavedField] = useState<EditField>(null);
   const originalEditValueRef = useRef("");
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setContactAppUserId(customer.contactAppUserId ?? "");
+  }, [customer.contactAppUserId]);
 
   useEffect(() => {
     return () => {
@@ -117,18 +123,13 @@ export function CustomerDrawerOverview({
           await updateCustomerAction(customer.id, { url: trimmed || null });
           setUrl(trimmed);
           break;
-        case "contactName":
+        case "contact": {
           await updateCustomerAction(customer.id, {
-            contact_name: trimmed || null,
+            contact_app_user_id: value || null,
           });
-          setContactName(trimmed);
+          setContactAppUserId(value);
           break;
-        case "contactEmail":
-          await updateCustomerAction(customer.id, {
-            contact_email: trimmed || null,
-          });
-          setContactEmail(trimmed);
-          break;
+        }
         case "accountManager": {
           await updateCustomerAction(customer.id, {
             account_manager_id: value || null,
@@ -225,7 +226,7 @@ export function CustomerDrawerOverview({
 
   function textField(
     label: string,
-    field: Exclude<EditField, "accountManager" | "color" | null>,
+    field: Exclude<EditField, "accountManager" | "contact" | "color" | null>,
     value: string,
     inputType: "text" | "url" | "email" = "text"
   ) {
@@ -246,7 +247,7 @@ export function CustomerDrawerOverview({
             >
               <span
                 className={`truncate text-sm ${
-                  field === "url" || field === "contactEmail"
+                  field === "url"
                     ? "text-text-link"
                     : "text-text-primary"
                 }`}
@@ -293,73 +294,69 @@ export function CustomerDrawerOverview({
           </p>
         ) : null}
 
-        <div className="px-6">
+        <div className="px-6 pt-4">
           {textField("Name", "name", name)}
           {textField("URL", "url", url, "url")}
-          {textField("Contact name", "contactName", contactName)}
-          {textField("Contact email", "contactEmail", contactEmail, "email")}
+          {customer.isInternal ? null : (
+            <DrawerFieldRow label="Contact">
+              <DrawerSelectField
+                value={contactAppUserId}
+                onValueChange={(value) => {
+                  if (!isInlineEditValueChanged(contactAppUserId, value)) return;
+                  void saveField("contact", value);
+                }}
+                options={[
+                  { value: "", label: "—" },
+                  ...(contactAppUserId &&
+                  !assignedUsers.some((user) => user.id === contactAppUserId)
+                    ? [
+                        {
+                          value: contactAppUserId,
+                          label:
+                            customer.contactName ||
+                            customer.contactEmail ||
+                            "Contact",
+                        },
+                      ]
+                    : []),
+                  ...assignedUsers.map((user) => ({
+                    value: user.id,
+                    label: `${user.name} (${user.email})`,
+                  })),
+                ]}
+                placeholder="—"
+                disabled={assignedUsers.length === 0 && !contactAppUserId}
+              />
+            </DrawerFieldRow>
+          )}
 
           <DrawerFieldRow label="Account manager">
-            <InlineEditFieldContainer
-              isEditing={editingField === "accountManager"}
-              onRequestClose={commitEdit}
-              hideAccessory
-              reserveStatusRow={false}
-              showSavedIndicator={
-                showSaved && lastSavedField === "accountManager"
-              }
-              displayContent={
-                <InlineEditTrigger
-                  boxed
-                  showChevron
-                  onClick={() =>
-                    startEdit("accountManager", accountManagerId)
-                  }
-                  className={
-                    accountManagerName ? "" : "text-text-tertiary"
-                  }
-                >
-                  <span className="truncate text-sm">
-                    {accountManagerName || "—"}
-                  </span>
-                </InlineEditTrigger>
-              }
-              editContent={
-                <Select
-                  value={editValue}
-                  onValueChange={(value) => {
-                    setEditValue(value);
-                    commitEdit(value);
-                  }}
-                  onBlur={() => commitEdit()}
-                  variant="inlineEdit"
-                  options={[
-                    { value: "", label: "—" },
-                    ...(accountManagerId &&
-                    accountManagerName &&
-                    !allConsultants.some(
-                      (consultant) => consultant.id === accountManagerId
-                    )
-                      ? [
-                          {
-                            value: accountManagerId,
-                            label: accountManagerName,
-                          },
-                        ]
-                      : []),
-                    ...allConsultants.map((consultant) => ({
-                      value: consultant.id,
-                      label: consultant.name,
-                    })),
-                  ]}
-                  placeholder="—"
-                  className="min-w-0 w-full flex-1"
-                  triggerClassName={editTriggerClass}
-                />
-              }
-              statusContent={
-                <InlineEditStatus status={inlineStatus} message={error} />
-              }
+            <DrawerSelectField
+              value={accountManagerId}
+              onValueChange={(value) => {
+                if (!isInlineEditValueChanged(accountManagerId, value)) return;
+                void saveField("accountManager", value);
+              }}
+              options={[
+                { value: "", label: "—" },
+                ...(accountManagerId &&
+                accountManagerName &&
+                !allConsultants.some(
+                  (consultant) => consultant.id === accountManagerId
+                )
+                  ? [
+                      {
+                        value: accountManagerId,
+                        label: accountManagerName,
+                      },
+                    ]
+                  : []),
+                ...allConsultants.map((consultant) => ({
+                  value: consultant.id,
+                  label: consultant.name,
+                })),
+              ]}
+              placeholder="—"
             />
           </DrawerFieldRow>
         </div>

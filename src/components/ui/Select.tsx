@@ -35,6 +35,8 @@ type Props = {
   isLoading?: boolean;
   /** Native tooltip on the closed trigger (e.g. assignee picker). */
   triggerTitle?: string;
+  /** Open the menu on mount (e.g. after a drawer field is activated). */
+  defaultOpen?: boolean;
 };
 
 export function Select({
@@ -55,6 +57,7 @@ export function Select({
   onBlur,
   isLoading = false,
   triggerTitle,
+  defaultOpen = false,
 }: Props) {
   const EMPTY = "__empty__";
   const hasEmptyOption = options.some((o) => o.value === "");
@@ -79,7 +82,7 @@ export function Select({
 
   const viewportHasMaxHeight = /\bmax-h-/.test(viewportClassName);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(defaultOpen);
   const [listScrollable, setListScrollable] = useState(false);
 
   const recomputeListScrollable = useCallback(() => {
@@ -209,6 +212,7 @@ export function Select({
       )}
       <SelectPrimitive.Root
         value={rootValue}
+        {...(defaultOpen ? { open: menuOpen } : {})}
         onValueChange={(v) =>
           onValueChange(v === EMPTY || v === undefined ? "" : v)
         }

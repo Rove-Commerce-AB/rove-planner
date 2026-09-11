@@ -10,23 +10,23 @@ const tableBorder = "border-border-subtle";
 /** Compact density: tight rows for operational grids. */
 const compact = {
   header: "px-3 py-2 text-xs font-medium text-text-secondary",
-  cell: "px-3 py-1 text-sm text-text-primary",
-  cellPrimary: "px-3 py-1 text-sm font-medium text-text-primary",
-  cellSecondary: "px-3 py-1 text-sm text-text-secondary",
-  row: `border-b ${tableBorder} last:border-b-0`,
+  cell: `px-3 py-1 text-sm text-text-primary border-b ${tableBorder}`,
+  cellPrimary: `px-3 py-1 text-sm font-medium text-text-primary border-b ${tableBorder}`,
+  cellSecondary: `px-3 py-1 text-sm text-text-secondary border-b ${tableBorder}`,
+  row: "last:[&>td]:border-b-0",
   headerRow: `border-b ${tableBorder} bg-table-header`,
   emptyCell: "px-3 py-2 text-center text-sm text-text-primary opacity-60",
 } as const;
 
 /** Comfortable density: default for overview lists (Figma). */
 const comfortable = {
-  header: "h-[50px] px-4 align-middle text-heading-xs text-text-primary first:rounded-tl-lg last:rounded-tr-lg",
-  cell: "px-4 py-4 text-body-l text-text-primary",
-  cellPrimary: "px-4 py-4 text-label-l text-text-primary",
-  cellSecondary: "px-4 py-4 text-body-l text-text-secondary",
-  row: "border-b border-border-default last:border-b-0",
+  header: "h-10 px-3 align-middle text-heading-xs text-text-primary first:rounded-tl-lg last:rounded-tr-lg",
+  cell: "px-3 py-2 text-body-l text-text-primary border-b border-border-default",
+  cellPrimary: "px-3 py-2 text-label-l text-text-primary border-b border-border-default",
+  cellSecondary: "px-3 py-2 text-body-l text-text-secondary border-b border-border-default",
+  row: "last:[&>td]:border-b-0",
   headerRow: "bg-table-header",
-  emptyCell: "px-4 py-6 text-center text-body-l text-text-secondary",
+  emptyCell: "px-3 py-4 text-center text-body-l text-text-secondary",
 } as const;
 
 export type Density = "compact" | "comfortable";
@@ -78,6 +78,10 @@ export type DataTableProps<T> = {
   selectedRowId?: string;
   /** Optional header sort. Page owns the data order; the table only renders the control. */
   sort?: DataTableSort;
+  /** Extra classes for a row (e.g. dim inactive rows). */
+  getRowClassName?: (row: T) => string | undefined;
+  /** Rendered under the table, inside the same card (e.g. Show inactive). */
+  footer?: React.ReactNode;
   className?: string;
 };
 
@@ -122,7 +126,7 @@ function HeaderLabel({
       <button
         type="button"
         onClick={() => sort.onSort(column.id)}
-        className="inline-flex h-full min-h-[50px] cursor-pointer items-center gap-2 text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
+        className="inline-flex h-full cursor-pointer items-center gap-2 text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset"
       >
         {column.header}
         {isSorted ? (
@@ -149,6 +153,8 @@ export function DataTable<T>({
   stickyHeader = true,
   selectedRowId,
   sort,
+  getRowClassName,
+  footer,
   className = "",
 }: DataTableProps<T>) {
   const router = useRouter();
@@ -172,15 +178,15 @@ export function DataTable<T>({
     <div
       className={
         density === "comfortable"
-          ? "rounded-t-lg bg-bg-default shadow-primary"
+          ? `bg-bg-default shadow-primary ${footer ? "rounded-lg" : "rounded-t-lg"}`
           : undefined
       }
     >
       <div
         className={
           density === "comfortable"
-            ? "overflow-x-auto rounded-t-lg"
-            : "overflow-x-auto"
+            ? "overflow-x-auto overflow-y-clip rounded-t-lg"
+            : "overflow-x-auto overflow-y-clip"
         }
       >
       <table className={`w-full min-w-[200px] border-separate border-spacing-0 text-sm ${className}`.trim()}>
@@ -215,11 +221,13 @@ export function DataTable<T>({
               <SkeletonRow key={i} colCount={columns.length} density={density} />
             ))
           ) : rows.length === 0 ? (
+            footer ? null : (
             <tr>
               <td colSpan={columns.length} className={styles.emptyCell}>
                 No data
               </td>
             </tr>
+            )
           ) : (
             rows.map((row) => {
               const id = getRowId(row);
@@ -265,7 +273,7 @@ export function DataTable<T>({
                     }}
                     className={`${styles.row} cursor-pointer transition-colors hover:bg-interactive-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-inset ${
                       selectedRowId === id ? "bg-nav-active" : ""
-                    }`}
+                    } ${getRowClassName?.(row) ?? ""}`.trim()}
                   >
                     {content}
                   </tr>
@@ -273,7 +281,10 @@ export function DataTable<T>({
               }
 
               return (
-                <tr key={id} className={styles.row}>
+                <tr
+                  key={id}
+                  className={`${styles.row} ${getRowClassName?.(row) ?? ""}`.trim()}
+                >
                   {content}
                 </tr>
               );
@@ -282,6 +293,7 @@ export function DataTable<T>({
         </tbody>
       </table>
       </div>
+      {footer}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import {
   Button,
@@ -16,20 +17,29 @@ import {
 } from "@/components/ui";
 import { AddCustomerConsultantModal } from "@/components/AddCustomerConsultantModal";
 import { AddCustomerRateModal } from "@/components/AddCustomerRateModal";
+import { AddCustomerUserModal } from "@/components/AddCustomerUserModal";
 import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
 import { CustomerRatesTab } from "@/components/CustomerRatesTab";
 import { groupCustomerProjectsForList } from "@/lib/customerProjectsList";
+import { removeCustomerUserFromCustomer } from "@/lib/customerAppUsersClient";
+import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import { removeConsultantFromCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
 import { createProject } from "@/lib/projectsClient";
+import {
+  personHrefForConsultant,
+  personHrefForUser,
+} from "@/lib/routes";
 import type { CustomerProjectSummary, CustomerWithDetails } from "@/types";
 
-type CustomerTab = "overview" | "projects" | "consultants" | "rates";
+type CustomerTab = "overview" | "projects" | "people" | "rates";
 
 type Props = {
   customer: CustomerWithDetails;
   assignedConsultants: CustomerConsultant[];
+  assignedUsers: CustomerAppUser[];
   allConsultants: { id: string; name: string }[];
+  allCustomerUsers: CustomerAppUser[];
   isAdmin: boolean;
 };
 
@@ -172,8 +182,10 @@ function NewProjectForm({
 
 export function CustomerDrawerContent({
   customer,
-  assignedConsultants,
-  allConsultants,
+  assignedConsultants = [],
+  assignedUsers = [],
+  allConsultants = [],
+  allCustomerUsers = [],
   isAdmin,
 }: Props) {
   const router = useRouter();
@@ -181,12 +193,16 @@ export function CustomerDrawerContent({
   const [creatingProject, setCreatingProject] = useState(false);
   const [showInactiveProjects, setShowInactiveProjects] = useState(false);
   const [addConsultantOpen, setAddConsultantOpen] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
   const [addRateOpen, setAddRateOpen] = useState(false);
   const [ratesError, setRatesError] = useState<string | null>(null);
   const [consultantError, setConsultantError] = useState<string | null>(null);
+  const [userError, setUserError] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<CustomerConsultant | null>(
     null
   );
+  const [removeUserTarget, setRemoveUserTarget] =
+    useState<CustomerAppUser | null>(null);
   const [removing, setRemoving] = useState(false);
   const { confirmed, pipeline, inactive } = groupCustomerProjectsForList(
     customer.projects
@@ -195,6 +211,23 @@ export function CustomerDrawerContent({
   function returnToProjects() {
     setCreatingProject(false);
     setActiveTab("projects");
+  }
+
+  async function confirmRemoveUser() {
+    if (!removeUserTarget) return;
+    setUserError(null);
+    setRemoving(true);
+    try {
+      await removeCustomerUserFromCustomer(customer.id, removeUserTarget.id);
+      setRemoveUserTarget(null);
+      router.refresh();
+    } catch (e) {
+      setUserError(
+        e instanceof Error ? e.message : "Failed to remove customer user"
+      );
+    } finally {
+      setRemoving(false);
+    }
   }
 
   async function confirmRemoveConsultant() {
@@ -231,15 +264,15 @@ export function CustomerDrawerContent({
         onValueChange={(value) => setActiveTab(value as CustomerTab)}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsList className="shrink-0 px-6 !gap-6">
+        <TabsList className="shrink-0 border-border-default px-6 !gap-6">
           <TabsTrigger value="overview" className="px-1 !px-1">
             Overview
           </TabsTrigger>
           <TabsTrigger value="projects" className="px-1 !px-1">
             Projects
           </TabsTrigger>
-          <TabsTrigger value="consultants" className="px-1 !px-1">
-            Consultants
+          <TabsTrigger value="people" className="px-1 !px-1">
+            People
           </TabsTrigger>
           <TabsTrigger value="rates" className="px-1 !px-1">
             Rates/Tasks
@@ -253,6 +286,7 @@ export function CustomerDrawerContent({
           <CustomerDrawerOverview
             customer={customer}
             allConsultants={allConsultants}
+            assignedUsers={assignedUsers}
             isAdmin={isAdmin}
           />
         </TabsContent>
@@ -320,66 +354,164 @@ export function CustomerDrawerContent({
         </TabsContent>
 
         <TabsContent
-          value="consultants"
+          value="people"
           className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
         >
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-heading-s text-text-primary">
-              Assigned consultants
-            </h2>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setAddConsultantOpen(true)}
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              Add
-            </Button>
-          </div>
-
-          {consultantError ? (
-            <p className="mt-3 text-sm text-danger" role="alert">
-              {consultantError}
-            </p>
-          ) : null}
-
-          {assignedConsultants.length > 0 ? (
-            <ul className="mt-4 divide-y divide-border-subtle">
-              {assignedConsultants.map((consultant) => (
-                <li
-                  key={consultant.id}
-                  className="flex items-center gap-3 py-3"
+          <div className="space-y-8">
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-heading-s text-text-primary">
+                  Consultants
+                </h2>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAddConsultantOpen(true)}
                 >
-                  <InitialsAvatar
-                    name={consultant.name}
-                    initials={consultant.name
-                      .split(" ")
-                      .map((part) => part[0])
-                      .join("")
-                      .toUpperCase()
-                      .slice(0, 2)}
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Add
+                </Button>
+              </div>
+
+              {consultantError ? (
+                <p className="mt-3 text-sm text-danger" role="alert">
+                  {consultantError}
+                </p>
+              ) : null}
+
+              {assignedConsultants.length > 0 ? (
+                <ul className="mt-4 divide-y divide-border-subtle">
+                  {assignedConsultants.map((consultant) => (
+                    <li
+                      key={consultant.id}
+                      className="relative -mx-6 flex items-center gap-3 px-6 py-3 transition-colors hover:bg-interactive-secondary"
+                    >
+                      <Link
+                        href={personHrefForConsultant(
+                          consultant.id,
+                          consultant.appUserId
+                        )}
+                        scroll={false}
+                        prefetch={false}
+                        className="absolute inset-0"
+                        aria-label={consultant.name}
+                      />
+                      <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-3">
+                        <InitialsAvatar
+                          name={consultant.name}
+                          initials={consultant.name
+                            .split(" ")
+                            .map((part) => part[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2)}
+                          size="sm"
+                        />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+                          {consultant.name}
+                        </span>
+                      </div>
+                      <IconButton
+                        variant="ghostDanger"
+                        className="relative z-10"
+                        aria-label={`Remove ${consultant.name}`}
+                        onClick={() => setRemoveTarget(consultant)}
+                        disabled={removing}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </IconButton>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 text-sm text-text-secondary">
+                  No consultants assigned.
+                </p>
+              )}
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-heading-s text-text-primary">
+                  Customer users
+                </h2>
+                {customer.isInternal ? null : (
+                  <Button
+                    type="button"
+                    variant="secondary"
                     size="sm"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-                    {consultant.name}
-                  </span>
-                  <IconButton
-                    variant="ghostDanger"
-                    aria-label={`Remove ${consultant.name}`}
-                    onClick={() => setRemoveTarget(consultant)}
-                    disabled={removing}
+                    onClick={() => setAddUserOpen(true)}
                   >
-                    <Trash2 className="h-4 w-4" aria-hidden />
-                  </IconButton>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-4 text-sm text-text-secondary">
-              No consultants assigned.
-            </p>
-          )}
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Add
+                  </Button>
+                )}
+              </div>
+
+              {userError ? (
+                <p className="mt-3 text-sm text-danger" role="alert">
+                  {userError}
+                </p>
+              ) : null}
+
+              {customer.isInternal ? (
+                <p className="mt-4 text-sm text-text-secondary">
+                  Customer users cannot be linked to Rove.
+                </p>
+              ) : assignedUsers.length > 0 ? (
+                <ul className="mt-4 divide-y divide-border-subtle">
+                  {assignedUsers.map((user) => (
+                    <li
+                      key={user.id}
+                      className="relative -mx-6 flex items-center gap-3 px-6 py-3 transition-colors hover:bg-interactive-secondary"
+                    >
+                      <Link
+                        href={personHrefForUser(user.id)}
+                        scroll={false}
+                        prefetch={false}
+                        className="absolute inset-0"
+                        aria-label={user.name}
+                      />
+                      <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-3">
+                        <InitialsAvatar
+                          name={user.name}
+                          initials={user.name
+                            .split(" ")
+                            .map((part) => part[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2)}
+                          size="sm"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-text-primary">
+                            {user.name}
+                          </span>
+                          <span className="block truncate text-xs text-text-tertiary">
+                            {user.email}
+                          </span>
+                        </span>
+                      </div>
+                      <IconButton
+                        variant="ghostDanger"
+                        className="relative z-10"
+                        aria-label={`Remove ${user.name}`}
+                        onClick={() => setRemoveUserTarget(user)}
+                        disabled={removing}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </IconButton>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 text-sm text-text-secondary">
+                  No customer users assigned.
+                </p>
+              )}
+            </section>
+          </div>
         </TabsContent>
 
         <TabsContent
@@ -425,6 +557,18 @@ export function CustomerDrawerContent({
         existingConsultants={assignedConsultants}
       />
 
+      <AddCustomerUserModal
+        isOpen={addUserOpen}
+        onClose={() => setAddUserOpen(false)}
+        onSuccess={() => {
+          setUserError(null);
+          router.refresh();
+        }}
+        customerId={customer.id}
+        existingUsers={assignedUsers}
+        allCustomerUsers={allCustomerUsers}
+      />
+
       <AddCustomerRateModal
         isOpen={addRateOpen}
         onClose={() => setAddRateOpen(false)}
@@ -444,6 +588,20 @@ export function CustomerDrawerContent({
         variant="primary"
         onClose={() => setRemoveTarget(null)}
         onConfirm={confirmRemoveConsultant}
+      />
+
+      <ConfirmModal
+        isOpen={removeUserTarget != null}
+        title="Remove customer user"
+        message={
+          removeUserTarget
+            ? `Remove ${removeUserTarget.name} from this customer?`
+            : ""
+        }
+        confirmLabel="Remove"
+        variant="primary"
+        onClose={() => setRemoveUserTarget(null)}
+        onConfirm={confirmRemoveUser}
       />
     </>
   );

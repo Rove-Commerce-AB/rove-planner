@@ -40,12 +40,14 @@ export default async function AppLayout({
       : 0;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       <AppThemeAttr />
       <Sidebar
         isAdmin={isAdmin}
         canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
         isSubcontractor={isSubcontractor}
+        isCustomerUser={user?.role === "customer"}
+        appKeys={user?.appKeys ?? []}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppTopBar unreadNotificationCount={unreadNotificationCount} />

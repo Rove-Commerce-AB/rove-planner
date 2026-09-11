@@ -6,6 +6,7 @@ import {
 } from "@/lib/cloudSqlPool";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
 import { upsertGoogleUserConnection } from "@/lib/googleTasksSyncQueries";
+import { isAppKey, type AppKey } from "@/lib/peopleTypes";
 
 function parsePositiveInt(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -13,6 +14,22 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   if (!Number.isFinite(n)) return undefined;
   if (n <= 0) return undefined;
   return Math.floor(n);
+}
+
+async function fetchAppKeysForUserId(appUserId: string): Promise<AppKey[]> {
+  const { rows } = await cloudSqlPool.query<{ app_keys: string[] }>(
+    `SELECT COALESCE(
+       (
+         SELECT array_agg(a.key)
+         FROM app_user_apps aua
+         JOIN apps a ON a.id = aua.app_id
+         WHERE aua.app_user_id = $1
+       ),
+       ARRAY[]::text[]
+     ) AS app_keys`,
+    [appUserId]
+  );
+  return (rows[0]?.app_keys ?? []).filter(isAppKey);
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -69,20 +86,52 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         typeof token.appUserSyncedAt === "number" ? token.appUserSyncedAt : 0;
       const shouldSync =
         trigger === "signIn" ||
+        trigger === "update" ||
         !token.appUserId ||
         !token.role ||
+        !Array.isArray(token.appKeys) ||
         Date.now() - lastSyncedAt > refreshMs;
 
-      if (!shouldSync) return token;
+      if (!shouldSync) {
+        if (typeof token.appUserId === "string") {
+          try {
+            token.appKeys = await fetchAppKeysForUserId(token.appUserId);
+          } catch (e) {
+            if (!isTransientCloudSqlConnectError(e)) throw e;
+            console.warn(
+              "[auth] jwt app keys refresh failed; using cached grants",
+              { email, error: e instanceof Error ? e.message : String(e) }
+            );
+          }
+        }
+        return token;
+      }
 
-      let rows: { id: string; role: string; name: string | null }[] = [];
+      let rows: {
+        id: string;
+        role: string;
+        name: string | null;
+        app_keys: string[];
+      }[] = [];
       try {
         const result = await timedDebug(
           "auth",
           "jwt app_user lookup",
           () =>
             cloudSqlPool.query(
-              "SELECT id, role, name FROM app_users WHERE email = $1",
+              `SELECT
+                 u.id,
+                 u.role,
+                 u.name,
+                 COALESCE(
+                   array_agg(a.key) FILTER (WHERE a.key IS NOT NULL),
+                   ARRAY[]::text[]
+                 ) AS app_keys
+               FROM app_users u
+               LEFT JOIN app_user_apps aua ON aua.app_user_id = u.id
+               LEFT JOIN apps a ON a.id = aua.app_id
+               WHERE u.email = $1
+               GROUP BY u.id, u.role, u.name`,
               [email]
             ),
           { email, trigger: trigger ?? "session" }
@@ -105,16 +154,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (rows[0]) {
         token.appUserId = rows[0].id;
         const dbRole = rows[0].role;
-        if (dbRole === "admin" || dbRole === "member" || dbRole === "subcontractor") {
+        if (
+          dbRole === "admin" ||
+          dbRole === "member" ||
+          dbRole === "subcontractor" ||
+          dbRole === "customer"
+        ) {
           token.role = dbRole;
         } else {
           token.role = undefined;
         }
+        token.appKeys = rows[0].app_keys.filter(isAppKey);
         token.name = rows[0].name ?? token.name;
         token.appUserSyncedAt = Date.now();
       } else {
         token.appUserId = undefined;
         token.role = undefined;
+        token.appKeys = undefined;
         token.appUserSyncedAt = Date.now();
       }
 
@@ -171,12 +227,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const role =
         token.role === "admin" ||
         token.role === "member" ||
-        token.role === "subcontractor"
+        token.role === "subcontractor" ||
+        token.role === "customer"
           ? token.role
           : "member";
       session.user.role = role;
       session.user.appUserId =
         typeof token.appUserId === "string" ? token.appUserId : "";
+      session.user.appKeys = Array.isArray(token.appKeys) ? token.appKeys : [];
       if (typeof token.name === "string") {
         session.user.name = token.name;
       }

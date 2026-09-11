@@ -9,6 +9,7 @@ export type Customer = {
   name: string;
   contact_name: string | null;
   contact_email: string | null;
+  contact_app_user_id: string | null;
   account_manager_id: string | null;
   color: string | null;
   logo_url: string | null;
@@ -33,6 +34,7 @@ export type UpdateCustomerInput = {
   name?: string;
   contact_name?: string | null;
   contact_email?: string | null;
+  contact_app_user_id?: string | null;
   account_manager_id?: string | null;
   color?: string | null;
   logo_url?: string | null;
@@ -42,7 +44,7 @@ export type UpdateCustomerInput = {
 };
 
 const CUSTOMER_SELECT =
-  "id, name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active";
+  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, is_internal, is_active";
 
 const SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX =
   "Only one customer can be internal";
@@ -97,6 +99,29 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+async function appUserContactMap(
+  ids: string[]
+): Promise<Map<string, { name: string; email: string }>> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return new Map();
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    name: string | null;
+    email: string;
+  }>(
+    `SELECT id, name, email FROM app_users WHERE id = ANY($1::uuid[])`,
+    [unique]
+  );
+  const map = new Map<string, { name: string; email: string }>();
+  for (const row of rows) {
+    map.set(row.id, {
+      name: row.name?.trim() || row.email,
+      email: row.email,
+    });
+  }
+  return map;
+}
+
 async function consultantNamesMap(
   ids: string[]
 ): Promise<Map<string, string>> {
@@ -113,6 +138,54 @@ async function consultantNamesMap(
   return map;
 }
 
+function toCustomerWithDetails(
+  customer: Customer,
+  accountManagerNames: Map<string, string>,
+  contactUsers: Map<string, { name: string; email: string }>,
+  customerProjects: {
+    id: string;
+    name: string;
+    is_active: boolean;
+    type: string;
+    probability: number | null;
+  }[]
+): CustomerWithDetails {
+  const contact = customer.contact_app_user_id
+    ? contactUsers.get(customer.contact_app_user_id)
+    : undefined;
+  const activeProjects = customerProjects.filter((project) => project.is_active);
+  const primaryProject = customerProjects[0] ?? null;
+
+  return {
+    id: customer.id,
+    name: customer.name,
+    contactAppUserId: customer.contact_app_user_id ?? null,
+    contactName: contact?.name ?? customer.contact_name,
+    contactEmail: contact?.email ?? customer.contact_email,
+    accountManagerId: customer.account_manager_id ?? null,
+    accountManagerName: customer.account_manager_id
+      ? accountManagerNames.get(customer.account_manager_id) ?? null
+      : null,
+    color: customer.color || DEFAULT_CUSTOMER_COLOR,
+    logoUrl: customer.logo_url ?? null,
+    url: customer.url ?? null,
+    isInternal: customer.is_internal ?? false,
+    initials: getInitials(customer.name),
+    isActive: customer.is_active ?? true,
+    activeProjectCount: activeProjects.length,
+    primaryProject: primaryProject
+      ? { name: primaryProject.name, isActive: primaryProject.is_active }
+      : null,
+    projects: customerProjects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      isActive: project.is_active,
+      type: project.type as ProjectType,
+      probability: project.probability,
+    })),
+  };
+}
+
 export async function fetchCustomerById(
   id: string
 ): Promise<CustomerWithDetails | null> {
@@ -126,6 +199,9 @@ export async function fetchCustomerById(
   const accountManagerNames = data.account_manager_id
     ? await consultantNamesMap([data.account_manager_id])
     : new Map<string, string>();
+  const contactUsers = data.contact_app_user_id
+    ? await appUserContactMap([data.contact_app_user_id])
+    : new Map<string, { name: string; email: string }>();
 
   const projectsByCustomer = new Map<
     string,
@@ -155,36 +231,12 @@ export async function fetchCustomerById(
   }
 
   const customerProjects = projectsByCustomer.get(data.id) ?? [];
-  const activeProjects = customerProjects.filter((p) => p.is_active);
-  const primaryProject = customerProjects[0] ?? null;
-
-  return {
-    id: data.id,
-    name: data.name,
-    contactName: data.contact_name,
-    contactEmail: data.contact_email,
-    accountManagerId: data.account_manager_id ?? null,
-    accountManagerName: data.account_manager_id
-      ? accountManagerNames.get(data.account_manager_id) ?? null
-      : null,
-    color: data.color || DEFAULT_CUSTOMER_COLOR,
-    logoUrl: data.logo_url ?? null,
-    url: data.url ?? null,
-    isInternal: data.is_internal ?? false,
-    initials: getInitials(data.name),
-    isActive: data.is_active ?? true,
-    activeProjectCount: activeProjects.length,
-    primaryProject: primaryProject
-      ? { name: primaryProject.name, isActive: primaryProject.is_active }
-      : null,
-    projects: customerProjects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      isActive: p.is_active,
-      type: p.type as ProjectType,
-      probability: p.probability,
-    })),
-  };
+  return toCustomerWithDetails(
+    data,
+    accountManagerNames,
+    contactUsers,
+    customerProjects
+  );
 }
 
 export async function fetchCustomers(): Promise<Customer[]> {
@@ -268,6 +320,15 @@ export async function updateCustomerQuery(
 ): Promise<Customer> {
   if (input.is_internal) {
     await assertNoOtherInternalCustomer(id);
+    const { rows: memberRows } = await cloudSqlPool.query<{ exists: number }>(
+      `SELECT 1 AS exists FROM customer_app_users WHERE customer_id = $1 LIMIT 1`,
+      [id]
+    );
+    if (memberRows[0]) {
+      throw new Error(
+        "Remove customer users before making this the internal customer"
+      );
+    }
   }
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -276,13 +337,31 @@ export async function updateCustomerQuery(
     sets.push(`name = $${i++}`);
     values.push(input.name.trim());
   }
-  if (input.contact_name !== undefined) {
-    sets.push(`contact_name = $${i++}`);
-    values.push(input.contact_name?.trim() || null);
-  }
-  if (input.contact_email !== undefined) {
-    sets.push(`contact_email = $${i++}`);
-    values.push(input.contact_email?.trim() || null);
+  if (input.contact_app_user_id !== undefined) {
+    const contactId = input.contact_app_user_id || null;
+    sets.push(`contact_app_user_id = $${i++}`);
+    values.push(contactId);
+    if (contactId) {
+      const contact = (await appUserContactMap([contactId])).get(contactId);
+      sets.push(`contact_name = $${i++}`);
+      values.push(contact?.name ?? null);
+      sets.push(`contact_email = $${i++}`);
+      values.push(contact?.email ?? null);
+    } else {
+      sets.push(`contact_name = $${i++}`);
+      values.push(null);
+      sets.push(`contact_email = $${i++}`);
+      values.push(null);
+    }
+  } else {
+    if (input.contact_name !== undefined) {
+      sets.push(`contact_name = $${i++}`);
+      values.push(input.contact_name?.trim() || null);
+    }
+    if (input.contact_email !== undefined) {
+      sets.push(`contact_email = $${i++}`);
+      values.push(input.contact_email?.trim() || null);
+    }
   }
   if (input.account_manager_id !== undefined) {
     sets.push(`account_manager_id = $${i++}`);
@@ -303,6 +382,10 @@ export async function updateCustomerQuery(
   if (input.is_internal !== undefined) {
     sets.push(`is_internal = $${i++}`);
     values.push(input.is_internal);
+    if (input.is_internal) {
+      sets.push(`contact_app_user_id = $${i++}`);
+      values.push(null);
+    }
   }
   if (input.is_active !== undefined) {
     sets.push(`is_active = $${i++}`);
@@ -343,7 +426,13 @@ export async function fetchCustomersWithDetails(): Promise<
   const accountManagerIds = [
     ...new Set(customers.map((c) => c.account_manager_id).filter(Boolean)),
   ] as string[];
-  const accountManagerNames = await consultantNamesMap(accountManagerIds);
+  const contactUserIds = [
+    ...new Set(customers.map((c) => c.contact_app_user_id).filter(Boolean)),
+  ] as string[];
+  const [accountManagerNames, contactUsers] = await Promise.all([
+    consultantNamesMap(accountManagerIds),
+    appUserContactMap(contactUserIds),
+  ]);
 
   const projectsByCustomer = new Map<
     string,
@@ -374,37 +463,12 @@ export async function fetchCustomersWithDetails(): Promise<
     // Projects table may not exist yet
   }
 
-  return customers.map((c) => {
-    const customerProjects = projectsByCustomer.get(c.id) ?? [];
-    const activeProjects = customerProjects.filter((p) => p.is_active);
-    const primaryProject = customerProjects[0] ?? null;
-
-    return {
-      id: c.id,
-      name: c.name,
-      contactName: c.contact_name,
-      contactEmail: c.contact_email,
-      accountManagerId: c.account_manager_id ?? null,
-      accountManagerName: c.account_manager_id
-        ? accountManagerNames.get(c.account_manager_id) ?? null
-        : null,
-      color: c.color || DEFAULT_CUSTOMER_COLOR,
-      logoUrl: c.logo_url ?? null,
-      url: c.url ?? null,
-      isInternal: c.is_internal ?? false,
-      initials: getInitials(c.name),
-      isActive: c.is_active ?? true,
-      activeProjectCount: activeProjects.length,
-      primaryProject: primaryProject
-        ? { name: primaryProject.name, isActive: primaryProject.is_active }
-        : null,
-      projects: customerProjects.map((p) => ({
-        id: p.id,
-        name: p.name,
-        isActive: p.is_active,
-        type: p.type as ProjectType,
-        probability: p.probability,
-      })),
-    };
-  });
+  return customers.map((c) =>
+    toCustomerWithDetails(
+      c,
+      accountManagerNames,
+      contactUsers,
+      projectsByCustomer.get(c.id) ?? []
+    )
+  );
 }

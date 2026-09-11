@@ -9,8 +9,13 @@ const nextConfig = {
         destination: "/settings/customers/:id",
         permanent: false,
       },
-      { source: "/konsulter", destination: "/settings/consultants", permanent: false },
-      { source: "/consultants", destination: "/settings/consultants", permanent: false },
+      { source: "/konsulter", destination: "/settings/people", permanent: false },
+      { source: "/consultants", destination: "/settings/people", permanent: false },
+      {
+        source: "/konsulter/:id",
+        destination: "/settings/consultants/:id",
+        permanent: false,
+      },
       {
         source: "/consultants/:id",
         destination: "/settings/consultants/:id",

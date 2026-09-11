@@ -10,6 +10,8 @@ type Props<T extends string> = {
   options: SegmentedControlOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  /** Clicking the selected pill returns to this value (typically `"all"`). */
+  allowDeselectTo?: T;
   "aria-label": string;
   className?: string;
 };
@@ -22,6 +24,7 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  allowDeselectTo,
   "aria-label": ariaLabel,
   className = "",
 }: Props<T>) {
@@ -42,7 +45,16 @@ export function SegmentedControl<T extends string>({
             role="radio"
             aria-checked={selected}
             onClick={() => {
-              if (!selected) onChange(opt.value);
+              if (selected) {
+                if (
+                  allowDeselectTo != null &&
+                  opt.value !== allowDeselectTo
+                ) {
+                  onChange(allowDeselectTo);
+                }
+                return;
+              }
+              onChange(opt.value);
             }}
             className={
               selected

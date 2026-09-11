@@ -335,7 +335,7 @@ export function ConsultantsPageClient({
       >
         {selectedConsultant != null ? (
           <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="shrink-0 px-6 !gap-6">
+            <TabsList className="shrink-0 border-border-default px-6 !gap-6">
               <TabsTrigger
                 value="overview"
                 className="px-1 !px-1 font-semibold data-[state=inactive]:font-medium"

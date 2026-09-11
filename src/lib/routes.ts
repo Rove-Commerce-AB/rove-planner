@@ -5,7 +5,9 @@ export const ROUTES = {
   timeReport: "/time-report/time-report",
   timeApproval: "/time-report/approval",
   insights: "/insights",
+  work: "/work",
   settings: "/settings/general",
+  people: "/settings/people",
   consultants: "/settings/consultants",
   customers: "/settings/customers",
   notifications: "/notifications",
@@ -25,4 +27,19 @@ export function customerHref(id: string): string {
 
 export function consultantHref(id: string): string {
   return `${ROUTES.consultants}/${id}`;
+}
+
+export function personHref(key: string): string {
+  return `${ROUTES.people}/${key}`;
+}
+
+export function personHrefForConsultant(
+  consultantId: string,
+  appUserId?: string | null
+): string {
+  return personHref(appUserId ? `user-${appUserId}` : `consultant-${consultantId}`);
+}
+
+export function personHrefForUser(appUserId: string): string {
+  return personHref(`user-${appUserId}`);
 }

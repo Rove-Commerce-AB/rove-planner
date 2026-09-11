@@ -27,6 +27,7 @@ export async function createConsultantAndRevalidate(
 
   revalidateTag("allocation-consultants", "max");
   revalidatePath(ROUTES.consultants);
+  revalidatePath(ROUTES.people);
   revalidatePath(consultantHref(result.id));
   revalidatePath(ROUTES.allocation);
   return result;
@@ -37,5 +38,6 @@ export async function deleteConsultantAction(id: string): Promise<void> {
   await deleteConsultant(id);
   revalidateTag("allocation-consultants", "max");
   revalidatePath(ROUTES.consultants);
+  revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.allocation);
 }

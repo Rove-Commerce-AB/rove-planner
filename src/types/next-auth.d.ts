@@ -1,5 +1,6 @@
 import "next-auth";
 import "next-auth/jwt";
+import type { AppKey, AppUserRole } from "@/lib/peopleTypes";
 
 declare module "next-auth" {
   interface Session {
@@ -7,8 +8,9 @@ declare module "next-auth" {
       email: string;
       name?: string | null;
       image?: string | null;
-      role: "admin" | "member" | "subcontractor";
+      role: AppUserRole;
       appUserId: string;
+      appKeys: AppKey[];
     };
   }
 }
@@ -16,7 +18,8 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     appUserId?: string;
-    role?: "admin" | "member" | "subcontractor";
+    role?: AppUserRole;
+    appKeys?: AppKey[];
     appUserSyncedAt?: number;
   }
 }

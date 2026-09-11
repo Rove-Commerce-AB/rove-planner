@@ -10,7 +10,7 @@ export default function AccessDeniedPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-6">
+    <div className="flex min-h-full flex-col items-center justify-center p-6">
       <Panel className="w-full max-w-sm p-8">
         <h1 className="text-heading-m text-text-primary">
           Access denied

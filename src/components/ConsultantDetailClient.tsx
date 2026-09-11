@@ -11,6 +11,7 @@ import {
   DetailPageHeader,
   DetailFieldStack,
   DrawerFieldRow,
+  DrawerSelectField,
   FieldValue,
   InlineEditFieldContainer,
   InlineEditStatus,
@@ -57,6 +58,14 @@ type Props = {
   isAdmin?: boolean;
   /** When true, skip the page header (the SideDrawer already shows the name). */
   embedded?: boolean;
+  /** Account identity is managed on People > Overview for linked users. */
+  hideIdentityFields?: boolean;
+  /** Destination after deleting an embedded consultant profile. */
+  afterDeleteHref?: string;
+  deleteLabel?: string;
+  deleteTitle?: string;
+  deleteMessage?: string;
+  deleteConfirmLabel?: string;
 };
 
 function ConsultantField({
@@ -99,6 +108,12 @@ export function ConsultantDetailClient({
   consultant: initial,
   isAdmin = false,
   embedded = false,
+  hideIdentityFields = false,
+  afterDeleteHref = ROUTES.consultants,
+  deleteLabel = "Delete consultant",
+  deleteTitle = "Delete consultant",
+  deleteMessage,
+  deleteConfirmLabel = "Delete",
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
@@ -303,7 +318,7 @@ export function ConsultantDetailClient({
     try {
       await deleteConsultantAction(initial.id);
       setShowDeleteConfirm(false);
-      router.push(ROUTES.consultants);
+      router.push(afterDeleteHref);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
@@ -406,81 +421,107 @@ export function ConsultantDetailClient({
 
   const teamField = (
     <ConsultantField embedded={embedded} label="Team">
-      <InlineEditFieldContainer
-        isEditing={editingField === "team"}
-        onRequestClose={commitEdit}
-        hideAccessory={embedded}
-        reserveStatusRow={!embedded}
-        showSavedIndicator={showSaved && lastSavedFieldRef.current === "team"}
-        displayContent={
-          <InlineEditTrigger
-            boxed={embedded}
-            showChevron={embedded}
-            onClick={() => startEdit("team", teamId ?? "")}
-          >
-            <ConsultantValue embedded={embedded}>
-              {teamOptions.find((o) => o.value === (teamId ?? ""))?.label ??
-                initial.teamName ??
-                "—"}
-            </ConsultantValue>
-          </InlineEditTrigger>
-        }
-        editContent={
-          <Select
-            value={editValue}
-            onValueChange={(v) => {
-              setEditValue(v);
-              commitEdit(v);
-            }}
-            onBlur={() => commitEdit()}
-            variant="inlineEdit"
-            options={teamOptions}
-            placeholder="No team"
-            className="min-w-0 flex-1 w-full"
-            triggerClassName={editTriggerClass}
-          />
-        }
-        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-      />
+      {embedded ? (
+        <DrawerSelectField
+          value={teamId ?? ""}
+          onValueChange={(value) => {
+            if (!isInlineEditValueChanged(teamId ?? "", value)) return;
+            void saveField("team", value);
+          }}
+          options={teamOptions}
+          placeholder="No team"
+          isLoading={!optionsReady}
+        />
+      ) : (
+        <InlineEditFieldContainer
+          isEditing={editingField === "team"}
+          onRequestClose={commitEdit}
+          hideAccessory={embedded}
+          reserveStatusRow={!embedded}
+          showSavedIndicator={showSaved && lastSavedFieldRef.current === "team"}
+          displayContent={
+            <InlineEditTrigger
+              boxed={embedded}
+              showChevron={embedded}
+              onClick={() => startEdit("team", teamId ?? "")}
+            >
+              <ConsultantValue embedded={embedded}>
+                {teamOptions.find((o) => o.value === (teamId ?? ""))?.label ??
+                  initial.teamName ??
+                  "—"}
+              </ConsultantValue>
+            </InlineEditTrigger>
+          }
+          editContent={
+            <Select
+              value={editValue}
+              onValueChange={(v) => {
+                setEditValue(v);
+                commitEdit(v);
+              }}
+              onBlur={() => commitEdit()}
+              variant="inlineEdit"
+              options={teamOptions}
+              placeholder="No team"
+              className="min-w-0 flex-1 w-full"
+              triggerClassName={editTriggerClass}
+            />
+          }
+          statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+        />
+      )}
     </ConsultantField>
   );
 
   const roleField = (
     <ConsultantField embedded={embedded} label="Role">
-      <InlineEditFieldContainer
-        isEditing={editingField === "role"}
-        onRequestClose={commitEdit}
-        hideAccessory={embedded}
-        reserveStatusRow={!embedded}
-        showSavedIndicator={showSaved && lastSavedFieldRef.current === "role"}
-        displayContent={
-          <InlineEditTrigger
-            boxed={embedded}
-            showChevron={embedded}
-            onClick={() => startEdit("role", roleId)}
-          >
-            <ConsultantValue embedded={embedded}>
-              {roleOptions.find((o) => o.value === roleId)?.label ?? initial.roleName ?? "—"}
-            </ConsultantValue>
-          </InlineEditTrigger>
-        }
-        editContent={
-          <Select
-            value={editValue}
-            onValueChange={(v) => {
-              setEditValue(v);
-              commitEdit(v);
-            }}
-            onBlur={() => commitEdit()}
-            variant="inlineEdit"
-            options={roleOptions}
-            placeholder="Select role"
-            className="min-w-0 flex-1 w-full"
-            triggerClassName={editTriggerClass}
-          />
-        }
-        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-      />
+      {embedded ? (
+        <DrawerSelectField
+          value={roleId}
+          onValueChange={(value) => {
+            if (!isInlineEditValueChanged(roleId, value)) return;
+            void saveField("role", value);
+          }}
+          options={roleOptions}
+          placeholder="Select role"
+          isLoading={!optionsReady}
+        />
+      ) : (
+        <InlineEditFieldContainer
+          isEditing={editingField === "role"}
+          onRequestClose={commitEdit}
+          hideAccessory={embedded}
+          reserveStatusRow={!embedded}
+          showSavedIndicator={showSaved && lastSavedFieldRef.current === "role"}
+          displayContent={
+            <InlineEditTrigger
+              boxed={embedded}
+              showChevron={embedded}
+              onClick={() => startEdit("role", roleId)}
+            >
+              <ConsultantValue embedded={embedded}>
+                {roleOptions.find((o) => o.value === roleId)?.label ?? initial.roleName ?? "—"}
+              </ConsultantValue>
+            </InlineEditTrigger>
+          }
+          editContent={
+            <Select
+              value={editValue}
+              onValueChange={(v) => {
+                setEditValue(v);
+                commitEdit(v);
+              }}
+              onBlur={() => commitEdit()}
+              variant="inlineEdit"
+              options={roleOptions}
+              placeholder="Select role"
+              className="min-w-0 flex-1 w-full"
+              triggerClassName={editTriggerClass}
+            />
+          }
+          statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+        />
+      )}
     </ConsultantField>
   );
 
@@ -564,6 +605,7 @@ export function ConsultantDetailClient({
               commitEdit(v);
             }}
             onBlur={() => commitEdit()}
+            defaultOpen={embedded}
             variant="inlineEdit"
             options={WORK_PERCENTAGE_OPTIONS.map((p) => ({
               value: String(p),
@@ -617,6 +659,7 @@ export function ConsultantDetailClient({
               commitEdit(v);
             }}
             onBlur={() => commitEdit()}
+            defaultOpen={embedded}
             variant="inlineEdit"
             options={OVERHEAD_PERCENTAGE_OPTIONS.map((p) => ({
               value: String(p),
@@ -760,42 +803,55 @@ export function ConsultantDetailClient({
 
   const calendarField = (
     <ConsultantField embedded={embedded} label="Calendar">
-      <InlineEditFieldContainer
-        isEditing={editingField === "calendar"}
-        onRequestClose={commitEdit}
-        hideAccessory={embedded}
-        reserveStatusRow={!embedded}
-        showSavedIndicator={showSaved && lastSavedFieldRef.current === "calendar"}
-        displayContent={
-          <InlineEditTrigger
-            boxed={embedded}
-            showChevron={embedded}
-            onClick={() => startEdit("calendar", calendarId)}
-          >
-            <ConsultantValue embedded={embedded}>
-              {calendarOptions.find((o) => o.value === calendarId)?.label ??
-                initial.calendarName ??
-                "—"}
-            </ConsultantValue>
-          </InlineEditTrigger>
-        }
-        editContent={
-          <Select
-            value={editValue}
-            onValueChange={(v) => {
-              setEditValue(v);
-              commitEdit(v);
-            }}
-            onBlur={() => commitEdit()}
-            variant="inlineEdit"
-            options={calendarOptions}
-            placeholder="Select calendar"
-            className="min-w-0 flex-1 w-full"
-            triggerClassName={editTriggerClass}
-          />
-        }
-        statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
-      />
+      {embedded ? (
+        <DrawerSelectField
+          value={calendarId}
+          onValueChange={(value) => {
+            if (!isInlineEditValueChanged(calendarId, value)) return;
+            void saveField("calendar", value);
+          }}
+          options={calendarOptions}
+          placeholder="Select calendar"
+          isLoading={!optionsReady}
+        />
+      ) : (
+        <InlineEditFieldContainer
+          isEditing={editingField === "calendar"}
+          onRequestClose={commitEdit}
+          hideAccessory={embedded}
+          reserveStatusRow={!embedded}
+          showSavedIndicator={showSaved && lastSavedFieldRef.current === "calendar"}
+          displayContent={
+            <InlineEditTrigger
+              boxed={embedded}
+              showChevron={embedded}
+              onClick={() => startEdit("calendar", calendarId)}
+            >
+              <ConsultantValue embedded={embedded}>
+                {calendarOptions.find((o) => o.value === calendarId)?.label ??
+                  initial.calendarName ??
+                  "—"}
+              </ConsultantValue>
+            </InlineEditTrigger>
+          }
+          editContent={
+            <Select
+              value={editValue}
+              onValueChange={(v) => {
+                setEditValue(v);
+                commitEdit(v);
+              }}
+              onBlur={() => commitEdit()}
+              variant="inlineEdit"
+              options={calendarOptions}
+              placeholder="Select calendar"
+              className="min-w-0 flex-1 w-full"
+              triggerClassName={editTriggerClass}
+            />
+          }
+          statusContent={<InlineEditStatus status={inlineEditStatus} message={error} />}
+        />
+      )}
     </ConsultantField>
   );
 
@@ -829,11 +885,11 @@ export function ConsultantDetailClient({
 
       {embedded ? (
         <div className="flex min-h-full flex-1 flex-col">
-          <div className="px-6">
-            {nameField}
+          <div className="px-6 pt-4">
+            {hideIdentityFields ? null : nameField}
             {teamField}
             {roleField}
-            {emailField}
+            {hideIdentityFields ? null : emailField}
             {startDateField}
             {endDateField}
             {isAdmin ? birthDateField : null}
@@ -852,7 +908,7 @@ export function ConsultantDetailClient({
               <DetailPageDeleteFooter
                 onRequestDelete={() => setShowDeleteConfirm(true)}
                 disabled={submitting || deleting}
-                label="Delete consultant"
+                label={deleteLabel}
                 className="pt-2"
               />
             </div>
@@ -881,7 +937,7 @@ export function ConsultantDetailClient({
         <DetailPageDeleteFooter
           onRequestDelete={() => setShowDeleteConfirm(true)}
           disabled={submitting || deleting}
-          label="Delete consultant"
+          label={deleteLabel}
           className="pt-4"
         />
       )}
@@ -889,9 +945,11 @@ export function ConsultantDetailClient({
       {isAdmin && (
         <ConfirmModal
           isOpen={showDeleteConfirm}
-          title="Delete consultant"
-          message={`Delete ${name}? This cannot be undone.`}
-          confirmLabel="Delete"
+          title={deleteTitle}
+          message={
+            deleteMessage ?? `Delete ${name}? This cannot be undone.`
+          }
+          confirmLabel={deleteConfirmLabel}
           variant="danger"
           onClose={() => setShowDeleteConfirm(false)}
           onConfirm={handleDelete}

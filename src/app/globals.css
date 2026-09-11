@@ -247,12 +247,33 @@ table thead th.time-grid-header-column-active {
     color-mix(in srgb, var(--color-interactive-primary) 32%, transparent);
 }
 
-/* Current week column: primary accent border. Width 2px so it wins over adjacent 1px borders in border-collapse. */
+/* Current-week separators use overlays in both header and body.
+   Keeping them out of the collapsed border model makes both sections share the
+   exact same column edge while the header remains sticky. */
 .allocation-tables td.current-week-cell {
-  border-left-width: 2px !important;
-  border-right-width: 2px !important;
-  border-left-color: var(--color-brand-signal) !important;
-  border-right-color: var(--color-brand-signal) !important;
+  position: relative;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+}
+
+.allocation-tables td.current-week-cell::before,
+.allocation-tables td.current-week-cell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-brand-signal);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.allocation-tables td.current-week-cell::before {
+  left: 0;
+}
+
+.allocation-tables td.current-week-cell::after {
+  right: 0;
 }
 
 /* Header current-week separators are drawn via pseudo-elements as well (see below). */
