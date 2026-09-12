@@ -13,7 +13,7 @@ import {
   EmptyState,
   Input,
   PageHeader,
-  SegmentedControl,
+  Select,
   SideDrawer,
   type DataTableColumn,
 } from "@/components/ui";
@@ -29,7 +29,6 @@ import { ROUTES, customerHref } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
 import type { CustomerWithDetails } from "@/types";
 
-type CustomerFilter = "all" | `account-manager:${string}`;
 type SortKey =
   | "name"
   | "accountManager"
@@ -142,8 +141,7 @@ export function CustomersPageClient({
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] =
-    useState<CustomerFilter>("all");
+  const [accountManagerFilterId, setAccountManagerFilterId] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("asc");
@@ -153,9 +151,8 @@ export function CustomersPageClient({
     const query = search.trim().toLowerCase();
     return customers.filter((customer) => {
       if (
-        customerFilter !== "all" &&
-        customer.accountManagerId !==
-          customerFilter.slice("account-manager:".length)
+        accountManagerFilterId &&
+        customer.accountManagerId !== accountManagerFilterId
       ) {
         return false;
       }
@@ -167,7 +164,7 @@ export function CustomersPageClient({
         (customer.contactEmail ?? "").toLowerCase().includes(query)
       );
     });
-  }, [customerFilter, customers, search]);
+  }, [accountManagerFilterId, customers, search]);
 
   const activeCustomers = useMemo(
     () =>
@@ -270,42 +267,23 @@ export function CustomersPageClient({
     setSortDirection("asc");
   }
 
-  const customerFilterOptions = useMemo(
-    () => {
-      const activeCustomersForFilters = customers.filter(
-        (customer) => customer.isActive
+  const accountManagerOptions = useMemo(() => {
+    const accountManagers = new Map<string, string>();
+    for (const customer of customers) {
+      if (!customer.isActive) continue;
+      if (!customer.accountManagerId || !customer.accountManagerName) continue;
+      accountManagers.set(
+        customer.accountManagerId,
+        customer.accountManagerName
       );
-      const accountManagers = new Map<
-        string,
-        { name: string; count: number }
-      >();
-
-      for (const customer of activeCustomersForFilters) {
-        if (!customer.accountManagerId || !customer.accountManagerName) continue;
-        const current = accountManagers.get(customer.accountManagerId);
-        accountManagers.set(customer.accountManagerId, {
-          name: customer.accountManagerName,
-          count: (current?.count ?? 0) + 1,
-        });
-      }
-
-      return [
-        {
-          value: "all" as const,
-          label: "All",
-          count: activeCustomersForFilters.length,
-        },
-        ...[...accountManagers.entries()]
-          .sort(([, a], [, b]) => compareTextSv(a.name, b.name))
-          .map(([id, accountManager]) => ({
-            value: `account-manager:${id}` as const,
-            label: accountManager.name,
-            count: accountManager.count,
-          })),
-      ];
-    },
-    [customers]
-  );
+    }
+    return [
+      { value: "", label: "All account managers" },
+      ...[...accountManagers.entries()]
+        .sort(([, a], [, b]) => compareTextSv(a, b))
+        .map(([id, name]) => ({ value: id, label: name })),
+    ];
+  }, [customers]);
 
   function openCustomer(id: string) {
     router.push(customerHref(id), { scroll: false });
@@ -367,14 +345,19 @@ export function CustomersPageClient({
                   className="pl-9"
                 />
               </div>
-              <SegmentedControl
-                className="min-w-0 flex-1"
-                aria-label="Filter customers"
-                value={customerFilter}
-                onChange={setCustomerFilter}
-                allowDeselectTo="all"
-                options={customerFilterOptions}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                  Filter
+                </span>
+                <Select
+                  variant="filter"
+                  value={accountManagerFilterId}
+                  onValueChange={setAccountManagerFilterId}
+                  options={accountManagerOptions}
+                  className="w-auto min-w-0"
+                  triggerClassName="min-w-[180px]"
+                />
+              </div>
             </div>
 
             {matchingCustomers.length === 0 ? (

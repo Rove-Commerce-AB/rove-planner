@@ -296,6 +296,19 @@ export function CustomerDrawerContent({
           className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
         >
           <div className="space-y-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-heading-s text-text-primary">Projects</h2>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setCreatingProject(true)}
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Add
+              </Button>
+            </div>
+
             <ProjectGroup
               title="Confirmed"
               projects={confirmed}
@@ -307,15 +320,6 @@ export function CustomerDrawerContent({
               tone="pipeline"
               onOpen={(id) => router.push(`/projects/${id}`)}
             />
-
-            <Button
-              type="button"
-              className="w-full"
-              onClick={() => setCreatingProject(true)}
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              Create new project
-            </Button>
 
             {inactive.length > 0 ? (
               <div>
@@ -527,7 +531,7 @@ export function CustomerDrawerContent({
               onClick={() => setAddRateOpen(true)}
             >
               <Plus className="h-4 w-4" aria-hidden />
-              Add rate
+              Add
             </Button>
           </div>
           {ratesError ? (

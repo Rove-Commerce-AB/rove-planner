@@ -230,7 +230,7 @@ export function Sidebar({
           </span>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <NavLink href={ROUTES.home} label="Home" icon={Home} pathname={pathname} />
           {!isSubcontractor && appKeys.includes("planner") && (
             <AppGroup

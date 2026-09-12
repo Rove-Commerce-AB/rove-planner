@@ -52,7 +52,6 @@ import {
   Input,
   PageHeader,
   SAVED_DURATION_MS,
-  SegmentedControl,
   Select,
   Switch,
   SideDrawer,
@@ -891,6 +890,7 @@ export function PeoplePageClient({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PeopleFilter>("all");
+  const [teamFilterId, setTeamFilterId] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [chooseTypeOpen, setChooseTypeOpen] = useState(false);
@@ -926,6 +926,9 @@ export function PeoplePageClient({
       if (filter === "customer-users" && person.userRole !== "customer") {
         return false;
       }
+      if (teamFilterId && person.consultant?.team_id !== teamFilterId) {
+        return false;
+      }
       if (!query) return true;
       return (
         person.name.toLowerCase().includes(query) ||
@@ -956,7 +959,7 @@ export function PeoplePageClient({
         direction * compareTextSv(left, right) || compareTextSv(a.name, b.name)
       );
     });
-  }, [filter, people, search, sortDirection, sortKey]);
+  }, [filter, people, search, sortDirection, sortKey, teamFilterId]);
 
   const columns: DataTableColumn<PersonListItem>[] = [
     {
@@ -999,32 +1002,29 @@ export function PeoplePageClient({
     },
   ];
 
-  const filterOptions = [
-    { value: "all" as const, label: "All", count: people.length },
-    {
-      value: "users" as const,
-      label: "Users",
-      count: people.filter(
-        (person) => person.appUserId && person.userRole !== "customer"
-      ).length,
-    },
-    {
-      value: "consultants" as const,
-      label: "Consultants",
-      count: people.filter((person) => person.consultantId).length,
-    },
-    {
-      value: "consultant-only" as const,
-      label: "Without account",
-      count: people.filter((person) => person.consultantId && !person.appUserId)
-        .length,
-    },
-    {
-      value: "customer-users" as const,
-      label: "Customer users",
-      count: people.filter((person) => person.userRole === "customer").length,
-    },
+  const typeFilterOptions = [
+    { value: "all", label: "All types" },
+    { value: "users", label: "Users" },
+    { value: "consultants", label: "Consultants" },
+    { value: "consultant-only", label: "Without account" },
+    { value: "customer-users", label: "Customer users" },
   ];
+
+  const teamFilterOptions = useMemo(() => {
+    const teams = new Map<string, string>();
+    for (const person of people) {
+      const teamId = person.consultant?.team_id;
+      const teamName = person.consultant?.teamName;
+      if (!teamId || !teamName) continue;
+      teams.set(teamId, teamName.replace(/^Team\s+/i, ""));
+    }
+    return [
+      { value: "", label: "All teams" },
+      ...[...teams.entries()]
+        .sort(([, a], [, b]) => compareTextSv(a, b))
+        .map(([id, name]) => ({ value: id, label: name })),
+    ];
+  }, [people]);
 
   function handleSort(columnId: string) {
     const key = columnId as SortKey;
@@ -1082,14 +1082,27 @@ export function PeoplePageClient({
                   aria-label="Search people"
                 />
               </div>
-              <SegmentedControl
-                className="min-w-0 flex-1"
-                aria-label="Filter people"
-                value={filter}
-                onChange={setFilter}
-                allowDeselectTo="all"
-                options={filterOptions}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                  Filter
+                </span>
+                <Select
+                  variant="filter"
+                  value={filter}
+                  onValueChange={(value) => setFilter(value as PeopleFilter)}
+                  options={typeFilterOptions}
+                  className="w-auto min-w-0"
+                  triggerClassName="min-w-[160px]"
+                />
+                <Select
+                  variant="filter"
+                  value={teamFilterId}
+                  onValueChange={setTeamFilterId}
+                  options={teamFilterOptions}
+                  className="w-auto min-w-0"
+                  triggerClassName="min-w-[160px]"
+                />
+              </div>
             </div>
             {visible.length ? (
               <DataTable
