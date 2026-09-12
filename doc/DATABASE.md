@@ -1,9 +1,25 @@
 # Database schema
 
-This document mirrors the **PostgreSQL** schema in use (DDL excerpt), e.g. on **Google Cloud SQL**. Use it when generating queries, types, or UI logic.  
+This document mirrors the **PostgreSQL** application schema after the
+People / customer-user / Work rollout (snapshot **2026-09-12**). Use it when
+generating queries, types, or UI logic.
+
 Terminology: we use **customer** (never client).
 
-> Additional indexes, unique constraints, and policies may exist in the live database and are not repeated here unless noted.
+Authorization and most row-level rules are enforced in **application code**
+(Auth.js + `app_users` + `app_user_apps` + checks in `src/lib/`). Database
+triggers additionally enforce customer-user rules. See
+[`PEOPLE_MIGRATION.md`](PEOPLE_MIGRATION.md) for People / app-access rollout.
+
+---
+
+## Enums
+
+### project_type
+
+`customer` | `internal` | `absence`
+
+Used by `projects.type`. Default `customer`.
 
 ---
 
@@ -18,10 +34,16 @@ all internal relationships use the account UUID.
 | email | text | NOT NULL, UNIQUE |
 | role | text | NOT NULL, default `member`; check: `admin`, `member`, `subcontractor`, `customer` |
 | name | text | nullable |
-| created_at | timestamptz | NOT NULL, default now() |
-| updated_at | timestamptz | NOT NULL, default now() |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
 
-Application code may map legacy DB values (e.g. `underkonsult`) to `subcontractor`.
+Indexes: unique `(email)`; btree `(email)`.
+
+Trigger `app_users_customer_role_enforce` (BEFORE INSERT/UPDATE) runs
+`enforce_customer_user_rules()`.
+
+Application code may map legacy DB values (e.g. `underkonsult`) to
+`subcontractor`.
 
 ---
 
@@ -32,12 +54,17 @@ Catalogue of assignable Rove apps.
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| key | text | NOT NULL, UNIQUE; `planner`, `time_report`, `insights`, `work` |
+| key | text | NOT NULL, UNIQUE; check `^[a-z][a-z0-9_]*$` |
 | name | text | NOT NULL |
-| created_at | timestamptz | NOT NULL, default now() |
-| updated_at | timestamptz | NOT NULL, default now() |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
 
-`work` is added by [`scripts/20260911_rove_work_app.sql`](../scripts/20260911_rove_work_app.sql) and is not auto-granted.
+Live catalogue rows: `planner` / Planner, `time_report` / Time report,
+`insights` / Insights, `work` / Work.
+
+`work` is added by
+[`scripts/20260911_rove_work_app.sql`](../scripts/20260911_rove_work_app.sql)
+and is not auto-granted.
 
 ---
 
@@ -49,9 +76,37 @@ Many-to-many app access assigned to login accounts.
 |--------|------|--------|
 | app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
 | app_id | uuid | PK part, FK → `apps.id`, ON DELETE CASCADE |
-| created_at | timestamptz | NOT NULL, default now() |
+| created_at | timestamptz | NOT NULL, default `now()` |
 
-Application actions require every **Rove** account (`admin`, `member`, `subcontractor`) to retain at least one app. `customer` accounts must have none of the Rove apps.
+Index: `(app_id)`.
+
+Trigger `app_user_apps_customer_user_enforce` (BEFORE INSERT/UPDATE) runs
+`enforce_customer_user_rules()`.
+
+Application actions require every **Rove** account (`admin`, `member`,
+`subcontractor`) to retain at least one app. `customer` accounts must have
+none of the Rove apps.
+
+---
+
+## google_user_connections
+
+OAuth tokens for Google Tasks sync. Treat token columns as secrets.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| app_user_id | uuid | PK, FK → `app_users.id`, ON DELETE CASCADE |
+| google_sub | text | NOT NULL |
+| google_email | text | nullable |
+| scope | text | nullable |
+| access_token | text | nullable; secret |
+| refresh_token | text | nullable; secret |
+| token_type | text | nullable |
+| access_token_expires_at | timestamptz | nullable |
+| last_sync_at | timestamptz | nullable |
+| last_error | text | nullable |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
 
 ---
 
@@ -61,19 +116,28 @@ Customer / company.
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
+| id | uuid | PK, default `gen_random_uuid()` |
 | name | text | NOT NULL |
 | contact_name | text | nullable; denormalized from the contact user when `contact_app_user_id` is set |
 | contact_email | text | nullable; denormalized from the contact user when `contact_app_user_id` is set |
 | color | text | default `#3b82f6` |
 | logo_url | text | nullable |
-| is_internal | boolean | NOT NULL, default false; max one row should be true |
+| is_internal | boolean | NOT NULL, default false; unique partial index allows at most one `true` row |
 | is_active | boolean | NOT NULL, default true |
-| account_manager_id | uuid | nullable, FK → `consultants.id` |
+| account_manager_id | uuid | nullable, FK → `consultants.id`, ON DELETE SET NULL |
 | contact_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL; must be a `customer` user assigned to this customer |
-| url | text | nullable (e.g. website for favicon / links) |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| url | text | nullable (website for favicon / links) |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Indexes: unique `(is_internal) WHERE is_internal = true`;
+`(contact_app_user_id) WHERE contact_app_user_id IS NOT NULL`.
+
+Triggers: `customers_contact_user_enforce` (BEFORE INSERT/UPDATE) →
+`enforce_customer_user_rules()`; `trg_customers_updated_at` → `set_updated_at()`.
+
+The app also rejects marking a customer internal while it still has customer
+users.
 
 ---
 
@@ -83,36 +147,29 @@ Roles for consultants, allocation overrides, and rate tables.
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
+| id | uuid | PK, default `gen_random_uuid()` |
 | name | text | NOT NULL, UNIQUE |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Trigger `trg_roles_updated_at` → `set_updated_at()`.
 
 ---
 
 ## calendars
 
-Working-hours context and holiday calendar identifier (holidays in `calendar_holidays`).
+Working-hours context (holidays in `calendar_holidays`).
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
+| id | uuid | PK, default `gen_random_uuid()` |
 | name | text | NOT NULL |
 | country_code | text | NOT NULL; length 2–3 |
-| hours_per_week | numeric | NOT NULL, default 40, ≥ 0 |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| hours_per_week | numeric(5,2) | NOT NULL, default 40, ≥ 0 |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
 
----
-
-## teams
-
-| Column | Type | Notes |
-|--------|------|--------|
-| id | uuid | PK |
-| name | text | NOT NULL, UNIQUE |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+Trigger `trg_calendars_updated_at` → `set_updated_at()`.
 
 ---
 
@@ -120,36 +177,101 @@ Working-hours context and holiday calendar identifier (holidays in `calendar_hol
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
-| calendar_id | uuid | NOT NULL, FK → `calendars.id` |
+| id | uuid | PK, default `gen_random_uuid()` |
+| calendar_id | uuid | NOT NULL, FK → `calendars.id`, ON DELETE CASCADE |
 | holiday_date | date | NOT NULL |
 | name | text | NOT NULL |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(calendar_id, holiday_date)`.
+
+Trigger `trg_calendar_holidays_updated_at` → `set_updated_at()`.
+
+---
+
+## teams
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| name | text | NOT NULL, UNIQUE |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Trigger `teams_updated_at` → `set_updated_at()`.
 
 ---
 
 ## consultants
 
-Allocatable person; default role, calendar, optional team.
+Allocatable person; default role, calendar, optional team, optional login.
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
+| id | uuid | PK, default `gen_random_uuid()` |
 | app_user_id | uuid | nullable, UNIQUE when present; FK → `app_users.id`, ON DELETE SET NULL |
 | name | text | NOT NULL |
 | email | text | nullable |
 | role_id | uuid | NOT NULL, FK → `roles.id` |
 | calendar_id | uuid | NOT NULL, FK → `calendars.id` |
-| team_id | uuid | nullable, FK → `teams.id` |
+| team_id | uuid | nullable, FK → `teams.id`, ON DELETE SET NULL |
 | is_external | boolean | NOT NULL, default false |
 | work_percentage | smallint | NOT NULL, default 100; check 5–100 |
 | overhead_percentage | smallint | nullable, default 0 |
-| start_date | date | nullable |
-| end_date | date | nullable |
-| birth_date | date | nullable |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| start_date | date | nullable; first available day |
+| end_date | date | nullable; last available day |
+| birth_date | date | nullable; admin-only in UI |
+| utilization_target_pct | numeric(5,2) | nullable; target billable utilization for Reports |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Indexes: unique `(app_user_id) WHERE app_user_id IS NOT NULL`; `(team_id)`.
+
+Triggers: `consultants_customer_user_enforce` → `enforce_customer_user_rules()`;
+`trg_consultants_updated_at` → `set_updated_at()`.
+
+A person is either a consultant or a customer user, never both.
+
+---
+
+## customer_consultants
+
+Which consultants may work on which customers. Source of truth for planning,
+time reporting, and which customers a consultant sees in Rove apps.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| customer_id | uuid | PK part, FK → `customers.id`, ON DELETE CASCADE |
+| consultant_id | uuid | PK part, FK → `consultants.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(consultant_id)`.
+
+---
+
+## customer_app_users
+
+Which **customer users** belong to which customers. These accounts can log in
+and be chosen as the customer contact. They are never allocatable and never
+receive Rove apps (Planner, Time report, Insights, Work).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| customer_id | uuid | PK part, FK → `customers.id`, ON DELETE CASCADE |
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(app_user_id)`.
+
+Triggers: `customer_app_users_enforce` (BEFORE INSERT/UPDATE) →
+`enforce_customer_user_rules()`; `customer_app_users_clear_contact`
+(AFTER DELETE) → `clear_customer_contact_on_unlink()`.
+
+Rows cannot reference the internal (Rove) customer. Unlinking a user who is
+the contact clears `customers.contact_app_user_id`.
+
+DDL: [`scripts/20260911_customer_users.sql`](../scripts/20260911_customer_users.sql).
 
 ---
 
@@ -159,21 +281,251 @@ Belongs to one customer. Optional Jira / DevOps integration fields, PM, budgets.
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
-| customer_id | uuid | NOT NULL, FK → `customers.id` |
+| id | uuid | PK, default `gen_random_uuid()` |
+| customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
 | name | text | NOT NULL |
 | start_date | date | nullable |
 | end_date | date | nullable |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
 | is_active | boolean | NOT NULL, default true |
-| type | `project_type` (enum) | NOT NULL, default `customer` |
+| type | `project_type` | NOT NULL, default `customer` |
 | probability | integer | NOT NULL, default 100; check 1–100 |
 | jira_project_key | text | nullable; joins `jira_issues.project_key` |
 | devops_project | text | nullable; joins `devops_work_items.project` |
 | budget_hours | numeric | nullable |
 | budget_money | numeric | nullable |
-| project_manager_id | uuid | nullable, FK → `consultants.id` |
+| project_manager_id | uuid | nullable; app links to `consultants.id` (no FK in this snapshot) |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Checks: `end_date >= start_date` when both are set; probability 1–100.
+
+Trigger `trg_projects_updated_at` → `set_updated_at()`.
+
+The app can use `projects.clickup_project_id` when present
+([`scripts/alter_projects_add_clickup_project_id.sql`](../scripts/alter_projects_add_clickup_project_id.sql)).
+That column is **not** in this snapshot.
+
+---
+
+## allocations
+
+Consultant allocation per project (and optional role) per ISO week.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| consultant_id | uuid | nullable, FK → `consultants.id`, ON DELETE CASCADE |
+| project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
+| role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
+| year | smallint | NOT NULL; check 2000–2100 |
+| week | smallint | NOT NULL; check 1–53 |
+| hours | numeric(6,2) | NOT NULL, ≥ 0 |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique (partial):
+
+- `(consultant_id, project_id, year, week, role_id) WHERE role_id IS NOT NULL`
+- `(consultant_id, project_id, year, week) WHERE role_id IS NULL`
+
+Indexes: `(consultant_id)`; `(consultant_id, project_id, year, week)`;
+`(year, week)`.
+
+Trigger `trg_allocations_updated_at` → `set_updated_at()`.
+
+---
+
+## allocation_history
+
+Audit log for allocation changes.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| allocation_id | uuid | nullable |
+| action | text | NOT NULL; check: `create`, `update`, `delete`, `bulk` |
+| changed_by_email | text | NOT NULL |
+| changed_at | timestamptz | NOT NULL, default `now()` |
+| details | jsonb | nullable; for `bulk`: `{ "allocation_ids": ["uuid", ...] }` |
+
+Indexes: `(allocation_id) WHERE allocation_id IS NOT NULL`;
+`(changed_at DESC)`.
+
+---
+
+## customer_status_entries
+
+Weekly traffic-light notes per customer.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
+| traffic_light | text | NOT NULL; check: `red`, `yellow`, `green` |
+| body | text | NOT NULL |
+| year | integer | NOT NULL |
+| week | integer | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(customer_id, created_at DESC)`.
+
+---
+
+## customer_rates
+
+Customer-level hourly rates per role.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
+| role_id | uuid | NOT NULL, FK → `roles.id`, ON DELETE RESTRICT |
+| rate_per_hour | numeric(12,2) | NOT NULL, ≥ 0 |
+| currency | text | NOT NULL, default `SEK` |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(customer_id, role_id)`.
+
+Trigger `trg_customer_rates_updated_at` → `set_updated_at()`.
+
+---
+
+## project_rates
+
+Project-level rates per role (override customer rates when present).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
+| role_id | uuid | NOT NULL, FK → `roles.id`, ON DELETE CASCADE |
+| rate_per_hour | numeric | NOT NULL |
+| currency | text | NOT NULL, default `SEK` |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(project_id, role_id)`. Indexes: `(project_id)`, `(role_id)`.
+
+---
+
+## project_month_invoice_hours
+
+Invoiced hours per project calendar month (from time-report lines, optional
+fixed override).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
+| year | integer | NOT NULL; check 2000–3000 |
+| month | integer | NOT NULL; check 1–12 |
+| invoiced_hours_from_lines | numeric(14,4) | NOT NULL, default 0 |
+| invoiced_hours_fixed | numeric(14,4) | nullable |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+| updated_by | uuid | nullable, FK → `consultants.id` |
+
+Unique: `(project_id, year, month)`. Index: `(project_id)`.
+
+---
+
+## time_report_entry_lines
+
+Logical grid row for one consultant ISO week (customer / project / role /
+Jira-DevOps key / description). Day cells live in `time_report_entries`.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK part |
+| consultant_id | uuid | PK part, FK → `consultants.id`, ON DELETE CASCADE |
+| iso_year | integer | PK part |
+| iso_week | integer | PK part |
+| customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE RESTRICT |
+| project_id | uuid | nullable, FK → `projects.id`, ON DELETE RESTRICT |
+| role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
+| jira_devops_key | text | nullable |
+| description | text | nullable; row-level task text |
+| display_order | integer | NOT NULL, default 0 |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+PK / unique: `(consultant_id, iso_year, iso_week, id)`.
+
+Index: `(consultant_id, iso_year, iso_week, display_order, id)`.
+
+---
+
+## time_report_entries
+
+One row per **calendar day** on a week line. The UI groups by week.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| consultant_id | uuid | NOT NULL, FK → `consultants.id`, ON DELETE CASCADE |
+| customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
+| project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
+| role_id | uuid | NOT NULL, FK → `roles.id`, ON DELETE CASCADE |
+| jira_devops_key | text | nullable |
+| entry_date | date | NOT NULL |
+| hours | numeric(4,2) | NOT NULL, default 0; check `hours > 0` |
+| internal_comment | text | nullable (per-day comment) |
+| rate_snapshot | numeric(10,2) | nullable; rate at save, SEK |
+| display_order | smallint | NOT NULL, default 0 |
+| description | text | nullable |
+| pm_edited_hours | numeric | nullable; consultant hours before PM edit |
+| pm_edited_comment | text | nullable |
+| pm_edited_at | timestamptz | nullable |
+| pm_edited_by | uuid | nullable, FK → `consultants.id`, ON DELETE SET NULL |
+| invoiced_at | timestamptz | nullable |
+| entry_line_id | uuid | NOT NULL; links to `time_report_entry_lines.id` (no FK in this snapshot) |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique:
+
+- `(consultant_id, entry_line_id, entry_date)`
+- `(consultant_id, customer_id, project_id, role_id, jira_devops_key, entry_date)`
+
+Indexes: `(consultant_id, entry_date)`; `(entry_date)`.
+
+---
+
+## time_report_week_revisions
+
+Optimistic concurrency token per consultant ISO week.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| consultant_id | uuid | PK part, FK → `consultants.id`, ON DELETE CASCADE |
+| iso_year | integer | PK part |
+| iso_week | integer | PK part |
+| revision | bigint | NOT NULL, default 0 |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+| updated_by_app_user_id | uuid | nullable, FK → `app_users.id` |
+
+Index: `(consultant_id)`.
+
+---
+
+## time_report_entries_history
+
+Audit log for time-report day cells.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| time_report_entry_id | uuid | nullable |
+| entry_line_id | uuid | NOT NULL |
+| consultant_id | uuid | NOT NULL, FK → `consultants.id`, ON DELETE CASCADE |
+| operation | text | NOT NULL; check: `insert`, `update`, `delete` |
+| before_json | jsonb | nullable |
+| after_json | jsonb | nullable |
+| changed_at | timestamptz | NOT NULL, default `now()` |
+| changed_by_app_user_id | uuid | nullable, FK → `app_users.id` |
+| source_revision | bigint | NOT NULL |
+
+Indexes: `(consultant_id, changed_at DESC)`; `(entry_line_id, changed_at DESC)`.
 
 ---
 
@@ -195,10 +547,12 @@ Synced Jira issues.
 | issue_type | text | nullable |
 | original_estimate_hours | numeric | nullable |
 | source_instance | text | nullable |
-| last_synced_at | timestamptz | nullable, default now() |
+| last_synced_at | timestamptz | nullable, default `now()` |
 | project_key | text | nullable |
 | project_name | text | nullable |
 | url | text | nullable |
+
+Index: `(project_key)`.
 
 ---
 
@@ -212,139 +566,117 @@ Synced Azure DevOps work items.
 | title | text | nullable |
 | project | text | nullable |
 | state | text | nullable |
-| last_synced_at | timestamptz | nullable, default now() |
+| last_synced_at | timestamptz | nullable, default `now()` |
+
+Index: `(project)`.
 
 ---
 
-## customer_rates
+## clickup
 
-Customer-level hourly rates per role.
+Synced ClickUp tasks (same shape as Jira sync).
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
-| customer_id | uuid | NOT NULL, FK → `customers.id` |
-| role_id | uuid | NOT NULL, FK → `roles.id` |
-| rate_per_hour | numeric | NOT NULL, ≥ 0 |
-| currency | text | NOT NULL, default `SEK` |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| clickup_id | text | PK |
+| summary | text | nullable |
+| parent_key | text | nullable |
+| parent_summary | text | nullable |
+| parent_type | text | nullable |
+| status | text | nullable |
+| created_at | timestamptz | nullable |
+| updated_at | timestamptz | nullable |
+| due_date | timestamptz | nullable |
+| issue_type | text | nullable |
+| original_estimate_hours | numeric | nullable |
+| source_instance | text | nullable |
+| last_synced_at | timestamptz | nullable |
+| project_key | text | nullable |
+| project_name | text | nullable |
+| url | text | nullable |
 
 ---
 
-## project_rates
+## task_boards
 
-Project-level rates per role (override customer rates when present).
-
-| Column | Type | Notes |
-|--------|------|--------|
-| id | uuid | PK |
-| project_id | uuid | NOT NULL, FK → `projects.id` |
-| role_id | uuid | NOT NULL, FK → `roles.id` |
-| rate_per_hour | numeric | NOT NULL |
-| currency | text | NOT NULL, default `SEK` |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
-
----
-
-## customer_consultants
-
-Which consultants may work on which customers. Source of truth for planning,
-time reporting, and which customers a consultant sees in Rove apps.
-
-| Column | Type | Notes |
-|--------|------|--------|
-| customer_id | uuid | PK part, FK → `customers.id` |
-| consultant_id | uuid | PK part, FK → `consultants.id` |
-| created_at | timestamptz | NOT NULL |
-
----
-
-## customer_app_users
-
-Which **customer users** belong to which customers. These accounts can log in
-and be chosen as the customer contact. They are never allocatable and never
-receive Rove apps (Planner, Time report, Insights, Work).
-
-| Column | Type | Notes |
-|--------|------|--------|
-| customer_id | uuid | PK part, FK → `customers.id`, ON DELETE CASCADE |
-| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
-| created_at | timestamptz | NOT NULL, default now() |
-
-A person is either a consultant or a customer user, never both. Rows cannot
-reference the internal (Rove) customer. Enforced with triggers
-(`enforce_customer_user_rules`). Unlinking a user who is the contact clears
-`customers.contact_app_user_id`. The app also rejects marking a customer
-internal while it still has customer users.
-
-DDL: [`scripts/20260911_customer_users.sql`](../scripts/20260911_customer_users.sql).
-
----
-
-## allocations
-
-Consultant allocation per project (and optional role) per ISO week.
-
-| Column | Type | Notes |
-|--------|------|--------|
-| id | uuid | PK |
-| consultant_id | uuid | nullable, FK → `consultants.id` |
-| project_id | uuid | NOT NULL, FK → `projects.id` |
-| role_id | uuid | nullable, FK → `roles.id` |
-| year | smallint | NOT NULL; check 2000–2100 |
-| week | smallint | NOT NULL; check 1–53 |
-| hours | numeric | NOT NULL, ≥ 0 |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
-
-Uniqueness and extra constraints: confirm in live DB / migrations (not in the excerpt).
-
----
-
-## allocation_history
-
-Audit log for allocation changes.
+Shared task boards.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| allocation_id | uuid | nullable |
-| action | text | NOT NULL; check: `create`, `update`, `delete`, `bulk` |
-| changed_by_email | text | NOT NULL |
-| changed_at | timestamptz | NOT NULL, default now() |
-| details | jsonb | nullable |
+| title | text | NOT NULL |
+| created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
 
 ---
 
-## time_report_entries
-
-One row per **calendar day** per logical grid row (consultant + customer + project + role + Jira/DevOps key + `display_order`). The app groups rows by week for the time report UI.
+## task_board_members
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
-| consultant_id | uuid | NOT NULL, FK → `consultants.id` |
-| customer_id | uuid | NOT NULL, FK → `customers.id` |
-| project_id | uuid | NOT NULL, FK → `projects.id` |
-| role_id | uuid | NOT NULL, FK → `roles.id` |
-| jira_devops_key | text | nullable |
-| entry_date | date | NOT NULL |
-| hours | numeric | NOT NULL, default 0 |
-| internal_comment | text | nullable (per-day comment) |
-| rate_snapshot | numeric | nullable |
-| display_order | smallint | NOT NULL, default 0; separates multiple UI lines with same project/role/jira |
-| description | text | nullable; row-level task text |
-| pm_edited_hours | numeric | nullable |
-| pm_edited_comment | text | nullable |
-| pm_edited_at | timestamptz | nullable |
-| pm_edited_by | uuid | nullable, FK → `consultants.id` |
-| invoiced_at | timestamptz | nullable |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| board_id | uuid | PK part, FK → `task_boards.id`, ON DELETE CASCADE |
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default `now()` |
 
-Unique / index definitions: see migrations (e.g. uniqueness including `display_order`).
+Index: `(app_user_id)`.
+
+---
+
+## task_board_todos
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| board_id | uuid | NOT NULL, FK → `task_boards.id`, ON DELETE CASCADE |
+| title | text | NOT NULL |
+| status | text | NOT NULL; check: `todo`, `done` |
+| sort_order | integer | NOT NULL, default 0 |
+| assigned_to_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL |
+| due_date | date | nullable |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(board_id)`.
+
+---
+
+## task_board_google_task_lists
+
+Per-user Google Task list bound to a board.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| board_id | uuid | PK part, FK → `task_boards.id`, ON DELETE CASCADE |
+| google_task_list_id | text | NOT NULL |
+| google_task_list_title | text | nullable |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(app_user_id, google_task_list_id)`.
+
+---
+
+## task_board_google_task_map
+
+Maps a board todo to a Google Task for one user.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| todo_id | uuid | PK part, FK → `task_board_todos.id`, ON DELETE CASCADE |
+| board_id | uuid | NOT NULL, FK → `task_boards.id`, ON DELETE CASCADE |
+| google_task_list_id | text | NOT NULL |
+| google_task_id | text | NOT NULL |
+| source_last_write | text | NOT NULL, default `taskboard` |
+| source_last_modified_at | timestamptz | NOT NULL, default `now()` |
+| last_synced_at | timestamptz | NOT NULL, default `now()` |
+| deleted_at | timestamptz | nullable |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(app_user_id, google_task_list_id, google_task_id)`.
+Index: `(app_user_id, board_id)`.
 
 ---
 
@@ -352,47 +684,102 @@ Unique / index definitions: see migrations (e.g. uniqueness including `display_o
 
 | Column | Type | Notes |
 |--------|------|--------|
-| id | uuid | PK |
+| id | uuid | PK, default `gen_random_uuid()` |
 | content | text | NOT NULL |
-| created_at | timestamptz | NOT NULL |
-| updated_at | timestamptz | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
 | submitted_by_email | text | nullable |
 | is_implemented | boolean | NOT NULL, default false |
-| declined_at | timestamptz | nullable; set when request is declined |
-| decline_comment | text | nullable; admin comment shown to reporter |
+| declined_at | timestamptz | nullable |
+| decline_comment | text | nullable |
 
 ---
 
 ## user_notifications
 
-In-app notifications for authenticated users (`app_users`). Rows are created from application code (e.g. new allocations, feature request implemented).
+In-app notifications for authenticated users.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
 | app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE CASCADE |
 | kind | text | NOT NULL, e.g. `allocation_booked`, `feature_request_implemented`, `feature_request_declined` |
-| payload | jsonb | NOT NULL, default `{}`; shape depends on `kind` |
+| payload | jsonb | NOT NULL, default `{}` |
 | read_at | timestamptz | nullable; null = unread |
-| created_at | timestamptz | NOT NULL, default now() |
+| created_at | timestamptz | NOT NULL, default `now()` |
 
-Indexes: `(app_user_id, created_at DESC)`; partial `(app_user_id) WHERE read_at IS NULL`.
-
-DDL script: [`sql/20260418_user_notifications.sql`](sql/20260418_user_notifications.sql). If the app DB user (from `CLOUD_SQL_URL`) is not the table owner, run the commented `GRANT` at the end of that script as a superuser so the app can `SELECT`/`INSERT`/`UPDATE` this table.
+Indexes: `(app_user_id, created_at DESC)`;
+`(app_user_id) WHERE read_at IS NULL`.
 
 ---
 
-## Relationship summary (short)
+## Views
 
-- **customers** → **projects** → **allocations** / **time_report_entries**  
-- **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts have none  
-- **app_users** → zero or one **consultants** profile via `consultants.app_user_id` (not allowed when `role = customer`)  
-- **consultants** ↔ **customers** via **customer_consultants**; **allocations** link consultant + project + week (+ optional role)  
-- **customer** role **app_users** ↔ **customers** via **customer_app_users**; `customers.contact_app_user_id` picks one of those users  
-- **customer_rates** / **project_rates** + **roles** drive pricing; **time_report_entries** can store **rate_snapshot** at save  
-- **jira_issues** / **devops_work_items** integrate with **projects** for issue pickers  
+Read models (column lists from the live catalog).
 
-Authorization and row-level rules are enforced in **application code**
-(Auth.js + `app_users` + `app_user_apps` + checks in `src/lib/`), not in this
-DDL excerpt. See [`PEOPLE_MIGRATION.md`](PEOPLE_MIGRATION.md) for rollout and
-backfill details.
+### allocated_vs_reported
+
+`consultant_id`, `project_id`, `year`, `week`, `week_start_date`,
+`week_label`, `consultant_name`, `project_name`, `customer_name`,
+`allocated_hours`, `reported_hours`, `diff_hours`, `utilization_pct`.
+
+### v_consultant_forecast
+
+Monthly forecast from allocations, calendars, and rates (consultants,
+customers, projects, teams). Present in production; may be absent in some
+dev snapshots.
+
+### v_consultant_monthly_summary
+
+Monthly consultant KPIs: hours, income, leave types, utilization, occupancy,
+budget, `external`.
+
+### v_consultant_util
+
+Monthly utilization from reported time, calendars, and allocations. Present
+in production; may be absent in some dev snapshots.
+
+### v_consultant_util_vs_forecast
+
+Join of `v_consultant_util` and `v_consultant_forecast`. Present in
+production; may be absent in some dev snapshots.
+
+### v_time_report_looker
+
+Flattened time-report export for Looker (entry, consultant, customer, project,
+Jira, DevOps, PM edits).
+
+---
+
+## Operational tables (not application schema)
+
+`time_report_entries_backup_20260503` and
+`time_report_entries_backup_20260509` are snapshot copies of
+`time_report_entries`. Do not write to them from the app.
+
+---
+
+## Functions and triggers (app-owned)
+
+| Function | Used by |
+|----------|---------|
+| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams |
+| `enforce_customer_user_rules()` | BEFORE INSERT/UPDATE on `app_users`, `app_user_apps`, `consultants`, `customer_app_users`, `customers` |
+| `clear_customer_contact_on_unlink()` | AFTER DELETE on `customer_app_users` |
+
+The public schema also contains extension functions (`pgcrypto`, `dblink`).
+Those are not part of the application model.
+
+---
+
+## Relationship summary
+
+- **customers** → **projects** → **allocations** / **time_report_entries**
+- **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts have none
+- **app_users** → zero or one **consultants** profile via `consultants.app_user_id` (not allowed when `role = customer`)
+- **consultants** ↔ **customers** via **customer_consultants**
+- **customer** role **app_users** ↔ **customers** via **customer_app_users**; `customers.contact_app_user_id` picks one of those users
+- **time_report_entry_lines** (week row) → **time_report_entries** (day cells) + **time_report_week_revisions**
+- **customer_rates** / **project_rates** + **roles** drive pricing; **time_report_entries.rate_snapshot** stores the rate at save
+- **jira_issues** / **devops_work_items** / **clickup** integrate with **projects** for issue pickers
+- **task_boards** → **task_board_members** / **task_board_todos**; Google sync via **google_user_connections** + map tables
