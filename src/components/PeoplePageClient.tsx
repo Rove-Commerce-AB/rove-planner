@@ -6,6 +6,7 @@ import {
   Briefcase,
   Building2,
   CalendarCheck,
+  Handshake,
   Clock,
   IdCard,
   Plus,
@@ -14,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { AddConsultantModal } from "@/components/AddConsultantModal";
+import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
 import { PersonCustomersTab, type PersonCustomerOption } from "@/components/PersonCustomersTab";
 import { DetailPageDeleteFooter } from "@/components/detail/DetailPageDeleteFooter";
@@ -39,6 +41,7 @@ import { compareTextSv } from "@/lib/sort";
 import {
   Badge,
   Button,
+  CapacityBar,
   ConfirmModal,
   DataTable,
   Dialog,
@@ -71,13 +74,9 @@ type Props = {
   error: string | null;
 };
 
-type PeopleFilter =
-  | "all"
-  | "users"
-  | "consultants"
-  | "consultant-only"
-  | "customer-users";
-type SortKey = "name" | "team" | "type" | "apps";
+type PeopleFilter = "all" | "consultant" | "subcontractor" | "customer";
+type PersonKind = "consultant" | "subcontractor" | "customer" | "user";
+type SortKey = "name" | "team" | "type" | "capacity" | "overhead" | "apps";
 type SortDirection = "asc" | "desc";
 
 function initials(name: string): string {
@@ -90,11 +89,26 @@ function initials(name: string): string {
     .slice(0, 2);
 }
 
+function personKind(person: PersonListItem): PersonKind {
+  if (person.userRole === "customer") return "customer";
+  if (person.userRole === "subcontractor" || person.consultant?.isExternal) {
+    return "subcontractor";
+  }
+  if (person.consultantId) return "consultant";
+  return "user";
+}
+
 function personType(person: PersonListItem): string {
-  if (person.userRole === "customer") return "Customer user";
-  if (person.appUserId && person.consultantId) return "User + consultant";
-  if (person.consultantId) return "Consultant only";
-  return "User";
+  switch (personKind(person)) {
+    case "customer":
+      return "Customer";
+    case "subcontractor":
+      return "Subcontractor";
+    case "consultant":
+      return "Consultant";
+    default:
+      return "User";
+  }
 }
 
 function isCustomerUser(person: PersonListItem): boolean {
@@ -104,6 +118,18 @@ function isCustomerUser(person: PersonListItem): boolean {
 function personTeamName(person: PersonListItem): string {
   return (person.consultant?.teamName ?? "").replace(/^Team\s+/i, "");
 }
+
+function personCustomerNames(person: PersonListItem): string {
+  if (person.userRole !== "customer") return "";
+  return person.customers.map((customer) => customer.name).join(", ");
+}
+
+const TYPE_ICON_CLASS: Record<PersonKind, string> = {
+  consultant: "text-[var(--color-green-600)]",
+  subcontractor: "text-[var(--color-amber-600)]",
+  customer: "text-[var(--color-blue-600)]",
+  user: "text-text-muted",
+};
 
 const APP_ICONS: Record<AppKey, typeof CalendarCheck> = {
   planner: CalendarCheck,
@@ -138,34 +164,47 @@ const APP_ACCESS_ITEMS: Record<
   },
 };
 
-function PersonTypeIcons({ person }: { person: PersonListItem }) {
+function PersonTypeCell({ person }: { person: PersonListItem }) {
+  const kind = personKind(person);
   const label = personType(person);
+  const Icon =
+    kind === "customer"
+      ? Building2
+      : kind === "subcontractor"
+        ? Handshake
+        : kind === "consultant"
+          ? IdCard
+          : UserRound;
+  const customerNames = personCustomerNames(person);
   return (
-    <span className="inline-flex items-center gap-1.5 text-text-secondary" title={label}>
-      {isCustomerUser(person) ? (
-        <Building2 className="h-4 w-4" aria-hidden />
-      ) : person.appUserId ? (
-        <UserRound className="h-4 w-4" aria-hidden />
-      ) : null}
-      {person.consultantId ? (
-        <IdCard className="h-4 w-4" aria-hidden />
-      ) : null}
-      <span className="sr-only">{label}</span>
+    <span
+      className="inline-flex items-center gap-1.5"
+      title={customerNames ? `${label}: ${customerNames}` : label}
+    >
+      <Icon className={`h-4 w-4 shrink-0 ${TYPE_ICON_CLASS[kind]}`} aria-hidden />
+      {kind === "customer"
+        ? person.customers.map((customer) => (
+            <CustomerFavicon
+              key={customer.id}
+              name={customer.name}
+              url={customer.url}
+              color={customer.color}
+              size="xs"
+            />
+          ))
+        : null}
+      <span className="sr-only">
+        {customerNames ? `${label}: ${customerNames}` : label}
+      </span>
     </span>
   );
 }
 
 function PersonAppIcons({ appKeys }: { appKeys: AppKey[] }) {
-  if (appKeys.length === 0) {
-    return (
-      <span className="text-text-secondary" aria-label="No apps">
-        —
-      </span>
-    );
-  }
+  if (appKeys.length === 0) return null;
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-text-secondary">
+    <span className="inline-flex items-center gap-1 text-text-secondary">
       {APP_KEYS.filter((key) => appKeys.includes(key)).map((key) => {
         const Icon = APP_ICONS[key];
         return (
@@ -910,20 +949,7 @@ export function PeoplePageClient({
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = people.filter((person) => {
-      if (
-        filter === "users" &&
-        (!person.appUserId || person.userRole === "customer")
-      ) {
-        return false;
-      }
-      if (filter === "consultants" && !person.consultantId) return false;
-      if (
-        filter === "consultant-only" &&
-        (!person.consultantId || person.appUserId)
-      ) {
-        return false;
-      }
-      if (filter === "customer-users" && person.userRole !== "customer") {
+      if (filter !== "all" && personKind(person) !== filter) {
         return false;
       }
       if (teamFilterId && person.consultant?.team_id !== teamFilterId) {
@@ -934,11 +960,19 @@ export function PeoplePageClient({
         person.name.toLowerCase().includes(query) ||
         (person.email ?? "").toLowerCase().includes(query) ||
         personTeamName(person).toLowerCase().includes(query) ||
-        personType(person).toLowerCase().includes(query)
+        personType(person).toLowerCase().includes(query) ||
+        personCustomerNames(person).toLowerCase().includes(query)
       );
     });
     const direction = sortDirection === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
+      if (sortKey === "capacity" || sortKey === "overhead") {
+        const field =
+          sortKey === "capacity" ? "workPercentage" : "overheadPercentage";
+        const left = a.consultant?.[field] ?? -1;
+        const right = b.consultant?.[field] ?? -1;
+        return direction * (left - right) || compareTextSv(a.name, b.name);
+      }
       const left =
         sortKey === "team"
           ? personTeamName(a)
@@ -963,51 +997,76 @@ export function PeoplePageClient({
 
   const columns: DataTableColumn<PersonListItem>[] = [
     {
-      id: "avatar",
-      header: "",
-      width: "2.75rem",
-      cell: (person) => (
-        <InitialsAvatar
-          name={person.name}
-          initials={initials(person.name)}
-          size="xs"
-        />
-      ),
-    },
-    {
       id: "name",
       header: "Name",
       sortable: true,
-      cell: (person) => <span className="truncate">{person.name}</span>,
+      width: "20rem",
+      cell: (person) => (
+        <span className="flex min-w-0 items-center gap-2">
+          <InitialsAvatar
+            name={person.name}
+            initials={initials(person.name)}
+            size="sm"
+          />
+          <span className="truncate">{person.name}</span>
+        </span>
+      ),
+    },
+    {
+      id: "type",
+      header: "Type",
+      sortable: true,
+      width: "5.5rem",
+      cell: (person) => <PersonTypeCell person={person} />,
     },
     {
       id: "team",
       header: "Team",
       sortable: true,
       secondary: true,
-      cell: (person) => personTeamName(person),
+      width: "10rem",
+      cell: (person) => personTeamName(person) || null,
     },
     {
       id: "apps",
       header: "Apps",
       sortable: true,
       secondary: true,
+      width: "7rem",
       cell: (person) => <PersonAppIcons appKeys={person.appKeys} />,
     },
     {
-      id: "type",
-      header: "Type",
+      id: "capacity",
+      header: "Capacity",
       sortable: true,
-      cell: (person) => <PersonTypeIcons person={person} />,
+      width: "12rem",
+      cell: (person) =>
+        person.consultant ? (
+          <CapacityBar value={person.consultant.workPercentage} />
+        ) : null,
+    },
+    {
+      id: "overhead",
+      header: "Overhead",
+      sortable: true,
+      width: "12rem",
+      cell: (person) =>
+        person.consultant ? (
+          <CapacityBar value={person.consultant.overheadPercentage} />
+        ) : null,
+    },
+    {
+      id: "spacer",
+      header: "",
+      cell: () => null,
     },
   ];
 
   const typeFilterOptions = [
     { value: "all", label: "All types" },
-    { value: "users", label: "Users" },
-    { value: "consultants", label: "Consultants" },
-    { value: "consultant-only", label: "Without account" },
-    { value: "customer-users", label: "Customer users" },
+    { value: "consultant", label: "Consultant" },
+    { value: "subcontractor", label: "Subcontractor" },
+    { value: "customer", label: "Customer" },
   ];
 
   const teamFilterOptions = useMemo(() => {
@@ -1106,6 +1165,7 @@ export function PeoplePageClient({
             </div>
             {visible.length ? (
               <DataTable
+                className="table-fixed"
                 columns={columns}
                 rows={visible}
                 getRowId={(person) => person.key}

@@ -28,25 +28,44 @@ function initialsFromName(name: string): string {
     .slice(0, 2);
 }
 
+const SIZES = {
+  xs: {
+    box: "h-7 w-7",
+    image: "h-4 w-4",
+    initials: "text-[10px]",
+    avatar: "xs" as const,
+  },
+  sm: {
+    box: "h-8 w-8",
+    image: "h-5 w-5",
+    initials: "text-xs",
+    avatar: "sm" as const,
+  },
+} as const;
+
 type Props = {
   name: string;
   url?: string | null;
   color?: string | null;
+  size?: keyof typeof SIZES;
 };
 
-export function CustomerFavicon({ name, url, color }: Props) {
+export function CustomerFavicon({ name, url, color, size = "sm" }: Props) {
   const [imageError, setImageError] = useState(false);
   const faviconUrl = getCustomerFaviconUrl(url);
+  const scale = SIZES[size];
 
   if (faviconUrl && !imageError) {
     return (
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg-default">
+      <span
+        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg-default`}
+      >
         {/* Favicons are loaded from the customer's public website domain. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={faviconUrl}
           alt=""
-          className="h-5 w-5 object-contain"
+          className={`${scale.image} object-contain`}
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => setImageError(true)}
@@ -58,7 +77,7 @@ export function CustomerFavicon({ name, url, color }: Props) {
   if (color) {
     return (
       <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-text-inverse"
+        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-text-inverse`}
         style={{ backgroundColor: color || DEFAULT_CUSTOMER_COLOR }}
         aria-hidden
       >
@@ -68,6 +87,10 @@ export function CustomerFavicon({ name, url, color }: Props) {
   }
 
   return (
-    <InitialsAvatar name={name} initials={initialsFromName(name)} size="sm" />
+    <InitialsAvatar
+      name={name}
+      initials={initialsFromName(name)}
+      size={scale.avatar}
+    />
   );
 }

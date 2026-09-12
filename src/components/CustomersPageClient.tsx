@@ -29,12 +29,7 @@ import { ROUTES, customerHref } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
 import type { CustomerWithDetails } from "@/types";
 
-type SortKey =
-  | "name"
-  | "accountManager"
-  | "activeProjects"
-  | "type"
-  | "status";
+type SortKey = "name" | "accountManager" | "activeProjects" | "status";
 type SortDirection = "asc" | "desc";
 
 function sortCustomers(
@@ -56,11 +51,6 @@ function sortCustomers(
       case "activeProjects":
         return (
           direction * (a.activeProjectCount - b.activeProjectCount) ||
-          compareTextSv(a.name, b.name)
-        );
-      case "type":
-        return (
-          direction * Number(a.isInternal) - direction * Number(b.isInternal) ||
           compareTextSv(a.name, b.name)
         );
       case "status":
@@ -206,6 +196,7 @@ export function CustomersPageClient({
       id: "name",
       header: "Name",
       sortable: true,
+      width: "20rem",
       cell: (customer) => (
         <span className="flex min-w-0 items-center gap-2">
           <CustomerFavicon
@@ -222,28 +213,24 @@ export function CustomersPageClient({
       header: "Account manager",
       sortable: true,
       secondary: true,
-      cell: (customer) => customer.accountManagerName ?? "—",
+      width: "12rem",
+      cell: (customer) => customer.accountManagerName || null,
     },
     {
       id: "activeProjects",
       header: "Active projects",
       sortable: true,
       align: "right",
+      width: "9rem",
       cell: (customer) => (
         <span className="tabular-nums">{customer.activeProjectCount}</span>
       ),
     },
     {
-      id: "type",
-      header: "Type",
-      sortable: true,
-      secondary: true,
-      cell: (customer) => (customer.isInternal ? "Internal" : "Standard"),
-    },
-    {
       id: "status",
       header: "Status",
       sortable: true,
+      width: "7rem",
       cell: (customer) => (
         <Badge
           variant={customer.isActive ? "active" : "inactive"}
@@ -252,6 +239,11 @@ export function CustomersPageClient({
           {customer.isActive ? "Active" : "Inactive"}
         </Badge>
       ),
+    },
+    {
+      id: "spacer",
+      header: "",
+      cell: () => null,
     },
   ];
 
@@ -366,6 +358,7 @@ export function CustomersPageClient({
               </p>
             ) : (
               <DataTable
+                className="table-fixed"
                 columns={columns}
                 rows={tableRows}
                 getRowId={(customer) => customer.id}
