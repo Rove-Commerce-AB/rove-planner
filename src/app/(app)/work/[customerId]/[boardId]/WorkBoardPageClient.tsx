@@ -571,12 +571,14 @@ export function WorkBoardPageClient({ board }: Props) {
     return null;
   }
 
-  function issueListFromEvent(event: DragEvent) {
+  function issueListFromEvent(event: DragEvent): HTMLElement | null {
     const target = event.currentTarget;
     if (!(target instanceof HTMLElement)) return null;
     if (target.matches("[data-issue-list]")) return target;
-    return target.closest("[data-issue-list]") ??
+    const list =
+      target.closest("[data-issue-list]") ??
       target.querySelector("[data-issue-list]");
+    return list instanceof HTMLElement ? list : null;
   }
 
   function finishDrag() {
