@@ -96,7 +96,6 @@ export function AddAppUserModal({ isOpen, onClose, onSuccess }: Props) {
             className="mt-1 h-10 w-full rounded-lg border border-form bg-bg-default px-3 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal"
           >
             <option value="member">Member</option>
-            <option value="subcontractor">Subcontractor</option>
             <option value="admin">Admin</option>
           </select>
         </div>

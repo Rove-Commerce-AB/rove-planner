@@ -32,7 +32,7 @@ all internal relationships use the account UUID.
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
 | email | text | NOT NULL, UNIQUE |
-| role | text | NOT NULL, default `member`; check: `admin`, `member`, `subcontractor`, `customer` |
+| role | text | NOT NULL, default `member`; check: `admin`, `member`, `customer` |
 | name | text | nullable |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
@@ -42,8 +42,11 @@ Indexes: unique `(email)`; btree `(email)`.
 Trigger `app_users_customer_role_enforce` (BEFORE INSERT/UPDATE) runs
 `enforce_customer_user_rules()`.
 
-Application code may map legacy DB values (e.g. `underkonsult`) to
-`subcontractor`.
+Underkonsult is not a login role. It is `consultants.is_external`. A
+subcontractor login is a `member` (or rarely `admin`) linked to that
+profile, with apps in `app_user_apps`.
+
+See [`scripts/20260913_drop_subcontractor_role.sql`](../scripts/20260913_drop_subcontractor_role.sql).
 
 ---
 
@@ -83,8 +86,8 @@ Index: `(app_id)`.
 Trigger `app_user_apps_customer_user_enforce` (BEFORE INSERT/UPDATE) runs
 `enforce_customer_user_rules()`.
 
-Application actions require every **Rove** account (`admin`, `member`,
-`subcontractor`) to retain at least one app. `customer` accounts must have
+Application actions require every **Rove** account (`admin`, `member`)
+to retain at least one app. `customer` accounts must have
 none of the Rove apps.
 
 ---
@@ -216,7 +219,7 @@ Allocatable person; default role, calendar, optional team, optional login.
 | role_id | uuid | NOT NULL, FK → `roles.id` |
 | calendar_id | uuid | NOT NULL, FK → `calendars.id` |
 | team_id | uuid | nullable, FK → `teams.id`, ON DELETE SET NULL |
-| is_external | boolean | NOT NULL, default false |
+| is_external | boolean | NOT NULL, default false; underkonsult. Scopes time report (hide internal customer; booked projects only) |
 | work_percentage | smallint | NOT NULL, default 100; check 5–100 |
 | overhead_percentage | smallint | nullable, default 0 |
 | start_date | date | nullable; first available day |

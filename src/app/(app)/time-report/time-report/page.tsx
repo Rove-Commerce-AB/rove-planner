@@ -1,4 +1,3 @@
-import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
 import { getCustomersByIds, getInternalCustomerId } from "@/lib/customers";
@@ -11,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 export default async function TimeReportPage() {
   const consultant = await getConsultantForCurrentUser();
-  const appUser = await getCurrentAppUser();
   const { year: initialYear, week: initialWeek } = getCurrentYearWeek();
   const { year: initialDisplayYear, month: initialDisplayMonth } =
     getCurrentCalendarYearMonth();
@@ -29,7 +27,7 @@ export default async function TimeReportPage() {
     : [[], [] as string[]];
 
   let customerIds = rawCustomerIds;
-  if (appUser?.role === "subcontractor") {
+  if (consultant?.isExternal) {
     const internalCustomerId = await getInternalCustomerId();
     if (internalCustomerId) {
       customerIds = customerIds.filter((id) => id !== internalCustomerId);

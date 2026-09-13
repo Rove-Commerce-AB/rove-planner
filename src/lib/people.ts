@@ -145,12 +145,6 @@ export async function setPersonApps(
     if (uniqueKeys.length === 0) {
       throw new Error("A user must have access to at least one app");
     }
-    if (
-      userRows[0].role === "subcontractor" &&
-      uniqueKeys.some((key) => key !== "time_report")
-    ) {
-      throw new Error("Subcontractors can only access Time report");
-    }
 
     await client.query(
       `DELETE FROM app_user_apps
@@ -200,12 +194,6 @@ export async function createUserPerson(input: {
     }
     if (appKeys.length === 0) throw new Error("Select at least one app");
     if (appKeys.some((key) => !isAppKey(key))) throw new Error("Invalid app");
-    if (
-      input.role === "subcontractor" &&
-      appKeys.some((key) => key !== "time_report")
-    ) {
-      throw new Error("Subcontractors can only access Time report");
-    }
   }
 
   const appUserId = await withCloudSqlTransaction(

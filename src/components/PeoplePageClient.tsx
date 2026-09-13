@@ -91,7 +91,7 @@ function initials(name: string): string {
 
 function personKind(person: PersonListItem): PersonKind {
   if (person.userRole === "customer") return "customer";
-  if (person.userRole === "subcontractor" || person.consultant?.isExternal) {
+  if (person.consultant?.isExternal) {
     return "subcontractor";
   }
   if (person.consultantId) return "consultant";
@@ -421,15 +421,10 @@ function UserFormDialog({
             <Select
               label="System role"
               value={role}
-              onValueChange={(value) => {
-                const nextRole = value as AppUserRole;
-                setRole(nextRole);
-                if (nextRole === "subcontractor") setAppKeys(["time_report"]);
-              }}
+              onValueChange={(value) => setRole(value as AppUserRole)}
               variant="modal"
               options={[
                 { value: "member", label: "Member" },
-                { value: "subcontractor", label: "Subcontractor" },
                 { value: "admin", label: "Admin" },
               ]}
             />
@@ -437,7 +432,7 @@ function UserFormDialog({
               idPrefix="add-user-apps"
               value={appKeys}
               onChange={setAppKeys}
-              allowedKeys={role === "subcontractor" ? ["time_report"] : APP_KEYS}
+              allowedKeys={APP_KEYS}
             />
           </>
         )}
@@ -467,7 +462,6 @@ function UserFormDialog({
 
 const USER_ROLE_OPTIONS = [
   { value: "member", label: "Member" },
-  { value: "subcontractor", label: "Subcontractor" },
   { value: "admin", label: "Admin" },
 ] as const;
 
@@ -743,8 +737,7 @@ function AppAccessForm({ person }: { person: PersonListItem }) {
   const [appKeys, setAppKeys] = useState<AppKey[]>(person.appKeys);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const allowedKeys =
-    person.userRole === "subcontractor" ? (["time_report"] as const) : APP_KEYS;
+  const allowedKeys = APP_KEYS;
 
   async function updateApps(next: AppKey[]) {
     if (!person.appUserId) return;

@@ -76,10 +76,7 @@ export async function addAppUser(formData: FormData) {
     );
     const appUserId = rows[0]?.id;
     if (!appUserId) throw new Error("Failed to create user");
-    const appKeys =
-      role === "subcontractor"
-        ? ["time_report"]
-        : ["planner", "time_report", "insights"];
+    const appKeys = ["planner", "time_report", "insights"];
     await client.query(
       `INSERT INTO app_user_apps (app_user_id, app_id)
        SELECT $1, id FROM apps WHERE key = ANY($2::text[])`,
@@ -174,20 +171,6 @@ export async function updateAppUser(args: {
          AND u.id = $1`,
       [args.id]
     );
-    if (args.role === "subcontractor") {
-      await client.query(
-        `DELETE FROM app_user_apps
-         WHERE app_user_id = $1
-           AND app_id NOT IN (SELECT id FROM apps WHERE key = 'time_report')`,
-        [args.id]
-      );
-      await client.query(
-        `INSERT INTO app_user_apps (app_user_id, app_id)
-         SELECT $1, id FROM apps WHERE key = 'time_report'
-         ON CONFLICT (app_user_id, app_id) DO NOTHING`,
-        [args.id]
-      );
-    }
   });
 
   revalidatePath(ROUTES.people);

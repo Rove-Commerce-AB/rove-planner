@@ -186,19 +186,32 @@ function isConsultantActive(endDate: string | null, today: Date): boolean {
 
 export async function fetchConsultantByAppUserId(
   appUserId: string
-): Promise<{ id: string; name: string; calendar_id: string } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  calendar_id: string;
+  isExternal: boolean;
+} | null> {
   const { rows } = await cloudSqlPool.query<{
     id: string;
     name: string;
     calendar_id: string;
+    is_external: boolean;
   }>(
-    `SELECT id, name, calendar_id
+    `SELECT id, name, calendar_id, is_external
      FROM consultants
      WHERE app_user_id = $1
      LIMIT 1`,
     [appUserId]
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    calendar_id: row.calendar_id,
+    isExternal: row.is_external ?? false,
+  };
 }
 
 export async function fetchConsultantById(

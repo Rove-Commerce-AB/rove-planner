@@ -54,7 +54,7 @@ async function getTimeReportAccessContext() {
     [consultant.id]
   );
   const allowedCustomerIds = new Set(customerLinks.map((r) => r.customer_id));
-  if (isSubcontractorRole(appUser?.role)) {
+  if (consultant.isExternal) {
     const internalCustomerId = await getInternalCustomerId();
     if (internalCustomerId) allowedCustomerIds.delete(internalCustomerId);
   }
@@ -68,8 +68,10 @@ async function getTimeReportAccessContext() {
   return { appUser, consultant, allowedCustomerIds, bookedProjectIds };
 }
 
-function isSubcontractorRole(role: string | undefined): boolean {
-  return role === "subcontractor";
+function isExternalConsultant(
+  consultant: { isExternal?: boolean } | null | undefined
+): boolean {
+  return consultant?.isExternal === true;
 }
 
 /** When saving month view, only cells and deletes inside this calendar month are applied (ISO weeks may spill outside). */
@@ -98,7 +100,7 @@ export async function getActiveProjectsForCustomer(
 
   const projects = await getProjectsByCustomerIds([customerId]);
   const active = projects.filter((p) => p.is_active);
-  if (isSubcontractorRole(ctx.appUser?.role)) {
+  if (isExternalConsultant(ctx.consultant)) {
     return active
       .filter((p) => ctx.bookedProjectIds.has(p.id))
       .map((p) => ({ value: p.id, label: p.name }));
@@ -112,7 +114,7 @@ export async function getJiraDevOpsOptionsForProject(
   if (!projectId) return [];
   const ctx = await getTimeReportAccessContext();
   if (!ctx.consultant) return [];
-  if (isSubcontractorRole(ctx.appUser?.role) && !ctx.bookedProjectIds.has(projectId)) {
+  if (isExternalConsultant(ctx.consultant) && !ctx.bookedProjectIds.has(projectId)) {
     return [];
   }
   let rows: Array<{
@@ -193,7 +195,7 @@ export async function getTaskOptionsForCustomerAndProject(
   if (!ctx.consultant) return [];
   if (!ctx.allowedCustomerIds.has(customerId)) return [];
   if (
-    isSubcontractorRole(ctx.appUser?.role) &&
+    isExternalConsultant(ctx.consultant) &&
     projectId &&
     !ctx.bookedProjectIds.has(projectId)
   ) {
@@ -251,7 +253,7 @@ export async function batchHydrateTimeReport(
     const projects = await getProjectsByCustomerIds(uniqueCustomers);
     for (const cid of uniqueCustomers) {
       const active = projects.filter((p) => p.customer_id === cid && p.is_active);
-      const filtered = isSubcontractorRole(ctx.appUser?.role)
+      const filtered = isExternalConsultant(ctx.consultant)
         ? active.filter((p) => ctx.bookedProjectIds.has(p.id))
         : active;
       projectsByCustomerId[cid] = filtered.map((p) => ({
@@ -266,7 +268,7 @@ export async function batchHydrateTimeReport(
   for (const pair of taskOptionPairs) {
     if (!pair.customerId || !ctx.allowedCustomerIds.has(pair.customerId)) continue;
     if (
-      isSubcontractorRole(ctx.appUser?.role) &&
+      isExternalConsultant(ctx.consultant) &&
       pair.projectId &&
       !ctx.bookedProjectIds.has(pair.projectId)
     ) {
@@ -546,8 +548,7 @@ export async function getTimeReportEntries(
 
   let filteredLines = lineRows;
   let filteredRows = entryRows;
-  const appUser = await getCurrentAppUser();
-  if (isSubcontractorRole(appUser?.role)) {
+  if (consultant.isExternal) {
     const internalCustomerId = await getInternalCustomerId();
     if (internalCustomerId) {
       filteredLines = filteredLines.filter((r) => r.customer_id !== internalCustomerId);
@@ -644,9 +645,9 @@ export async function getTimeReportMonthTotalHours(
     monthEnd.getDate()
   ).padStart(2, "0")}`;
 
-  const appUser = await getCurrentAppUser();
-  const internalCustomerId =
-    isSubcontractorRole(appUser?.role) ? await getInternalCustomerId() : null;
+  const internalCustomerId = consultant.isExternal
+    ? await getInternalCustomerId()
+    : null;
 
   const { rows } = await cloudSqlPool.query<{ total_hours: string | number | null }>(
     internalCustomerId
@@ -684,7 +685,7 @@ export async function saveTimeReportEntries(
     return { success: false, error: "Unauthorized" };
   }
 
-  const isSubcontractor = isSubcontractorRole(ctx.appUser?.role);
+  const isExternal = isExternalConsultant(ctx.consultant);
   const weekDates = getISOWeekDateStrings(year, week);
   const scopeBounds = calendarMonthScope
     ? calendarMonthDateBounds(calendarMonthScope.year, calendarMonthScope.month)
@@ -715,8 +716,8 @@ export async function saveTimeReportEntries(
     }
     customerIds.add(group.customerId);
     for (const entry of group.entries) {
-      if (isSubcontractor && entry.projectId && !ctx.bookedProjectIds.has(entry.projectId)) {
-        return { success: false, error: "Unauthorized project for subcontractor." };
+      if (isExternal && entry.projectId && !ctx.bookedProjectIds.has(entry.projectId)) {
+        return { success: false, error: "Unauthorized project." };
       }
       if (entry.projectId) projectIds.add(entry.projectId);
     }
@@ -1352,11 +1353,11 @@ export async function copyEntryToWeek(
     return { success: false, error: "Unauthorized customer." };
   }
   if (
-    isSubcontractorRole(ctx.appUser?.role) &&
+    isExternalConsultant(ctx.consultant) &&
     entry.projectId &&
     !ctx.bookedProjectIds.has(entry.projectId)
   ) {
-    return { success: false, error: "Unauthorized project for subcontractor." };
+    return { success: false, error: "Unauthorized project." };
   }
   const businessErr = copyEntryPayloadBusinessError(entry);
   if (businessErr) return { success: false, error: businessErr };
@@ -1421,11 +1422,11 @@ export async function copyTimeReportEntriesBatch(
       return { success: false, error: "Unauthorized customer." };
     }
     if (
-      isSubcontractorRole(ctx.appUser?.role) &&
+      isExternalConsultant(ctx.consultant) &&
       op.entry.projectId &&
       !ctx.bookedProjectIds.has(op.entry.projectId)
     ) {
-      return { success: false, error: "Unauthorized project for subcontractor." };
+      return { success: false, error: "Unauthorized project." };
     }
     const be = copyEntryPayloadBusinessError(op.entry);
     if (be) return { success: false, error: be };

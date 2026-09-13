@@ -157,7 +157,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (
           dbRole === "admin" ||
           dbRole === "member" ||
-          dbRole === "subcontractor" ||
           dbRole === "customer"
         ) {
           token.role = dbRole;
@@ -227,7 +226,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const role =
         token.role === "admin" ||
         token.role === "member" ||
-        token.role === "subcontractor" ||
         token.role === "customer"
           ? token.role
           : "member";

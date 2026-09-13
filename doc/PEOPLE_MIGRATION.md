@@ -63,7 +63,7 @@ The migration was not run against production.
 8. Start the new application revision and smoke-test with:
    - an admin;
    - a normal member;
-   - a subcontractor.
+   - an external consultant (underkonsult) with a login.
 9. In Settings → People, manually resolve any ambiguous or intentionally
    unmatched consultant profiles.
 
@@ -72,12 +72,13 @@ The migration was not run against production.
 Existing effective access is preserved:
 
 - `admin` and `member`: Planner, Time report, Insights
-- `subcontractor`: Time report
+- former `subcontractor` accounts: Time report (then migrated to `member`;
+  see below)
 
-New Rove account creation (`admin`, `member`, `subcontractor`) requires at
+New Rove account creation (`admin`, `member`) requires at
 least one app. The application also prevents removing a Rove user's final app
-grant. Subcontractors remain restricted to Time report by the existing role
-rules.
+grant. Underkonsult time-report scope is `consultants.is_external`, not a
+login role.
 
 `customer` is a separate login role for people at a customer company. Those
 accounts must not receive Rove apps (Planner, Time report, Insights, Work),
@@ -101,3 +102,26 @@ in place. The old code ignores the new tables and nullable column.
 Do not drop `consultants.app_user_id` after users have been edited in People
 without first exporting those links. Dropping the additive objects, if ever
 needed after a full rollback, must be a separate reviewed migration.
+
+## Drop `subcontractor` login role (2026-09-13)
+
+File: `scripts/20260913_drop_subcontractor_role.sql`
+
+- Marks consultants linked to a `subcontractor` (or legacy `underkonsult`)
+  account as `is_external`.
+- Sets those accounts to `member`. Existing Time report grants are kept.
+- Tightens `app_users_role_check` to `admin`, `member`, `customer`.
+
+Apps and Settings follow `app_user_apps` plus Admin/Member. Time report
+hides the internal customer and limits projects to allocations when the
+signed-in consultant is external.
+
+A subcontractor login is always created from an existing consultant profile
+(People → Create account). There is no login-only underkonsult.
+
+```powershell
+node --env-file=.env.local scripts/run-sql-file.mjs scripts/20260913_drop_subcontractor_role.sql
+```
+
+Run the same file against production with the prod env file when deploying
+this revision. Do not run production SQL until asked.

@@ -15,24 +15,17 @@ export function isAppKey(value: string): value is AppKey {
   return (APP_KEYS as readonly string[]).includes(value);
 }
 
-export type AppUserRole = "admin" | "member" | "subcontractor" | "customer";
+export type AppUserRole = "admin" | "member" | "customer";
 
-export const ROVE_LOGIN_ROLES = ["admin", "member", "subcontractor"] as const;
+export const ROVE_LOGIN_ROLES = ["admin", "member"] as const;
 export type RoveLoginRole = (typeof ROVE_LOGIN_ROLES)[number];
 
 export function isAppUserRole(value: string): value is AppUserRole {
-  return (
-    value === "admin" ||
-    value === "member" ||
-    value === "subcontractor" ||
-    value === "customer"
-  );
+  return value === "admin" || value === "member" || value === "customer";
 }
 
 export function isRoveLoginRole(value: string): value is RoveLoginRole {
-  return (
-    value === "admin" || value === "member" || value === "subcontractor"
-  );
+  return value === "admin" || value === "member";
 }
 
 export type PersonListItem = {

@@ -161,7 +161,6 @@ function NavPlaceholder({
 type SidebarProps = {
   isAdmin?: boolean;
   canSeeTimeReportProjectManager?: boolean;
-  isSubcontractor?: boolean;
   isCustomerUser?: boolean;
   appKeys?: AppKey[];
 };
@@ -169,7 +168,6 @@ type SidebarProps = {
 export function Sidebar({
   isAdmin = false,
   canSeeTimeReportProjectManager = false,
-  isSubcontractor = false,
   isCustomerUser = false,
   appKeys = [],
 }: SidebarProps) {
@@ -198,8 +196,7 @@ export function Sidebar({
     await signOut({ callbackUrl: "/login" });
   }
 
-  const showTimeApproval =
-    !isSubcontractor && (isAdmin || canSeeTimeReportProjectManager);
+  const showTimeApproval = isAdmin || canSeeTimeReportProjectManager;
 
   const navPadX = {
     paddingLeft: SIDEBAR_RAIL_PAD_X,
@@ -232,7 +229,7 @@ export function Sidebar({
 
         <div className="flex flex-col gap-3">
           <NavLink href={ROUTES.home} label="Home" icon={Home} pathname={pathname} />
-          {!isSubcontractor && appKeys.includes("planner") && (
+          {appKeys.includes("planner") && (
             <AppGroup
               label="Planner"
               icon={CalendarCheck}
@@ -279,7 +276,7 @@ export function Sidebar({
               )}
             </AppGroup>
           )}
-          {!isSubcontractor && !isCustomerUser && (
+          {!isCustomerUser && (
             <>
               {appKeys.includes("insights") && (
                 <NavLink
@@ -304,7 +301,7 @@ export function Sidebar({
           )}
         </div>
 
-        {!isSubcontractor && !isCustomerUser && (
+        {!isCustomerUser && (
           <div className="border-t border-border-subtle pt-4">
             <AppGroup
               label="Settings"

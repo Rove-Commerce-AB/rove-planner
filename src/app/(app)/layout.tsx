@@ -16,10 +16,9 @@ export default async function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentAppUser();
   const isAdmin = user?.role === "admin";
-  const isSubcontractor = user?.role === "subcontractor";
   let canSeeTimeReportProjectManager = false;
 
-  if (isAdmin || isSubcontractor) {
+  if (isAdmin) {
     canSeeTimeReportProjectManager = true;
   } else {
     try {
@@ -45,7 +44,6 @@ export default async function AppLayout({
       <Sidebar
         isAdmin={isAdmin}
         canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
-        isSubcontractor={isSubcontractor}
         isCustomerUser={user?.role === "customer"}
         appKeys={user?.appKeys ?? []}
       />

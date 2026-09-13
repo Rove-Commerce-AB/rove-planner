@@ -54,11 +54,10 @@ export default async function DashboardPage() {
   const appUser = await getCurrentAppUser();
   const session = await auth();
   const appUserId = session?.user?.appUserId;
-  const isSubcontractor = appUser?.role === "subcontractor";
   const isCustomerUser = appUser?.role === "customer";
 
   const myTasks =
-    appUser != null && appUserId != null && !isSubcontractor && !isCustomerUser
+    appUser != null && appUserId != null && !isCustomerUser
       ? await listOpenTodosAssignedToUser(appUserId)
       : [];
 
@@ -69,7 +68,7 @@ export default async function DashboardPage() {
   const monthSpans = getMonthSpansForWeeks(weeks);
 
   const myTasksPanel =
-    appUser != null && appUserId != null && !isSubcontractor && !isCustomerUser ? (
+    appUser != null && appUserId != null && !isCustomerUser ? (
       <Panel className="mt-6">
         <PanelSectionTitle>My tasks</PanelSectionTitle>
         <div className="p-3 pt-0">
