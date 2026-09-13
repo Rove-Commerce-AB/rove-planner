@@ -1,7 +1,7 @@
 # Database schema
 
 This document mirrors the **PostgreSQL** application schema after the
-People / customer-user / Work rollout (snapshot **2026-09-12**). Use it when
+People / customer-user / Work rollout (snapshot **2026-09-13**). Use it when
 generating queries, types, or UI logic.
 
 Terminology: we use **customer** (never client).
@@ -256,8 +256,8 @@ Index: `(consultant_id)`.
 ## customer_app_users
 
 Which **customer users** belong to which customers. These accounts can log in
-and be chosen as the customer contact. They are never allocatable and never
-receive Rove apps (Planner, Time report, Insights, Work).
+and be chosen as the customer contact. They are never allocatable. They may
+receive the **Work** app only (never Planner, Time report, or Insights).
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -683,6 +683,191 @@ Index: `(app_user_id, board_id)`.
 
 ---
 
+## work_boards
+
+Customer-scoped boards for Rove Work. Independent of Planner `projects`.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
+| title | text | NOT NULL |
+| prefix | text | NOT NULL; 2–8 chars `^[A-Z][A-Z0-9]{1,7}$`; unique per customer |
+| created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(customer_id)`; unique `(customer_id, prefix)`.
+Trigger `trg_work_boards_updated_at` → `set_updated_at()`.
+
+Board visibility is `work_board_members`. Admins can still open any board.
+Creating a board defaults members to people linked to the customer (consultants
+with an app user, plus customer users), and always includes the creator.
+Customer users never see the internal customer.
+
+DDL: [`scripts/20260913_rove_work_boards.sql`](../scripts/20260913_rove_work_boards.sql).
+
+---
+
+## work_board_members
+
+People with access to a Work board.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| board_id | uuid | PK part, FK → `work_boards.id`, ON DELETE CASCADE |
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(app_user_id)`.
+
+Creating a board adds the chosen people, defaulting to everyone linked to the
+customer, and always includes the creator.
+
+---
+
+## work_board_statuses
+
+Columns on a Work board. New boards get Todo → In progress → To be tested →
+In review → Done. Statuses can be added, reordered, or removed. Removing a
+status moves its issues to another status first. A board keeps at least one.
+Order is `sort_order`.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| name | text | NOT NULL |
+| sort_order | integer | NOT NULL, default 0 |
+| is_done | boolean | NOT NULL, default false; Done-style header |
+
+Index: `(board_id, sort_order)`.
+
+---
+
+## work_issues
+
+Issues on a Work board. Keys are `{prefix}-{number}` with `number` unique per board.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| number | integer | NOT NULL; sequential per board |
+| title | text | NOT NULL |
+| status | uuid | NOT NULL, FK → `work_board_statuses.id` |
+| sort_order | integer | NOT NULL, default 0; order within a status |
+| owner_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL |
+| description | text | NOT NULL, default `''` |
+| current_state | text | NOT NULL, default `''` |
+| next_step | text | NOT NULL, default `''` |
+| created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(board_id, number)`. Index: `(board_id, status, sort_order)`.
+Trigger `trg_work_issues_updated_at` → `set_updated_at()`.
+
+Statuses live in `work_board_statuses` and can be added or reordered per board.
+Default columns: Todo, In progress, To be tested, In review, Done.
+
+DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
+[`scripts/20260913_work_board_statuses.sql`](../scripts/20260913_work_board_statuses.sql),
+[`scripts/20260913_work_issue_details.sql`](../scripts/20260913_work_issue_details.sql).
+
+---
+
+## work_issue_assignees
+
+Many assignees per issue (owner is a separate field on `work_issues`).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| issue_id | uuid | PK part, FK → `work_issues.id`, ON DELETE CASCADE |
+| app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(app_user_id)`.
+
+---
+
+## work_issue_labels
+
+Free-text labels scoped to a board.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| name | text | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(board_id, lower(name))`.
+
+---
+
+## work_issue_label_links
+
+| Column | Type | Notes |
+|--------|------|--------|
+| issue_id | uuid | PK part, FK → `work_issues.id`, ON DELETE CASCADE |
+| label_id | uuid | PK part, FK → `work_issue_labels.id`, ON DELETE CASCADE |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+---
+
+## work_issue_comments
+
+Flat comments, newest first. No mentions or attachments.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| author_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| body | text | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(issue_id, created_at)`.
+
+---
+
+## work_issue_events
+
+Activity log for status, owner, assignees, labels, comments, files, title, and text fields.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| actor_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| kind | text | NOT NULL; `created`, `title`, `status`, `owner`, `assignees`, `labels`, `description`, `current_state`, `next_step`, `comment`, `file` |
+| summary | text | NOT NULL |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(issue_id, created_at)`.
+
+---
+
+## work_issue_files
+
+Issue attachments stored in Postgres (`bytea`, max 8 MB in app code).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| file_name | text | NOT NULL |
+| mime_type | text | NOT NULL |
+| byte_size | integer | NOT NULL |
+| content | bytea | NOT NULL |
+| uploaded_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(issue_id, created_at)`.
+
+---
+
 ## feature_requests
 
 | Column | Type | Notes |
@@ -766,7 +951,7 @@ Jira, DevOps, PM edits).
 
 | Function | Used by |
 |----------|---------|
-| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams |
+| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams, work_boards, work_issues |
 | `enforce_customer_user_rules()` | BEFORE INSERT/UPDATE on `app_users`, `app_user_apps`, `consultants`, `customer_app_users`, `customers` |
 | `clear_customer_contact_on_unlink()` | AFTER DELETE on `customer_app_users` |
 
@@ -778,7 +963,8 @@ Those are not part of the application model.
 ## Relationship summary
 
 - **customers** → **projects** → **allocations** / **time_report_entries**
-- **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts have none
+- **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts may have Work only
+- **work_boards** belong to **customers**; visibility is **work_board_members**; **work_issues** belong to a board (`prefix` + per-board `number`) with owner, assignees, labels, comments, events, and files
 - **app_users** → zero or one **consultants** profile via `consultants.app_user_id` (not allowed when `role = customer`)
 - **consultants** ↔ **customers** via **customer_consultants**
 - **customer** role **app_users** ↔ **customers** via **customer_app_users**; `customers.contact_app_user_id` picks one of those users

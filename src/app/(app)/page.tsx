@@ -103,13 +103,23 @@ export default async function DashboardPage() {
 
   let mainContent: ReactNode;
   if (isCustomerUser) {
+    const hasWork = appUser?.appKeys.includes("work");
     mainContent = (
       <Panel>
         <div className="p-6 text-center">
           <p className="text-text-primary">
-            You are signed in as a customer user. Rove apps are not available
-            on this account.
+            {hasWork
+              ? "Open Rove Work to see the customers and boards you have access to."
+              : "You are signed in as a customer user. Ask an admin to grant Work if you need access to boards."}
           </p>
+          {hasWork ? (
+            <Link
+              href="/work"
+              className="mt-4 inline-block text-brand-signal hover:underline"
+            >
+              Go to Rove Work →
+            </Link>
+          ) : null}
         </div>
       </Panel>
     );

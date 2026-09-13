@@ -81,10 +81,11 @@ grant. Underkonsult time-report scope is `consultants.is_external`, not a
 login role.
 
 `customer` is a separate login role for people at a customer company. Those
-accounts must not receive Rove apps (Planner, Time report, Insights, Work),
-must not have a consultant profile, and are linked to one or more customers
-through `customer_app_users`. They cannot be linked to the internal Rove
-customer. See [`DATABASE.md`](DATABASE.md) and
+accounts must not receive Planner, Time report, or Insights. They may be
+granted **Work** manually in Settings → People. They must not have a
+consultant profile, and are linked to one or more customers through
+`customer_app_users`. They cannot be linked to the internal Rove customer.
+See [`DATABASE.md`](DATABASE.md) and
 [`scripts/20260911_customer_users.sql`](../scripts/20260911_customer_users.sql).
 
 ## Rove Work catalogue row

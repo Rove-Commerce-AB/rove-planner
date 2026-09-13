@@ -1,14 +1,10 @@
-import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
-import { PageHeader } from "@/components/ui";
+import { listWorkSelectorCustomers } from "@/lib/workBoards";
+import { WorkSelectorPageClient } from "./WorkSelectorPageClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function WorkPage() {
-  await redirectSubcontractorToAccessDenied();
+  const customers = await listWorkSelectorCustomers();
 
-  return (
-    <div>
-      <PageHeader title="Rove Work" description="Coming soon." />
-    </div>
-  );
+  return <WorkSelectorPageClient customers={customers} />;
 }

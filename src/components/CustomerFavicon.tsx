@@ -29,16 +29,25 @@ function initialsFromName(name: string): string {
 }
 
 const SIZES = {
+  nav: {
+    box: "h-4 w-4",
+    image: "h-3.5 w-3.5",
+    initials: "text-[8px]",
+    frame: "rounded-sm",
+    avatar: "xxs" as const,
+  },
   xs: {
     box: "h-7 w-7",
     image: "h-4 w-4",
     initials: "text-[10px]",
+    frame: "rounded-md border border-border-subtle bg-bg-default",
     avatar: "xs" as const,
   },
   sm: {
     box: "h-8 w-8",
     image: "h-5 w-5",
     initials: "text-xs",
+    frame: "rounded-md border border-border-subtle bg-bg-default",
     avatar: "sm" as const,
   },
 } as const;
@@ -58,7 +67,7 @@ export function CustomerFavicon({ name, url, color, size = "sm" }: Props) {
   if (faviconUrl && !imageError) {
     return (
       <span
-        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg-default`}
+        className={`flex ${scale.box} shrink-0 items-center justify-center ${scale.frame}`}
       >
         {/* Favicons are loaded from the customer's public website domain. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -75,6 +84,18 @@ export function CustomerFavicon({ name, url, color, size = "sm" }: Props) {
   }
 
   if (color) {
+    return (
+      <span
+        className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-text-inverse`}
+        style={{ backgroundColor: color || DEFAULT_CUSTOMER_COLOR }}
+        aria-hidden
+      >
+        {initialsFromName(name)}
+      </span>
+    );
+  }
+
+  if (size === "nav") {
     return (
       <span
         className={`flex ${scale.box} shrink-0 items-center justify-center rounded-full ${scale.initials} font-semibold text-text-inverse`}

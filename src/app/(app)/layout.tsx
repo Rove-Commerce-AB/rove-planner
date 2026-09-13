@@ -2,12 +2,14 @@ import { Sidebar } from "@/components/Sidebar";
 import { AppTopBar } from "@/components/AppTopBar";
 import { FeatureRequestFab } from "@/components/FeatureRequestFab";
 import { AppThemeAttr } from "@/components/AppThemeAttr";
+import { WorkTrailProvider } from "@/components/WorkTrailContext";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import {
   getCachedProjectManagerNavVisible,
   getCachedUnreadNotificationCount,
 } from "@/lib/layoutShell";
+import { listWorkNavCustomers } from "@/lib/workBoards";
 
 /** Auth and app_users gatekeeping run in src/proxy.ts. */
 
@@ -37,6 +39,8 @@ export default async function AppLayout({
     user?.email != null
       ? await getCachedUnreadNotificationCount(user.email)
       : 0;
+  const workNav =
+    user?.appKeys.includes("work") ? await listWorkNavCustomers() : [];
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -46,13 +50,16 @@ export default async function AppLayout({
         canSeeTimeReportProjectManager={canSeeTimeReportProjectManager}
         isCustomerUser={user?.role === "customer"}
         appKeys={user?.appKeys ?? []}
+        workNav={workNav}
       />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <AppTopBar unreadNotificationCount={unreadNotificationCount} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-page p-(--space-32)">
-          {children}
-        </main>
-      </div>
+      <WorkTrailProvider>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <AppTopBar unreadNotificationCount={unreadNotificationCount} />
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-surface-page p-(--space-32)">
+            {children}
+          </main>
+        </div>
+      </WorkTrailProvider>
       <FeatureRequestFab />
     </div>
   );

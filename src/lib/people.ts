@@ -11,6 +11,7 @@ import { customerHref, ROUTES, personHref } from "@/lib/routes";
 import {
   isAppKey,
   isAppUserRole,
+  isCustomerAssignableAppKey,
   isRoveLoginRole,
   type AppKey,
   type AppUserRole,
@@ -126,9 +127,6 @@ export async function setPersonApps(
 ): Promise<void> {
   await assertAdmin();
   const uniqueKeys = [...new Set(appKeys)];
-  if (uniqueKeys.length === 0) {
-    throw new Error("A user must have access to at least one app");
-  }
   if (uniqueKeys.some((key) => !isAppKey(key))) {
     throw new Error("Invalid app");
   }
@@ -140,9 +138,10 @@ export async function setPersonApps(
     );
     if (!userRows[0]) throw new Error("User not found");
     if (userRows[0].role === "customer") {
-      throw new Error("Customer users cannot be granted Rove apps");
-    }
-    if (uniqueKeys.length === 0) {
+      if (uniqueKeys.some((key) => !isCustomerAssignableAppKey(key))) {
+        throw new Error("Customer users can only be granted Work");
+      }
+    } else if (uniqueKeys.length === 0) {
       throw new Error("A user must have access to at least one app");
     }
 
@@ -182,8 +181,8 @@ export async function createUserPerson(input: {
     throw new Error("Invalid role");
   }
   if (input.role === "customer") {
-    if (appKeys.length > 0) {
-      throw new Error("Customer users cannot be granted Rove apps");
+    if (appKeys.some((key) => !isCustomerAssignableAppKey(key))) {
+      throw new Error("Customer users can only be granted Work");
     }
     if (input.consultantId) {
       throw new Error("A customer user cannot have a consultant profile");

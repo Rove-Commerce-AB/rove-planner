@@ -5,11 +5,20 @@ export type Breadcrumb = {
   href?: string;
 };
 
+export type BreadcrumbExtras = {
+  workCustomerName?: string;
+  workBoardTitle?: string;
+  workIssueKey?: string;
+};
+
 /**
  * App chrome breadcrumbs from the current pathname.
  * The last item is the current page (no href).
  */
-export function breadcrumbsForPathname(pathname: string): Breadcrumb[] {
+export function breadcrumbsForPathname(
+  pathname: string,
+  extras?: BreadcrumbExtras
+): Breadcrumb[] {
   const root: Breadcrumb = { label: "Rove Apps", href: ROUTES.home };
 
   if (pathname === "/") {
@@ -62,7 +71,32 @@ export function breadcrumbsForPathname(pathname: string): Breadcrumb[] {
   }
 
   if (pathname.startsWith(ROUTES.work)) {
-    return [root, { label: "Rove Work" }];
+    const work: Breadcrumb = { label: "Rove Work", href: ROUTES.work };
+    const remainder = pathname.slice(ROUTES.work.length).replace(/^\//, "");
+    if (!remainder) {
+      return [root, { label: "Rove Work" }];
+    }
+    const parts = remainder.split("/").filter(Boolean);
+    const customerName = extras?.workCustomerName?.trim();
+    const boardTitle = extras?.workBoardTitle?.trim();
+    const issueKey = extras?.workIssueKey?.trim();
+    const crumbs: Breadcrumb[] = [root, work];
+    const customerHref = `${ROUTES.work}/${parts[0]}`;
+    crumbs.push({
+      label: customerName || "Customer",
+      href: parts[1] ? customerHref : undefined,
+    });
+    if (parts[1]) {
+      const boardHref = `${customerHref}/${parts[1]}`;
+      crumbs.push({
+        label: boardTitle || "Board",
+        href: parts[2] ? boardHref : undefined,
+      });
+    }
+    if (parts[2]) {
+      crumbs.push({ label: issueKey || "Issue" });
+    }
+    return crumbs;
   }
 
   if (pathname.startsWith("/reports")) {

@@ -27,6 +27,7 @@ import {
 import {
   APP_KEYS,
   APP_LABELS,
+  CUSTOMER_APP_KEYS,
   type AppKey,
   type PersonListItem,
 } from "@/lib/peopleTypes";
@@ -233,7 +234,7 @@ function AppAccessList({
 }) {
   return (
     <div className="divide-y divide-border-subtle">
-      {APP_KEYS.map((key) => {
+      {allowedKeys.map((key) => {
         const item = APP_ACCESS_ITEMS[key];
         const Icon = item.icon;
         const enabled = value.includes(key);
@@ -298,16 +299,21 @@ function UserFormDialog({
   const [name, setName] = useState(initialName);
   const [email, setEmail] = useState(initialEmail);
   const [role, setRole] = useState<AppUserRole>("member");
-  const [appKeys, setAppKeys] = useState<AppKey[]>([
-    "planner",
-    "time_report",
-    "insights",
-  ]);
+  const [appKeys, setAppKeys] = useState<AppKey[]>(
+    kind === "customer" ? [] : ["planner", "time_report", "insights"]
+  );
   const [customerIds, setCustomerIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isCustomer = kind === "customer";
   const assignableCustomers = customers.filter((customer) => !customer.isInternal);
+
+  useEffect(() => {
+    if (!open) return;
+    setAppKeys(isCustomer ? [] : ["planner", "time_report", "insights"]);
+    setCustomerIds([]);
+    setError(null);
+  }, [open, isCustomer]);
 
   async function submit() {
     setError(null);
@@ -327,7 +333,7 @@ function UserFormDialog({
               name,
               email,
               role: "customer",
-              appKeys: [],
+              appKeys,
               customerIds,
             }
           : {
@@ -381,41 +387,49 @@ function UserFormDialog({
           modalStyle
         />
         {isCustomer ? (
-          assignableCustomers.length > 0 ? (
-            <div>
-              <p className="mb-2 block text-sm font-medium text-text-primary">
-                Customers
-              </p>
-              <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-                {assignableCustomers.map((customer) => (
-                  <label
-                    key={customer.id}
-                    htmlFor={`add-customer-user-customer-${customer.id}`}
-                    className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                  >
-                    <input
-                      id={`add-customer-user-customer-${customer.id}`}
-                      type="checkbox"
-                      checked={customerIds.includes(customer.id)}
-                      onChange={() =>
-                        setCustomerIds((prev) =>
-                          prev.includes(customer.id)
-                            ? prev.filter((id) => id !== customer.id)
-                            : [...prev, customer.id]
-                        )
-                      }
-                      disabled={submitting}
-                    />
-                    <span>{customer.name}</span>
-                  </label>
-                ))}
+          <div className="space-y-4">
+            <AppAccessList
+              idPrefix="add-customer-user-apps"
+              value={appKeys}
+              onChange={setAppKeys}
+              allowedKeys={CUSTOMER_APP_KEYS}
+            />
+            {assignableCustomers.length > 0 ? (
+              <div>
+                <p className="mb-2 block text-sm font-medium text-text-primary">
+                  Customers
+                </p>
+                <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
+                  {assignableCustomers.map((customer) => (
+                    <label
+                      key={customer.id}
+                      htmlFor={`add-customer-user-customer-${customer.id}`}
+                      className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+                    >
+                      <input
+                        id={`add-customer-user-customer-${customer.id}`}
+                        type="checkbox"
+                        checked={customerIds.includes(customer.id)}
+                        onChange={() =>
+                          setCustomerIds((prev) =>
+                            prev.includes(customer.id)
+                              ? prev.filter((id) => id !== customer.id)
+                              : [...prev, customer.id]
+                          )
+                        }
+                        disabled={submitting}
+                      />
+                      <span>{customer.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <p className="text-sm text-text-secondary">
-              No customers available to assign yet.
-            </p>
-          )
+            ) : (
+              <p className="text-sm text-text-secondary">
+                No customers available to assign yet.
+              </p>
+            )}
+          </div>
         ) : (
           <>
             <Select
@@ -737,12 +751,13 @@ function AppAccessForm({ person }: { person: PersonListItem }) {
   const [appKeys, setAppKeys] = useState<AppKey[]>(person.appKeys);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const allowedKeys = APP_KEYS;
+  const isCustomer = person.userRole === "customer";
+  const allowedKeys = isCustomer ? CUSTOMER_APP_KEYS : APP_KEYS;
 
   async function updateApps(next: AppKey[]) {
     if (!person.appUserId) return;
     const unique = [...new Set(next)];
-    if (unique.length === 0) {
+    if (!isCustomer && unique.length === 0) {
       setError("A user must have access to at least one app");
       return;
     }
@@ -767,7 +782,9 @@ function AppAccessForm({ person }: { person: PersonListItem }) {
     <div className="px-6 py-6">
       <h3 className="text-heading-m text-text-primary">Apps</h3>
       <p className="mt-1 text-body-m text-text-secondary">
-        Manage which Rove applications this user can open.
+        {isCustomer
+          ? "Customer users can be granted Rove Work. Other apps stay unavailable."
+          : "Manage which Rove applications this user can open."}
       </p>
       <div className="mt-6">
         <AppAccessList
@@ -1214,18 +1231,14 @@ export function PeoplePageClient({
         {selected ? (
           <Tabs
             key={selected.key}
-            defaultValue={
-              selected.appUserId || selected.userRole === "customer"
-                ? "overview"
-                : "consultant"
-            }
+            defaultValue="overview"
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <TabsList className="shrink-0 border-border-default px-6 !gap-6">
               <TabsTrigger value="overview" className="px-1 !px-1">
                 Overview
               </TabsTrigger>
-              {selected.appUserId && selected.userRole !== "customer" ? (
+              {selected.appUserId ? (
                 <TabsTrigger value="apps" className="px-1 !px-1">
                   App access
                 </TabsTrigger>
@@ -1274,7 +1287,7 @@ export function PeoplePageClient({
                 </div>
               )}
             </TabsContent>
-            {selected.appUserId && selected.userRole !== "customer" ? (
+            {selected.appUserId ? (
               <TabsContent
                 value="apps"
                 className="min-h-0 flex-1 overflow-y-auto data-[state=active]:flex data-[state=active]:flex-col"

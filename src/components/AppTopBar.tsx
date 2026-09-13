@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { breadcrumbsForPathname } from "@/lib/breadcrumbs";
+import { useWorkTrail } from "@/components/WorkTrailContext";
 import { ROUTES } from "@/lib/routes";
 
 type AppTopBarProps = {
@@ -12,7 +13,8 @@ type AppTopBarProps = {
 
 export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
   const pathname = usePathname();
-  const crumbs = breadcrumbsForPathname(pathname);
+  const workTrail = useWorkTrail();
+  const crumbs = breadcrumbsForPathname(pathname, workTrail ?? undefined);
   const notificationsActive =
     pathname === ROUTES.notifications ||
     pathname.startsWith(`${ROUTES.notifications}/`);

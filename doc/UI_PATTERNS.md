@@ -186,7 +186,7 @@ Column order is Name, Team, Role, Capacity, Overhead. There is no Calendar colum
 
 - Shared sidebar and footer (Home, Log out) use `interactive/*` and zinc surfaces. Active nav uses `nav/active` + `nav/active-accent` in every app.
 - A top bar spans the content column: breadcrumbs (`Rove Apps / … / current page`) on the left, Notifications bell on the right. Unread state is a `status/danger` dot. The bell links to `/notifications`.
-- Settings sits in the main nav below the apps, after a `border/subtle` divider. It is an accordion like the apps (no start page): General (admin), Consultants, Customers. Visible to Rove logins (`admin` / `member`); hidden from customer users. General is admin-only. Assigned apps (`app_user_apps`) control which product groups appear.
+- Settings sits in the main nav below the apps, after a `border/subtle` divider. It is an accordion like the apps (no start page): General (admin), Consultants, Customers. Visible to Rove logins (`admin` / `member`); hidden from customer users. General is admin-only. Assigned apps (`app_user_apps`) control which product groups appear. Customer users may be granted Work and then see Rove Work in the sidebar.
 - The sidebar stays expanded in layout. Collapse/expand is not available yet.
 - App groups in the sidebar are accordions. Child labels align with the parent app label (same icon column + gap).
 - Placeholder apps are not clickable and use `text/disabled` / `icon/disabled`.

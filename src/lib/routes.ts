@@ -43,3 +43,19 @@ export function personHrefForConsultant(
 export function personHrefForUser(appUserId: string): string {
   return personHref(`user-${appUserId}`);
 }
+
+export function workCustomerHref(customerId: string): string {
+  return `${ROUTES.work}/${customerId}`;
+}
+
+export function workBoardHref(customerId: string, boardId: string): string {
+  return `${ROUTES.work}/${customerId}/${boardId}`;
+}
+
+export function workIssueHref(
+  customerId: string,
+  boardId: string,
+  issueId: string
+): string {
+  return `${ROUTES.work}/${customerId}/${boardId}/${issueId}`;
+}

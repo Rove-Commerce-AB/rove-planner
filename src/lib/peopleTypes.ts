@@ -15,6 +15,13 @@ export function isAppKey(value: string): value is AppKey {
   return (APP_KEYS as readonly string[]).includes(value);
 }
 
+/** The only Rove app a customer-role user may receive. */
+export const CUSTOMER_APP_KEYS = ["work"] as const satisfies readonly AppKey[];
+
+export function isCustomerAssignableAppKey(value: string): value is AppKey {
+  return (CUSTOMER_APP_KEYS as readonly string[]).includes(value);
+}
+
 export type AppUserRole = "admin" | "member" | "customer";
 
 export const ROVE_LOGIN_ROLES = ["admin", "member"] as const;

@@ -1,0 +1,346 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import {
+  addWorkBoardMember,
+  createWorkBoard,
+  createWorkBoardStatus,
+  deleteWorkBoardStatus,
+  listWorkCustomerPeople,
+  removeWorkBoardMember,
+  renameWorkBoardStatus,
+  reorderWorkBoardStatuses,
+} from "@/lib/workBoards";
+import type { WorkBoardStatus } from "@/lib/workStatuses";
+import type { WorkPerson } from "@/lib/workTypes";
+import {
+  addIssueAssignee,
+  addIssueComment,
+  addIssueLabel,
+  createWorkIssue,
+  removeIssueAssignee,
+  removeIssueFile,
+  removeIssueLabel,
+  reorderWorkIssues,
+  setWorkIssueOwner,
+  setWorkIssueStatus,
+  setWorkIssueTextField,
+  setWorkIssueTitle,
+  uploadIssueFile,
+} from "@/lib/workIssues";
+import { ROUTES, workCustomerHref } from "@/lib/routes";
+import type { WorkIssueStatus } from "@/lib/workStatuses";
+
+type Ok = { ok: true };
+type OkBoard = { ok: true; boardId: string };
+type OkIssue = { ok: true; issueId: string };
+type Err = { ok: false; error: string };
+
+function fail(error: unknown): Err {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : "Something went wrong",
+  };
+}
+
+function revalidateBoard(_boardId?: string, _issueId?: string) {
+  revalidatePath(ROUTES.work, "layout");
+}
+
+export async function listWorkCustomerPeopleAction(
+  customerId: string
+): Promise<WorkPerson[]> {
+  try {
+    return await listWorkCustomerPeople(customerId);
+  } catch {
+    return [];
+  }
+}
+
+export async function createWorkBoardAction(
+  customerId: string,
+  title: string,
+  prefix: string,
+  memberAppUserIds?: string[]
+): Promise<OkBoard | Err> {
+  try {
+    const boardId = await createWorkBoard(
+      customerId,
+      title,
+      prefix,
+      memberAppUserIds
+    );
+    revalidatePath(ROUTES.work, "layout");
+    revalidatePath(workCustomerHref(customerId));
+    return { ok: true, boardId };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkBoardMemberAction(
+  boardId: string,
+  appUserId: string
+): Promise<Ok | Err> {
+  try {
+    await addWorkBoardMember(boardId, appUserId);
+    revalidateBoard(boardId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function removeWorkBoardMemberAction(
+  boardId: string,
+  appUserId: string
+): Promise<Ok | Err> {
+  try {
+    await removeWorkBoardMember(boardId, appUserId);
+    revalidateBoard(boardId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createWorkBoardStatusAction(
+  boardId: string,
+  name: string
+): Promise<{ ok: true; status: WorkBoardStatus } | Err> {
+  try {
+    const status = await createWorkBoardStatus(boardId, name);
+    revalidateBoard(boardId);
+    return { ok: true, status };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function renameWorkBoardStatusAction(
+  boardId: string,
+  statusId: string,
+  name: string
+): Promise<{ ok: true; status: WorkBoardStatus } | Err> {
+  try {
+    const status = await renameWorkBoardStatus(boardId, statusId, name);
+    revalidateBoard(boardId);
+    return { ok: true, status };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function reorderWorkBoardStatusesAction(
+  boardId: string,
+  statusIds: string[]
+): Promise<Ok | Err> {
+  try {
+    await reorderWorkBoardStatuses(boardId, statusIds);
+    revalidateBoard(boardId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkBoardStatusAction(
+  boardId: string,
+  statusId: string,
+  moveToStatusId: string | null
+): Promise<Ok | Err> {
+  try {
+    await deleteWorkBoardStatus(boardId, statusId, moveToStatusId);
+    revalidateBoard(boardId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createWorkIssueAction(input: {
+  boardId: string;
+  title: string;
+  status: WorkIssueStatus;
+}): Promise<OkIssue | Err> {
+  try {
+    const issueId = await createWorkIssue(input);
+    revalidateBoard(input.boardId, issueId);
+    return { ok: true, issueId };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueTitleAction(
+  boardId: string,
+  issueId: string,
+  title: string
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueTitle(boardId, issueId, title);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueOwnerAction(
+  boardId: string,
+  issueId: string,
+  ownerAppUserId: string | null,
+  ownerName: string
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueOwner(boardId, issueId, ownerAppUserId, ownerName);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueFieldAction(
+  boardId: string,
+  issueId: string,
+  field: "description" | "current_state" | "next_step",
+  value: string
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueTextField(boardId, issueId, field, value);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssueAssigneeAction(
+  boardId: string,
+  issueId: string,
+  appUserId: string,
+  personName: string
+): Promise<Ok | Err> {
+  try {
+    await addIssueAssignee(boardId, issueId, appUserId, personName);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function removeWorkIssueAssigneeAction(
+  boardId: string,
+  issueId: string,
+  appUserId: string,
+  personName: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssueAssignee(boardId, issueId, appUserId, personName);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssueLabelAction(
+  boardId: string,
+  issueId: string,
+  name: string
+): Promise<Ok | Err> {
+  try {
+    await addIssueLabel(boardId, issueId, name);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function removeWorkIssueLabelAction(
+  boardId: string,
+  issueId: string,
+  labelId: string,
+  labelName: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssueLabel(boardId, issueId, labelId, labelName);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssueCommentAction(
+  boardId: string,
+  issueId: string,
+  body: string
+): Promise<Ok | Err> {
+  try {
+    await addIssueComment(boardId, issueId, body);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function uploadWorkIssueFileAction(
+  boardId: string,
+  issueId: string,
+  formData: FormData
+): Promise<Ok | Err> {
+  try {
+    const file = formData.get("file");
+    if (!(file instanceof File)) throw new Error("Choose a file");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await uploadIssueFile(boardId, issueId, {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      bytes,
+    });
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssueFileAction(
+  boardId: string,
+  issueId: string,
+  fileId: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssueFile(boardId, issueId, fileId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function moveWorkIssueAction(input: {
+  boardId: string;
+  issueId: string;
+  status: WorkIssueStatus;
+  issueIds: string[];
+}): Promise<Ok | Err> {
+  try {
+    const index = input.issueIds.indexOf(input.issueId);
+    await setWorkIssueStatus(
+      input.boardId,
+      input.issueId,
+      input.status,
+      index < 0 ? input.issueIds.length : index
+    );
+    await reorderWorkIssues(input.boardId, input.status, input.issueIds);
+    revalidateBoard(input.boardId, input.issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}

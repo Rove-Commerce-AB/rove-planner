@@ -8,6 +8,7 @@ const TONES = [
 ] as const;
 
 const SIZES = {
+  xxs: "h-6 w-6 text-[9px] font-semibold",
   xs: "h-7 w-7 text-[10px] font-semibold",
   sm: "h-8 w-8 text-[11px] font-semibold",
   md: "h-10 w-10 text-[13px] font-semibold",
