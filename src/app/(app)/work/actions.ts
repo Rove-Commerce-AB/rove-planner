@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import {
   addWorkBoardMember,
+  archiveWorkBoard,
   createWorkBoard,
   createWorkBoardStatus,
   deleteWorkBoardStatus,
   listWorkCustomerPeople,
   removeWorkBoardMember,
+  renameWorkBoard,
   renameWorkBoardStatus,
   reorderWorkBoardStatuses,
 } from "@/lib/workBoards";
@@ -99,6 +101,33 @@ export async function removeWorkBoardMemberAction(
     await removeWorkBoardMember(boardId, appUserId);
     revalidateBoard(boardId);
     return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function renameWorkBoardAction(
+  boardId: string,
+  title: string
+): Promise<{ ok: true; title: string } | Err> {
+  try {
+    const renamed = await renameWorkBoard(boardId, title);
+    revalidatePath(ROUTES.work, "layout");
+    revalidatePath(workCustomerHref(renamed.customerId));
+    return { ok: true, title: renamed.title };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function archiveWorkBoardAction(
+  boardId: string
+): Promise<{ ok: true; customerId: string } | Err> {
+  try {
+    const customerId = await archiveWorkBoard(boardId);
+    revalidatePath(ROUTES.work, "layout");
+    revalidatePath(workCustomerHref(customerId));
+    return { ok: true, customerId };
   } catch (error) {
     return fail(error);
   }

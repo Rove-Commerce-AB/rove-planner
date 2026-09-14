@@ -23,6 +23,7 @@ import type { CustomerWithDetails } from "@/types";
 type EditField =
   | "name"
   | "url"
+  | "subscriptionId"
   | "contact"
   | "accountManager"
   | "logoUrl"
@@ -45,6 +46,9 @@ export function CustomerDrawerOverview({
   const router = useRouter();
   const [name, setName] = useState(customer.name);
   const [url, setUrl] = useState(customer.url ?? "");
+  const [subscriptionId, setSubscriptionId] = useState(
+    customer.subscriptionId ?? ""
+  );
   const [contactAppUserId, setContactAppUserId] = useState(
     customer.contactAppUserId ?? ""
   );
@@ -109,6 +113,14 @@ export function CustomerDrawerOverview({
       setError("Customer name is required");
       return;
     }
+    if (
+      field === "subscriptionId" &&
+      trimmed &&
+      (trimmed.length !== 6 || /\s/.test(trimmed))
+    ) {
+      setError("Subscription ID must be exactly 6 characters");
+      return;
+    }
 
     setError(null);
     setEditingField(null);
@@ -122,6 +134,12 @@ export function CustomerDrawerOverview({
         case "url":
           await updateCustomerAction(customer.id, { url: trimmed || null });
           setUrl(trimmed);
+          break;
+        case "subscriptionId":
+          await updateCustomerAction(customer.id, {
+            subscription_id: trimmed || null,
+          });
+          setSubscriptionId(trimmed);
           break;
         case "contact": {
           await updateCustomerAction(customer.id, {
@@ -273,6 +291,7 @@ export function CustomerDrawerOverview({
                   cancelEdit();
                 }
               }}
+              maxLength={field === "subscriptionId" ? 6 : undefined}
               className={editInputClass}
               autoFocus
             />
@@ -297,6 +316,20 @@ export function CustomerDrawerOverview({
         <div className="px-6 pt-4">
           {textField("Name", "name", name)}
           {textField("URL", "url", url, "url")}
+          {textField("Subscription ID", "subscriptionId", subscriptionId)}
+          <DrawerFieldRow label="Litium version">
+            <div className="flex min-h-8 w-full min-w-0 items-center rounded-md border border-form bg-bg-muted px-2.5 text-left text-sm font-medium leading-normal">
+              <span
+                className={`truncate ${
+                  customer.litiumVersion
+                    ? "text-text-primary"
+                    : "text-text-tertiary"
+                }`}
+              >
+                {customer.litiumVersion || "—"}
+              </span>
+            </div>
+          </DrawerFieldRow>
           {customer.isInternal ? null : (
             <DrawerFieldRow label="Contact">
               <DrawerSelectField

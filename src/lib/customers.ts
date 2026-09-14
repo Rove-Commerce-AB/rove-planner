@@ -37,6 +37,12 @@ export async function updateCustomer(id: string, input: q.UpdateCustomerInput) {
   return q.updateCustomerQuery(id, input);
 }
 
+export async function updateLitiumVersionsBySubscriptionId(
+  items: { subscriptionId: string; version: string }[]
+) {
+  return q.updateLitiumVersionsBySubscriptionId(items);
+}
+
 export async function deleteCustomer(id: string) {
   return q.deleteCustomerQuery(id);
 }

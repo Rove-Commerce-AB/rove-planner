@@ -1,7 +1,7 @@
 # Database schema
 
 This document mirrors the **PostgreSQL** application schema after the
-People / customer-user / Work rollout (snapshot **2026-09-13**). Use it when
+People / customer-user / Work rollout (snapshot **2026-09-14**). Use it when
 generating queries, types, or UI logic.
 
 Terminology: we use **customer** (never client).
@@ -130,11 +130,14 @@ Customer / company.
 | account_manager_id | uuid | nullable, FK → `consultants.id`, ON DELETE SET NULL |
 | contact_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL; must be a `customer` user assigned to this customer |
 | url | text | nullable (website for favicon / links) |
+| subscription_id | text | nullable; exactly 6 characters when set; unique on `lower(subscription_id)` |
+| litium_version | text | nullable; last Litium version reported by the nightly ingest |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
 Indexes: unique `(is_internal) WHERE is_internal = true`;
-`(contact_app_user_id) WHERE contact_app_user_id IS NOT NULL`.
+`(contact_app_user_id) WHERE contact_app_user_id IS NOT NULL`;
+unique `(lower(subscription_id)) WHERE subscription_id IS NOT NULL`.
 
 Triggers: `customers_contact_user_enforce` (BEFORE INSERT/UPDATE) →
 `enforce_customer_user_rules()`; `trg_customers_updated_at` → `set_updated_at()`.
@@ -696,16 +699,22 @@ Customer-scoped boards for Rove Work. Independent of Planner `projects`.
 | created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
+| archived_at | timestamptz | NULL when active; set when the board is archived |
 
-Index: `(customer_id)`; unique `(customer_id, prefix)`.
+Index: `(customer_id)`; unique `(customer_id, prefix)`; partial
+`(customer_id) WHERE archived_at IS NULL`.
 Trigger `trg_work_boards_updated_at` → `set_updated_at()`.
+
+Archived boards are hidden from lists and nav. Issues stay. The prefix remains
+reserved (unique still includes archived rows). Opening an archived board 404s.
 
 Board visibility is `work_board_members`. Admins can still open any board.
 Creating a board defaults members to people linked to the customer (consultants
 with an app user, plus customer users), and always includes the creator.
 Customer users never see the internal customer.
 
-DDL: [`scripts/20260913_rove_work_boards.sql`](../scripts/20260913_rove_work_boards.sql).
+DDL: [`scripts/20260913_rove_work_boards.sql`](../scripts/20260913_rove_work_boards.sql),
+[`scripts/20260914_work_board_archive.sql`](../scripts/20260914_work_board_archive.sql).
 
 ---
 

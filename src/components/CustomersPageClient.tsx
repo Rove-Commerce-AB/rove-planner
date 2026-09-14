@@ -29,7 +29,12 @@ import { ROUTES, customerHref } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
 import type { CustomerWithDetails } from "@/types";
 
-type SortKey = "name" | "accountManager" | "activeProjects" | "status";
+type SortKey =
+  | "name"
+  | "accountManager"
+  | "litiumVersion"
+  | "activeProjects"
+  | "status";
 type SortDirection = "asc" | "desc";
 
 function sortCustomers(
@@ -47,6 +52,12 @@ function sortCustomers(
               a.accountManagerName ?? "",
               b.accountManagerName ?? ""
             ) || compareTextSv(a.name, b.name)
+        );
+      case "litiumVersion":
+        return (
+          direction *
+            compareTextSv(a.litiumVersion ?? "", b.litiumVersion ?? "") ||
+          compareTextSv(a.name, b.name)
         );
       case "activeProjects":
         return (
@@ -151,7 +162,9 @@ export function CustomersPageClient({
         customer.name.toLowerCase().includes(query) ||
         (customer.accountManagerName ?? "").toLowerCase().includes(query) ||
         (customer.contactName ?? "").toLowerCase().includes(query) ||
-        (customer.contactEmail ?? "").toLowerCase().includes(query)
+        (customer.contactEmail ?? "").toLowerCase().includes(query) ||
+        (customer.subscriptionId ?? "").toLowerCase().includes(query) ||
+        (customer.litiumVersion ?? "").toLowerCase().includes(query)
       );
     });
   }, [accountManagerFilterId, customers, search]);
@@ -215,6 +228,14 @@ export function CustomersPageClient({
       secondary: true,
       width: "12rem",
       cell: (customer) => customer.accountManagerName || null,
+    },
+    {
+      id: "litiumVersion",
+      header: "Litium version",
+      sortable: true,
+      secondary: true,
+      width: "9rem",
+      cell: (customer) => customer.litiumVersion || null,
     },
     {
       id: "activeProjects",

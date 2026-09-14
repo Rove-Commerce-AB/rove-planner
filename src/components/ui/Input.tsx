@@ -1,6 +1,6 @@
 import { forwardRef } from "react";
 
-type Props = React.InputHTMLAttributes<HTMLInputElement> & {
+type Props = Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> & {
   label?: string;
   error?: string;
   /** "compact" for toolbar/dashboard use: reduced vertical padding. */

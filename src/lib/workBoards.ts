@@ -497,6 +497,25 @@ export async function removeWorkBoardMember(
   await q.deleteWorkBoardMember(boardId, appUserId);
 }
 
+export async function renameWorkBoard(
+  boardId: string,
+  title: string
+): Promise<{ title: string; customerId: string }> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Board not found");
+  const trimmed = title.trim();
+  if (!trimmed) throw new Error("Title is required");
+  const nextTitle = await q.renameWorkBoard(boardId, trimmed);
+  return { title: nextTitle, customerId: visible.board.customer_id };
+}
+
+export async function archiveWorkBoard(boardId: string): Promise<string> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Board not found");
+  await q.archiveWorkBoard(boardId);
+  return visible.board.customer_id;
+}
+
 export async function createWorkBoard(
   customerId: string,
   title: string,

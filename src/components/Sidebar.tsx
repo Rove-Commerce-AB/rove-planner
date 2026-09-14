@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarCheck,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Settings,
@@ -22,6 +23,16 @@ import { CustomerFavicon } from "@/components/CustomerFavicon";
 
 /** 10px left padding so the w-8 icon column is centered in the rail. */
 const SIDEBAR_RAIL_PAD_X = "10px";
+export const SIDEBAR_COLLAPSED_COOKIE = "rove-sidebar-collapsed";
+const SIDEBAR_COLLAPSED_MAX_AGE = 60 * 60 * 24 * 365;
+
+function persistSidebarCollapsed(collapsed: boolean) {
+  try {
+    document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; Path=/; Max-Age=${SIDEBAR_COLLAPSED_MAX_AGE}; SameSite=Lax`;
+  } catch {
+    // private mode / blocked storage
+  }
+}
 
 type IconType = React.ComponentType<{ className?: string }>;
 
@@ -48,6 +59,8 @@ function NavLink({
   depth = 0,
   leading,
   className = "",
+  collapsed = false,
+  active,
 }: {
   href: string;
   label: string;
@@ -59,9 +72,11 @@ function NavLink({
   depth?: 0 | 1 | 2;
   leading?: ReactNode;
   className?: string;
+  collapsed?: boolean;
+  active?: boolean;
 }) {
   const nest = indent || depth > 0;
-  const isActive = pathMatches(pathname, href, activeMatch);
+  const isActive = active ?? pathMatches(pathname, href, activeMatch);
   const showBadge = typeof badgeCount === "number" && badgeCount > 0;
   const badgeLabel =
     badgeCount != null && badgeCount > 99 ? "99+" : String(badgeCount ?? "");
@@ -77,9 +92,13 @@ function NavLink({
     <Link
       href={href}
       prefetch={false}
+      title={collapsed ? label : undefined}
+      aria-label={collapsed ? label : undefined}
       className={`group relative flex h-8 w-full min-w-0 items-center justify-start gap-1.5 rounded-md py-0 ${typeClass} ${toneClass} ${className}`.trim()}
     >
-      {depth >= 1 ? <span className="w-8 shrink-0" aria-hidden /> : null}
+      {!collapsed && depth >= 1 ? (
+        <span className="w-8 shrink-0" aria-hidden />
+      ) : null}
       {Icon ? (
         <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
           <Icon className="h-4 w-4" />
@@ -88,27 +107,36 @@ function NavLink({
         <span className="flex h-8 w-4 shrink-0 items-center justify-center">
           {leading}
         </span>
-      ) : nest ? (
+      ) : nest && !collapsed ? (
         <span
           className={`h-8 shrink-0 ${depth >= 2 ? "w-4" : "w-8"}`}
           aria-hidden
         />
       ) : null}
-      <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left max-w-[10rem] whitespace-nowrap">
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{label}</span>
-          {showBadge && (
-            <span
-              className="box-border inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default/80 px-0.5 text-center text-[10px] font-semibold leading-none text-text-primary tabular-nums"
-              aria-label={`${badgeCount} unread notifications`}
-            >
-              <span className="flex -translate-x-px items-center justify-center leading-none">
-                {badgeLabel}
+      {!collapsed ? (
+        <span className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden text-left max-w-[10rem] whitespace-nowrap">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{label}</span>
+            {showBadge && (
+              <span
+                className="box-border inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default/80 px-0.5 text-center text-[10px] font-semibold leading-none text-text-primary tabular-nums"
+                aria-label={`${badgeCount} unread notifications`}
+              >
+                <span className="flex -translate-x-px items-center justify-center leading-none">
+                  {badgeLabel}
+                </span>
               </span>
-            </span>
-          )}
+            )}
+          </span>
         </span>
-      </span>
+      ) : showBadge ? (
+        <span
+          className="absolute right-0 top-0 box-border inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-text-primary/20 bg-bg-default px-0.5 text-center text-[9px] font-semibold leading-none text-text-primary tabular-nums"
+          aria-label={`${badgeCount} unread notifications`}
+        >
+          {badgeLabel}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -121,22 +149,45 @@ function AppGroup({
   href,
   pathname,
   children,
+  collapsed = false,
+  collapsedHref,
+  active = false,
 }: {
   label: string;
   icon: IconType;
   open: boolean;
   onToggle: () => void;
   href?: string;
-  pathname?: string;
+  pathname: string;
   children: React.ReactNode;
+  collapsed?: boolean;
+  collapsedHref?: string;
+  active?: boolean;
 }) {
-  const headingActive =
-    href && pathname ? pathMatches(pathname, href, "exact") : false;
+  const headingActive = href
+    ? pathMatches(pathname, href, collapsed ? "prefix" : "exact")
+    : collapsed && active;
+
+  if (collapsed) {
+    const railHref = href ?? collapsedHref;
+    if (railHref) {
+      return (
+        <NavLink
+          href={railHref}
+          label={label}
+          icon={Icon}
+          pathname={pathname}
+          collapsed
+          active={headingActive || active}
+        />
+      );
+    }
+  }
 
   return (
     <div className="flex flex-col gap-px">
       <div
-        className={`flex h-8 w-full min-w-0 items-center rounded-md ${
+        className={`flex h-8 w-full min-w-0 items-center overflow-hidden rounded-md ${
           headingActive ? "bg-nav-active" : "hover:bg-nav-active"
         }`}
       >
@@ -191,9 +242,11 @@ function AppGroup({
 function NavPlaceholder({
   label,
   icon: Icon,
+  collapsed = false,
 }: {
   label: string;
   icon: IconType;
+  collapsed?: boolean;
 }) {
   return (
     <div
@@ -204,9 +257,11 @@ function NavPlaceholder({
       <span className="flex h-8 w-8 shrink-0 items-center justify-center">
         <Icon className="h-4 w-4" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
-        {label}
-      </span>
+      {!collapsed ? (
+        <span className="min-w-0 flex-1 truncate text-left max-w-[10rem]">
+          {label}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -287,6 +342,7 @@ type SidebarProps = {
   isCustomerUser?: boolean;
   appKeys?: AppKey[];
   workNav?: WorkSelectorCustomer[];
+  initialCollapsed?: boolean;
 };
 
 export function Sidebar({
@@ -295,8 +351,10 @@ export function Sidebar({
   isCustomerUser = false,
   appKeys = [],
   workNav = [],
+  initialCollapsed = false,
 }: SidebarProps) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [openApps, setOpenApps] = useState<{
     planner: boolean;
     timeReport: boolean;
@@ -333,47 +391,101 @@ export function Sidebar({
     await signOut({ callbackUrl: "/login" });
   }
 
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      persistSidebarCollapsed(next);
+      return next;
+    });
+  }
+
   const showTimeApproval = isAdmin || canSeeTimeReportProjectManager;
+  const settingsRailHref = isAdmin ? ROUTES.settings : ROUTES.customers;
+
+  const headerPad = {
+    paddingLeft: SIDEBAR_RAIL_PAD_X,
+    paddingRight: collapsed ? SIDEBAR_RAIL_PAD_X : "0.375rem",
+    paddingTop: "0.5rem",
+  };
 
   const navPadX = {
     paddingLeft: SIDEBAR_RAIL_PAD_X,
-    paddingRight: "0.375rem",
+    paddingRight: collapsed ? SIDEBAR_RAIL_PAD_X : "0.375rem",
   };
 
   const footerPad = {
     paddingLeft: SIDEBAR_RAIL_PAD_X,
-    paddingRight: "0.375rem",
+    paddingRight: collapsed ? SIDEBAR_RAIL_PAD_X : "0.375rem",
     paddingTop: "0.375rem",
     paddingBottom: "0.375rem",
   };
 
   return (
-    <aside className="relative z-20 flex h-full w-52 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-default shadow-lg">
+    <aside
+      className={`relative z-20 flex h-full flex-shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-bg-default shadow-lg transition-[width] duration-200 ease-out ${
+        collapsed ? "w-[52px]" : "w-52"
+      }`}
+    >
+      <div
+        className="flex w-full min-w-0 shrink-0 items-center gap-1.5"
+        style={headerPad}
+      >
+        {!collapsed ? (
+          <>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+              <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-text-primary text-[12px] font-semibold leading-none text-bg-default">
+                R
+              </span>
+            </span>
+            <span className="min-w-0 flex-1 truncate text-left text-heading-m text-text-primary">
+              Rove Apps
+            </span>
+          </>
+        ) : null}
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={toggleCollapsed}
+          className={`flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-primary/50 transition-colors hover:bg-nav-active hover:text-text-primary ${
+            collapsed ? "w-8" : "ml-auto w-7"
+          }`}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+          )}
+        </button>
+      </div>
+
       <nav
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-1.5 pt-2 [scrollbar-gutter:stable]"
+        className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden pb-1.5 pt-4 ${
+          collapsed ? "" : "[scrollbar-gutter:stable]"
+        }`}
         style={navPadX}
       >
-        <div className="flex h-8 w-full min-w-0 items-center justify-start gap-1.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-            <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-text-primary text-[12px] font-semibold leading-none text-bg-default">
-              R
-            </span>
-          </span>
-          <span className="min-w-0 flex-1 truncate text-left text-heading-m text-text-primary">
-            Rove Apps
-          </span>
-        </div>
-
         <div className="flex flex-col gap-3">
-          <NavLink href={ROUTES.home} label="Home" icon={Home} pathname={pathname} />
+          <NavLink
+            href={ROUTES.home}
+            label="Home"
+            icon={Home}
+            pathname={pathname}
+            collapsed={collapsed}
+          />
           {appKeys.includes("planner") && (
             <AppGroup
               label="Planner"
               icon={CalendarCheck}
+              pathname={pathname}
               open={openApps.planner}
               onToggle={() =>
                 setOpenApps((prev) => ({ ...prev, planner: !prev.planner }))
               }
+              collapsed={collapsed}
+              collapsedHref={ROUTES.allocation}
+              active={plannerActive}
             >
               <NavLink
                 href={ROUTES.allocation}
@@ -388,6 +500,7 @@ export function Sidebar({
             <AppGroup
               label="Time report"
               icon={Clock}
+              pathname={pathname}
               open={openApps.timeReport}
               onToggle={() =>
                 setOpenApps((prev) => ({
@@ -395,6 +508,9 @@ export function Sidebar({
                   timeReport: !prev.timeReport,
                 }))
               }
+              collapsed={collapsed}
+              collapsedHref={ROUTES.timeReport}
+              active={timeReportChildActive}
             >
               <NavLink
                 href={ROUTES.timeReport}
@@ -423,6 +539,8 @@ export function Sidebar({
               onToggle={() =>
                 setOpenApps((prev) => ({ ...prev, work: !prev.work }))
               }
+              collapsed={collapsed}
+              active={workActive}
             >
               {workNav.length === 0 ? (
                 <p className="px-2 py-1.5 pl-10 text-body-m text-text-tertiary">
@@ -449,9 +567,14 @@ export function Sidebar({
                   icon={Sparkles}
                   pathname={pathname}
                   activeMatch="prefix"
+                  collapsed={collapsed}
                 />
               )}
-              <NavPlaceholder label="Rove Support" icon={MessageCircle} />
+              <NavPlaceholder
+                label="Rove Support"
+                icon={MessageCircle}
+                collapsed={collapsed}
+              />
             </>
           )}
         </div>
@@ -461,6 +584,7 @@ export function Sidebar({
             <AppGroup
               label="Settings"
               icon={Settings}
+              pathname={pathname}
               open={openApps.settings}
               onToggle={() =>
                 setOpenApps((prev) => ({
@@ -468,6 +592,9 @@ export function Sidebar({
                   settings: !prev.settings,
                 }))
               }
+              collapsed={collapsed}
+              collapsedHref={settingsRailHref}
+              active={settingsChildActive}
             >
               {isAdmin && (
                 <>
@@ -503,12 +630,16 @@ export function Sidebar({
           <button
             type="button"
             onClick={handleSignOut}
+            title={collapsed ? "Log out" : undefined}
+            aria-label={collapsed ? "Log out" : undefined}
             className="group flex h-8 w-full min-w-0 cursor-pointer items-center justify-start gap-1.5 rounded-md py-0 text-left text-body-l text-text-secondary transition-colors hover:bg-nav-active hover:text-text-primary"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center">
               <LogOut className="h-4 w-4" />
             </span>
-            <span className="min-w-0 flex-1 truncate text-left">Log out</span>
+            {!collapsed ? (
+              <span className="min-w-0 flex-1 truncate text-left">Log out</span>
+            ) : null}
           </button>
         </div>
       </div>

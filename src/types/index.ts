@@ -109,6 +109,8 @@ export type CustomerWithDetails = {
   color: string;
   logoUrl: string | null;
   url: string | null;
+  subscriptionId: string | null;
+  litiumVersion: string | null;
   isInternal: boolean;
   initials: string;
   isActive: boolean;

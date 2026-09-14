@@ -71,6 +71,7 @@ export async function fetchWorkBoardsForCustomerIds(
      FROM work_boards b
      LEFT JOIN work_board_members m ON m.board_id = b.id
      WHERE b.customer_id = ANY($1::uuid[])
+       AND b.archived_at IS NULL
      GROUP BY b.id
      ORDER BY lower(b.title)`,
     [unique]
@@ -109,6 +110,7 @@ export async function fetchWorkBoardById(
      JOIN customers c ON c.id = b.customer_id
      LEFT JOIN work_board_members m ON m.board_id = b.id
      WHERE b.id = $1
+       AND b.archived_at IS NULL
      GROUP BY b.id, c.name, c.is_internal`,
     [boardId]
   );
@@ -149,6 +151,32 @@ export async function insertWorkBoard(input: {
     await insertDefaultWorkBoardStatuses(client, boardId);
     return boardId;
   });
+}
+
+export async function renameWorkBoard(
+  boardId: string,
+  title: string
+): Promise<string> {
+  const { rows } = await cloudSqlPool.query<{ title: string }>(
+    `UPDATE work_boards
+     SET title = $2
+     WHERE id = $1 AND archived_at IS NULL
+     RETURNING title`,
+    [boardId, title]
+  );
+  const next = rows[0]?.title;
+  if (!next) throw new Error("Board not found");
+  return next;
+}
+
+export async function archiveWorkBoard(boardId: string): Promise<void> {
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE work_boards
+     SET archived_at = now()
+     WHERE id = $1 AND archived_at IS NULL`,
+    [boardId]
+  );
+  if (!rowCount) throw new Error("Board not found");
 }
 
 async function insertDefaultWorkBoardStatuses(

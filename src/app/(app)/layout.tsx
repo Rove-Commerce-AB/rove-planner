@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/Sidebar";
+import { Sidebar, SIDEBAR_COLLAPSED_COOKIE } from "@/components/Sidebar";
 import { AppTopBar } from "@/components/AppTopBar";
 import { FeatureRequestFab } from "@/components/FeatureRequestFab";
 import { AppThemeAttr } from "@/components/AppThemeAttr";
@@ -10,6 +10,7 @@ import {
   getCachedUnreadNotificationCount,
 } from "@/lib/layoutShell";
 import { listWorkNavCustomers } from "@/lib/workBoards";
+import { cookies } from "next/headers";
 
 /** Auth and app_users gatekeeping run in src/proxy.ts. */
 
@@ -41,6 +42,8 @@ export default async function AppLayout({
       : 0;
   const workNav =
     user?.appKeys.includes("work") ? await listWorkNavCustomers() : [];
+  const sidebarCollapsed =
+    (await cookies()).get(SIDEBAR_COLLAPSED_COOKIE)?.value === "1";
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -51,6 +54,7 @@ export default async function AppLayout({
         isCustomerUser={user?.role === "customer"}
         appKeys={user?.appKeys ?? []}
         workNav={workNav}
+        initialCollapsed={sidebarCollapsed}
       />
       <WorkTrailProvider>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

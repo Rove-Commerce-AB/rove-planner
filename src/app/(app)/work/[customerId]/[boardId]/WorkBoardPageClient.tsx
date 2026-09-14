@@ -14,7 +14,9 @@ import Link from "next/link";
 import { GripVertical, MoreHorizontal, Plus, Search } from "lucide-react";
 import {
   Button,
+  ConfirmModal,
   Dialog,
+  IconButton,
   Input,
   Select,
   SideDrawer,
@@ -25,10 +27,12 @@ import type { WorkIssue, WorkBoardView } from "@/lib/workTypes";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import {
   addWorkBoardMemberAction,
+  archiveWorkBoardAction,
   createWorkBoardStatusAction,
   createWorkIssueAction,
   deleteWorkBoardStatusAction,
   moveWorkIssueAction,
+  renameWorkBoardAction,
   renameWorkBoardStatusAction,
   removeWorkBoardMemberAction,
   reorderWorkBoardStatusesAction,
@@ -40,6 +44,9 @@ import type { WorkPerson } from "@/lib/workTypes";
 type Props = {
   board: WorkBoardView;
 };
+
+const renameFieldClass =
+  "min-w-0 -mx-1 rounded-md bg-bg-default px-1 text-text-primary outline-none focus:ring-2 focus:ring-inset focus:ring-brand-signal/20";
 
 function issuesInStatus(issues: WorkIssue[], status: WorkIssueStatus) {
   return issues
@@ -190,6 +197,14 @@ export function WorkBoardPageClient({ board }: Props) {
     top: number;
     left: number;
   } | null>(null);
+  const [boardMenu, setBoardMenu] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const [boardTitle, setBoardTitle] = useState(board.title);
+  const [renamingBoard, setRenamingBoard] = useState(false);
+  const [boardRenameDraft, setBoardRenameDraft] = useState("");
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [renamingStatusId, setRenamingStatusId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [draggingStatusId, setDraggingStatusId] = useState<string | null>(null);
@@ -218,6 +233,10 @@ export function WorkBoardPageClient({ board }: Props) {
   }, [board.statuses]);
 
   useEffect(() => {
+    setBoardTitle(board.title);
+  }, [board.title]);
+
+  useEffect(() => {
     if (!statusMenu) return;
     function onPointerDown(event: PointerEvent) {
       const target = event.target;
@@ -229,6 +248,19 @@ export function WorkBoardPageClient({ board }: Props) {
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [statusMenu]);
+
+  useEffect(() => {
+    if (!boardMenu) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-board-menu]")) {
+        return;
+      }
+      setBoardMenu(null);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [boardMenu]);
 
   const selected = issues.find((issue) => issue.id === selectedIssueId) ?? null;
   const deletingIssueCount = deletingStatus
@@ -420,6 +452,38 @@ export function WorkBoardPageClient({ board }: Props) {
     setStatusMenu(null);
     setRenamingStatusId(column.id);
     setRenameDraft(column.name);
+  }
+
+  function startRenameBoard() {
+    setBoardMenu(null);
+    setRenamingBoard(true);
+    setBoardRenameDraft(boardTitle);
+  }
+
+  async function submitRenameBoard() {
+    if (!renamingBoard) return;
+    const trimmed = boardRenameDraft.trim();
+    setRenamingBoard(false);
+    if (!trimmed || trimmed === boardTitle) return;
+    const previous = boardTitle;
+    setBoardTitle(trimmed);
+    const result = await renameWorkBoardAction(board.id, trimmed);
+    if (result.ok) {
+      setBoardTitle(result.title);
+      return;
+    }
+    setBoardTitle(previous);
+    setError(result.error);
+  }
+
+  async function confirmArchiveBoard() {
+    setError(null);
+    const result = await archiveWorkBoardAction(board.id);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    router.push(workCustomerHref(result.customerId));
   }
 
   async function submitRenameStatus() {
@@ -619,12 +683,41 @@ export function WorkBoardPageClient({ board }: Props) {
     <div className="flex min-h-0 w-full flex-1 flex-col">
       <SetWorkTrail
         customerName={board.customerName}
-        boardTitle={board.title}
+        boardTitle={boardTitle}
         issueKey={selected?.key}
       />
-      <header className="mb-6 shrink-0 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <header className="mb-6 shrink-0">
         <div className="min-w-0">
-          <h1 className="text-heading-xl text-text-primary">{board.title}</h1>
+          {renamingBoard ? (
+            <form
+              className="min-w-0"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitRenameBoard();
+              }}
+            >
+              <input
+                value={boardRenameDraft}
+                onChange={(event) => setBoardRenameDraft(event.target.value)}
+                onBlur={() => {
+                  void submitRenameBoard();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setRenamingBoard(false);
+                  }
+                }}
+                aria-label="Rename board"
+                autoFocus
+                className={`${renameFieldClass} w-full max-w-xl text-heading-xl`}
+              />
+            </form>
+          ) : (
+            <h1 className="min-w-0 text-heading-xl text-text-primary">
+              {boardTitle}
+            </h1>
+          )}
           <p className="mt-1.5 text-[13px] text-text-secondary">
             <Link
               href={workCustomerHref(board.customerId)}
@@ -634,22 +727,9 @@ export function WorkBoardPageClient({ board }: Props) {
             </Link>
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <div className="relative w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-            <Input
-              type="search"
-              placeholder="Search issues…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              aria-label="Search issues"
-              className="pl-9"
-            />
-          </div>
-        </div>
       </header>
 
-      <div className="mb-4 shrink-0">
+      <div className="mb-4 flex shrink-0 items-center gap-3">
         <WorkBoardMembers
           members={members}
           people={board.people}
@@ -689,6 +769,43 @@ export function WorkBoardPageClient({ board }: Props) {
             );
           }}
         />
+        <div className="relative w-44 shrink-0">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
+          <Input
+            type="search"
+            size="compact"
+            placeholder="Search…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search issues"
+            className="h-7 py-0 pl-8 text-[13px]"
+          />
+        </div>
+        <IconButton
+          data-board-menu
+          aria-label="Board options"
+          aria-expanded={boardMenu != null}
+          aria-haspopup="menu"
+          title="Board options"
+          className="ml-auto"
+          onClick={(event) => {
+            if (boardMenu) {
+              setBoardMenu(null);
+              return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            const width = 160;
+            setBoardMenu({
+              top: rect.bottom + 4,
+              left: Math.min(
+                rect.right - width,
+                window.innerWidth - width - 8
+              ),
+            });
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" aria-hidden />
+        </IconButton>
       </div>
 
       {error ? (
@@ -819,7 +936,7 @@ export function WorkBoardPageClient({ board }: Props) {
                         }}
                         aria-label={`Rename ${column.name}`}
                         autoFocus
-                        className="w-full min-w-0 bg-transparent text-label-l text-current outline-none"
+                        className={`${renameFieldClass} w-full text-label-l`}
                       />
                     </form>
                   ) : (
@@ -1072,6 +1189,48 @@ export function WorkBoardPageClient({ board }: Props) {
           )}
         </div>
       </div>
+
+      {boardMenu
+        ? createPortal(
+            <div
+              data-board-menu
+              role="menu"
+              className="fixed z-50 min-w-40 rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
+              style={{ top: boardMenu.top, left: boardMenu.left }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
+                onClick={() => startRenameBoard()}
+              >
+                Rename board
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full px-3 py-1.5 text-left text-body-m text-danger hover:bg-danger/10"
+                onClick={() => {
+                  setBoardMenu(null);
+                  setArchiveOpen(true);
+                }}
+              >
+                Archive
+              </button>
+            </div>,
+            document.body
+          )
+        : null}
+
+      <ConfirmModal
+        isOpen={archiveOpen}
+        title="Archive board"
+        message="This board will be hidden from Rove Work. Issues are kept."
+        confirmLabel="Archive"
+        variant="danger"
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={() => confirmArchiveBoard()}
+      />
 
       {statusMenu
         ? createPortal(

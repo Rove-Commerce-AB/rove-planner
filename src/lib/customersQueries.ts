@@ -1,6 +1,7 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
+import { parseSubscriptionIdInput } from "./litiumVersion";
 import { fetchProjectsByCustomerIds } from "./projectsLookupQueries";
 import type { CustomerWithDetails, ProjectType } from "@/types";
 
@@ -14,6 +15,8 @@ export type Customer = {
   color: string | null;
   logo_url: string | null;
   url: string | null;
+  subscription_id: string | null;
+  litium_version: string | null;
   is_internal: boolean;
   is_active: boolean;
 };
@@ -39,12 +42,13 @@ export type UpdateCustomerInput = {
   color?: string | null;
   logo_url?: string | null;
   url?: string | null;
+  subscription_id?: string | null;
   is_internal?: boolean;
   is_active?: boolean;
 };
 
 const CUSTOMER_SELECT =
-  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, is_internal, is_active";
+  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, subscription_id, litium_version, is_internal, is_active";
 
 const SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX =
   "Only one customer can be internal";
@@ -87,6 +91,15 @@ function isSingleInternalConstraintError(error: unknown): boolean {
   return (
     maybePgError.code === "23505" &&
     maybePgError.constraint === "customers_single_internal_idx"
+  );
+}
+
+function isSubscriptionIdUniqueError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybePgError = error as { code?: string; constraint?: string };
+  return (
+    maybePgError.code === "23505" &&
+    maybePgError.constraint === "customers_subscription_id_lower_idx"
   );
 }
 
@@ -169,6 +182,8 @@ function toCustomerWithDetails(
     color: customer.color || DEFAULT_CUSTOMER_COLOR,
     logoUrl: customer.logo_url ?? null,
     url: customer.url ?? null,
+    subscriptionId: customer.subscription_id ?? null,
+    litiumVersion: customer.litium_version ?? null,
     isInternal: customer.is_internal ?? false,
     initials: getInitials(customer.name),
     isActive: customer.is_active ?? true,
@@ -379,6 +394,10 @@ export async function updateCustomerQuery(
     sets.push(`url = $${i++}`);
     values.push(input.url?.trim() || null);
   }
+  if (input.subscription_id !== undefined) {
+    sets.push(`subscription_id = $${i++}`);
+    values.push(parseSubscriptionIdInput(input.subscription_id));
+  }
   if (input.is_internal !== undefined) {
     sets.push(`is_internal = $${i++}`);
     values.push(input.is_internal);
@@ -408,10 +427,43 @@ export async function updateCustomerQuery(
         buildSingleInternalCustomerErrorMessage(existingInternalCustomerName)
       );
     }
+    if (isSubscriptionIdUniqueError(error)) {
+      throw new Error("Subscription ID is already used by another customer");
+    }
     throw error;
   }
   if (!rows[0]) throw new Error("Failed to update customer");
   return rows[0];
+}
+
+export async function updateLitiumVersionsBySubscriptionId(
+  items: { subscriptionId: string; version: string }[]
+): Promise<{ updated: number; notFound: string[] }> {
+  if (items.length === 0) {
+    return { updated: 0, notFound: [] };
+  }
+
+  const subscriptionIds = items.map((item) => item.subscriptionId);
+  const versions = items.map((item) => item.version);
+  const { rows } = await cloudSqlPool.query<{ subscription_id: string }>(
+    `UPDATE customers AS c
+     SET litium_version = v.version,
+         updated_at = now()
+     FROM unnest($1::text[], $2::text[]) AS v(subscription_id, version)
+     WHERE c.subscription_id IS NOT NULL
+       AND lower(c.subscription_id) = lower(v.subscription_id)
+     RETURNING c.subscription_id`,
+    [subscriptionIds, versions]
+  );
+
+  const updatedKeys = new Set(
+    rows.map((row) => row.subscription_id.toLowerCase())
+  );
+  const notFound = items
+    .filter((item) => !updatedKeys.has(item.subscriptionId.toLowerCase()))
+    .map((item) => item.subscriptionId);
+
+  return { updated: rows.length, notFound };
 }
 
 export async function deleteCustomerQuery(id: string): Promise<void> {

@@ -70,6 +70,21 @@ curl -H "x-health-token: $HEALTHCHECK_DIAGNOSTICS_TOKEN" https://<service>/api/h
 curl -H "Authorization: Bearer $HEALTHCHECK_DIAGNOSTICS_TOKEN" https://<service>/api/health/db/activity
 ```
 
+### Litium version ingest
+
+Nightly job endpoint. Set `LITIUM_VERSION_API_KEY` in the environment. Customers must already have a 6-character `subscription_id` in Planner.
+
+`POST /api/customers/litiumversion`
+
+```bash
+curl -X POST https://<service>/api/customers/litiumversion \
+  -H "Authorization: Bearer $LITIUM_VERSION_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '[{"subscriptionId":"ABC123","version":"8.15.2"}]'
+```
+
+The API key may also be sent as `x-api-key`. Unknown `subscriptionId` values are returned in `notFound` and are not created.
+
 ### Recommended Cloud Run settings (production)
 
 | Setting | Typical today | Recommended | Why |
