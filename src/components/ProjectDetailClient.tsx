@@ -18,7 +18,6 @@ import type { ProjectWithDetails, ProjectType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 import {
-  Badge,
   Button,
   ConfirmModal,
   Dialog,
@@ -30,6 +29,7 @@ import {
   InlineEditTrigger,
   Input,
   IconButton,
+  OptionSegments,
   Panel,
   PanelSectionTitle,
   PageLoading,
@@ -495,12 +495,13 @@ export function ProjectDetailClient({
     }
   };
 
-  const toggleActive = async () => {
+  const setActive = async (next: boolean) => {
+    if (next === isActive) return;
     setError(null);
     setSubmitting(true);
     try {
-      await updateProject(initial.id, { is_active: !isActive });
-      setIsActive(!isActive);
+      await updateProject(initial.id, { is_active: next });
+      setIsActive(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -509,16 +510,8 @@ export function ProjectDetailClient({
     }
   };
 
-  const PROJECT_TYPES: ProjectType[] = ["customer", "internal", "absence"];
-  const TYPE_LABELS: Record<ProjectType, string> = {
-    customer: "Customer project",
-    internal: "Internal project",
-    absence: "Absence",
-  };
-
-  const cycleType = async () => {
-    const idx = PROJECT_TYPES.indexOf(type);
-    const next = PROJECT_TYPES[(idx + 1) % PROJECT_TYPES.length];
+  const setProjectType = async (next: ProjectType) => {
+    if (next === type) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -933,14 +926,17 @@ export function ProjectDetailClient({
             <div className="min-w-0">
               <FieldLabel>Type</FieldLabel>
               <div className="mt-0.5">
-                <button
-                  type="button"
-                  onClick={cycleType}
+                <OptionSegments
+                  name="Type"
+                  value={type}
+                  onChange={(value) => void setProjectType(value as ProjectType)}
                   disabled={submitting}
-                  className="cursor-pointer inline-flex rounded-full border border-[var(--color-brand-blue)] bg-brand-blue/50 px-3 py-1 text-xs font-medium text-text-primary hover:bg-brand-blue/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {TYPE_LABELS[type]}
-                </button>
+                  options={[
+                    { value: "customer", label: "Customer" },
+                    { value: "internal", label: "Internal" },
+                    { value: "absence", label: "Absence" },
+                  ]}
+                />
               </div>
             </div>
 
@@ -984,14 +980,16 @@ export function ProjectDetailClient({
             <div className="min-w-0">
               <FieldLabel>Status</FieldLabel>
               <div className="mt-0.5">
-                <Badge
-                  variant={isActive ? "active" : "inactive"}
-                  interactive
-                  onClick={toggleActive}
+                <OptionSegments
+                  name="Status"
+                  value={isActive ? "active" : "inactive"}
+                  onChange={(value) => void setActive(value === "active")}
                   disabled={submitting}
-                >
-                  {isActive ? "Active" : "Inactive"}
-                </Badge>
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "inactive", label: "Inactive" },
+                  ]}
+                />
               </div>
             </div>
           </div>

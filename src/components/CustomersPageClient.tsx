@@ -32,9 +32,9 @@ import type { CustomerWithDetails } from "@/types";
 type SortKey =
   | "name"
   | "accountManager"
+  | "subscriptionId"
   | "litiumVersion"
-  | "activeProjects"
-  | "status";
+  | "activeProjects";
 type SortDirection = "asc" | "desc";
 
 function sortCustomers(
@@ -53,6 +53,12 @@ function sortCustomers(
               b.accountManagerName ?? ""
             ) || compareTextSv(a.name, b.name)
         );
+      case "subscriptionId":
+        return (
+          direction *
+            compareTextSv(a.subscriptionId ?? "", b.subscriptionId ?? "") ||
+          compareTextSv(a.name, b.name)
+        );
       case "litiumVersion":
         return (
           direction *
@@ -62,11 +68,6 @@ function sortCustomers(
       case "activeProjects":
         return (
           direction * (a.activeProjectCount - b.activeProjectCount) ||
-          compareTextSv(a.name, b.name)
-        );
-      case "status":
-        return (
-          direction * Number(a.isActive) - direction * Number(b.isActive) ||
           compareTextSv(a.name, b.name)
         );
       default:
@@ -230,6 +231,17 @@ export function CustomersPageClient({
       cell: (customer) => customer.accountManagerName || null,
     },
     {
+      id: "subscriptionId",
+      header: "Subscription ID",
+      sortable: true,
+      secondary: true,
+      width: "9rem",
+      cell: (customer) =>
+        customer.subscriptionId ? (
+          <span className="tabular-nums">{customer.subscriptionId}</span>
+        ) : null,
+    },
+    {
       id: "litiumVersion",
       header: "Litium version",
       sortable: true,
@@ -245,20 +257,6 @@ export function CustomersPageClient({
       width: "9rem",
       cell: (customer) => (
         <span className="tabular-nums">{customer.activeProjectCount}</span>
-      ),
-    },
-    {
-      id: "status",
-      header: "Status",
-      sortable: true,
-      width: "7rem",
-      cell: (customer) => (
-        <Badge
-          variant={customer.isActive ? "active" : "inactive"}
-          className="px-2 py-0.5"
-        >
-          {customer.isActive ? "Active" : "Inactive"}
-        </Badge>
       ),
     },
     {

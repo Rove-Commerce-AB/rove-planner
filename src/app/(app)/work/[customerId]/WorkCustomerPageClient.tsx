@@ -1,21 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { SetWorkTrail } from "@/components/WorkTrailContext";
 import { workBoardHref } from "@/lib/routes";
-import type { WorkSelectorCustomer } from "@/lib/workTypes";
+import { compareTextSv } from "@/lib/sort";
+import type { WorkCustomerView, WorkSelectorBoard } from "@/lib/workTypes";
+import { restoreWorkBoardAction } from "../actions";
 import { WorkCreateBoardDialog } from "../WorkCreateBoardDialog";
 
 export function WorkCustomerPageClient({
   customer,
 }: {
-  customer: WorkSelectorCustomer;
+  customer: WorkCustomerView;
 }) {
+  const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [boards, setBoards] = useState(customer.boards);
+  const [archivedBoards, setArchivedBoards] = useState(customer.archivedBoards);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBoards(customer.boards);
+    setArchivedBoards(customer.archivedBoards);
+  }, [customer.boards, customer.archivedBoards]);
+
+  async function restoreBoard(board: WorkSelectorBoard) {
+    setError(null);
+    setRestoringId(board.id);
+    setArchivedBoards((current) =>
+      current.filter((row) => row.id !== board.id)
+    );
+    setBoards((current) =>
+      [...current, board].sort((a, b) => compareTextSv(a.title, b.title))
+    );
+    const result = await restoreWorkBoardAction(board.id);
+    setRestoringId(null);
+    if (!result.ok) {
+      setBoards(customer.boards);
+      setArchivedBoards(customer.archivedBoards);
+      setError(result.error);
+      return;
+    }
+    router.refresh();
+  }
 
   return (
     <div className="w-full">
@@ -35,9 +69,15 @@ export function WorkCustomerPageClient({
         </Button>
       </header>
 
-      {customer.boards.length > 0 ? (
+      {error ? (
+        <p className="mb-4 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {boards.length > 0 ? (
         <ul className="grid grid-cols-1 items-start justify-items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {customer.boards.map((board) => (
+          {boards.map((board) => (
             <li key={board.id}>
               <Link
                 href={workBoardHref(customer.id, board.id)}
@@ -53,6 +93,50 @@ export function WorkCustomerPageClient({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {archivedBoards.length > 0 ? (
+        <section className={boards.length > 0 ? "mt-8" : undefined}>
+          <button
+            type="button"
+            aria-expanded={archivedOpen}
+            className="inline-flex items-center gap-1 text-label-s text-text-tertiary hover:text-text-secondary"
+            onClick={() => setArchivedOpen((open) => !open)}
+          >
+            <ChevronRight
+              className={`h-3.5 w-3.5 transition-transform ${
+                archivedOpen ? "rotate-90" : ""
+              }`}
+              aria-hidden
+            />
+            Archived boards ({archivedBoards.length})
+          </button>
+          {archivedOpen ? (
+            <ul className="mt-2 max-w-md">
+              {archivedBoards.map((board) => (
+                <li
+                  key={board.id}
+                  className="flex items-center gap-3 py-1.5"
+                >
+                  <p className="min-w-0 flex-1 truncate text-body-s text-text-secondary">
+                    {board.title}
+                    <span className="ml-2 text-text-tertiary">
+                      {board.prefix}
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    disabled={restoringId === board.id}
+                    className="shrink-0 text-label-s text-text-tertiary hover:text-text-primary disabled:opacity-50"
+                    onClick={() => void restoreBoard(board)}
+                  >
+                    Restore
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
 
       <WorkCreateBoardDialog

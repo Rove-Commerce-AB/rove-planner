@@ -10,9 +10,9 @@ type Props = Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> & {
 };
 
 const inputBase =
-  "w-full rounded-lg border border-form bg-bg-default text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50";
+  "box-border w-full rounded-lg border border-form bg-bg-default text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal disabled:opacity-50";
 const inputBaseModal =
-  "w-full rounded-lg border border-form bg-bg-default text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-form focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset disabled:opacity-50";
+  "box-border w-full rounded-lg border border-form bg-bg-default text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-form focus:ring-2 focus:ring-[var(--color-border-form)] focus:ring-inset disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, Props>(
   ({ label, error, id, className = "", size = "default", modalStyle, ...props }, ref) => {

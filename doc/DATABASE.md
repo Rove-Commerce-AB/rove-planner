@@ -131,7 +131,7 @@ Customer / company.
 | contact_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL; must be a `customer` user assigned to this customer |
 | url | text | nullable (website for favicon / links) |
 | subscription_id | text | nullable; exactly 6 characters when set; unique on `lower(subscription_id)` |
-| litium_version | text | nullable; last Litium version reported by the nightly ingest |
+| litium_version | text | nullable; can be set in the app; overwritten by the Litium version ingest when `subscription_id` matches |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
@@ -707,6 +707,7 @@ Trigger `trg_work_boards_updated_at` → `set_updated_at()`.
 
 Archived boards are hidden from lists and nav. Issues stay. The prefix remains
 reserved (unique still includes archived rows). Opening an archived board 404s.
+Restore clears `archived_at` from the customer Work page.
 
 Board visibility is `work_board_members`. Admins can still open any board.
 Creating a board defaults members to people linked to the customer (consultants

@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge,
   ConfirmModal,
   DrawerFieldRow,
   DrawerSelectField,
   InlineEditFieldContainer,
   InlineEditStatus,
   InlineEditTrigger,
+  OptionSegments,
   SAVED_DURATION_MS,
   editInputClass,
 } from "@/components/ui";
@@ -24,6 +24,7 @@ type EditField =
   | "name"
   | "url"
   | "subscriptionId"
+  | "litiumVersion"
   | "contact"
   | "accountManager"
   | "logoUrl"
@@ -48,6 +49,9 @@ export function CustomerDrawerOverview({
   const [url, setUrl] = useState(customer.url ?? "");
   const [subscriptionId, setSubscriptionId] = useState(
     customer.subscriptionId ?? ""
+  );
+  const [litiumVersion, setLitiumVersion] = useState(
+    customer.litiumVersion ?? ""
   );
   const [contactAppUserId, setContactAppUserId] = useState(
     customer.contactAppUserId ?? ""
@@ -76,6 +80,10 @@ export function CustomerDrawerOverview({
   useEffect(() => {
     setContactAppUserId(customer.contactAppUserId ?? "");
   }, [customer.contactAppUserId]);
+
+  useEffect(() => {
+    setLitiumVersion(customer.litiumVersion ?? "");
+  }, [customer.litiumVersion]);
 
   useEffect(() => {
     return () => {
@@ -121,6 +129,10 @@ export function CustomerDrawerOverview({
       setError("Subscription ID must be exactly 6 characters");
       return;
     }
+    if (field === "litiumVersion" && trimmed.length > 200) {
+      setError("Litium version cannot be longer than 200 characters");
+      return;
+    }
 
     setError(null);
     setEditingField(null);
@@ -140,6 +152,12 @@ export function CustomerDrawerOverview({
             subscription_id: trimmed || null,
           });
           setSubscriptionId(trimmed);
+          break;
+        case "litiumVersion":
+          await updateCustomerAction(customer.id, {
+            litium_version: trimmed || null,
+          });
+          setLitiumVersion(trimmed);
           break;
         case "contact": {
           await updateCustomerAction(customer.id, {
@@ -189,8 +207,8 @@ export function CustomerDrawerOverview({
     void saveField(editingField, value);
   }
 
-  async function toggleStatus() {
-    const next = !isActive;
+  async function setActive(next: boolean) {
+    if (next === isActive) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -204,8 +222,8 @@ export function CustomerDrawerOverview({
     }
   }
 
-  async function toggleType() {
-    const next = !isInternal;
+  async function setInternal(next: boolean) {
+    if (next === isInternal) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -291,7 +309,13 @@ export function CustomerDrawerOverview({
                   cancelEdit();
                 }
               }}
-              maxLength={field === "subscriptionId" ? 6 : undefined}
+              maxLength={
+                field === "subscriptionId"
+                  ? 6
+                  : field === "litiumVersion"
+                    ? 200
+                    : undefined
+              }
               className={editInputClass}
               autoFocus
             />
@@ -317,19 +341,7 @@ export function CustomerDrawerOverview({
           {textField("Name", "name", name)}
           {textField("URL", "url", url, "url")}
           {textField("Subscription ID", "subscriptionId", subscriptionId)}
-          <DrawerFieldRow label="Litium version">
-            <div className="flex min-h-8 w-full min-w-0 items-center rounded-md border border-form bg-bg-muted px-2.5 text-left text-sm font-medium leading-normal">
-              <span
-                className={`truncate ${
-                  customer.litiumVersion
-                    ? "text-text-primary"
-                    : "text-text-tertiary"
-                }`}
-              >
-                {customer.litiumVersion || "—"}
-              </span>
-            </div>
-          </DrawerFieldRow>
+          {textField("Litium version", "litiumVersion", litiumVersion)}
           {customer.isInternal ? null : (
             <DrawerFieldRow label="Contact">
               <DrawerSelectField
@@ -396,24 +408,28 @@ export function CustomerDrawerOverview({
 
         <div className="border-t border-border-subtle px-6">
           <DrawerFieldRow label="Status">
-            <Badge
-              variant={isActive ? "active" : "inactive"}
-              interactive
-              onClick={() => void toggleStatus()}
+            <OptionSegments
+              name="Status"
+              value={isActive ? "active" : "inactive"}
+              onChange={(value) => void setActive(value === "active")}
               disabled={submitting}
-            >
-              {isActive ? "Active" : "Inactive"}
-            </Badge>
+              options={[
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ]}
+            />
           </DrawerFieldRow>
           <DrawerFieldRow label="Type">
-            <Badge
-              variant="muted"
-              interactive
-              onClick={() => void toggleType()}
+            <OptionSegments
+              name="Type"
+              value={isInternal ? "internal" : "standard"}
+              onChange={(value) => void setInternal(value === "internal")}
               disabled={submitting}
-            >
-              {isInternal ? "Internal" : "Standard"}
-            </Badge>
+              options={[
+                { value: "standard", label: "Standard" },
+                { value: "internal", label: "Internal" },
+              ]}
+            />
           </DrawerFieldRow>
         </div>
 

@@ -22,6 +22,7 @@ import {
 import type {
   WorkBoardView,
   WorkComment,
+  WorkCustomerView,
   WorkEvent,
   WorkFile,
   WorkIssue,
@@ -46,6 +47,7 @@ import type { WorkBoardStatus } from "@/lib/workStatuses";
 
 export type {
   WorkBoardView,
+  WorkCustomerView,
   WorkSelectorBoard,
   WorkSelectorCustomer,
 } from "@/lib/workTypes";
@@ -197,7 +199,7 @@ export async function listWorkNavCustomers(): Promise<WorkSelectorCustomer[]> {
 
 export async function getWorkCustomerView(
   customerId: string
-): Promise<WorkSelectorCustomer | null> {
+): Promise<WorkCustomerView | null> {
   const actor = await requireWorkActorOrRedirect();
   const assignedIds = await assignedCustomerIdsForActor(actor);
   if (!canSeeWorkCustomer(actor, assignedIds, customerId)) return null;
@@ -205,14 +207,13 @@ export async function getWorkCustomerView(
   const customer = customers[0];
   if (!customer) return null;
 
-  const boards = await q.fetchWorkBoardsForCustomerIds([customer.id]);
-  return {
-    id: customer.id,
-    name: customer.name,
-    color: customer.color,
-    url: customer.url,
-    isInternal: customer.is_internal,
-    boards: boards
+  const [boards, archivedBoards] = await Promise.all([
+    q.fetchWorkBoardsForCustomerIds([customer.id]),
+    q.fetchWorkBoardsForCustomerIds([customer.id], { archived: true }),
+  ]);
+
+  function visibleBoards(rows: typeof boards): WorkSelectorBoard[] {
+    return rows
       .filter((board) =>
         canSeeWorkBoard(actor, {
           customerIsInternal: customer.is_internal,
@@ -223,7 +224,17 @@ export async function getWorkCustomerView(
         id: board.id,
         title: board.title,
         prefix: board.prefix,
-      })),
+      }));
+  }
+
+  return {
+    id: customer.id,
+    name: customer.name,
+    color: customer.color,
+    url: customer.url,
+    isInternal: customer.is_internal,
+    boards: visibleBoards(boards),
+    archivedBoards: visibleBoards(archivedBoards),
   };
 }
 
@@ -514,6 +525,26 @@ export async function archiveWorkBoard(boardId: string): Promise<string> {
   if (!visible) throw new Error("Board not found");
   await q.archiveWorkBoard(boardId);
   return visible.board.customer_id;
+}
+
+export async function restoreWorkBoard(boardId: string): Promise<string> {
+  const actor = await requireWorkActorOrThrow();
+  const board = await q.fetchArchivedWorkBoardById(boardId);
+  if (!board) throw new Error("Board not found");
+  const assignedIds = await assignedCustomerIdsForActor(actor);
+  if (!canSeeWorkCustomer(actor, assignedIds, board.customer_id)) {
+    throw new Error("Board not found");
+  }
+  if (
+    !canSeeWorkBoard(actor, {
+      customerIsInternal: board.customer_is_internal,
+      memberAppUserIds: board.member_ids,
+    })
+  ) {
+    throw new Error("Board not found");
+  }
+  await q.restoreWorkBoard(boardId);
+  return board.customer_id;
 }
 
 export async function createWorkBoard(

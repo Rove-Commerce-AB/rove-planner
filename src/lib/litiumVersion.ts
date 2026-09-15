@@ -70,6 +70,20 @@ export function parseSubscriptionIdInput(
   return trimmed;
 }
 
+export function parseLitiumVersionInput(
+  value: string | null | undefined
+): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_LITIUM_VERSION_LENGTH) {
+    throw new Error(
+      `Litium version cannot be longer than ${MAX_LITIUM_VERSION_LENGTH} characters`
+    );
+  }
+  return trimmed;
+}
+
 export function isValidSubscriptionId(value: string): boolean {
   return value.length === SUBSCRIPTION_ID_LENGTH && !/\s/.test(value);
 }

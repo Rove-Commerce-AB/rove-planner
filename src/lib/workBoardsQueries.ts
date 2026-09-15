@@ -49,10 +49,12 @@ export async function fetchActiveCustomers(): Promise<WorkCustomerRow[]> {
 }
 
 export async function fetchWorkBoardsForCustomerIds(
-  customerIds: string[]
+  customerIds: string[],
+  options?: { archived?: boolean }
 ): Promise<WorkBoardRow[]> {
   const unique = [...new Set(customerIds)].filter(Boolean);
   if (unique.length === 0) return [];
+  const archived = options?.archived === true;
   const { rows } = await cloudSqlPool.query<
     Omit<WorkBoardRow, "member_ids"> & { member_ids: string[] | null }
   >(
@@ -71,7 +73,7 @@ export async function fetchWorkBoardsForCustomerIds(
      FROM work_boards b
      LEFT JOIN work_board_members m ON m.board_id = b.id
      WHERE b.customer_id = ANY($1::uuid[])
-       AND b.archived_at IS NULL
+       AND ${archived ? "b.archived_at IS NOT NULL" : "b.archived_at IS NULL"}
      GROUP BY b.id
      ORDER BY lower(b.title)`,
     [unique]
@@ -177,6 +179,62 @@ export async function archiveWorkBoard(boardId: string): Promise<void> {
     [boardId]
   );
   if (!rowCount) throw new Error("Board not found");
+}
+
+export async function restoreWorkBoard(boardId: string): Promise<void> {
+  const { rowCount } = await cloudSqlPool.query(
+    `UPDATE work_boards
+     SET archived_at = NULL
+     WHERE id = $1 AND archived_at IS NOT NULL`,
+    [boardId]
+  );
+  if (!rowCount) throw new Error("Board not found");
+}
+
+export async function fetchArchivedWorkBoardById(
+  boardId: string
+): Promise<
+  | (WorkBoardRow & {
+      customer_name: string;
+      customer_is_internal: boolean;
+    })
+  | null
+> {
+  const { rows } = await cloudSqlPool.query<
+    Omit<WorkBoardRow, "member_ids"> & {
+      member_ids: string[] | null;
+      customer_name: string;
+      customer_is_internal: boolean;
+    }
+  >(
+    `SELECT
+       b.id,
+       b.customer_id,
+       b.title,
+       b.prefix,
+       b.created_by_app_user_id,
+       b.created_at,
+       b.updated_at,
+       c.name AS customer_name,
+       c.is_internal AS customer_is_internal,
+       COALESCE(
+         array_agg(m.app_user_id::text) FILTER (WHERE m.app_user_id IS NOT NULL),
+         ARRAY[]::text[]
+       ) AS member_ids
+     FROM work_boards b
+     JOIN customers c ON c.id = b.customer_id
+     LEFT JOIN work_board_members m ON m.board_id = b.id
+     WHERE b.id = $1
+       AND b.archived_at IS NOT NULL
+     GROUP BY b.id, c.name, c.is_internal`,
+    [boardId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    member_ids: row.member_ids ?? [],
+  };
 }
 
 async function insertDefaultWorkBoardStatuses(

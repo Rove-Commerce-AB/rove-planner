@@ -16,6 +16,7 @@ import {
   InlineEditFieldContainer,
   InlineEditStatus,
   InlineEditTrigger,
+  OptionSegments,
   Panel,
   PanelSectionTitle,
   Select,
@@ -327,12 +328,13 @@ export function ConsultantDetailClient({
     }
   };
 
-  const toggleExternal = async () => {
+  const setExternal = async (next: boolean) => {
+    if (next === isExternal) return;
     setError(null);
     setSubmitting(true);
     try {
-      await updateConsultant(initial.id, { is_external: !isExternal });
-      setIsExternal(!isExternal);
+      await updateConsultant(initial.id, { is_external: next });
+      setIsExternal(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -857,14 +859,16 @@ export function ConsultantDetailClient({
 
   const typeField = (
     <ConsultantField embedded={embedded} label="Type">
-      <button
-        type="button"
-        onClick={toggleExternal}
+      <OptionSegments
+        name="Type"
+        value={isExternal ? "external" : "internal"}
+        onChange={(value) => void setExternal(value === "external")}
         disabled={submitting}
-        className="inline-flex cursor-pointer rounded-full bg-interactive-secondary px-3 py-1 text-xs font-medium text-text-primary hover:bg-interactive-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {isExternal ? "External" : "Internal"}
-      </button>
+        options={[
+          { value: "internal", label: "Internal" },
+          { value: "external", label: "External" },
+        ]}
+      />
     </ConsultantField>
   );
 

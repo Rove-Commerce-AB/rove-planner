@@ -19,6 +19,10 @@ export type WorkSelectorCustomer = {
   boards: WorkSelectorBoard[];
 };
 
+export type WorkCustomerView = WorkSelectorCustomer & {
+  archivedBoards: WorkSelectorBoard[];
+};
+
 export type WorkPerson = {
   id: string;
   name: string;

@@ -8,7 +8,6 @@ import { ROUTES } from "@/lib/routes";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 import { Plus, Trash2 } from "lucide-react";
 import {
-  Badge,
   ConfirmModal,
   DetailPageHeader,
   DetailBadgeFieldRow,
@@ -18,6 +17,7 @@ import {
   InlineEditFieldContainer,
   InlineEditStatus,
   InlineEditTrigger,
+  OptionSegments,
   Panel,
   PanelSectionTitle,
   SAVED_DURATION_MS,
@@ -245,12 +245,13 @@ export function CustomerDetailClient({
   const inlineEditStatus =
     submitting ? "saving" : showSaved ? "saved" : error ? "error" : "idle";
 
-  const handleToggleActive = async () => {
+  const handleSetActive = async (next: boolean) => {
+    if (next === isActive) return;
     setError(null);
     setSubmitting(true);
     try {
-      await updateCustomerAction(initialCustomer.id, { is_active: !isActive });
-      setIsActive(!isActive);
+      await updateCustomerAction(initialCustomer.id, { is_active: next });
+      setIsActive(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -259,12 +260,13 @@ export function CustomerDetailClient({
     }
   };
 
-  const handleToggleInternal = async () => {
+  const handleSetInternal = async (next: boolean) => {
+    if (next === isInternal) return;
     setError(null);
     setSubmitting(true);
     try {
-      await updateCustomerAction(initialCustomer.id, { is_internal: !isInternal });
-      setIsInternal(!isInternal);
+      await updateCustomerAction(initialCustomer.id, { is_internal: next });
+      setIsInternal(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -554,25 +556,29 @@ export function CustomerDetailClient({
               </div>
 
               <DetailBadgeFieldRow label="Status">
-                <Badge
-                  variant={isActive ? "active" : "inactive"}
-                  interactive
-                  onClick={handleToggleActive}
+                <OptionSegments
+                  name="Status"
+                  value={isActive ? "active" : "inactive"}
+                  onChange={(value) => void handleSetActive(value === "active")}
                   disabled={submitting}
-                >
-                  {isActive ? "Active" : "Inactive"}
-                </Badge>
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "inactive", label: "Inactive" },
+                  ]}
+                />
               </DetailBadgeFieldRow>
 
-              <DetailBadgeFieldRow label="Internal customer">
-                <Badge
-                  variant="muted"
-                  interactive
-                  onClick={handleToggleInternal}
+              <DetailBadgeFieldRow label="Type">
+                <OptionSegments
+                  name="Type"
+                  value={isInternal ? "internal" : "standard"}
+                  onChange={(value) => void handleSetInternal(value === "internal")}
                   disabled={submitting}
-                >
-                  {isInternal ? "Internal" : "Standard"}
-                </Badge>
+                  options={[
+                    { value: "standard", label: "Standard" },
+                    { value: "internal", label: "Internal" },
+                  ]}
+                />
               </DetailBadgeFieldRow>
               </div>
             </div>

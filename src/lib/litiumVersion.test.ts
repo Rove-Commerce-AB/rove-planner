@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_LITIUM_VERSION_ITEMS,
+  parseLitiumVersionInput,
   parseLitiumVersionPayload,
   parseSubscriptionIdInput,
   requestHasLitiumVersionApiKey,
@@ -20,6 +21,23 @@ describe("parseSubscriptionIdInput", () => {
   it("rejects the wrong length", () => {
     expect(() => parseSubscriptionIdInput("abc")).toThrow(
       "Subscription ID must be exactly 6 characters"
+    );
+  });
+});
+
+describe("parseLitiumVersionInput", () => {
+  it("returns null for empty values", () => {
+    expect(parseLitiumVersionInput(null)).toBeNull();
+    expect(parseLitiumVersionInput("  ")).toBeNull();
+  });
+
+  it("trims a version", () => {
+    expect(parseLitiumVersionInput(" 8.21 ")).toBe("8.21");
+  });
+
+  it("rejects versions that are too long", () => {
+    expect(() => parseLitiumVersionInput("x".repeat(201))).toThrow(
+      "Litium version cannot be longer than 200 characters"
     );
   });
 });

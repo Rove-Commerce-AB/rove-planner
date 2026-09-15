@@ -1,7 +1,7 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
-import { parseSubscriptionIdInput } from "./litiumVersion";
+import { parseLitiumVersionInput, parseSubscriptionIdInput } from "./litiumVersion";
 import { fetchProjectsByCustomerIds } from "./projectsLookupQueries";
 import type { CustomerWithDetails, ProjectType } from "@/types";
 
@@ -43,6 +43,7 @@ export type UpdateCustomerInput = {
   logo_url?: string | null;
   url?: string | null;
   subscription_id?: string | null;
+  litium_version?: string | null;
   is_internal?: boolean;
   is_active?: boolean;
 };
@@ -397,6 +398,10 @@ export async function updateCustomerQuery(
   if (input.subscription_id !== undefined) {
     sets.push(`subscription_id = $${i++}`);
     values.push(parseSubscriptionIdInput(input.subscription_id));
+  }
+  if (input.litium_version !== undefined) {
+    sets.push(`litium_version = $${i++}`);
+    values.push(parseLitiumVersionInput(input.litium_version));
   }
   if (input.is_internal !== undefined) {
     sets.push(`is_internal = $${i++}`);

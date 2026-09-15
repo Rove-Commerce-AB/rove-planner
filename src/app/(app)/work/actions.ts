@@ -12,6 +12,7 @@ import {
   renameWorkBoard,
   renameWorkBoardStatus,
   reorderWorkBoardStatuses,
+  restoreWorkBoard,
 } from "@/lib/workBoards";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 import type { WorkPerson } from "@/lib/workTypes";
@@ -125,6 +126,19 @@ export async function archiveWorkBoardAction(
 ): Promise<{ ok: true; customerId: string } | Err> {
   try {
     const customerId = await archiveWorkBoard(boardId);
+    revalidatePath(ROUTES.work, "layout");
+    revalidatePath(workCustomerHref(customerId));
+    return { ok: true, customerId };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function restoreWorkBoardAction(
+  boardId: string
+): Promise<{ ok: true; customerId: string } | Err> {
+  try {
+    const customerId = await restoreWorkBoard(boardId);
     revalidatePath(ROUTES.work, "layout");
     revalidatePath(workCustomerHref(customerId));
     return { ok: true, customerId };
