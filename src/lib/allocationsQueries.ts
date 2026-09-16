@@ -2,6 +2,7 @@ import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { notifyAllocationInserts } from "@/lib/userNotifications";
 import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
 import { timedDebug } from "@/lib/debugLogs";
+import { ensureConsultantLinkedToProjectCustomer } from "./customerConsultantsQueries";
 
 export type AllocationRecord = {
   id: string;
@@ -190,6 +191,10 @@ export type CreateAllocationInput = {
 export async function createAllocation(
   input: CreateAllocationInput
 ): Promise<AllocationRecord> {
+  await ensureConsultantLinkedToProjectCustomer(
+    input.consultant_id,
+    input.project_id
+  );
   const { rows } = await cloudSqlPool.query(
     `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
      VALUES ($1, $2, $3, $4, $5, $6)
@@ -252,6 +257,7 @@ export async function createAllocationsForWeekRange(
   weekTo: number,
   hoursPerWeek: number
 ): Promise<AllocationRecord[]> {
+  await ensureConsultantLinkedToProjectCustomer(consultant_id, project_id);
   const weeks: { y: number; w: number }[] = [];
   if (weekFrom <= weekTo) {
     for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });
@@ -337,6 +343,7 @@ export async function createAllocationsForWeekRangeWithGetter(
   weekTo: number,
   getHoursForWeek: (y: number, w: number) => Promise<number>
 ): Promise<AllocationRecord[]> {
+  await ensureConsultantLinkedToProjectCustomer(consultant_id, project_id);
   const weeks: { y: number; w: number }[] = [];
   if (weekFrom <= weekTo) {
     for (let w = weekFrom; w <= weekTo; w++) weeks.push({ y: year, w });

@@ -249,21 +249,12 @@ export async function getAllocationPageData(
   };
 }
 
-const CONSULTANTS_SELECT =
-  "id,name,email,role_id,calendar_id,team_id,is_external,work_percentage,overhead_percentage,start_date,end_date";
-
-async function getConsultantsRawByIds(
-  ids: string[]
-): Promise<Awaited<ReturnType<typeof getCachedConsultantsRaw>>> {
-  if (ids.length === 0) return [];
-  const { rows } = await cloudSqlPool.query(
-    `SELECT ${CONSULTANTS_SELECT} FROM consultants WHERE id = ANY($1::uuid[]) ORDER BY name`,
-    [ids]
-  );
-  return rows as Awaited<ReturnType<typeof getCachedConsultantsRaw>>;
-}
-
-/** Allocation data scoped to one project and only consultants linked to that project's customer. For project detail planning panel. */
+/**
+ * Allocation data for the project detail planning panel.
+ * Loads every consultant so a team filter can show the whole team (not only
+ * people already linked to the customer). Without a team filter, the UI keeps
+ * the shorter customer-linked + already-allocated list.
+ */
 export async function getAllocationPageDataForProject(
   projectId: string,
   customerId: string,
@@ -275,44 +266,42 @@ export async function getAllocationPageDataForProject(
   debugLog("allocation-project", "start", { projectId, customerId, year, weekFrom, weekTo });
   const weeks = buildWeeksArray(year, weekFrom, weekTo);
 
-  const customerConsultants = await timedDebug(
+  const [
+    customerConsultants,
+    consultantsRaw,
+    rolesData,
+    teamsData,
+    allocationsData,
+    calendarsData,
+    projectsAll,
+    allProjectAllocations,
+  ] = await timedDebug(
     "allocation-project",
-    "load customer consultants",
-    () => getConsultantsByCustomerId(customerId),
-    { projectId, customerId }
+    "load planning datasets",
+    () =>
+      Promise.all([
+        getConsultantsByCustomerId(customerId),
+        getCachedConsultantsRaw(),
+        getCachedRoles(),
+        getCachedTeams(),
+        getAllocationsForWeeks(weeks),
+        getCachedCalendars(),
+        getProjectsWithCustomer([projectId]),
+        getAllocationsForProjectWithWeeks(projectId),
+      ]),
+    { projectId, customerId, weekCount: weeks.length }
   );
-  const consultantIds = customerConsultants.map((c) => c.id);
-  const consultantsRaw = await timedDebug(
-    "allocation-project",
-    "load consultants raw",
-    () => getConsultantsRawByIds(consultantIds),
-    { projectId, consultantCount: consultantIds.length }
-  );
-
-  const [rolesData, teamsData, allocationsData, calendarsData, projectsAll] =
-    await timedDebug(
-      "allocation-project",
-      "load role/team/allocation/calendar/project datasets",
-      () =>
-        Promise.all([
-          getCachedRoles(),
-          getCachedTeams(),
-          getAllocationsForWeeks(weeks),
-          getCachedCalendars(),
-          getProjectsWithCustomer([projectId]),
-        ]),
-      { projectId, weekCount: weeks.length }
-    );
 
   const allocations = allocationsData.filter((a) => a.project_id === projectId);
   const projects = projectsAll;
-
-  const allProjectAllocations = await timedDebug(
-    "allocation-project",
-    "load all allocations for project",
-    () => getAllocationsForProjectWithWeeks(projectId),
-    { projectId }
-  );
+  const defaultVisibleConsultantIds = [
+    ...new Set([
+      ...customerConsultants.map((c) => c.id),
+      ...allProjectAllocations
+        .map((a) => a.consultant_id)
+        .filter((id): id is string => id != null),
+    ]),
+  ];
   const consultantTotalHours: Record<string, number> = {};
   const seenSlot = new Set<string>();
   for (const a of allProjectAllocations) {
@@ -429,6 +418,7 @@ export async function getAllocationPageDataForProject(
     weekTo,
     weeks,
     consultantTotalHours,
+    defaultVisibleConsultantIds,
   };
   debugLog("allocation-project", "done", {
     projectId,
