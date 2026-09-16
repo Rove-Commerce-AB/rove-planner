@@ -1,12 +1,13 @@
 /**
  * Month-view merge of ISO-week time report slices.
- * A merged row groups multiple week payloads that describe the same logical line.
+ * A merged row groups week payloads that describe the same physical line UUID.
  *
- * Merge identity (month grid): customerId + projectId + roleId + jira key + trimmed task.
- * displayOrder is deliberately omitted: after week-scoped cleanup / legacy data, the same line
- * shape can carry different display_order per ISO week while still being one logical row in
- * the calendar month (matches merge_same_shape.sql semantics per week).
+ * Merge identity (month grid): customerId + projectId + roleId + jira key + trimmed task + line id.
+ * The same `time_report_entry_lines.id` is reused across ISO weeks (PK includes year/week), so one
+ * logical row still spans the calendar month. Distinct UUIDs with the same project/Jira/task stay
+ * separate — summing those was inflating hours on autosave/reload.
  *
+ * displayOrder is deliberately omitted from the key: it can differ per ISO week for the same id.
  * The merged row's displayOrder is the minimum among contributing slices for stable sorting.
  * Month-to-next-month copy should still align displayOrder across weeks when possible
  * (see copyEntryToWeek lineDisplayOrder).
@@ -32,6 +33,21 @@ export type TimeReportMonthMergedRow = {
   hoursByDate: Record<string, number>;
   commentsByDate: Record<string, string>;
 };
+
+/** Stable month-grid identity: shape + physical line UUID (reused across ISO weeks). */
+export function monthLineMergeKey(
+  customerId: string,
+  entry: Pick<TimeReportEntry, "id" | "projectId" | "roleId" | "jiraDevOpsValue" | "task">
+): string {
+  return [
+    customerId,
+    entry.projectId ?? "",
+    entry.roleId ?? "",
+    entry.jiraDevOpsValue ?? "",
+    (entry.task ?? "").trim(),
+    entry.id,
+  ].join("|");
+}
 
 export function compareCustomerIdsByName(
   a: string,
@@ -111,7 +127,7 @@ export function buildMergedMonthRows(
           const c = (e.comments[i] ?? "").trim();
           if (c) commentsByDate[d] = e.comments[i] ?? "";
         }
-        const mergeKey = `${g.customerId}|${e.projectId}|${e.roleId}|${e.jiraDevOpsValue ?? ""}|${(e.task ?? "").trim()}`;
+        const mergeKey = monthLineMergeKey(g.customerId, e);
         sources.push({
           mergeKey,
           sliceKey: sk,
@@ -209,4 +225,80 @@ export function buildMergedMonthRows(
     return ka - kb;
   });
   return rows;
+}
+
+export function resolveMergedRowLineIdForWeek(
+  row: TimeReportMonthMergedRow,
+  sliceKeyStr: string
+): string {
+  const direct = row.lineIdByWeekSliceKey[sliceKeyStr];
+  if (direct) return direct;
+  const pool = [...new Set(Object.values(row.lineIdByWeekSliceKey))].sort();
+  return pool[0] ?? row.lineId;
+}
+
+export function weekSliceKeysForMergedRow(
+  row: TimeReportMonthMergedRow,
+  monthWeeks: { year: number; week: number }[]
+): string[] {
+  const keys = new Set<string>(row.weekSliceKeys);
+  for (const { year, week } of monthWeeks) {
+    const sk = weekSliceKey(year, week);
+    const active = getWeekDates(year, week).some(
+      (d) =>
+        (row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== ""
+    );
+    if (active) keys.add(sk);
+  }
+  return [...keys];
+}
+
+export function monthRowBelongsToSaveWeek(
+  row: TimeReportMonthMergedRow,
+  y: number,
+  w: number
+): boolean {
+  const sk = weekSliceKey(y, w);
+  const weekDates = getWeekDates(y, w);
+  const hasWeekData = weekDates.some(
+    (d) => (row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== ""
+  );
+  return hasWeekData || row.weekSliceKeys.includes(sk);
+}
+
+/** Rebuild one ISO-week save payload from month-grid rows. Drafts without hours are omitted. */
+export function buildCustomerGroupsForWeekFromMerged(
+  rows: TimeReportMonthMergedRow[],
+  y: number,
+  w: number
+): TimeReportCustomerGroup[] {
+  const sk = weekSliceKey(y, w);
+  const weekDates = getWeekDates(y, w);
+  const order: string[] = [];
+  const byCustomer = new Map<string, TimeReportEntry[]>();
+  for (const row of rows) {
+    if (!monthRowBelongsToSaveWeek(row, y, w)) continue;
+    if (!byCustomer.has(row.customerId)) {
+      byCustomer.set(row.customerId, []);
+      order.push(row.customerId);
+    }
+    const hours = weekDates.map((d) => row.hoursByDate[d] ?? 0);
+    const comments: Record<number, string> = {};
+    weekDates.forEach((d, i) => {
+      const t = (row.commentsByDate[d] ?? "").trim();
+      if (t) comments[i] = row.commentsByDate[d] ?? "";
+    });
+    const lineIdForWeek = resolveMergedRowLineIdForWeek(row, sk);
+    byCustomer.get(row.customerId)!.push({
+      id: lineIdForWeek,
+      displayOrder: row.displayOrder,
+      projectId: row.projectId,
+      roleId: row.roleId,
+      jiraDevOpsValue: row.jiraDevOpsValue,
+      task: row.task,
+      hours,
+      comments,
+    });
+  }
+  return order.map((cid) => ({ customerId: cid, entries: byCustomer.get(cid)! }));
 }

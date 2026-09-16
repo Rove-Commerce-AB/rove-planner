@@ -66,8 +66,10 @@ import {
 } from "@/lib/timeReportBrowserWeek";
 import {
   buildMergedMonthRows,
+  buildCustomerGroupsForWeekFromMerged,
   sortCustomerGroupsByCustomerName,
   sortMonthMergedRowsByCustomerName,
+  weekSliceKeysForMergedRow,
   type TimeReportMonthMergedRow,
 } from "@/lib/timeReportMonthMerge";
 import {
@@ -228,25 +230,6 @@ function syncWeekRevisionAfterSave(
 /** One logical time row in month view (may span multiple ISO weeks after merge). */
 type MonthMergedRow = TimeReportMonthMergedRow;
 
-function weekSliceKeysForMergedRow(
-  row: MonthMergedRow,
-  monthWeeks: { year: number; week: number }[]
-): string[] {
-  const keys = new Set<string>(row.weekSliceKeys);
-  for (const { year, week } of monthWeeks) {
-    const sk = weekSliceKey(year, week);
-    const active = getWeekDates(year, week).some(
-      (d) =>
-        (row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== ""
-    );
-    if (active) keys.add(sk);
-  }
-  if (row.isDraft) {
-    for (const { year, week } of monthWeeks) keys.add(weekSliceKey(year, week));
-  }
-  return [...keys];
-}
-
 function mergedRowAllLineIds(row: MonthMergedRow): string[] {
   const ids = new Set<string>();
   for (const id of Object.values(row.lineIdByWeekSliceKey)) {
@@ -254,13 +237,6 @@ function mergedRowAllLineIds(row: MonthMergedRow): string[] {
   }
   if (row.lineId) ids.add(row.lineId);
   return [...ids];
-}
-
-function resolveMergedRowLineIdForWeek(row: MonthMergedRow, sliceKeyStr: string): string {
-  const direct = row.lineIdByWeekSliceKey[sliceKeyStr];
-  if (direct) return direct;
-  const pool = [...new Set(Object.values(row.lineIdByWeekSliceKey))].sort();
-  return pool[0] ?? row.lineId;
 }
 
 function newMonthMergedRow(customerId: string, monthCalendarDates: string[]): MonthMergedRow {
@@ -304,47 +280,6 @@ function pseudoCustomerGroupsForHydrate(rows: MonthMergedRow[]): CustomerGroup[]
       task: row.task,
       hours: [0, 0, 0, 0, 0, 0, 0],
       comments: {},
-    });
-  }
-  return order.map((cid) => ({ customerId: cid, entries: byCustomer.get(cid)! }));
-}
-
-function buildCustomerGroupsForWeekFromMerged(
-  rows: MonthMergedRow[],
-  y: number,
-  w: number
-): CustomerGroup[] {
-  const sk = weekSliceKey(y, w);
-  const weekDates = getWeekDates(y, w);
-  const order: string[] = [];
-  const byCustomer = new Map<string, Entry[]>();
-  for (const row of rows) {
-    const hasWeekData = weekDates.some(
-      (d) => (row.hoursByDate[d] ?? 0) > 0 || (row.commentsByDate[d] ?? "").trim() !== ""
-    );
-    const belongsToWeek =
-      row.isDraft === true || row.weekSliceKeys.includes(sk) || hasWeekData;
-    if (!belongsToWeek) continue;
-    if (!byCustomer.has(row.customerId)) {
-      byCustomer.set(row.customerId, []);
-      order.push(row.customerId);
-    }
-    const hours = weekDates.map((d) => row.hoursByDate[d] ?? 0);
-    const comments: Record<number, string> = {};
-    weekDates.forEach((d, i) => {
-      const t = (row.commentsByDate[d] ?? "").trim();
-      if (t) comments[i] = row.commentsByDate[d] ?? "";
-    });
-    const lineIdForWeek = resolveMergedRowLineIdForWeek(row, sk);
-    byCustomer.get(row.customerId)!.push({
-      id: lineIdForWeek,
-      displayOrder: row.displayOrder,
-      projectId: row.projectId,
-      roleId: row.roleId,
-      jiraDevOpsValue: row.jiraDevOpsValue,
-      task: row.task,
-      hours,
-      comments,
     });
   }
   return order.map((cid) => ({ customerId: cid, entries: byCustomer.get(cid)! }));
@@ -2388,9 +2323,6 @@ export function TimeReportPageClient({
       ...newMonthMergedRow(customerId, dates),
       projectId: source.projectId,
       roleId: source.roleId,
-      jiraDevOpsValue: source.jiraDevOpsValue,
-      task: source.task,
-      displayOrder: source.displayOrder,
     });
     setMonthMergedRows((prev) => {
       const index = prev.findIndex((r) => r.customerId === customerId && r.rowKey === entryId);
