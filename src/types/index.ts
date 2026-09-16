@@ -32,11 +32,17 @@ export type Project = {
 
 export type ProjectType = "customer" | "internal" | "absence";
 
+export type ProjectBillingType = "time_and_material" | "fixed_price";
+
 export type ProjectWithDetails = {
   id: string;
   name: string;
   isActive: boolean;
   type: ProjectType;
+  /** Time and material (default) or fixed price. */
+  billingType: ProjectBillingType;
+  /** Required when billingType is fixed_price. */
+  fixedPrice: number | null;
   customer_id: string;
   customerName: string;
   /** Optional dedicated project manager (consultant). */

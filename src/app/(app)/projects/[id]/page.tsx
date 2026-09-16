@@ -79,6 +79,11 @@ export default async function ProjectPage({ params, searchParams }: Props) {
   const allocationRates: Record<string, number> = {};
   for (const r of customerRates) allocationRates[r.role_id] = r.rate_per_hour;
   for (const r of projectRates) allocationRates[r.role_id] = r.rate_per_hour;
+  if (project.billingType === "fixed_price") {
+    for (const roleId of Object.keys(allocationRates)) {
+      allocationRates[roleId] = 0;
+    }
+  }
   debugLog("projects-page", "page rendered", {
     projectId: project.id,
     allocationLoaded: Boolean(allocationData),

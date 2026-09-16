@@ -14,7 +14,7 @@ import { getCustomers } from "@/lib/customersClient";
 import { getConsultantsList } from "@/lib/consultantsClient";
 import { ROUTES, customerHref } from "@/lib/routes";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
-import type { ProjectWithDetails, ProjectType } from "@/types";
+import type { ProjectWithDetails, ProjectType, ProjectBillingType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 import {
@@ -70,6 +70,7 @@ type EditField =
   | "integration"
   | "budgetHours"
   | "budgetMoney"
+  | "fixedPrice"
   | "startDate"
   | "endDate"
   | "probability"
@@ -112,6 +113,12 @@ export function ProjectDetailClient({
   );
   const [isActive, setIsActive] = useState(initial.isActive);
   const [type, setType] = useState<ProjectType>(initial.type);
+  const [billingType, setBillingType] = useState<ProjectBillingType>(
+    initial.billingType ?? "time_and_material"
+  );
+  const [fixedPrice, setFixedPrice] = useState<number | null>(
+    initial.fixedPrice != null ? Number(initial.fixedPrice) : null
+  );
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
   const [probability, setProbability] = useState(initial.probability ?? 100);
@@ -246,6 +253,8 @@ export function ProjectDetailClient({
     setProjectManagerName(initial.projectManagerName ?? null);
     setIsActive(initial.isActive);
     setType(initial.type);
+    setBillingType(initial.billingType ?? "time_and_material");
+    setFixedPrice(initial.fixedPrice != null ? Number(initial.fixedPrice) : null);
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
     setProbability(initial.probability ?? 100);
@@ -326,6 +335,13 @@ export function ProjectDetailClient({
         return;
       }
     }
+    if (field === "fixedPrice") {
+      const num = parseInt(trimmed, 10);
+      if (trimmed === "" || Number.isNaN(num) || num <= 0) {
+        setError("Price is required for fixed-price projects");
+        return;
+      }
+    }
     switch (field) {
       case "name": setName(trimmed); break;
       case "customerId": setCustomerId(trimmed); break;
@@ -346,6 +362,10 @@ export function ProjectDetailClient({
         break;
       case "budgetMoney":
         setBudgetMoney(trimmed === "" ? null : parseInt(trimmed, 10));
+        break;
+      case "fixedPrice":
+        setFixedPrice(parseInt(trimmed, 10));
+        setBillingType("fixed_price");
         break;
       default: break;
     }
@@ -418,6 +438,12 @@ export function ProjectDetailClient({
             budget_money: trimmed === "" ? null : parseInt(trimmed, 10),
           });
           break;
+        case "fixedPrice":
+          await updateProject(initial.id, {
+            billing_type: "fixed_price",
+            fixed_price: parseInt(trimmed, 10),
+          });
+          break;
         default:
           break;
       }
@@ -442,6 +468,10 @@ export function ProjectDetailClient({
         case "budgetMoney":
           setBudgetMoney(initial.budgetMoney != null ? Number(initial.budgetMoney) : null);
           break;
+        case "fixedPrice":
+          setFixedPrice(initial.fixedPrice != null ? Number(initial.fixedPrice) : null);
+          setBillingType(initial.billingType ?? "time_and_material");
+          break;
         default: break;
       }
     } finally {
@@ -460,6 +490,13 @@ export function ProjectDetailClient({
     setEditValue(originalEditValueRef.current);
     setEditingField(null);
     setError(null);
+    if (
+      editingField === "fixedPrice" &&
+      (initial.billingType ?? "time_and_material") !== "fixed_price"
+    ) {
+      setBillingType(initial.billingType ?? "time_and_material");
+      setFixedPrice(initial.fixedPrice != null ? Number(initial.fixedPrice) : null);
+    }
   };
 
   const commitEdit = (overrideValue?: string) => {
@@ -520,6 +557,40 @@ export function ProjectDetailClient({
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const setProjectBillingType = async (next: ProjectBillingType) => {
+    if (next === billingType) return;
+    setError(null);
+    if (next === "time_and_material" && editingField === "fixedPrice") {
+      setEditingField(null);
+    }
+    if (next === "fixed_price") {
+      const price = fixedPrice;
+      if (price == null || price <= 0) {
+        setBillingType("fixed_price");
+        startEdit("fixedPrice", "");
+        return;
+      }
+    }
+    if (
+      next === "time_and_material" &&
+      (initial.billingType ?? "time_and_material") === "time_and_material"
+    ) {
+      setBillingType("time_and_material");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await updateProject(initial.id, { billing_type: next });
+      setBillingType(next);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+      setBillingType(initial.billingType ?? "time_and_material");
     } finally {
       setSubmitting(false);
     }
@@ -941,6 +1012,96 @@ export function ProjectDetailClient({
             </div>
 
             <div className="min-w-0">
+              <FieldLabel>Billing</FieldLabel>
+              <div className="mt-0.5">
+                <OptionSegments
+                  name="Billing"
+                  value={billingType}
+                  onChange={(value) =>
+                    void setProjectBillingType(value as ProjectBillingType)
+                  }
+                  disabled={submitting}
+                  options={[
+                    { value: "time_and_material", label: "Time and material" },
+                    { value: "fixed_price", label: "Fixed price" },
+                  ]}
+                />
+              </div>
+            </div>
+
+            {billingType === "fixed_price" && (
+              <>
+                <div className="min-w-0">
+                  <FieldLabel>Price (SEK)</FieldLabel>
+                  <div className="mt-0.5">
+                    <InlineEditFieldContainer
+                      isEditing={editingField === "fixedPrice"}
+                      onRequestClose={commitEdit}
+                      showSavedIndicator={
+                        showSaved && lastSavedFieldRef.current === "fixedPrice"
+                      }
+                      displayContent={
+                        <InlineEditTrigger
+                          onClick={() =>
+                            startEdit(
+                              "fixedPrice",
+                              fixedPrice != null ? String(fixedPrice) : ""
+                            )
+                          }
+                        >
+                          {fixedPrice != null ? (
+                            <FieldValue>
+                              {String(fixedPrice).replace(
+                                /\B(?=(\d{3})+(?!\d))/g,
+                                "\u00A0"
+                              )}{" "}
+                              SEK
+                            </FieldValue>
+                          ) : (
+                            <span className="text-sm text-text-primary opacity-60">
+                              Required
+                            </span>
+                          )}
+                        </InlineEditTrigger>
+                      }
+                      editContent={
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          onBlur={() => commitEdit()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitEdit();
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEdit();
+                            }
+                          }}
+                          placeholder="Price"
+                          className={editInputClass}
+                          autoFocus
+                        />
+                      }
+                      statusContent={
+                        <InlineEditStatus status={inlineEditStatus} message={error} />
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <FieldLabel>Hourly rate</FieldLabel>
+                  <div className="mt-0.5">
+                    <FieldValue>0 SEK/h</FieldValue>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="min-w-0">
               <FieldLabel>Probability</FieldLabel>
               <div className="mt-0.5">
                 <InlineEditFieldContainer
@@ -999,6 +1160,7 @@ export function ProjectDetailClient({
         <Panel>
           <PanelSectionTitle
             action={
+              billingType === "fixed_price" ? undefined : (
               <IconButton
                 aria-label="Add rate"
                 onClick={() => setAddRateModalOpen(true)}
@@ -1006,23 +1168,30 @@ export function ProjectDetailClient({
               >
                 <Plus className="h-4 w-4" />
               </IconButton>
+              )
             }
           >
             RATES/TASKS
           </PanelSectionTitle>
           <p className="px-3 pb-2 text-sm text-text-primary opacity-70">
-            Rates set here override customer rates for this project when both exist.
+            {billingType === "fixed_price"
+              ? "Hourly rate is 0 for fixed-price projects. Role rates are not used."
+              : "Rates set here override customer rates for this project when both exist."}
           </p>
           <div className="p-3 pt-0">
             {ratesError && (
               <p className="mb-4 text-sm text-danger">{ratesError}</p>
             )}
-            <ProjectRatesTab
-              projectId={initial.id}
-              onError={setRatesError}
-              showDescription={false}
-              refreshTrigger={ratesRefreshKey}
-            />
+            {billingType === "fixed_price" ? (
+              <p className="text-sm text-text-primary">0 SEK/h</p>
+            ) : (
+              <ProjectRatesTab
+                projectId={initial.id}
+                onError={setRatesError}
+                showDescription={false}
+                refreshTrigger={ratesRefreshKey}
+              />
+            )}
           </div>
         </Panel>
         </div>
@@ -1061,7 +1230,17 @@ export function ProjectDetailClient({
             weekTo={planningWeekTo}
             currentYear={currentYear}
             currentWeek={currentWeek}
-            embedMode={{ projectId: initial.id, rates: allocationRates, budgetHours: budgetHours ?? undefined, budgetMoney: budgetMoney ?? undefined }}
+            embedMode={{
+              projectId: initial.id,
+              rates:
+                billingType === "fixed_price"
+                  ? Object.fromEntries(
+                      Object.keys(allocationRates ?? {}).map((roleId) => [roleId, 0])
+                    )
+                  : allocationRates,
+              budgetHours: budgetHours ?? undefined,
+              budgetMoney: budgetMoney ?? undefined,
+            }}
             onWeekRangeChange={handleWeekRangeChange}
             embedWeekNavLoading={planningLoading}
             embedShowTeamFilter

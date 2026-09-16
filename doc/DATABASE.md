@@ -299,17 +299,24 @@ Belongs to one customer. Optional Jira / DevOps integration fields, PM, budgets.
 | devops_project | text | nullable; joins `devops_work_items.project` |
 | budget_hours | numeric | nullable |
 | budget_money | numeric | nullable |
+| billing_type | text | NOT NULL, default `time_and_material`; `time_and_material` or `fixed_price` |
+| fixed_price | numeric | required and > 0 when `billing_type` is `fixed_price` |
 | project_manager_id | uuid | nullable; app links to `consultants.id` (no FK in this snapshot) |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Checks: `end_date >= start_date` when both are set; probability 1–100.
+Checks: `end_date >= start_date` when both are set; probability 1–100;
+`billing_type` in (`time_and_material`, `fixed_price`);
+`fixed_price` required and > 0 when `billing_type` is `fixed_price`.
 
 Trigger `trg_projects_updated_at` → `set_updated_at()`.
 
 The app can use `projects.clickup_project_id` when present
 ([`scripts/alter_projects_add_clickup_project_id.sql`](../scripts/alter_projects_add_clickup_project_id.sql)).
 That column is **not** in this snapshot.
+
+Billing columns: [`scripts/20260916_project_billing_type.sql`](../scripts/20260916_project_billing_type.sql).
+Fixed-price projects use hourly rate 0 (customer/project role rates are ignored).
 
 ---
 
