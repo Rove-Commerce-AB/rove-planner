@@ -1,4 +1,5 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { fetchProjectBillingTypes } from "./projectsQueries";
 
 export type ProjectRate = {
   id: string;
@@ -48,12 +49,20 @@ export async function fetchProjectRatesByProjectIds(
   return rows.map(mapRow);
 }
 
+async function assertHourlyRatesAllowed(projectId: string): Promise<void> {
+  const types = await fetchProjectBillingTypes([projectId]);
+  if (types.get(projectId) === "fixed_price") {
+    throw new Error("Hourly rate is 0 for fixed-price projects");
+  }
+}
+
 export async function createProjectRateQuery(
   projectId: string,
   roleId: string,
   ratePerHour: number,
   currency = "SEK"
 ): Promise<ProjectRate> {
+  await assertHourlyRatesAllowed(projectId);
   const { rows } = await cloudSqlPool.query(
     `INSERT INTO project_rates (project_id, role_id, rate_per_hour, currency)
      VALUES ($1, $2, $3, $4)
@@ -68,6 +77,12 @@ export async function updateProjectRateQuery(
   id: string,
   ratePerHour: number
 ): Promise<ProjectRate> {
+  const { rows: existing } = await cloudSqlPool.query<{ project_id: string }>(
+    `SELECT project_id FROM project_rates WHERE id = $1`,
+    [id]
+  );
+  if (!existing[0]) throw new Error("Failed to update project rate");
+  await assertHourlyRatesAllowed(existing[0].project_id);
   const { rows } = await cloudSqlPool.query(
     `UPDATE project_rates SET rate_per_hour = $2, updated_at = now()
      WHERE id = $1

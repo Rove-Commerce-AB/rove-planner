@@ -291,6 +291,7 @@ export async function getBillableUtilizationMonthlyReport(
       const project = projectMap.get(a.project_id);
       if (!project || project.type !== "customer") continue;
       if (internalCustomerId && project.customer_id === internalCustomerId) continue;
+      if (project.billingType === "fixed_price") continue;
 
       const consultant = consultantById.get(a.consultant_id)!;
       const roleId = a.role_id ?? (consultant as { role_id?: string }).role_id;

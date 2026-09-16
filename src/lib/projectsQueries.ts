@@ -6,11 +6,17 @@ import * as customers from "./customersQueries";
 import * as consultants from "./consultantsQueries";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import type { ProjectWithDetails, ProjectType } from "@/types";
+import {
+  DEFAULT_PROJECT_BILLING_TYPE,
+  parseProjectBillingType,
+  validateProjectBilling,
+  type ProjectBillingType,
+} from "./projectBilling";
 
 let clickupProjectColumnAvailable: boolean | null = null;
+let billingColumnsAvailable: boolean | null = null;
 
-async function hasClickupProjectColumn(): Promise<boolean> {
-  if (clickupProjectColumnAvailable != null) return clickupProjectColumnAvailable;
+async function hasProjectsColumn(columnName: string): Promise<boolean> {
   try {
     const { rows } = await cloudSqlPool.query<{ exists: boolean }>(
       `SELECT EXISTS (
@@ -18,21 +24,39 @@ async function hasClickupProjectColumn(): Promise<boolean> {
          FROM information_schema.columns
          WHERE table_schema = 'public'
            AND table_name = 'projects'
-           AND column_name = 'clickup_project_id'
-       ) AS "exists"`
+           AND column_name = $1
+       ) AS "exists"`,
+      [columnName]
     );
-    clickupProjectColumnAvailable = Boolean(rows[0]?.exists);
-    return clickupProjectColumnAvailable;
+    return Boolean(rows[0]?.exists);
   } catch {
-    clickupProjectColumnAvailable = false;
     return false;
   }
 }
 
-function projectSelectClause(includeClickupProjectId: boolean): string {
-  return includeClickupProjectId
-    ? "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, clickup_project_id, budget_hours, budget_money"
-    : "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, NULL::text AS clickup_project_id, budget_hours, budget_money";
+async function hasClickupProjectColumn(): Promise<boolean> {
+  if (clickupProjectColumnAvailable != null) return clickupProjectColumnAvailable;
+  clickupProjectColumnAvailable = await hasProjectsColumn("clickup_project_id");
+  return clickupProjectColumnAvailable;
+}
+
+export async function hasProjectBillingColumns(): Promise<boolean> {
+  if (billingColumnsAvailable != null) return billingColumnsAvailable;
+  billingColumnsAvailable = await hasProjectsColumn("billing_type");
+  return billingColumnsAvailable;
+}
+
+function projectSelectClause(
+  includeClickupProjectId: boolean,
+  includeBilling: boolean
+): string {
+  const clickup = includeClickupProjectId
+    ? "clickup_project_id"
+    : "NULL::text AS clickup_project_id";
+  const billing = includeBilling
+    ? "billing_type, fixed_price"
+    : `'${DEFAULT_PROJECT_BILLING_TYPE}'::text AS billing_type, NULL::numeric AS fixed_price`;
+  return `id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, ${clickup}, budget_hours, budget_money, ${billing}`;
 }
 
 function getInitials(name: string): string {
@@ -59,6 +83,8 @@ export type ProjectRecord = {
   clickup_project_id: string | null;
   budget_hours: number | null;
   budget_money: number | null;
+  billing_type: ProjectBillingType;
+  fixed_price: number | null;
 };
 
 export type CreateProjectInput = {
@@ -75,6 +101,8 @@ export type CreateProjectInput = {
   clickup_project_id?: string | null;
   budget_hours?: number | null;
   budget_money?: number | null;
+  billing_type?: ProjectBillingType;
+  fixed_price?: number | null;
 };
 
 export type UpdateProjectInput = {
@@ -91,6 +119,8 @@ export type UpdateProjectInput = {
   clickup_project_id?: string | null;
   budget_hours?: number | null;
   budget_money?: number | null;
+  billing_type?: ProjectBillingType;
+  fixed_price?: number | null;
 };
 
 function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
@@ -112,6 +142,48 @@ function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
       r.budget_hours != null ? Number(r.budget_hours as string | number) : null,
     budget_money:
       r.budget_money != null ? Number(r.budget_money as string | number) : null,
+    billing_type: parseProjectBillingType(r.billing_type),
+    fixed_price:
+      r.fixed_price != null ? Number(r.fixed_price as string | number) : null,
+  };
+}
+
+export async function fetchProjectBillingTypes(
+  projectIds: string[]
+): Promise<Map<string, ProjectBillingType>> {
+  const result = new Map<string, ProjectBillingType>();
+  for (const id of projectIds) {
+    result.set(id, DEFAULT_PROJECT_BILLING_TYPE);
+  }
+  if (projectIds.length === 0) return result;
+  if (!(await hasProjectBillingColumns())) return result;
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    billing_type: string | null;
+  }>(`SELECT id, billing_type FROM projects WHERE id = ANY($1::uuid[])`, [
+    projectIds,
+  ]);
+  for (const row of rows) {
+    result.set(row.id, parseProjectBillingType(row.billing_type));
+  }
+  return result;
+}
+
+async function fetchProjectBillingRow(
+  id: string
+): Promise<{ billing_type: ProjectBillingType; fixed_price: number | null }> {
+  if (!(await hasProjectBillingColumns())) {
+    return { billing_type: DEFAULT_PROJECT_BILLING_TYPE, fixed_price: null };
+  }
+  const { rows } = await cloudSqlPool.query<{
+    billing_type: string | null;
+    fixed_price: string | number | null;
+  }>(`SELECT billing_type, fixed_price FROM projects WHERE id = $1`, [id]);
+  const row = rows[0];
+  return {
+    billing_type: parseProjectBillingType(row?.billing_type),
+    fixed_price:
+      row?.fixed_price != null ? Number(row.fixed_price) : null,
   };
 }
 
@@ -120,52 +192,64 @@ export async function createProjectQuery(
 ): Promise<ProjectRecord> {
   const prob = input.probability ?? 100;
   const includeClickupProjectId = await hasClickupProjectColumn();
-  const { rows } = includeClickupProjectId
-    ? await cloudSqlPool.query(
-        `INSERT INTO projects (
-           name, customer_id, is_active, type, project_manager_id,
-           start_date, end_date, probability, jira_project_key, devops_project, clickup_project_id,
-           budget_hours, budget_money
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         RETURNING ${projectSelectClause(true)}`,
-        [
-          input.name.trim(),
-          input.customer_id,
-          input.is_active ?? true,
-          input.type ?? "customer",
-          input.project_manager_id ?? null,
-          input.start_date?.trim() || null,
-          input.end_date?.trim() || null,
-          prob,
-          input.jira_project_key?.trim() || null,
-          input.devops_project?.trim() || null,
-          input.clickup_project_id?.trim() || null,
-          input.budget_hours ?? null,
-          input.budget_money ?? null,
-        ]
-      )
-    : await cloudSqlPool.query(
-        `INSERT INTO projects (
-           name, customer_id, is_active, type, project_manager_id,
-           start_date, end_date, probability, jira_project_key, devops_project,
-           budget_hours, budget_money
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         RETURNING ${projectSelectClause(false)}`,
-        [
-          input.name.trim(),
-          input.customer_id,
-          input.is_active ?? true,
-          input.type ?? "customer",
-          input.project_manager_id ?? null,
-          input.start_date?.trim() || null,
-          input.end_date?.trim() || null,
-          prob,
-          input.jira_project_key?.trim() || null,
-          input.devops_project?.trim() || null,
-          input.budget_hours ?? null,
-          input.budget_money ?? null,
-        ]
-      );
+  const includeBilling = await hasProjectBillingColumns();
+  const billingType = parseProjectBillingType(input.billing_type);
+  const fixedPrice = input.fixed_price ?? null;
+  const billingError = validateProjectBilling({
+    billingType,
+    fixedPrice,
+  });
+  if (billingError) throw new Error(billingError);
+  if (
+    (input.billing_type !== undefined || input.fixed_price !== undefined) &&
+    !includeBilling
+  ) {
+    throw new Error(
+      "Database migration required for project billing: run scripts/20260916_project_billing_type.sql."
+    );
+  }
+
+  const columns = [
+    "name",
+    "customer_id",
+    "is_active",
+    "type",
+    "project_manager_id",
+    "start_date",
+    "end_date",
+    "probability",
+    "jira_project_key",
+    "devops_project",
+  ];
+  const values: unknown[] = [
+    input.name.trim(),
+    input.customer_id,
+    input.is_active ?? true,
+    input.type ?? "customer",
+    input.project_manager_id ?? null,
+    input.start_date?.trim() || null,
+    input.end_date?.trim() || null,
+    prob,
+    input.jira_project_key?.trim() || null,
+    input.devops_project?.trim() || null,
+  ];
+  if (includeClickupProjectId) {
+    columns.push("clickup_project_id");
+    values.push(input.clickup_project_id?.trim() || null);
+  }
+  columns.push("budget_hours", "budget_money");
+  values.push(input.budget_hours ?? null, input.budget_money ?? null);
+  if (includeBilling) {
+    columns.push("billing_type", "fixed_price");
+    values.push(billingType, billingType === "fixed_price" ? fixedPrice : null);
+  }
+  const placeholders = values.map((_, idx) => `$${idx + 1}`).join(", ");
+  const { rows } = await cloudSqlPool.query(
+    `INSERT INTO projects (${columns.join(", ")})
+     VALUES (${placeholders})
+     RETURNING ${projectSelectClause(includeClickupProjectId, includeBilling)}`,
+    values
+  );
   if (!rows[0]) throw new Error("Failed to create project");
   return rowToProjectRecord(rows[0] as Record<string, unknown>);
 }
@@ -233,6 +317,33 @@ export async function updateProjectQuery(
   if (input.budget_money !== undefined) {
     sets.push(`budget_money = $${i++}`);
     values.push(input.budget_money ?? null);
+  }
+  if (input.billing_type !== undefined || input.fixed_price !== undefined) {
+    if (!(await hasProjectBillingColumns())) {
+      throw new Error(
+        "Database migration required for project billing: run scripts/20260916_project_billing_type.sql."
+      );
+    }
+    const current = await fetchProjectBillingRow(id);
+    const billingType =
+      input.billing_type !== undefined
+        ? parseProjectBillingType(input.billing_type)
+        : current.billing_type;
+    const fixedPrice =
+      input.fixed_price !== undefined ? input.fixed_price : current.fixed_price;
+    const billingError = validateProjectBilling({
+      billingType,
+      fixedPrice,
+    });
+    if (billingError) throw new Error(billingError);
+    if (input.billing_type !== undefined) {
+      sets.push(`billing_type = $${i++}`);
+      values.push(billingType);
+    }
+    if (input.fixed_price !== undefined) {
+      sets.push(`fixed_price = $${i++}`);
+      values.push(fixedPrice);
+    }
   }
   if (sets.length === 0) return;
   sets.push(`updated_at = now()`);
@@ -311,10 +422,13 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
 export async function fetchProjectWithDetailsById(
   id: string
 ): Promise<ProjectWithDetails | null> {
-  const includeClickupProjectId = await hasClickupProjectColumn();
+  const [includeClickupProjectId, includeBilling] = await Promise.all([
+    hasClickupProjectColumn(),
+    hasProjectBillingColumns(),
+  ]);
   const [projectRes, customersList] = await Promise.all([
     cloudSqlPool.query(
-      `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects WHERE id = $1`,
+      `SELECT ${projectSelectClause(includeClickupProjectId, includeBilling)} FROM projects WHERE id = $1`,
       [id]
     ),
     customers.fetchCustomers(),
@@ -350,6 +464,9 @@ export async function fetchProjectWithDetailsById(
     name: p.name as string,
     isActive: Boolean(p.is_active),
     type: projectType,
+    billingType: parseProjectBillingType(p.billing_type),
+    fixedPrice:
+      p.fixed_price != null ? Number(p.fixed_price as number) : null,
     customer_id: (p.customer_id as string) ?? "",
     customerName: cust?.name ?? "Unknown",
     projectManagerId,
@@ -372,9 +489,12 @@ export async function fetchProjectWithDetailsById(
 }
 
 export async function fetchProjects(): Promise<ProjectRecord[]> {
-  const includeClickupProjectId = await hasClickupProjectColumn();
+  const [includeClickupProjectId, includeBilling] = await Promise.all([
+    hasClickupProjectColumn(),
+    hasProjectBillingColumns(),
+  ]);
   const { rows } = await cloudSqlPool.query(
-    `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects ORDER BY is_active DESC, name`
+    `SELECT ${projectSelectClause(includeClickupProjectId, includeBilling)} FROM projects ORDER BY is_active DESC, name`
   );
   return rows.map((r) => rowToProjectRecord(r as Record<string, unknown>));
 }
@@ -474,6 +594,8 @@ export async function fetchProjectsWithDetails(): Promise<
       name: p.name,
       isActive: p.is_active,
       type: projectType,
+      billingType: p.billing_type,
+      fixedPrice: p.fixed_price,
       customer_id: p.customer_id,
       customerName: cust?.name ?? "Unknown",
       projectManagerId,
@@ -501,9 +623,12 @@ export async function fetchProjectsByCustomerIds(
 ): Promise<ProjectRecord[]> {
   if (customerIds.length === 0) return [];
 
-  const includeClickupProjectId = await hasClickupProjectColumn();
+  const [includeClickupProjectId, includeBilling] = await Promise.all([
+    hasClickupProjectColumn(),
+    hasProjectBillingColumns(),
+  ]);
   const { rows } = await cloudSqlPool.query(
-    `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects WHERE customer_id = ANY($1::uuid[])`,
+    `SELECT ${projectSelectClause(includeClickupProjectId, includeBilling)} FROM projects WHERE customer_id = ANY($1::uuid[])`,
     [customerIds]
   );
   return rows.map((r) => rowToProjectRecord(r as Record<string, unknown>));
@@ -557,14 +682,24 @@ export type ProjectWithCustomer = {
   customerName: string;
   customerColor: string;
   type: ProjectType;
+  billingType: ProjectBillingType;
   isActive: boolean;
   customerIsActive: boolean;
   probability: number | null;
 };
 
+async function projectWithCustomerSelect(): Promise<string> {
+  const includeBilling = await hasProjectBillingColumns();
+  const billing = includeBilling
+    ? "billing_type"
+    : `'${DEFAULT_PROJECT_BILLING_TYPE}'::text AS billing_type`;
+  return `id, name, customer_id, type, is_active, probability, ${billing}`;
+}
+
 export async function fetchProjectsWithCustomer(
   ids: string[] = []
 ): Promise<ProjectWithCustomer[]> {
+  const select = await projectWithCustomerSelect();
   let list: {
     id: string;
     name: string;
@@ -572,18 +707,19 @@ export async function fetchProjectsWithCustomer(
     type: string;
     is_active: boolean;
     probability: number | null;
+    billing_type: string | null;
   }[] = [];
 
   if (ids.length > 0) {
     const { rows } = await cloudSqlPool.query(
-      `SELECT id, name, customer_id, type, is_active, probability
+      `SELECT ${select}
        FROM projects WHERE id = ANY($1::uuid[]) ORDER BY name`,
       [ids]
     );
     list = rows as typeof list;
   } else {
     const { rows } = await cloudSqlPool.query(
-      `SELECT id, name, customer_id, type, is_active, probability FROM projects ORDER BY name`
+      `SELECT ${select} FROM projects ORDER BY name`
     );
     list = rows as typeof list;
   }
@@ -621,6 +757,7 @@ export async function fetchProjectsWithCustomer(
       customerName: cust?.name ?? "Unknown",
       customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
       type: (p.type ?? "customer") as ProjectType,
+      billingType: parseProjectBillingType(p.billing_type),
       isActive: p.is_active ?? true,
       customerIsActive: cust?.is_active ?? true,
       probability,
@@ -643,8 +780,9 @@ export async function fetchProjectsAvailableForConsultant(
     type: string;
     is_active: boolean;
     probability: number | null;
+    billing_type: string | null;
   }>(
-    `SELECT id, name, customer_id, type, is_active, probability
+    `SELECT ${await projectWithCustomerSelect()}
      FROM projects WHERE customer_id = ANY($1::uuid[]) ORDER BY name`,
     [customerIds]
   );
@@ -682,6 +820,7 @@ export async function fetchProjectsAvailableForConsultant(
       customerName: cust?.name ?? "Unknown",
       customerColor: cust?.color ?? DEFAULT_CUSTOMER_COLOR,
       type: (p.type ?? "customer") as ProjectType,
+      billingType: parseProjectBillingType(p.billing_type),
       isActive: p.is_active ?? true,
       customerIsActive: cust?.is_active ?? true,
       probability,

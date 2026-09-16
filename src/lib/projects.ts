@@ -11,6 +11,7 @@ export type {
   IntegrationProjectOption,
   ProjectWithCustomer,
 } from "./projectsQueries";
+export { fetchProjectBillingTypes } from "./projectsQueries";
 
 export async function createProject(input: q.CreateProjectInput) {
   return q.createProjectQuery(input);

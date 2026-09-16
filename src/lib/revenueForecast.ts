@@ -6,6 +6,7 @@ import { getWorkingDaysByMonthInWeek, isoWeeksInYear } from "./dateUtils";
 import { getAllocationsForWeeks } from "./allocationsQueries";
 import { fetchCalendarHolidaysByCalendarIds } from "./calendarHolidaysQueries";
 import { fetchCustomerRatesByCustomerIds } from "./customerRatesQueries";
+import { fetchProjectBillingTypes } from "./projectsQueries";
 
 import type {
   RevenueForecastByCustomer,
@@ -68,6 +69,7 @@ export async function getRevenueForecast(
         ),
       ];
       const projectIds = [...new Set(allocations.map((a) => a.project_id))];
+      const billingTypes = await fetchProjectBillingTypes(projectIds);
 
       const [consultantsRes, projectsRes] = await Promise.all([
         consultantIds.length
@@ -168,6 +170,7 @@ export async function getRevenueForecast(
         const project = projects.get(a.project_id);
         if (!consultant || !project) continue;
         if (project.type !== "customer") continue;
+        if (billingTypes.get(a.project_id) === "fixed_price") continue;
 
         const customerId = project.customer_id;
         const roleId = a.role_id ?? consultant.role_id;

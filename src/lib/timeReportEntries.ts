@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { getProjectsByCustomerIds } from "@/lib/projects";
+import { getProjectsByCustomerIds, fetchProjectBillingTypes } from "@/lib/projects";
 import {
   getJiraIssuesByProjectKey,
   getDevOpsWorkItemsByProject,
@@ -16,6 +16,7 @@ import {
   getProjectRatesByProjectIds,
   getRolesWithRateForAllocation,
 } from "@/lib/projectRates";
+import { effectiveHourlyRate } from "@/lib/projectBilling";
 import { getCalendarHolidays } from "@/lib/calendarHolidays";
 import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
@@ -340,15 +341,21 @@ async function getEffectiveRateSnapshot(
   customerId: string,
   roleId: string
 ): Promise<number | null> {
-  const [projectRates, customerRates] = await Promise.all([
+  const [billingTypes, projectRates, customerRates] = await Promise.all([
+    fetchProjectBillingTypes([projectId]),
     getProjectRates(projectId),
     getCustomerRates(customerId),
   ]);
+  const billingType = billingTypes.get(projectId) ?? "time_and_material";
   const projectRate = projectRates.find((r) => r.role_id === roleId);
-  if (projectRate != null) return Number(projectRate.rate_per_hour);
+  if (projectRate != null) {
+    return effectiveHourlyRate(billingType, Number(projectRate.rate_per_hour));
+  }
   const customerRate = customerRates.find((r) => r.role_id === roleId);
-  if (customerRate != null) return Number(customerRate.rate_per_hour);
-  return null;
+  if (customerRate != null) {
+    return effectiveHourlyRate(billingType, Number(customerRate.rate_per_hour));
+  }
+  return effectiveHourlyRate(billingType, null);
 }
 
 type TimeReportRowDb = {
@@ -722,9 +729,10 @@ export async function saveTimeReportEntries(
       if (entry.projectId) projectIds.add(entry.projectId);
     }
   }
-  const [allProjectRates, allCustomerRates] = await Promise.all([
+  const [allProjectRates, allCustomerRates, billingTypes] = await Promise.all([
     getProjectRatesByProjectIds(Array.from(projectIds)),
     getCustomerRatesByCustomerIds(Array.from(customerIds)),
+    fetchProjectBillingTypes(Array.from(projectIds)),
   ]);
 
   const projectRoleRateMap = new Map<string, Map<string, number>>();
@@ -752,11 +760,12 @@ export async function saveTimeReportEntries(
     customerId: string,
     roleId: string
   ): number | null => {
+    const billingType = billingTypes.get(projectId) ?? "time_and_material";
     const fromProject = projectRoleRateMap.get(projectId)?.get(roleId);
-    if (fromProject != null) return fromProject;
+    if (fromProject != null) return effectiveHourlyRate(billingType, fromProject);
     const fromCustomer = customerRoleRateMap.get(customerId)?.get(roleId);
-    if (fromCustomer != null) return fromCustomer;
-    return null;
+    if (fromCustomer != null) return effectiveHourlyRate(billingType, fromCustomer);
+    return effectiveHourlyRate(billingType, null);
   };
 
   for (let cgIndex = 0; cgIndex < customerGroups.length; cgIndex++) {
