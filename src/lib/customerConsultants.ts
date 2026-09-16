@@ -15,6 +15,13 @@ export async function addConsultantToCustomer(
   return q.addConsultantToCustomer(customerId, consultantId);
 }
 
+export async function ensureConsultantLinkedToProjectCustomer(
+  consultantId: string | null,
+  projectId: string
+) {
+  return q.ensureConsultantLinkedToProjectCustomer(consultantId, projectId);
+}
+
 export async function removeConsultantFromCustomer(
   customerId: string,
   consultantId: string

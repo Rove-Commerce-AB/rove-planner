@@ -53,4 +53,10 @@ export type AllocationPageData = {
   weekTo: number;
   weeks: { year: number; week: number }[];
   consultantTotalHours?: Record<string, number>;
+  /**
+   * Project planning only. When no team is selected, only these consultants are
+   * listed (customer-linked plus anyone already allocated). Choosing a team
+   * shows every member of that team so new people can be planned.
+   */
+  defaultVisibleConsultantIds?: string[];
 };

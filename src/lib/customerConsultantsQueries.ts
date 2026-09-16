@@ -37,6 +37,22 @@ export async function addConsultantToCustomer(
   );
 }
 
+/** Link a consultant to the project's customer when they are planned on it. */
+export async function ensureConsultantLinkedToProjectCustomer(
+  consultantId: string | null,
+  projectId: string
+): Promise<void> {
+  if (!consultantId) return;
+  await cloudSqlPool.query(
+    `INSERT INTO customer_consultants (customer_id, consultant_id)
+     SELECT p.customer_id, $1::uuid
+     FROM projects p
+     WHERE p.id = $2::uuid
+     ON CONFLICT DO NOTHING`,
+    [consultantId, projectId]
+  );
+}
+
 export async function removeConsultantFromCustomer(
   customerId: string,
   consultantId: string
