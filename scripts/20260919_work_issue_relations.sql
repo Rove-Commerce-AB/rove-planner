@@ -42,7 +42,8 @@ ALTER TABLE work_issue_events
     'next_step',
     'comment',
     'file',
-    'relation'
+    'relation',
+    'estimate'
   ));
 
 COMMIT;
