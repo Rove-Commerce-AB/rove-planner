@@ -934,7 +934,7 @@ function AllocationPageClientImpl({
               triggerClassName="min-w-[160px]"
             />
           )}
-          {activeTab !== "history" && data.roles.length > 0 && (
+          {data.roles.length > 0 && (
             <Select
               variant="filter"
               value={defaultRoleFilterId ?? ""}
