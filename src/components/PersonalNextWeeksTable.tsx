@@ -70,9 +70,10 @@ function PersonalNextWeeksTableInner({
               <th
                 key={i}
                 colSpan={span.colSpan}
-                className="border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                title={span.label}
+                className="overflow-hidden border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
               >
-                {span.label}
+                <span className="block truncate">{span.label}</span>
               </th>
             ))}
             <th

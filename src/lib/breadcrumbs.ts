@@ -25,8 +25,18 @@ export function breadcrumbsForPathname(
     return [root, { label: "Home" }];
   }
 
-  if (pathname.startsWith("/planner")) {
-    return [root, { label: "Planner" }, { label: "Allocation" }];
+  if (pathname.startsWith(ROUTES.planner)) {
+    const planner: Breadcrumb = { label: "Planner" };
+    if (pathname.startsWith(ROUTES.plannerCustomer)) {
+      return [root, planner, { label: "Customer" }];
+    }
+    if (pathname.startsWith(ROUTES.plannerProject)) {
+      return [root, planner, { label: "Project" }];
+    }
+    if (pathname.startsWith(ROUTES.plannerHistory)) {
+      return [root, planner, { label: "Allocation history" }];
+    }
+    return [root, planner, { label: "Consultant" }];
   }
 
   if (pathname.startsWith(ROUTES.timeApproval)) {

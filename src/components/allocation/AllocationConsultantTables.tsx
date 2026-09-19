@@ -17,11 +17,11 @@ import type { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
-  ChevronLeft,
   Trash2,
   Percent,
   ExternalLink,
 } from "lucide-react";
+import { AllocationWeekNav } from "@/components/allocation/AllocationWeekNav";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 import { allocationCellKey } from "@/lib/allocationCellKey";
@@ -82,11 +82,7 @@ type EmbedMode = {
 export type AllocationConsultantTablesProps = {
   expandableConsultantIds: Set<string>;
   setExpandedConsultants: Dispatch<SetStateAction<Set<string>>>;
-  year: number;
-  weekFrom: number;
-  weekTo: number;
-  goToPreviousWeeks: () => void;
-  goToNextWeeks: () => void;
+  shiftWeeks: (weeks: number) => void;
   embedWeekNavLoading: boolean;
   onWeekRangeChange?: (
     year: number,
@@ -94,8 +90,7 @@ export type AllocationConsultantTablesProps = {
     weekTo: number
   ) => void | Promise<void>;
   router: RouterCompat;
-  getPreviousUrl: () => string;
-  getNextUrl: () => string;
+  getShiftUrl: (weeks: number) => string;
   embedMode: EmbedMode | undefined;
   data: AllocationPageData;
   monthSpans: { label: string; colSpan: number }[];
@@ -147,16 +142,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
   const {
     expandableConsultantIds,
     setExpandedConsultants,
-    year,
-    weekFrom,
-    weekTo,
-    goToPreviousWeeks,
-    goToNextWeeks,
+    shiftWeeks,
     embedWeekNavLoading,
     onWeekRangeChange,
     router,
-    getPreviousUrl,
-    getNextUrl,
+    getShiftUrl,
     embedMode,
     data,
     monthSpans,
@@ -280,33 +270,12 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                       </>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] tabular-nums text-text-primary opacity-70">
-                      {weekFrom <= weekTo
-                        ? `${year} · v${weekFrom}–v${weekTo}`
-                        : `${year} v${weekFrom} – ${year + 1} v${weekTo}`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={goToPreviousWeeks}
-                      disabled={embedWeekNavLoading}
-                      onMouseEnter={() => !onWeekRangeChange && router.prefetch(getPreviousUrl())}
-                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100 disabled:opacity-50 disabled:pointer-events-none"
-                      aria-label="Previous weeks"
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={goToNextWeeks}
-                      disabled={embedWeekNavLoading}
-                      onMouseEnter={() => !onWeekRangeChange && router.prefetch(getNextUrl())}
-                      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100 disabled:opacity-50 disabled:pointer-events-none"
-                      aria-label="Next weeks"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <AllocationWeekNav
+                    onShift={shiftWeeks}
+                    disabled={embedWeekNavLoading}
+                    getUrl={onWeekRangeChange ? undefined : getShiftUrl}
+                    prefetch={onWeekRangeChange ? undefined : router.prefetch}
+                  />
                 </div>
                 <table className="w-full min-w-0 table-fixed border border-form text-[10px]">
                   <colgroup>
@@ -339,9 +308,10 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         <th
                           key={i}
                           colSpan={span.colSpan}
-                          className="border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                          title={span.label}
+                          className="overflow-hidden border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
                         >
-                          {span.label}
+                          <span className="block truncate">{span.label}</span>
                         </th>
                       ))}
                       {embedMode && (
@@ -912,9 +882,10 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                         <th
                           key={i}
                           colSpan={span.colSpan}
-                          className="border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                          title={span.label}
+                          className="overflow-hidden border-r border-grid-subtle px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
                         >
-                          {span.label}
+                          <span className="block truncate">{span.label}</span>
                         </th>
                       ))}
                       <th

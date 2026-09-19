@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { ROUTES } from "@/lib/routes";
+import { usePathname, useRouter } from "next/navigation";
 
 const LEFT_COL_WIDTH = 300;
 const MIN_WEEK_WIDTH = 29;
@@ -29,6 +28,7 @@ export function AllocationViewportAdapter({
   children,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const containerRef = useRef<HTMLDivElement>(null);
   const hasObservedRef = useRef(false);
 
@@ -48,10 +48,10 @@ export function AllocationViewportAdapter({
           : weekFrom + clamped - 1 - 52;
 
       router.replace(
-        `${ROUTES.allocation}?year=${year}&from=${newFrom}&to=${newTo}`
+        `${pathname}?year=${year}&from=${newFrom}&to=${newTo}`
       );
     },
-    [year, weekFrom, weekTo, router]
+    [pathname, year, weekFrom, weekTo, router]
   );
 
   useEffect(() => {

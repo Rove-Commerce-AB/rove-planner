@@ -1,4 +1,7 @@
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
+import type { WorkIssueRelations } from "@/lib/workIssueRelations";
+
+export type { WorkIssueRelations };
 
 export type { WorkBoardStatus, WorkIssueStatus };
 
@@ -74,6 +77,9 @@ export type WorkIssue = {
   comments: WorkComment[];
   events: WorkEvent[];
   files: WorkFile[];
+  relations: WorkIssueRelations;
+  estimateHours: number | null;
+  loggedHours: number;
 };
 
 export type WorkBoardView = {

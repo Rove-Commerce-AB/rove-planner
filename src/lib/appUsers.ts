@@ -87,7 +87,7 @@ export async function addAppUser(formData: FormData) {
   revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.settings);
   revalidateTag("allocation-consultants", "max");
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }
 
 export async function removeAppUser(id: string) {
@@ -176,5 +176,5 @@ export async function updateAppUser(args: {
   revalidatePath(ROUTES.people);
   revalidatePath(ROUTES.settings);
   revalidateTag("allocation-consultants", "max");
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }

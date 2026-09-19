@@ -1,0 +1,167 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { InitialsAvatar } from "@/components/ui";
+import {
+  filterMentionPeople,
+  insertMention,
+  mentionQueryAt,
+  parseMentionSegments,
+  type MentionQuery,
+} from "@/lib/workMentions";
+import type { WorkPerson } from "@/lib/workTypes";
+
+export function WorkCommentBody({ body }: { body: string }) {
+  const parts = parseMentionSegments(body);
+  return (
+    <p className="mt-1 whitespace-pre-wrap text-body-m text-text-primary">
+      {parts.map((part, index) =>
+        part.type === "mention" ? (
+          <span
+            key={`${part.id}-${index}`}
+            className="font-medium text-accent-primary-text"
+          >
+            @{part.value}
+          </span>
+        ) : (
+          <span key={index}>{part.value}</span>
+        )
+      )}
+    </p>
+  );
+}
+
+export function WorkCommentComposer({
+  people,
+  value,
+  disabled,
+  className,
+  onChange,
+}: {
+  people: WorkPerson[];
+  value: string;
+  disabled?: boolean;
+  className: string;
+  onChange: (value: string) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [mention, setMention] = useState<MentionQuery | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const matches = useMemo(
+    () => (mention ? filterMentionPeople(people, mention.query) : []),
+    [mention, people]
+  );
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [mention?.query, mention?.start, matches.length]);
+
+  function syncMention(el: HTMLTextAreaElement) {
+    setMention(mentionQueryAt(el.value, el.selectionStart, people));
+  }
+
+  function pick(person: WorkPerson) {
+    const el = textareaRef.current;
+    if (!mention || !el) return;
+    const next = insertMention(value, mention.start, el.selectionStart, person);
+    onChange(next.text);
+    setMention(null);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(next.caret, next.caret);
+    });
+  }
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      {mention ? (
+        <div
+          role="listbox"
+          aria-label="Mention someone on this board"
+          className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-48 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
+        >
+          {matches.length === 0 ? (
+            <p className="px-2.5 py-1.5 text-body-m text-text-tertiary">
+              No matching people
+            </p>
+          ) : (
+            matches.map((person, index) => (
+              <button
+                key={person.id}
+                type="button"
+                role="option"
+                aria-selected={index === activeIndex}
+                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-body-m ${
+                  index === activeIndex
+                    ? "bg-accent-primary-subtle text-text-primary"
+                    : "text-text-primary hover:bg-bg-muted"
+                }`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pick(person);
+                }}
+              >
+                <InitialsAvatar
+                  name={person.name}
+                  initials={person.initials}
+                  size="xxs"
+                />
+                <span className="min-w-0 truncate">{person.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+      <textarea
+        ref={textareaRef}
+        className={`${className} pb-6`}
+        rows={3}
+        placeholder="Write a comment… Use @ to mention"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.target.value);
+          syncMention(event.target);
+        }}
+        onClick={(event) => syncMention(event.currentTarget)}
+        onKeyUp={(event) => syncMention(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (mention && matches.length > 0) {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveIndex((index) => (index + 1) % matches.length);
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveIndex(
+                (index) => (index - 1 + matches.length) % matches.length
+              );
+              return;
+            }
+            if (event.key === "Enter" || event.key === "Tab") {
+              const person = matches[activeIndex];
+              if (person) {
+                event.preventDefault();
+                pick(person);
+                return;
+              }
+            }
+          }
+          if (event.key === "Escape" && mention) {
+            event.preventDefault();
+            setMention(null);
+            return;
+          }
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      <p className="pointer-events-none absolute bottom-1.5 left-3 text-caption text-text-tertiary">
+        Ctrl+Enter to send
+      </p>
+    </div>
+  );
+}

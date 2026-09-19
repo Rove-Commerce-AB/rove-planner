@@ -43,7 +43,7 @@ export async function updateConsultant(id: string, input: q.UpdateConsultantInpu
   revalidatePath(ROUTES.consultants);
   revalidatePath(ROUTES.people);
   revalidatePath(consultantHref(id));
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }
 
 export async function deleteConsultant(id: string) {

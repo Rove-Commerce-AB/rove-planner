@@ -34,6 +34,13 @@ import type {
   TimeReportEntryCopyPayload,
   TimeReportWeekData,
 } from "@/types";
+import {
+  fetchWorkIssueTimeOptionsByIds,
+  fetchWorkIssueTimeOptionsForCustomer,
+  workIssueIdsForCustomer,
+  type WorkIssueTimeOption,
+} from "@/lib/workTimeReport";
+import { workIssueIdFromLinkKey } from "@/lib/workIssueTimeLink";
 
 async function getTimeReportAccessContext() {
   const [appUser, consultant] = await Promise.all([
@@ -219,6 +226,7 @@ export async function getTaskOptionsForCustomerAndProject(
 export type TimeReportBatchHydrateResult = {
   projectsByCustomerId: Record<string, ProjectOption[]>;
   tasksByCacheKey: Record<string, TaskOption[]>;
+  workIssuesByCustomerId: Record<string, WorkIssueTimeOption[]>;
 };
 
 /** Aligns with `taskCacheKey` in `timeReportEntryModel.ts`. */
@@ -233,11 +241,12 @@ function timeReportTaskCacheKeyServer(customerId: string, projectId: string) {
  */
 export async function batchHydrateTimeReport(
   customerIds: string[],
-  taskOptionPairs: Array<{ customerId: string; projectId: string }>
+  taskOptionPairs: Array<{ customerId: string; projectId: string }>,
+  extraWorkIssueIds: string[] = []
 ): Promise<TimeReportBatchHydrateResult> {
   const ctx = await getTimeReportAccessContext();
   if (!ctx.consultant) {
-    return { projectsByCustomerId: {}, tasksByCacheKey: {} };
+    return { projectsByCustomerId: {}, tasksByCacheKey: {}, workIssuesByCustomerId: {} };
   }
 
   const uniqueCustomers = [
@@ -306,7 +315,50 @@ export async function batchHydrateTimeReport(
     tasksByCacheKey[key] = options;
   }
 
-  return { projectsByCustomerId, tasksByCacheKey };
+  const appUserId = ctx.appUser?.id ?? "";
+  const extraOptions = await fetchWorkIssueTimeOptionsByIds(extraWorkIssueIds);
+  const workIssueLists = await Promise.all(
+    uniqueCustomers.map(async (customerId) => {
+      const options = await fetchWorkIssueTimeOptionsForCustomer(customerId, appUserId);
+      const seen = new Set(options.map((option) => option.value));
+      const merged = [...options];
+      for (const option of extraOptions) {
+        if (option.customerId !== customerId || seen.has(option.value)) continue;
+        seen.add(option.value);
+        merged.push(option);
+      }
+      return [customerId, merged] as const;
+    })
+  );
+  const workIssuesByCustomerId: Record<string, WorkIssueTimeOption[]> = {};
+  for (const [customerId, options] of workIssueLists) {
+    workIssuesByCustomerId[customerId] = options;
+  }
+
+  return { projectsByCustomerId, tasksByCacheKey, workIssuesByCustomerId };
+}
+
+export async function getWorkIssueOptionsForCustomer(
+  customerId: string,
+  extraIssueIds: string[] = []
+): Promise<WorkIssueTimeOption[]> {
+  if (!customerId) return [];
+  const ctx = await getTimeReportAccessContext();
+  if (!ctx.consultant || !ctx.appUser?.id) return [];
+  if (!ctx.allowedCustomerIds.has(customerId)) return [];
+  const [memberOptions, extraOptions] = await Promise.all([
+    fetchWorkIssueTimeOptionsForCustomer(customerId, ctx.appUser.id),
+    fetchWorkIssueTimeOptionsByIds(extraIssueIds),
+  ]);
+  const seen = new Set(memberOptions.map((option) => option.value));
+  const merged = [...memberOptions];
+  for (const option of extraOptions) {
+    if (option.customerId && option.customerId !== customerId) continue;
+    if (seen.has(option.value)) continue;
+    seen.add(option.value);
+    merged.push(option);
+  }
+  return merged;
 }
 
 export async function getHolidayDatesForWeek(
@@ -377,6 +429,7 @@ type TimeReportLineDb = {
   jira_devops_key: string | null;
   description: string | null;
   display_order: string | number | null;
+  work_issue_id: string | null;
 };
 
 async function getAppUserIdForAudit(): Promise<string | null> {
@@ -510,7 +563,7 @@ export async function getTimeReportEntries(
     ),
     cloudSqlPool.query<TimeReportLineDb>(
       `SELECT id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
-              jira_devops_key, description, display_order
+              jira_devops_key, description, display_order, work_issue_id
        FROM time_report_entry_lines l
        WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
          AND (
@@ -582,7 +635,9 @@ export async function getTimeReportEntries(
       displayOrder: Number(line.display_order ?? 0),
       projectId: line.project_id ?? "",
       roleId: line.role_id ?? "",
-      jiraDevOpsValue: line.jira_devops_key ?? "",
+      jiraDevOpsValue:
+        line.jira_devops_key?.trim() ||
+        (line.work_issue_id ? `work:${line.work_issue_id}` : ""),
       task: line.description ?? "",
       hours,
       comments,
@@ -702,6 +757,7 @@ export async function saveTimeReportEntries(
     role_id: string | null;
     jira_devops_key: string | null;
     description: string | null;
+    work_issue_id: string | null;
     display_order: number;
   }> = [];
   const explicitDeletedLineIds = new Set(
@@ -784,6 +840,7 @@ export async function saveTimeReportEntries(
         role_id: entry.roleId || null,
         jira_devops_key: entry.jiraDevOpsValue || null,
         description: (entry.task ?? "").trim() || null,
+        work_issue_id: workIssueIdFromLinkKey(entry.jiraDevOpsValue),
         display_order: displayOrder,
       });
 
@@ -818,6 +875,23 @@ export async function saveTimeReportEntries(
     }
   }
 
+  const workIssueIdsByCustomer = new Map<string, string[]>();
+  for (const line of desiredLines) {
+    if (!line.work_issue_id) continue;
+    const list = workIssueIdsByCustomer.get(line.customer_id) ?? [];
+    list.push(line.work_issue_id);
+    workIssueIdsByCustomer.set(line.customer_id, list);
+  }
+  for (const [customerId, issueIds] of workIssueIdsByCustomer) {
+    const allowed = await workIssueIdsForCustomer(issueIds, customerId);
+    if (issueIds.some((id) => !allowed.has(id))) {
+      return {
+        success: false,
+        error: "Work issue must belong to the same customer as the time report row.",
+      };
+    }
+  }
+
   // Never let one request contain conflicting definitions for the same line id.
   // This otherwise causes non-deterministic "last write wins" behavior.
   const lineShapeById = new Map<string, string>();
@@ -829,6 +903,7 @@ export async function saveTimeReportEntries(
       line.role_id ?? "",
       line.jira_devops_key ?? "",
       line.description ?? "",
+      line.work_issue_id ?? "",
       String(line.display_order),
     ].join("|");
     const prev = lineShapeById.get(line.id);
@@ -870,7 +945,7 @@ export async function saveTimeReportEntries(
 
     const { rows: existingLines } = await client.query<TimeReportLineDb>(
       `SELECT id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
-              jira_devops_key, description, display_order
+              jira_devops_key, description, display_order, work_issue_id
        FROM time_report_entry_lines
        WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
        FOR UPDATE`,
@@ -943,8 +1018,8 @@ export async function saveTimeReportEntries(
         await client.query(
           `INSERT INTO time_report_entry_lines (
              id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
-             jira_devops_key, description, display_order, created_at, updated_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, now()), COALESCE($11::date, now()))`,
+             jira_devops_key, description, work_issue_id, display_order, created_at, updated_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12::date, now()), COALESCE($12::date, now()))`,
           [
             de.id,
             de.consultant_id,
@@ -955,6 +1030,7 @@ export async function saveTimeReportEntries(
             de.role_id,
             de.jira_devops_key,
             de.description,
+            de.work_issue_id,
             de.display_order,
             monthAnchorDate,
           ]
@@ -967,8 +1043,9 @@ export async function saveTimeReportEntries(
              role_id = $5,
              jira_devops_key = $6,
              description = $7,
-             display_order = $8
-           WHERE consultant_id = $1 AND iso_year = $9 AND iso_week = $10 AND id = $2`,
+             work_issue_id = $8,
+             display_order = $9
+           WHERE consultant_id = $1 AND iso_year = $10 AND iso_week = $11 AND id = $2`,
           [
             consultantId,
             lineId,
@@ -977,6 +1054,7 @@ export async function saveTimeReportEntries(
             de.role_id,
             de.jira_devops_key,
             de.description,
+            de.work_issue_id,
             de.display_order,
             year,
             week,
@@ -1271,8 +1349,8 @@ async function copyEntryToWeekCore(
   await client.query(
     `INSERT INTO time_report_entry_lines (
        id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
-       jira_devops_key, description, display_order, created_at, updated_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::date, now()), COALESCE($11::date, now()))`,
+       jira_devops_key, description, work_issue_id, display_order, created_at, updated_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12::date, now()), COALESCE($12::date, now()))`,
     [
       entryLineId,
       consultantId,
@@ -1283,6 +1361,7 @@ async function copyEntryToWeekCore(
       entry.roleId || null,
       entry.jiraDevOpsValue || null,
       (entry.task ?? "").trim() || null,
+      workIssueIdFromLinkKey(entry.jiraDevOpsValue),
       displayOrderForLine,
       rowOnlyLineCreatedAt,
     ]
@@ -1361,6 +1440,16 @@ export async function copyEntryToWeek(
   }
   const businessErr = copyEntryPayloadBusinessError(entry);
   if (businessErr) return { success: false, error: businessErr };
+  const copyWorkIssueId = workIssueIdFromLinkKey(entry.jiraDevOpsValue);
+  if (copyWorkIssueId) {
+    const allowed = await workIssueIdsForCustomer([copyWorkIssueId], customerId);
+    if (!allowed.has(copyWorkIssueId)) {
+      return {
+        success: false,
+        error: "Work issue must belong to the same customer as the time report row.",
+      };
+    }
+  }
 
   const entryLineId = entry.lineId?.trim() ? entry.lineId.trim() : randomUUID();
   const built = await buildDesiredCellsForCopy(
@@ -1430,6 +1519,16 @@ export async function copyTimeReportEntriesBatch(
     }
     const be = copyEntryPayloadBusinessError(op.entry);
     if (be) return { success: false, error: be };
+    const copyWorkIssueId = workIssueIdFromLinkKey(op.entry.jiraDevOpsValue);
+    if (copyWorkIssueId) {
+      const allowed = await workIssueIdsForCustomer([copyWorkIssueId], op.customerId);
+      if (!allowed.has(copyWorkIssueId)) {
+        return {
+          success: false,
+          error: "Work issue must belong to the same customer as the time report row.",
+        };
+      }
+    }
   }
 
   const revMap = new Map<string, number>();

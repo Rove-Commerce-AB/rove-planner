@@ -324,7 +324,7 @@ export async function createConsultantProfileForUser(input: {
   );
   revalidateTag("allocation-consultants", "max");
   revalidatePath(ROUTES.people);
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
   if (internalCustomerId) {
     revalidatePath(ROUTES.customers);
     revalidatePath(customerHref(internalCustomerId));

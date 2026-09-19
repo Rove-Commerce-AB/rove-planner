@@ -36,6 +36,7 @@ import {
   getActiveProjectsForCustomer,
   getJiraDevOpsOptionsForProject,
   getTaskOptionsForCustomerAndProject,
+  getWorkIssueOptionsForCustomer,
   getHolidayDatesForWeek,
   getHolidayDatesForRange,
   getTimeReportEntries,
@@ -56,6 +57,10 @@ import type {
 import { Button, Select, Combobox, Dialog, IconButton, SegmentedControl } from "@/components/ui";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import {
+  collectWorkIssueIdsFromLinkKeys,
+  workIssueLinkKey,
+} from "@/lib/workIssueTimeLink";
 import {
   getISOWeekDateRangeLocal,
   addWeeksToYearWeekLocal,
@@ -97,22 +102,31 @@ const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 function collectTimeReportHydratePayload(groups: CustomerGroup[]): {
   customerIds: string[];
   taskOptionPairs: Array<{ customerId: string; projectId: string }>;
+  workIssueIds: string[];
 } {
   const customerIds = [...new Set(groups.map((g) => g.customerId))];
   const pairSeen = new Set<string>();
   const taskOptionPairs: Array<{ customerId: string; projectId: string }> = [];
+  const workIssueIds: string[] = [];
+  const workSeen = new Set<string>();
   for (const g of groups) {
     for (const e of g.entries) {
       const k = `${g.customerId}|${e.projectId || ""}`;
-      if (pairSeen.has(k)) continue;
-      pairSeen.add(k);
-      taskOptionPairs.push({
-        customerId: g.customerId,
-        projectId: e.projectId || "",
-      });
+      if (!pairSeen.has(k)) {
+        pairSeen.add(k);
+        taskOptionPairs.push({
+          customerId: g.customerId,
+          projectId: e.projectId || "",
+        });
+      }
+      for (const workIssueId of collectWorkIssueIdsFromLinkKeys([e.jiraDevOpsValue])) {
+        if (workSeen.has(workIssueId)) continue;
+        workSeen.add(workIssueId);
+        workIssueIds.push(workIssueId);
+      }
     }
   }
-  return { customerIds, taskOptionPairs };
+  return { customerIds, taskOptionPairs, workIssueIds };
 }
 
 /** Parallel server-action bursts when switching months could stall the pool; fetch sequentially + timeout so UI never hangs on `loading` forever. */
@@ -177,7 +191,7 @@ function jiraDevOpsKeyTooltipTitle(
   description?: string | null
 ): string {
   const d = description?.trim();
-  if (!d) return `${displayKey} — Change Jira/DevOps/ClickUp`;
+  if (!d) return `${displayKey} — Change Jira/DevOps/ClickUp/Work`;
   const normalizedDisplay = displayKey.toLowerCase();
   const normalizedDescription = d.toLowerCase();
   // Jira labels already include summary (e.g. "ABC-123: Summary"), so avoid duplicates.
@@ -191,7 +205,7 @@ function jiraDevOpsDisplayLabel(
 ): string {
   const label = option?.label?.trim();
   if (label) return label;
-  return rawValue.replace(/^(jira|devops|clickup):/, "");
+  return rawValue.replace(/^(jira|devops|clickup|work):/, "");
 }
 
 /** Compact display for footer / row hour totals (matches week vs month grid footers). */
@@ -642,12 +656,19 @@ export function TimeReportPageClient({
   const router = useRouter();
   const [projectCache, setProjectCache] = useState<Record<string, ProjectOption[]>>({});
   const [taskCache, setTaskCache] = useState<Record<string, TaskOption[]>>({});
+  const [workIssueCache, setWorkIssueCache] = useState<
+    Record<string, { value: string; label: string; url?: string }[]>
+  >({});
   const [projectOptionsLoading, setProjectOptionsLoading] = useState<Record<string, boolean>>(
     {}
   );
   const [taskOptionsLoading, setTaskOptionsLoading] = useState<Record<string, boolean>>({});
+  const [workIssueOptionsLoading, setWorkIssueOptionsLoading] = useState<
+    Record<string, boolean>
+  >({});
   const projectLoadInflightRef = useRef<Set<string>>(new Set());
   const taskLoadInflightRef = useRef<Set<string>>(new Set());
+  const workIssueLoadInflightRef = useRef<Set<string>>(new Set());
   const [jiraDevOpsCache, setJiraDevOpsCache] = useState<Record<string, JiraDevOpsOption[]>>({});
   const [jiraOptionsLoading, setJiraOptionsLoading] = useState<Record<string, boolean>>({});
   const jiraLoadInflightRef = useRef<Set<string>>(new Set());
@@ -823,23 +844,35 @@ export function TimeReportPageClient({
   }, [loadState]);
 
   const runBatchHydrate = useCallback(async (groups: CustomerGroup[]) => {
-    const { customerIds, taskOptionPairs } = collectTimeReportHydratePayload(groups);
+    const { customerIds, taskOptionPairs, workIssueIds } =
+      collectTimeReportHydratePayload(groups);
     if (customerIds.length === 0 && taskOptionPairs.length === 0) return;
 
     for (const cid of customerIds) {
       setProjectOptionsLoading((s) => ({ ...s, [cid]: true }));
+      setWorkIssueOptionsLoading((s) => ({ ...s, [cid]: true }));
     }
     for (const p of taskOptionPairs) {
       const key = taskCacheKey(p.customerId, p.projectId);
       setTaskOptionsLoading((s) => ({ ...s, [key]: true }));
     }
     try {
-      const result = await batchHydrateTimeReport(customerIds, taskOptionPairs);
+      const result = await batchHydrateTimeReport(
+        customerIds,
+        taskOptionPairs,
+        workIssueIds
+      );
       setProjectCache((prev) => ({ ...prev, ...result.projectsByCustomerId }));
       setTaskCache((prev) => ({ ...prev, ...result.tasksByCacheKey }));
+      setWorkIssueCache((prev) => ({ ...prev, ...result.workIssuesByCustomerId }));
     } finally {
       for (const cid of customerIds) {
         setProjectOptionsLoading((s) => {
+          const next = { ...s };
+          delete next[cid];
+          return next;
+        });
+        setWorkIssueOptionsLoading((s) => {
           const next = { ...s };
           delete next[cid];
           return next;
@@ -1739,6 +1772,20 @@ export function TimeReportPageClient({
     });
     return map;
   }, [jiraDevOpsCache]);
+  const workOptionByValue = useMemo(() => {
+    const map = new Map<string, JiraDevOpsOption>();
+    Object.values(workIssueCache).forEach((options) => {
+      options.forEach((option) => {
+        map.set(workIssueLinkKey(option.value), {
+          value: workIssueLinkKey(option.value),
+          label: option.label,
+          url: option.url,
+          description: option.label,
+        });
+      });
+    });
+    return map;
+  }, [workIssueCache]);
 
   const loadProjectsForCustomer = useCallback(async (customerId: string) => {
     if (!customerId) return;
@@ -1781,16 +1828,21 @@ export function TimeReportPageClient({
     }
   }, [taskCache]);
 
-  const loadJiraDevOpsForProject = useCallback(async (projectId: string) => {
+  const loadJiraDevOpsForProject = useCallback(async (
+    projectId: string,
+    options?: { force?: boolean }
+  ) => {
     if (!projectId) return;
-    if (jiraDevOpsCache[projectId] !== undefined) return;
+    if (!options?.force && jiraDevOpsCache[projectId] !== undefined) return;
     if (jiraLoadInflightRef.current.has(projectId)) return;
     jiraLoadInflightRef.current.add(projectId);
     setJiraOptionsLoading((s) => ({ ...s, [projectId]: true }));
     try {
       const list = await getJiraDevOpsOptionsForProject(projectId);
       setJiraDevOpsCache((prev) =>
-        prev[projectId] !== undefined ? prev : { ...prev, [projectId]: list }
+        !options?.force && prev[projectId] !== undefined
+          ? prev
+          : { ...prev, [projectId]: list }
       );
     } finally {
       jiraLoadInflightRef.current.delete(projectId);
@@ -1817,11 +1869,56 @@ export function TimeReportPageClient({
     return [{ value: "", label: "—" }, ...list];
   };
 
-  const getJiraDevOpsOptions = (projectId: string): { value: string; label: string; url?: string | null }[] => {
-    if (!projectId) return [{ value: "", label: "—" }];
-    const list = jiraDevOpsCache[projectId];
-    if (list === undefined) return [{ value: "", label: "—" }];
-    return [{ value: "", label: "—" }, ...list];
+  const loadWorkIssuesForCustomer = useCallback(async (
+    customerId: string,
+    extraIssueIds: string[] = []
+  ) => {
+    if (!customerId) return;
+    const cached = workIssueCache[customerId];
+    if (cached !== undefined) {
+      const have = new Set(cached.map((option) => option.value));
+      if (extraIssueIds.every((id) => !id || have.has(id))) return;
+    }
+    if (workIssueLoadInflightRef.current.has(customerId)) return;
+    workIssueLoadInflightRef.current.add(customerId);
+    setWorkIssueOptionsLoading((s) => ({ ...s, [customerId]: true }));
+    try {
+      const list = await getWorkIssueOptionsForCustomer(customerId, extraIssueIds);
+      setWorkIssueCache((prev) => ({ ...prev, [customerId]: list }));
+    } finally {
+      workIssueLoadInflightRef.current.delete(customerId);
+      setWorkIssueOptionsLoading((s) => {
+        const next = { ...s };
+        delete next[customerId];
+        return next;
+      });
+    }
+  }, [workIssueCache]);
+
+  const getJiraDevOpsOptions = (
+    customerId: string,
+    projectId: string
+  ): { value: string; label: string; url?: string | null }[] => {
+    const work = (workIssueCache[customerId] ?? []).map((option) => ({
+      value: workIssueLinkKey(option.value),
+      label: option.label,
+      url: option.url,
+    }));
+    const jira = projectId ? (jiraDevOpsCache[projectId] ?? []) : [];
+    return [{ value: "", label: "—" }, ...work, ...jira];
+  };
+
+  const resolveLinkOption = (
+    projectId: string,
+    value: string
+  ): JiraDevOpsOption | undefined => {
+    if (!value) return undefined;
+    return (
+      workOptionByValue.get(value) ??
+      (projectId
+        ? jiraOptionByProjectAndValue.get(`${projectId}|${value}`)
+        : undefined)
+    );
   };
 
   useEffect(() => {
@@ -1841,6 +1938,27 @@ export function TimeReportPageClient({
       void loadJiraDevOpsForProject(projectId);
     }
   }, [viewMode, customerGroups, monthMergedRows, loadJiraDevOpsForProject]);
+
+  useEffect(() => {
+    const extraByCustomer = new Map<string, string[]>();
+    if (viewMode === "week") {
+      for (const group of customerGroups) {
+        extraByCustomer.set(
+          group.customerId,
+          collectWorkIssueIdsFromLinkKeys(group.entries.map((entry) => entry.jiraDevOpsValue))
+        );
+      }
+    } else {
+      for (const row of monthMergedRows) {
+        const extras = extraByCustomer.get(row.customerId) ?? [];
+        extras.push(...collectWorkIssueIdsFromLinkKeys([row.jiraDevOpsValue]));
+        extraByCustomer.set(row.customerId, extras);
+      }
+    }
+    for (const [customerId, extras] of extraByCustomer) {
+      void loadWorkIssuesForCustomer(customerId, extras);
+    }
+  }, [viewMode, customerGroups, monthMergedRows, loadWorkIssuesForCustomer]);
 
   const updateEntryInGroup = (customerId: string, entryId: string, patch: Partial<Entry>) => {
     if (viewMode === "week") {
@@ -1902,7 +2020,10 @@ export function TimeReportPageClient({
     }
     setAddCustomerOpen(false);
     const c = customerById.get(customerId);
-    if (c) loadProjectsForCustomer(customerId);
+    if (c) {
+      loadProjectsForCustomer(customerId);
+      void loadWorkIssuesForCustomer(customerId);
+    }
   };
 
   const refreshAfterCopyToCurrentWeek = useCallback(() => {
@@ -2803,7 +2924,7 @@ export function TimeReportPageClient({
                 <th className="w-[clamp(8.5rem,15vw,11.25rem)] min-w-[8.5rem] max-w-[11.25rem] px-1.5 py-1.5 text-left font-medium text-text-secondary">
                   Description
                 </th>
-                <th className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps / ClickUp">
+                <th className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1.5 text-left font-medium text-text-secondary" scope="col" title="Jira / DevOps / ClickUp / Work">
                   <Link className="inline-block h-4 w-4 text-text-muted" aria-hidden />
                 </th>
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
@@ -3036,11 +3157,10 @@ export function TimeReportPageClient({
                           </td>
                           <td className="w-[clamp(8rem,16vw,14rem)] min-w-[8rem] max-w-[14rem] px-1 py-1 align-middle">
                             {entry.jiraDevOpsValue ? (() => {
-                              const opt = entry.projectId
-                                ? jiraOptionByProjectAndValue.get(
-                                    `${entry.projectId}|${entry.jiraDevOpsValue}`
-                                  )
-                                : undefined;
+                              const opt = resolveLinkOption(
+                                entry.projectId,
+                                entry.jiraDevOpsValue
+                              );
                               const displayLabel = jiraDevOpsDisplayLabel(
                                 entry.jiraDevOpsValue,
                                 opt
@@ -3052,11 +3172,15 @@ export function TimeReportPageClient({
                                   type="button"
                                   onMouseEnter={() => {
                                     if (entry.projectId) void loadJiraDevOpsForProject(entry.projectId);
+                                    void loadWorkIssuesForCustomer(group.customerId);
                                   }}
                                   onClick={() => {
                                     setJiraDevOpsModalValue(entry.jiraDevOpsValue);
                                     setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
-                                    if (entry.projectId) loadJiraDevOpsForProject(entry.projectId);
+                                    void loadWorkIssuesForCustomer(group.customerId);
+                                    if (entry.projectId) {
+                                      void loadJiraDevOpsForProject(entry.projectId, { force: true });
+                                    }
                                   }}
                                   className={`min-w-0 flex-1 truncate cursor-pointer rounded px-1 py-0.5 text-left text-xs ${
                                     entry.jiraDevOpsValue.startsWith("jira:")
@@ -3068,12 +3192,18 @@ export function TimeReportPageClient({
                                   {displayLabel}
                                 </button>
                                 {(entry.jiraDevOpsValue.startsWith("jira:") ||
-                                  entry.jiraDevOpsValue.startsWith("clickup:")) && (() => {
+                                  entry.jiraDevOpsValue.startsWith("clickup:") ||
+                                  entry.jiraDevOpsValue.startsWith("work:")) && (() => {
                                   const url = opt?.url?.trim();
                                   const sourceLabel = entry.jiraDevOpsValue.startsWith("clickup:")
                                     ? "ClickUp"
-                                    : "Jira";
-                                  const key = entry.jiraDevOpsValue.replace(/^(jira|clickup):/, "");
+                                    : entry.jiraDevOpsValue.startsWith("work:")
+                                      ? "Work"
+                                      : "Jira";
+                                  const key = entry.jiraDevOpsValue.replace(
+                                    /^(jira|clickup|work):/,
+                                    ""
+                                  );
                                   return url ? (
                                     <a
                                       href={url}
@@ -3115,14 +3245,16 @@ export function TimeReportPageClient({
                               );
                             })() : (
                               <IconButton
-                                aria-label="Add Jira/DevOps/ClickUp"
+                                aria-label="Add Jira/DevOps/ClickUp/Work"
                                 onClick={() => {
                                   setJiraDevOpsModalValue("");
                                   setJiraDevOpsModal({ customerId: group.customerId, entryId: entry.id });
-                                  if (entry.projectId) loadJiraDevOpsForProject(entry.projectId);
+                                  void loadWorkIssuesForCustomer(group.customerId);
+                                  if (entry.projectId) {
+                                    void loadJiraDevOpsForProject(entry.projectId, { force: true });
+                                  }
                                 }}
-                                disabled={!entry.projectId}
-                                title="Add Jira/DevOps/ClickUp"
+                                title="Add Jira/DevOps/ClickUp/Work"
                               >
                                 <Link className="h-3.5 w-3.5" />
                               </IconButton>
@@ -3236,7 +3368,7 @@ export function TimeReportPageClient({
                 <th
                   className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-1 py-1.5 text-left font-medium text-text-secondary"
                   scope="col"
-                  title="Jira / DevOps / ClickUp"
+                  title="Jira / DevOps / ClickUp / Work"
                 >
                   <Link className="inline-block h-3 w-3 text-text-muted" aria-hidden />
                 </th>
@@ -3490,11 +3622,10 @@ export function TimeReportPageClient({
                               </td>
                               <td className="w-[clamp(8rem,14vw,13rem)] min-w-[8rem] max-w-[13rem] px-0.5 py-0.5 align-middle">
                                 {row.jiraDevOpsValue ? (() => {
-                                  const opt = row.projectId
-                                    ? jiraOptionByProjectAndValue.get(
-                                        `${row.projectId}|${row.jiraDevOpsValue}`
-                                      )
-                                    : undefined;
+                                  const opt = resolveLinkOption(
+                                    row.projectId,
+                                    row.jiraDevOpsValue
+                                  );
                                   const displayLabel = jiraDevOpsDisplayLabel(
                                     row.jiraDevOpsValue,
                                     opt
@@ -3506,6 +3637,7 @@ export function TimeReportPageClient({
                                       type="button"
                                       onMouseEnter={() => {
                                         if (row.projectId) void loadJiraDevOpsForProject(row.projectId);
+                                        void loadWorkIssuesForCustomer(row.customerId);
                                       }}
                                       onClick={() => {
                                         setJiraDevOpsModalValue(row.jiraDevOpsValue);
@@ -3513,7 +3645,10 @@ export function TimeReportPageClient({
                                           customerId: row.customerId,
                                           entryId: row.rowKey,
                                         });
-                                        if (row.projectId) loadJiraDevOpsForProject(row.projectId);
+                                        void loadWorkIssuesForCustomer(row.customerId);
+                                        if (row.projectId) {
+                                          void loadJiraDevOpsForProject(row.projectId, { force: true });
+                                        }
                                       }}
                                       className={`min-w-0 max-w-full flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded px-0.5 py-0.5 text-left text-[10px] leading-tight ${
                                         row.jiraDevOpsValue.startsWith("jira:")
@@ -3525,12 +3660,18 @@ export function TimeReportPageClient({
                                       {displayLabel}
                                     </button>
                                     {(row.jiraDevOpsValue.startsWith("jira:") ||
-                                      row.jiraDevOpsValue.startsWith("clickup:")) && (() => {
+                                      row.jiraDevOpsValue.startsWith("clickup:") ||
+                                      row.jiraDevOpsValue.startsWith("work:")) && (() => {
                                       const url = opt?.url?.trim();
                                       const sourceLabel = row.jiraDevOpsValue.startsWith("clickup:")
                                         ? "ClickUp"
-                                        : "Jira";
-                                      const key = row.jiraDevOpsValue.replace(/^(jira|clickup):/, "");
+                                        : row.jiraDevOpsValue.startsWith("work:")
+                                          ? "Work"
+                                          : "Jira";
+                                      const key = row.jiraDevOpsValue.replace(
+                                        /^(jira|clickup|work):/,
+                                        ""
+                                      );
                                       return url ? (
                                         <a
                                           href={url}
@@ -3572,17 +3713,19 @@ export function TimeReportPageClient({
                                   );
                                 })() : (
                                   <IconButton
-                                    aria-label="Add Jira/DevOps/ClickUp"
+                                    aria-label="Add Jira/DevOps/ClickUp/Work"
                                     onClick={() => {
                                       setJiraDevOpsModalValue("");
                                       setJiraDevOpsModal({
                                         customerId: row.customerId,
                                         entryId: row.rowKey,
                                       });
-                                      if (row.projectId) loadJiraDevOpsForProject(row.projectId);
+                                      void loadWorkIssuesForCustomer(row.customerId);
+                                      if (row.projectId) {
+                                        void loadJiraDevOpsForProject(row.projectId, { force: true });
+                                      }
                                     }}
-                                    disabled={!row.projectId}
-                                    title="Add Jira/DevOps/ClickUp"
+                                    title="Add Jira/DevOps/ClickUp/Work"
                                   >
                                     <Link className="h-3 w-3" />
                                   </IconButton>
@@ -3855,13 +3998,14 @@ export function TimeReportPageClient({
         onOpenChange={(open) => {
           if (!open) setJiraDevOpsModal(null);
         }}
-        title="Jira / DevOps / ClickUp"
+        title="Jira / DevOps / ClickUp / Work"
       >
         {jiraDevOpsModal && (() => {
           const entry = entryById.get(jiraDevOpsModal.entryId);
           if (!entry) return null;
           const jiraBusy = Boolean(
-            entry.projectId && jiraOptionsLoading[entry.projectId]
+            (entry.projectId && jiraOptionsLoading[entry.projectId]) ||
+              workIssueOptionsLoading[jiraDevOpsModal.customerId]
           );
           const hasSavedLink = Boolean((entry.jiraDevOpsValue ?? "").trim());
           return (
@@ -3873,19 +4017,22 @@ export function TimeReportPageClient({
                   aria-live="polite"
                 >
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                  Laddar Jira/DevOps/ClickUp…
+                  Laddar Jira/DevOps/ClickUp/Work…
                 </div>
               ) : (
                 <Combobox
                   value={jiraDevOpsModalValue}
                   onValueChange={(value) => setJiraDevOpsModalValue(value)}
-                  options={getJiraDevOpsOptions(entry.projectId)}
+                  options={getJiraDevOpsOptions(
+                    jiraDevOpsModal.customerId,
+                    entry.projectId
+                  )}
                   placeholder="Type to search..."
                   autoFocus
                   size="sm"
                   variant="filter"
                   inputClassName="h-9 w-full"
-                  emptyOptionsPlaceholder="No Jira/DevOps/ClickUp"
+                  emptyOptionsPlaceholder="No Jira/DevOps/ClickUp/Work"
                   renderListInPortal={false}
                 />
               )}

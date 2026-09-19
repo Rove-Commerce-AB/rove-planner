@@ -22,9 +22,14 @@ const nextConfig = {
         permanent: false,
       },
       { source: "/projekt", destination: "/projects", permanent: false },
-      { source: "/allokering", destination: "/planner/allocation", permanent: false },
-      { source: "/allocation", destination: "/planner/allocation", permanent: false },
-      { source: "/planner", destination: "/planner/allocation", permanent: false },
+      { source: "/allokering", destination: "/planner/consultant", permanent: false },
+      { source: "/allocation", destination: "/planner/consultant", permanent: false },
+      { source: "/planner", destination: "/planner/consultant", permanent: false },
+      {
+        source: "/planner/allocation",
+        destination: "/planner/consultant",
+        permanent: false,
+      },
       { source: "/time-report", destination: "/time-report/time-report", permanent: false },
       {
         source: "/time-report/project-manager",

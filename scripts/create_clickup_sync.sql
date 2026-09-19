@@ -19,10 +19,20 @@ CREATE TABLE IF NOT EXISTS clickup (
   last_synced_at TIMESTAMPTZ NULL DEFAULT now(),
   project_key TEXT NULL,
   project_name TEXT NULL,
+  space_id TEXT NULL,
+  space_name TEXT NULL,
+  folder_id TEXT NULL,
+  folder_name TEXT NULL,
   url TEXT NULL
 );
 
 CREATE INDEX IF NOT EXISTS clickup_project_key_idx
   ON clickup (project_key);
+
+CREATE INDEX IF NOT EXISTS clickup_space_id_idx
+  ON clickup (space_id);
+
+CREATE INDEX IF NOT EXISTS clickup_folder_id_idx
+  ON clickup (folder_id);
 
 COMMIT;

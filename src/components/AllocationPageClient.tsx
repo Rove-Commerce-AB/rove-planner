@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
-import { Select, PageHeader, Dialog, Button, SegmentedControl } from "@/components/ui";
+import { Select, PageHeader, Dialog, Button } from "@/components/ui";
 import {
   createAllocation,
   updateAllocation,
@@ -42,6 +42,7 @@ import {
   TimeGridColumnHighlightProvider,
   useTimeGridColumnHighlight,
 } from "@/components/TimeGridColumnHighlight";
+import type { PlannerView } from "@/lib/routes";
 
 export type {
   ProbabilityDisplay,
@@ -99,6 +100,8 @@ type Props = {
   embedWeekNavLoading?: boolean;
   /** In embed mode (e.g. project Planning panel), show team filter above the table — same behavior as full Allocation page. */
   embedShowTeamFilter?: boolean;
+  /** Planner sidebar page: consultant, customer, project, or history. */
+  view?: PlannerView;
 };
 
 export function AllocationPageClient(props: Props) {
@@ -121,10 +124,11 @@ function AllocationPageClientImpl({
   onWeekRangeChange,
   embedWeekNavLoading = false,
   embedShowTeamFilter = false,
+  view = "consultant",
 }: Props) {
   const { highlightedColumnIndex } = useTimeGridColumnHighlight();
   const router = useRouter();
-  const { getPreviousUrl, getNextUrl, goToPreviousWeeks, goToNextWeeks } =
+  const { shiftWeeks, getShiftUrl } =
     useAllocationWeekNavigation(
       router,
       year,
@@ -134,9 +138,7 @@ function AllocationPageClientImpl({
       onWeekRangeChange
     );
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "consultant" | "customer" | "project" | "history"
-  >("consultant");
+  const activeTab: PlannerView = embedMode ? "consultant" : view;
   const [historyEntries, setHistoryEntries] = useState<AllocationHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -864,34 +866,25 @@ function AllocationPageClientImpl({
     <>
       {!embedMode && (
         <PageHeader
-          title="Allocation"
-          description="Manage allocations per week"
+          title={
+            activeTab === "consultant"
+              ? "Consultant"
+              : activeTab === "customer"
+                ? "Customer"
+                : activeTab === "project"
+                  ? "Project"
+                  : "Allocation history"
+          }
+          description={
+            activeTab === "history"
+              ? undefined
+              : "Manage allocations per week"
+          }
           className="mb-6"
         />
       )}
 
-      {!embedMode && (
-        <div className="mb-4 flex w-full flex-wrap items-center justify-between gap-2">
-          <SegmentedControl
-            aria-label="Allocation view"
-            value={activeTab}
-            onChange={setActiveTab}
-            options={[
-              { value: "consultant", label: "Consultant" },
-              { value: "customer", label: "Customer" },
-              { value: "project", label: "Project" },
-            ]}
-          />
-          <SegmentedControl
-            aria-label="Allocation history"
-            value={activeTab}
-            onChange={setActiveTab}
-            options={[{ value: "history", label: "Allocation history" }]}
-          />
-        </div>
-      )}
-
-      {data && !embedMode && (
+      {data && !embedMode && activeTab !== "history" && (
         <div className="mb-3 flex flex-wrap items-center gap-2 px-2">
           {/* View – how the table is displayed (probability, which project rows) */}
           <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
@@ -994,16 +987,11 @@ function AllocationPageClientImpl({
             <AllocationConsultantTables
               expandableConsultantIds={expandableConsultantIds}
               setExpandedConsultants={setExpandedConsultants}
-              year={year}
-              weekFrom={weekFrom}
-              weekTo={weekTo}
-              goToPreviousWeeks={goToPreviousWeeks}
-              goToNextWeeks={goToNextWeeks}
+              shiftWeeks={shiftWeeks}
               embedWeekNavLoading={embedWeekNavLoading}
               onWeekRangeChange={onWeekRangeChange}
               router={router}
-              getPreviousUrl={getPreviousUrl}
-              getNextUrl={getNextUrl}
+              getShiftUrl={getShiftUrl}
               embedMode={embedMode}
               data={data}
               monthSpans={monthSpans}
@@ -1052,16 +1040,11 @@ function AllocationPageClientImpl({
             <AllocationCustomerProjectTabs
               tab={activeTab}
               data={data}
-              year={year}
-              weekFrom={weekFrom}
-              weekTo={weekTo}
               monthSpans={monthSpans}
               isCurrentWeek={isCurrentWeek}
               renderWeekHeaderCells={renderWeekHeaderCells}
-              goToPreviousWeeks={goToPreviousWeeks}
-              goToNextWeeks={goToNextWeeks}
-              getPreviousUrl={getPreviousUrl}
-              getNextUrl={getNextUrl}
+              shiftWeeks={shiftWeeks}
+              getShiftUrl={getShiftUrl}
               router={router}
               expandedCustomers={expandedCustomers}
               toggleCustomer={toggleCustomer}

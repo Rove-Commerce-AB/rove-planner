@@ -23,9 +23,14 @@ describe("canSeeWorkCustomer", () => {
 });
 
 describe("canSeeWorkBoard", () => {
-  it("lets admin see any board", () => {
-    const board = { customerIsInternal: false, memberAppUserIds: [] };
-    expect(canSeeWorkBoard(admin, board)).toBe(true);
+  it("requires membership even for admin", () => {
+    const empty = { customerIsInternal: false, memberAppUserIds: [] };
+    const withAdmin = {
+      customerIsInternal: false,
+      memberAppUserIds: ["admin-1"],
+    };
+    expect(canSeeWorkBoard(admin, empty)).toBe(false);
+    expect(canSeeWorkBoard(admin, withAdmin)).toBe(true);
   });
 
   it("lets only members see a board", () => {
@@ -51,6 +56,16 @@ describe("filterVisibleWorkBoards", () => {
     expect(filterVisibleWorkBoards(member, boards).map((b) => b.id)).toEqual([
       "a",
       "b",
+    ]);
+  });
+
+  it("does not grant admins boards they are not members of", () => {
+    const boards = [
+      { id: "a", customerIsInternal: false, memberAppUserIds: ["admin-1"] },
+      { id: "b", customerIsInternal: false, memberAppUserIds: ["other"] },
+    ];
+    expect(filterVisibleWorkBoards(admin, boards).map((b) => b.id)).toEqual([
+      "a",
     ]);
   });
 });

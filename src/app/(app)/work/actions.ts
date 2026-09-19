@@ -20,12 +20,17 @@ import {
   addIssueAssignee,
   addIssueComment,
   addIssueLabel,
+  addIssueRelation,
+  deleteIssueComment,
   createWorkIssue,
   removeIssueAssignee,
   removeIssueFile,
   removeIssueLabel,
+  removeIssueRelation,
   reorderWorkIssues,
+  setWorkIssueEstimate,
   setWorkIssueOwner,
+  updateIssueComment,
   setWorkIssueStatus,
   setWorkIssueTextField,
   setWorkIssueTitle,
@@ -33,6 +38,7 @@ import {
 } from "@/lib/workIssues";
 import { ROUTES, workCustomerHref } from "@/lib/routes";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
+import type { WorkRelationRole } from "@/lib/workIssueRelations";
 
 type Ok = { ok: true };
 type OkBoard = { ok: true; boardId: string };
@@ -259,6 +265,20 @@ export async function updateWorkIssueFieldAction(
   }
 }
 
+export async function updateWorkIssueEstimateAction(
+  boardId: string,
+  issueId: string,
+  hours: string
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueEstimate(boardId, issueId, hours);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 export async function addWorkIssueAssigneeAction(
   boardId: string,
   issueId: string,
@@ -323,6 +343,64 @@ export async function addWorkIssueCommentAction(
 ): Promise<Ok | Err> {
   try {
     await addIssueComment(boardId, issueId, body);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueCommentAction(
+  boardId: string,
+  issueId: string,
+  commentId: string,
+  body: string
+): Promise<Ok | Err> {
+  try {
+    await updateIssueComment(boardId, issueId, commentId, body);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssueCommentAction(
+  boardId: string,
+  issueId: string,
+  commentId: string
+): Promise<Ok | Err> {
+  try {
+    await deleteIssueComment(boardId, issueId, commentId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssueRelationAction(
+  boardId: string,
+  issueId: string,
+  otherIssueId: string,
+  role: WorkRelationRole
+): Promise<Ok | Err> {
+  try {
+    await addIssueRelation(boardId, issueId, otherIssueId, role);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function removeWorkIssueRelationAction(
+  boardId: string,
+  issueId: string,
+  relationId: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssueRelation(boardId, issueId, relationId);
     revalidateBoard(boardId, issueId);
     return { ok: true };
   } catch (error) {

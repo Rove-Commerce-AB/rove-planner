@@ -20,6 +20,6 @@ export async function deleteProjectAction(
   if (customerId) {
     revalidatePath(customerHref(customerId));
   }
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
   revalidatePath("/reports");
 }

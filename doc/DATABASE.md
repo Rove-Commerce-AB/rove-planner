@@ -309,6 +309,7 @@ Trigger `trg_projects_updated_at` → `set_updated_at()`.
 
 The app can use `projects.clickup_project_id` when present
 ([`scripts/alter_projects_add_clickup_project_id.sql`](../scripts/alter_projects_add_clickup_project_id.sql)).
+It stores a ClickUp **folder id**; time report looks up tasks via `clickup.folder_id`.
 That column is **not** in this snapshot.
 
 ---
@@ -438,7 +439,8 @@ Unique: `(project_id, year, month)`. Index: `(project_id)`.
 ## time_report_entry_lines
 
 Logical grid row for one consultant ISO week (customer / project / role /
-Jira-DevOps key / description). Day cells live in `time_report_entries`.
+Jira-DevOps key / description / optional Work issue). Day cells live in
+`time_report_entries`.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -451,6 +453,7 @@ Jira-DevOps key / description). Day cells live in `time_report_entries`.
 | role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
 | jira_devops_key | text | nullable |
 | description | text | nullable; row-level task text |
+| work_issue_id | uuid | nullable, FK → `work_issues.id`, ON DELETE SET NULL; set when `jira_devops_key` is `work:<issue-id>` |
 | display_order | integer | NOT NULL, default 0 |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
@@ -458,6 +461,7 @@ Jira-DevOps key / description). Day cells live in `time_report_entries`.
 PK / unique: `(consultant_id, iso_year, iso_week, id)`.
 
 Index: `(consultant_id, iso_year, iso_week, display_order, id)`.
+Partial index: `(work_issue_id)` where not null.
 
 ---
 
@@ -597,9 +601,15 @@ Synced ClickUp tasks (same shape as Jira sync).
 | original_estimate_hours | numeric | nullable |
 | source_instance | text | nullable |
 | last_synced_at | timestamptz | nullable |
-| project_key | text | nullable |
-| project_name | text | nullable |
+| project_key | text | nullable (ClickUp List id) |
+| project_name | text | nullable (ClickUp List name) |
+| space_id | text | nullable |
+| space_name | text | nullable |
+| folder_id | text | nullable |
+| folder_name | text | nullable |
 | url | text | nullable |
+
+Indexes: `(project_key)`, `(space_id)`, `(folder_id)`.
 
 ---
 
@@ -771,6 +781,7 @@ Issues on a Work board. Keys are `{prefix}-{number}` with `number` unique per bo
 | description | text | NOT NULL, default `''` |
 | current_state | text | NOT NULL, default `''` |
 | next_step | text | NOT NULL, default `''` |
+| estimate_hours | numeric(8,2) | nullable; planned hours. Must be `>= 0` when set. Logged hours are not stored here — they are summed from Time report lines linked via `time_report_entry_lines.work_issue_id`. |
 | created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
@@ -783,7 +794,8 @@ Default columns: Todo, In progress, To be tested, In review, Done.
 
 DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
 [`scripts/20260913_work_board_statuses.sql`](../scripts/20260913_work_board_statuses.sql),
-[`scripts/20260913_work_issue_details.sql`](../scripts/20260913_work_issue_details.sql).
+[`scripts/20260913_work_issue_details.sql`](../scripts/20260913_work_issue_details.sql),
+[`scripts/20260919_work_issue_estimate.sql`](../scripts/20260919_work_issue_estimate.sql).
 
 ---
 
@@ -826,6 +838,34 @@ Unique: `(board_id, lower(name))`.
 
 ---
 
+## work_issue_relations
+
+Directed links between two issues on the same board.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| from_issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| to_issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| kind | text | NOT NULL; `blocks`, `relates`, `parent` |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+`from_issue_id` must differ from `to_issue_id`. Unique `(from_issue_id, to_issue_id, kind)`.
+
+Meaning:
+- `blocks`: from blocks to (inverse: to is blocked by from)
+- `relates`: undirected; stored with `from_issue_id < to_issue_id`
+- `parent`: from is parent of to. At most one parent per child.
+
+Same board only. Parent and blocks cycles are rejected in the app.
+
+Indexes: `(board_id)`; `(to_issue_id)`; unique parent on `to_issue_id` where `kind = 'parent'`.
+
+DDL: [`scripts/20260919_work_issue_relations.sql`](../scripts/20260919_work_issue_relations.sql).
+
+---
+
 ## work_issue_comments
 
 Flat comments, newest first. No mentions or attachments.
@@ -851,7 +891,7 @@ Activity log for status, owner, assignees, labels, comments, files, title, and t
 | id | uuid | PK, default `gen_random_uuid()` |
 | issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
 | actor_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
-| kind | text | NOT NULL; `created`, `title`, `status`, `owner`, `assignees`, `labels`, `description`, `current_state`, `next_step`, `comment`, `file` |
+| kind | text | NOT NULL; `created`, `title`, `status`, `owner`, `assignees`, `labels`, `description`, `current_state`, `next_step`, `comment`, `file`, `relation`, `estimate` |
 | summary | text | NOT NULL |
 | created_at | timestamptz | NOT NULL, default `now()` |
 

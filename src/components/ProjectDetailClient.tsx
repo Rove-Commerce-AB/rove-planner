@@ -668,11 +668,22 @@ export function ProjectDetailClient({
                     >
                       {initial.jiraProjectKey || initial.devopsProject || initial.clickupProjectId ? (
                         <FieldValue>
-                          {initial.jiraProjectKey
-                            ? `Jira: ${initial.jiraProjectKey}`
-                            : initial.devopsProject
-                              ? `DevOps: ${initial.devopsProject}`
-                              : `ClickUp: ${initial.clickupProjectId}`}
+                          {(() => {
+                            const integrationValue = initial.jiraProjectKey
+                              ? `jira:${initial.jiraProjectKey}`
+                              : initial.devopsProject
+                                ? `devops:${initial.devopsProject}`
+                                : `clickup:${initial.clickupProjectId}`;
+                            const option = integrationOptions.find(
+                              (o) => o.value === integrationValue
+                            );
+                            if (option?.label) return option.label;
+                            if (initial.jiraProjectKey)
+                              return `Jira: ${initial.jiraProjectKey}`;
+                            if (initial.devopsProject)
+                              return `DevOps: ${initial.devopsProject}`;
+                            return `ClickUp: ${initial.clickupProjectId}`;
+                          })()}
                         </FieldValue>
                       ) : (
                         <span className="text-sm text-text-primary opacity-60">—</span>

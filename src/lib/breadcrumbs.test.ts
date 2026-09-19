@@ -2,6 +2,35 @@ import { describe, expect, it } from "vitest";
 import { breadcrumbsForPathname } from "./breadcrumbs";
 
 describe("breadcrumbsForPathname", () => {
+  it("uses Consultant as the current planner page", () => {
+    expect(breadcrumbsForPathname("/planner/consultant")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Planner" },
+      { label: "Consultant" },
+    ]);
+  });
+
+  it("uses Customer and Project as planner pages", () => {
+    expect(breadcrumbsForPathname("/planner/customer")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Planner" },
+      { label: "Customer" },
+    ]);
+    expect(breadcrumbsForPathname("/planner/project")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Planner" },
+      { label: "Project" },
+    ]);
+  });
+
+  it("uses Allocation history as a planner page", () => {
+    expect(breadcrumbsForPathname("/planner/history")).toEqual([
+      { label: "Rove Apps", href: "/" },
+      { label: "Planner" },
+      { label: "Allocation history" },
+    ]);
+  });
+
   it("uses Rove Work as the current page on the selector", () => {
     expect(breadcrumbsForPathname("/work")).toEqual([
       { label: "Rove Apps", href: "/" },

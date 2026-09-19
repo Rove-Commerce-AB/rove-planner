@@ -64,7 +64,7 @@ export async function getDevOpsWorkItemsByProject(
   }));
 }
 
-/** ClickUp items for a project key (project_key = projects.clickup_project_id). */
+/** ClickUp items for a folder (folder_id = projects.clickup_project_id). */
 export async function getClickUpItemsByProjectKey(
   projectKey: string
 ): Promise<ClickUpItemOption[]> {
@@ -74,7 +74,7 @@ export async function getClickUpItemsByProjectKey(
     summary: string | null;
     url: string | null;
   }>(
-    `SELECT clickup_id, summary, url FROM clickup WHERE project_key = $1 ORDER BY clickup_id`,
+    `SELECT clickup_id, summary, url FROM clickup WHERE folder_id = $1 ORDER BY clickup_id`,
     [projectKey.trim()]
   );
   return rows.map((row) => ({

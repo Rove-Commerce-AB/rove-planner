@@ -51,7 +51,7 @@ export type ProjectWithDetails = {
   jiraProjectKey: string | null;
   /** Optional link to DevOps project name. Mutually exclusive with jiraProjectKey/clickupProjectId. */
   devopsProject: string | null;
-  /** Optional link to ClickUp project key. Mutually exclusive with jiraProjectKey/devopsProject. */
+  /** Optional link to ClickUp folder id. Mutually exclusive with jiraProjectKey/devopsProject. */
   clickupProjectId: string | null;
   /** Optional budget in hours; shown in planning footer. */
   budgetHours: number | null;

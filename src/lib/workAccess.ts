@@ -21,13 +21,12 @@ export function canSeeWorkCustomer(
 }
 
 /**
- * Board access is the member list. Admins can still open any board.
+ * Board access is the member list for everyone, including admins.
  */
 export function canSeeWorkBoard(
   actor: WorkActor,
   board: WorkBoardVisibilityInput
 ): boolean {
-  if (actor.role === "admin") return true;
   return board.memberAppUserIds.includes(actor.id);
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -37,8 +38,21 @@ import {
   removeWorkBoardMemberAction,
   reorderWorkBoardStatusesAction,
 } from "../../actions";
+import {
+  collectOwnerFilterPeople,
+  columnIssueGroups,
+  visibleWorkIssueIds,
+  type WorkBoardGroupBy,
+} from "@/lib/workBoardView";
 import { WorkBoardMembers } from "./WorkBoardMembers";
+import {
+  WorkBoardViewControls,
+  WorkCardLabels,
+  WorkColumnGroupHeader,
+} from "./WorkBoardViewControls";
 import { WorkCardPeople, WorkIssueDrawer } from "./WorkIssueDrawer";
+import { WorkTimeGraph } from "./WorkTimeGraph";
+import { isIssueBlocked } from "@/lib/workIssueRelations";
 import type { WorkPerson } from "@/lib/workTypes";
 
 type Props = {
@@ -161,6 +175,8 @@ export function WorkBoardPageClient({ board }: Props) {
   const [pending, startTransition] = useTransition();
   const [issues, setIssues] = useState(board.issues);
   const [search, setSearch] = useState("");
+  const [ownerFilterIds, setOwnerFilterIds] = useState<string[]>([]);
+  const [groupBy, setGroupBy] = useState<WorkBoardGroupBy>("none");
   const [dragOverStatus, setDragOverStatus] = useState<WorkIssueStatus | null>(
     null
   );
@@ -266,20 +282,15 @@ export function WorkBoardPageClient({ board }: Props) {
   const deletingIssueCount = deletingStatus
     ? issues.filter((issue) => issue.status === deletingStatus.id).length
     : 0;
-  const query = search.trim().toLowerCase();
+  const ownerPeople = useMemo(
+    () => collectOwnerFilterPeople(board.people, issues),
+    [board.people, issues]
+  );
 
-  const visibleIds = useMemo(() => {
-    if (!query) return new Set(issues.map((issue) => issue.id));
-    return new Set(
-      issues
-        .filter(
-          (issue) =>
-            issue.title.toLowerCase().includes(query) ||
-            issue.key.toLowerCase().includes(query)
-        )
-        .map((issue) => issue.id)
-    );
-  }, [issues, query]);
+  const visibleIds = useMemo(
+    () => visibleWorkIssueIds(issues, search, ownerFilterIds),
+    [issues, search, ownerFilterIds]
+  );
 
   function openIssue(issueId: string) {
     router.push(workIssueHref(board.customerId, board.id, issueId), {
@@ -781,31 +792,39 @@ export function WorkBoardPageClient({ board }: Props) {
             className="h-7 py-0 pl-8 text-[13px]"
           />
         </div>
-        <IconButton
-          data-board-menu
-          aria-label="Board options"
-          aria-expanded={boardMenu != null}
-          aria-haspopup="menu"
-          title="Board options"
-          className="ml-auto"
-          onClick={(event) => {
-            if (boardMenu) {
-              setBoardMenu(null);
-              return;
-            }
-            const rect = event.currentTarget.getBoundingClientRect();
-            const width = 160;
-            setBoardMenu({
-              top: rect.bottom + 4,
-              left: Math.min(
-                rect.right - width,
-                window.innerWidth - width - 8
-              ),
-            });
-          }}
-        >
-          <MoreHorizontal className="h-4 w-4" aria-hidden />
-        </IconButton>
+        <div className="ml-auto flex items-center gap-1">
+          <WorkBoardViewControls
+            people={ownerPeople}
+            ownerFilterIds={ownerFilterIds}
+            onOwnerFilterChange={setOwnerFilterIds}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+          />
+          <IconButton
+            data-board-menu
+            aria-label="Board options"
+            aria-expanded={boardMenu != null}
+            aria-haspopup="menu"
+            title="Board options"
+            onClick={(event) => {
+              if (boardMenu) {
+                setBoardMenu(null);
+                return;
+              }
+              const rect = event.currentTarget.getBoundingClientRect();
+              const width = 160;
+              setBoardMenu({
+                top: rect.bottom + 4,
+                left: Math.min(
+                  rect.right - width,
+                  window.innerWidth - width - 8
+                ),
+              });
+            }}
+          >
+            <MoreHorizontal className="h-4 w-4" aria-hidden />
+          </IconButton>
+        </div>
       </div>
 
       {error ? (
@@ -820,6 +839,7 @@ export function WorkBoardPageClient({ board }: Props) {
           const columnIssues = issuesInStatus(issues, status).filter((issue) =>
             visibleIds.has(issue.id)
           );
+          const issueGroups = columnIssueGroups(columnIssues, groupBy);
           const isDone = column.isDone;
           const isDragOver = dragOverStatus === status && !draggingStatusId;
           const isLastColumn = columnIndex === statuses.length - 1;
@@ -998,14 +1018,25 @@ export function WorkBoardPageClient({ board }: Props) {
                 }}
               >
               <ul data-issue-list className="relative flex flex-col gap-2 px-2 pt-2 pb-6">
-                {columnIssues.map((issue) => {
+                {issueGroups.map((group, groupIndex) => (
+                  <Fragment key={group.key}>
+                    {groupBy !== "none" ? (
+                      <li>
+                        <WorkColumnGroupHeader
+                          groupBy={groupBy}
+                          group={group}
+                          className={groupIndex === 0 ? "" : "mt-1"}
+                        />
+                      </li>
+                    ) : null}
+                    {group.issues.map((issue) => {
                   const showInsertBefore =
                     issueDropBefore?.status === status &&
                     issueDropBefore.beforeIssueId === issue.id &&
                     dragIssueIdRef.current !== issue.id;
                   return (
                   <li
-                    key={issue.id}
+                    key={`${group.key}-${issue.id}`}
                     data-issue-id={issue.id}
                     className="relative"
                     onDragOver={(event) => {
@@ -1077,7 +1108,7 @@ export function WorkBoardPageClient({ board }: Props) {
                           skipCardClickRef.current = false;
                         }, 0);
                       }}
-                      className={`cursor-grab select-none rounded-lg border bg-bg-default p-3 shadow-sm active:cursor-grabbing ${
+                      className={`relative cursor-grab select-none overflow-hidden rounded-lg border bg-bg-default p-3 shadow-sm active:cursor-grabbing ${
                         selectedIssueId === issue.id
                           ? "border-accent-primary"
                           : "border-border-subtle hover:border-border-default"
@@ -1087,20 +1118,30 @@ export function WorkBoardPageClient({ board }: Props) {
                         <div className="min-w-0">
                           <span className="text-label-s text-text-tertiary">
                             {issue.key}
+                            {isIssueBlocked(issue.relations) ? (
+                              <span className="ml-1.5 text-caption">Blocked</span>
+                            ) : null}
                           </span>
                           <p className="mt-1 text-body-m text-text-primary">
                             {issue.title}
                           </p>
+                          <WorkCardLabels labels={issue.labels} />
                         </div>
                         <WorkCardPeople
                           owner={issue.owner}
                           assignees={issue.assignees}
                         />
                       </div>
+                      <WorkTimeGraph
+                        estimateHours={issue.estimateHours}
+                        loggedHours={issue.loggedHours}
+                      />
                     </article>
                   </li>
                   );
-                })}
+                    })}
+                  </Fragment>
+                ))}
                 {issueDropBefore?.status === status &&
                 issueDropBefore.beforeIssueId == null ? (
                   <span

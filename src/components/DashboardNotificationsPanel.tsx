@@ -10,6 +10,7 @@ import {
   markAllDashboardNotificationsReadAction,
   markDashboardNotificationReadAction,
 } from "@/app/(app)/dashboardNotificationsActions";
+import { workIssueHref } from "@/lib/routes";
 
 type Props = {
   notifications: UserNotificationRow[];
@@ -171,6 +172,64 @@ function notificationBody(n: UserNotificationRow): { text: ReactNode } {
       </>
     );
     return { text };
+  }
+  if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED) {
+    const mentioner =
+      typeof p.mentionerName === "string" && p.mentionerName.trim()
+        ? p.mentionerName.trim()
+        : "Someone";
+    const issueKey =
+      typeof p.issueKey === "string" && p.issueKey.trim()
+        ? p.issueKey.trim()
+        : "an issue";
+    const issueTitle =
+      typeof p.issueTitle === "string" && p.issueTitle.trim()
+        ? p.issueTitle.trim()
+        : null;
+    const customerId =
+      typeof p.customerId === "string" && p.customerId.trim()
+        ? p.customerId.trim()
+        : null;
+    const boardId =
+      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
+    const issueId =
+      typeof p.issueId === "string" && p.issueId.trim() ? p.issueId.trim() : null;
+    const href =
+      customerId && boardId && issueId
+        ? workIssueHref(customerId, boardId, issueId)
+        : null;
+    const issueLabel = (
+      <>
+        {issueKey}
+        {issueTitle ? (
+          <>
+            {" "}
+            <span className="font-medium opacity-90">
+              &quot;{issueTitle}&quot;
+            </span>
+          </>
+        ) : null}
+      </>
+    );
+    return {
+      text: (
+        <>
+          <span className="font-medium">{mentioner}</span> mentioned you on{" "}
+          {href ? (
+            <Link
+              href={href}
+              prefetch={false}
+              className="font-medium text-brand-signal hover:underline"
+            >
+              {issueLabel}
+            </Link>
+          ) : (
+            issueLabel
+          )}
+          .
+        </>
+      ),
+    };
   }
   return { text: n.kind };
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getAllocationData } from "@/app/(app)/allocation/actions";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { AllocationPageClient } from "./AllocationPageClient";
-import { ROUTES } from "@/lib/routes";
+import type { PlannerView } from "@/lib/routes";
 
 type Props = {
+  view: PlannerView;
   data: AllocationPageData | null;
   error: string | null;
   year: number;
@@ -18,6 +19,7 @@ type Props = {
 };
 
 export function AllocationPageWrapper({
+  view,
   data: initialData,
   error: initialError,
   year: initialYear,
@@ -27,6 +29,7 @@ export function AllocationPageWrapper({
   currentWeek,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const [data, setData] = useState<AllocationPageData | null>(initialData);
   const [error, setError] = useState<string | null>(initialError);
   const [year, setYear] = useState(initialYear);
@@ -57,16 +60,17 @@ export function AllocationPageWrapper({
         setWeekFrom(newWeekFrom);
         setWeekTo(newWeekTo);
         const q = `year=${newYear}&from=${newWeekFrom}&to=${newWeekTo}`;
-        router.replace(`${ROUTES.allocation}?${q}`, { scroll: false });
+        router.replace(`${pathname}?${q}`, { scroll: false });
       } finally {
         setLoading(false);
       }
     },
-    [router]
+    [pathname, router]
   );
 
   return (
     <AllocationPageClient
+        view={view}
         data={data}
         error={error}
         year={year}

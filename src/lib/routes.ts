@@ -1,7 +1,21 @@
+export const PLANNER_VIEWS = [
+  "consultant",
+  "customer",
+  "project",
+  "history",
+] as const;
+export type PlannerView = (typeof PLANNER_VIEWS)[number];
+
 /** Canonical app routes for Rove Apps. Keep sidebar, redirects, and revalidation in sync. */
 export const ROUTES = {
   home: "/",
-  allocation: "/planner/allocation",
+  planner: "/planner",
+  plannerConsultant: "/planner/consultant",
+  plannerCustomer: "/planner/customer",
+  plannerProject: "/planner/project",
+  plannerHistory: "/planner/history",
+  /** Default planner allocation view (consultant). */
+  allocation: "/planner/consultant",
   timeReport: "/time-report/time-report",
   timeApproval: "/time-report/approval",
   insights: "/insights",

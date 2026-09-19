@@ -7,7 +7,8 @@ import {
 } from "@/components/TimeGridColumnHighlight";
 import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, ChevronLeft, Percent, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, Percent, ExternalLink } from "lucide-react";
+import { AllocationWeekNav } from "@/components/allocation/AllocationWeekNav";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { consultantHref, customerHref } from "@/lib/routes";
 
@@ -128,16 +129,11 @@ function findConsultantWeeksForRangeEdit(
 export type AllocationCustomerProjectTabsProps = {
   tab: "customer" | "project";
   data: AllocationPageData;
-  year: number;
-  weekFrom: number;
-  weekTo: number;
   monthSpans: { colSpan: number; label: string }[];
   isCurrentWeek: (w: { year: number; week: number }) => boolean;
   renderWeekHeaderCells: (tableKey: string, borderClass?: string) => React.ReactNode;
-  goToPreviousWeeks: () => void;
-  goToNextWeeks: () => void;
-  getPreviousUrl: () => string;
-  getNextUrl: () => string;
+  shiftWeeks: (weeks: number) => void;
+  getShiftUrl: (weeks: number) => string;
   router: { prefetch: (url: string) => void };
   expandedCustomers: Set<string>;
   toggleCustomer: (id: string) => void;
@@ -169,30 +165,12 @@ export type AllocationCustomerProjectTabsProps = {
 };
 
 const weekNav = (p: AllocationCustomerProjectTabsProps) => (
-  <div className="mb-2 flex items-center justify-end gap-2 px-1">
-    <span className="text-[10px] tabular-nums text-text-primary opacity-70">
-      {p.weekFrom <= p.weekTo
-        ? `${p.year} · v${p.weekFrom}–v${p.weekTo}`
-        : `${p.year} v${p.weekFrom} – ${p.year + 1} v${p.weekTo}`}
-    </span>
-    <button
-      type="button"
-      onClick={p.goToPreviousWeeks}
-      onMouseEnter={() => p.router.prefetch(p.getPreviousUrl())}
-      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-      aria-label="Previous weeks"
-    >
-      <ChevronLeft className="h-3.5 w-3.5" />
-    </button>
-    <button
-      type="button"
-      onClick={p.goToNextWeeks}
-      onMouseEnter={() => p.router.prefetch(p.getNextUrl())}
-      className="rounded-sm p-1 text-text-primary opacity-80 hover:bg-bg-muted hover:opacity-100"
-      aria-label="Next weeks"
-    >
-      <ChevronRight className="h-3.5 w-3.5" />
-    </button>
+  <div className="mb-2 flex items-center justify-end px-1">
+    <AllocationWeekNav
+      onShift={p.shiftWeeks}
+      getUrl={p.getShiftUrl}
+      prefetch={p.router.prefetch}
+    />
   </div>
 );
 
@@ -372,9 +350,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
                 <th
                   key={i}
                   colSpan={span.colSpan}
-                  className="border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                  title={span.label}
+                  className="overflow-hidden border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
                 >
-                  {span.label}
+                  <span className="block truncate">{span.label}</span>
                 </th>
               ))}
               <th
@@ -807,9 +786,10 @@ export function AllocationCustomerProjectTabs(props: AllocationCustomerProjectTa
               <th
                 key={i}
                 colSpan={span.colSpan}
-                className="border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
+                title={span.label}
+                className="overflow-hidden border-r border-grid px-0.5 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-text-primary opacity-60"
               >
-                {span.label}
+                <span className="block truncate">{span.label}</span>
               </th>
             ))}
             <th

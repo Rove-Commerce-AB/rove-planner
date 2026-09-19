@@ -25,7 +25,7 @@ import type { AllocationPageData } from "@/lib/allocationPageTypes";
 
 export async function revalidateAllocationPage(): Promise<void> {
   await assertNotSubcontractorForWrite();
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }
 
 export async function getAllocationHistory(
@@ -124,7 +124,7 @@ export async function createAllocationsByPercent(
       weekFrom,
       weekTo
     );
-    revalidatePath(ROUTES.allocation);
+    revalidatePath(ROUTES.planner, "layout");
     return;
   }
   const records = await createAllocationsForWeekRangeWithGetter(
@@ -145,7 +145,7 @@ export async function createAllocationsByPercent(
           return Math.round(available * pct * 100) / 100;
         }
   );
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
   if (records.length > 0) {
     void logBulkAllocationHistoryRaw(
       records.map((r) => r.id),

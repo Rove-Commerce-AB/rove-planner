@@ -1,18 +1,21 @@
-export const dynamic = "force-dynamic";
-
 import { getCurrentYearWeek } from "@/lib/dateUtils";
 import { getAllocationPageData } from "@/lib/allocationPage";
 import { AllocationPageWrapper } from "@/components/AllocationPageWrapper";
 import { AllocationViewportAdapter } from "@/components/AllocationViewportAdapter";
 import { redirectSubcontractorToAccessDenied } from "@/lib/accessGuards";
+import type { PlannerView } from "@/lib/routes";
 
 const FALLBACK_WEEKS = 52;
 
-type Props = {
-  searchParams: Promise<{ year?: string; from?: string; to?: string }>;
-};
+type SearchParams = Promise<{ year?: string; from?: string; to?: string }>;
 
-export default async function AllocationPage({ searchParams }: Props) {
+export async function PlannerAllocationPage({
+  view,
+  searchParams,
+}: {
+  view: PlannerView;
+  searchParams: SearchParams;
+}) {
   await redirectSubcontractorToAccessDenied();
 
   const params = await searchParams;
@@ -23,8 +26,7 @@ export default async function AllocationPage({ searchParams }: Props) {
   const toParam = params.to ? parseInt(params.to, 10) : null;
 
   const weekFrom = fromParam ?? Math.max(1, currentWeek - 2);
-  const weekTo =
-    toParam ?? ((weekFrom + FALLBACK_WEEKS - 2) % 52) + 1;
+  const weekTo = toParam ?? ((weekFrom + FALLBACK_WEEKS - 2) % 52) + 1;
 
   let data = null;
   let error: string | null = null;
@@ -43,6 +45,7 @@ export default async function AllocationPage({ searchParams }: Props) {
     >
       <div>
         <AllocationPageWrapper
+          view={view}
           data={data}
           error={error}
           year={year}

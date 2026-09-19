@@ -12,7 +12,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
-import { formatTimeAgo } from "@/lib/workTimeAgo";
+import { formatWorkTimestamp } from "@/lib/workTimeAgo";
 import {
   WORK_FILE_MAX_BYTES,
   type WorkBoardView,
@@ -27,14 +27,25 @@ import {
   addWorkIssueAssigneeAction,
   addWorkIssueCommentAction,
   addWorkIssueLabelAction,
+  addWorkIssueRelationAction,
+  deleteWorkIssueCommentAction,
   deleteWorkIssueFileAction,
   removeWorkIssueAssigneeAction,
   removeWorkIssueLabelAction,
+  removeWorkIssueRelationAction,
+  updateWorkIssueCommentAction,
+  updateWorkIssueEstimateAction,
   updateWorkIssueFieldAction,
   updateWorkIssueOwnerAction,
   updateWorkIssueTitleAction,
   uploadWorkIssueFileAction,
 } from "../../actions";
+import { WorkCommentComposer } from "./WorkCommentComposer";
+import { WorkIssueComment } from "./WorkIssueComment";
+import { WorkIssueRelations } from "./WorkIssueRelations";
+import { WorkTimeGraph } from "./WorkTimeGraph";
+import { encodeMentions } from "@/lib/workMentions";
+import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
 
 const textFieldClass =
   "w-full resize-none border-0 bg-transparent px-0 py-1 text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50";
@@ -121,13 +132,26 @@ export function WorkIssueDrawer({
   const [commentDraft, setCommentDraft] = useState("");
   const [addingAssignee, setAddingAssignee] = useState(false);
   const [addingLabel, setAddingLabel] = useState(false);
+  const [estimateDraft, setEstimateDraft] = useState(
+    issue.estimateHours == null ? "" : String(issue.estimateHours)
+  );
 
   useEffect(() => {
     setTitle(issue.title);
     setDescription(issue.description);
     setCurrentState(issue.currentState);
     setNextStep(issue.nextStep);
-  }, [issue.id, issue.title, issue.description, issue.currentState, issue.nextStep]);
+    setEstimateDraft(
+      issue.estimateHours == null ? "" : String(issue.estimateHours)
+    );
+  }, [
+    issue.id,
+    issue.title,
+    issue.description,
+    issue.currentState,
+    issue.nextStep,
+    issue.estimateHours,
+  ]);
 
   const people = useMemo(() => {
     const list = [...board.people];
@@ -189,6 +213,30 @@ export function WorkIssueDrawer({
           : { nextStep: value }
     );
     run(() => updateWorkIssueFieldAction(board.id, issue.id, field, value));
+  }
+
+  function saveEstimate() {
+    const parsed = parseWorkEstimateHours(estimateDraft);
+    if (!parsed.ok) {
+      setEstimateDraft(
+        issue.estimateHours == null ? "" : String(issue.estimateHours)
+      );
+      onError("Estimate must be a number of hours");
+      return;
+    }
+    const current = issue.estimateHours;
+    if (parsed.value === current) {
+      setEstimateDraft(current == null ? "" : String(current));
+      return;
+    }
+    onIssuePatch({ estimateHours: parsed.value });
+    run(() =>
+      updateWorkIssueEstimateAction(
+        board.id,
+        issue.id,
+        parsed.value == null ? "" : String(parsed.value)
+      )
+    );
   }
 
   return (
@@ -349,6 +397,39 @@ export function WorkIssueDrawer({
             <WorkMetaRow label="Reporter">
               <p className="text-sm text-text-primary">{issue.reporter.name}</p>
             </WorkMetaRow>
+            <WorkMetaRow label="Estimate">
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={estimateDraft}
+                  disabled={pending}
+                  aria-label="Estimate in hours"
+                  placeholder="—"
+                  onChange={(event) => setEstimateDraft(event.target.value)}
+                  onBlur={saveEstimate}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  className="h-8 w-14 border-0 bg-transparent px-0 text-sm font-medium tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+                />
+                <span className="text-sm text-text-tertiary">h</span>
+              </div>
+            </WorkMetaRow>
+            <WorkMetaRow label="Logged">
+              <p className="text-sm tabular-nums text-text-primary">
+                {formatWorkHours(issue.loggedHours)}
+              </p>
+            </WorkMetaRow>
+            <div className="py-1.5">
+              <WorkTimeGraph
+                size="drawer"
+                estimateHours={issue.estimateHours}
+                loggedHours={issue.loggedHours}
+              />
+            </div>
 
             <div className="space-y-5 pt-6">
               <label className="block">
@@ -460,6 +541,32 @@ export function WorkIssueDrawer({
                   )}
                 </div>
               </div>
+              <WorkIssueRelations
+                issue={issue}
+                issues={board.issues}
+                customerId={board.customerId}
+                boardId={board.id}
+                pending={pending}
+                onAdd={(otherIssueId, role) => {
+                  run(() =>
+                    addWorkIssueRelationAction(
+                      board.id,
+                      issue.id,
+                      otherIssueId,
+                      role
+                    )
+                  );
+                }}
+                onRemove={(relationId) => {
+                  run(() =>
+                    removeWorkIssueRelationAction(
+                      board.id,
+                      issue.id,
+                      relationId
+                    )
+                  );
+                }}
+              />
             </div>
 
             <div className="pt-6">
@@ -498,26 +605,42 @@ export function WorkIssueDrawer({
                     <li className="text-sm text-text-secondary">No comments yet.</li>
                   ) : (
                     issue.comments.map((comment) => (
-                      <li key={comment.id} className="flex gap-3">
-                        <InitialsAvatar
-                          name={comment.author.name}
-                          initials={comment.author.initials}
-                          size="xs"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-label-s text-text-secondary">
-                            <span className="font-medium text-text-primary">
-                              {comment.author.name}
-                            </span>
-                            <span className="ml-2">
-                              {formatTimeAgo(comment.createdAt)}
-                            </span>
-                          </p>
-                          <p className="mt-1 whitespace-pre-wrap text-body-m text-text-primary">
-                            {comment.body}
-                          </p>
-                        </div>
-                      </li>
+                      <WorkIssueComment
+                        key={comment.id}
+                        comment={comment}
+                        canEdit={comment.author.id === board.currentUser.id}
+                        people={board.members}
+                        pending={pending}
+                        onSave={(body) => {
+                          onIssuePatch({
+                            comments: issue.comments.map((row) =>
+                              row.id === comment.id ? { ...row, body } : row
+                            ),
+                          });
+                          run(() =>
+                            updateWorkIssueCommentAction(
+                              board.id,
+                              issue.id,
+                              comment.id,
+                              body
+                            )
+                          );
+                        }}
+                        onDelete={() => {
+                          onIssuePatch({
+                            comments: issue.comments.filter(
+                              (row) => row.id !== comment.id
+                            ),
+                          });
+                          run(() =>
+                            deleteWorkIssueCommentAction(
+                              board.id,
+                              issue.id,
+                              comment.id
+                            )
+                          );
+                        }}
+                      />
                     ))
                   )}
                 </ul>
@@ -539,7 +662,7 @@ export function WorkIssueDrawer({
                           dateTime={event.createdAt}
                           className="w-32 shrink-0 text-right text-text-tertiary"
                         >
-                          {formatTimeAgo(event.createdAt)}
+                          {formatWorkTimestamp(event.createdAt)}
                         </time>
                       </li>
                     ))
@@ -617,7 +740,7 @@ export function WorkIssueDrawer({
         className="flex shrink-0 items-end gap-2 border-t border-border-subtle px-6 py-3"
         onSubmit={(event) => {
           event.preventDefault();
-          const body = commentDraft.trim();
+          const body = encodeMentions(commentDraft.trim(), board.members);
           if (!body) return;
           setCommentDraft("");
           run(() => addWorkIssueCommentAction(board.id, issue.id, body));
@@ -628,19 +751,12 @@ export function WorkIssueDrawer({
           initials={board.currentUser.initials}
           size="xs"
         />
-        <textarea
-          className={`${commentClass} min-h-[5.5rem] flex-1 resize-none`}
-          rows={3}
-          placeholder="Write a comment…"
+        <WorkCommentComposer
+          people={board.members}
           value={commentDraft}
           disabled={pending}
-          onChange={(event) => setCommentDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
+          className={`${commentClass} min-h-[5.5rem] resize-none`}
+          onChange={setCommentDraft}
         />
         <Button type="submit" size="sm" disabled={pending || !commentDraft.trim()}>
           <Send className="h-4 w-4" aria-hidden />

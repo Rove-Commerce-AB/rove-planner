@@ -29,7 +29,7 @@ export async function createConsultantAndRevalidate(
   revalidatePath(ROUTES.consultants);
   revalidatePath(ROUTES.people);
   revalidatePath(consultantHref(result.id));
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
   return result;
 }
 
@@ -39,5 +39,5 @@ export async function deleteConsultantAction(id: string): Promise<void> {
   revalidateTag("allocation-consultants", "max");
   revalidatePath(ROUTES.consultants);
   revalidatePath(ROUTES.people);
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }

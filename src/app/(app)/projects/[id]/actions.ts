@@ -13,7 +13,7 @@ export async function moveEntireBookingAction(
     await assertNotSubcontractorForWrite();
     const { moved } = await moveAllocationsForProject(projectId, deltaWeeks);
     revalidatePath(`/projects/${projectId}`);
-    revalidatePath(ROUTES.allocation);
+    revalidatePath(ROUTES.planner, "layout");
     revalidatePath("/reports");
     return { ok: true, moved };
   } catch (e) {

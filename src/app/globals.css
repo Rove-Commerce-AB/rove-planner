@@ -159,6 +159,13 @@ textarea.border-form {
   border-right-width: 0 !important;
 }
 
+/* Month/year row: always one line; clip if a short span cannot fit the label. */
+.allocation-tables thead tr:first-child th[colspan] {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* Avoid double-thick header lines: let box-shadow be the only horizontal divider. */
 .allocation-tables thead tr,
 .allocation-tables thead th {

@@ -232,7 +232,7 @@ export async function deleteAllocationWithHistory(allocationId: string): Promise
   await cloudSqlPool.query(`DELETE FROM allocations WHERE id = $1`, [
     allocationId,
   ]);
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }
 
 export async function deleteAllocationsWithHistory(allocationIds: string[]): Promise<void> {
@@ -252,7 +252,7 @@ export async function deleteAllocationsWithHistory(allocationIds: string[]): Pro
     await cloudSqlPool.query(`DELETE FROM allocations WHERE id = ANY($1::uuid[])`, [
       allocationIds,
     ]);
-    revalidatePath(ROUTES.allocation);
+    revalidatePath(ROUTES.planner, "layout");
     return;
   }
   const firstId = allocs[0].id;
@@ -283,5 +283,5 @@ export async function deleteAllocationsWithHistory(allocationIds: string[]): Pro
   await cloudSqlPool.query(`DELETE FROM allocations WHERE id = ANY($1::uuid[])`, [
     allocationIds,
   ]);
-  revalidatePath(ROUTES.allocation);
+  revalidatePath(ROUTES.planner, "layout");
 }

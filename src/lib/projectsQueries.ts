@@ -264,17 +264,29 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
       ),
       cloudSqlPool
         .query<{
-          project_key: string;
-          project_name: string | null;
+          folder_id: string;
+          folder_name: string | null;
+          space_name: string | null;
         }>(
-          `SELECT project_key, NULLIF(MAX(NULLIF(project_name, '')), '') AS project_name
+          `SELECT folder_id,
+                  NULLIF(MAX(NULLIF(folder_name, '')), '') AS folder_name,
+                  NULLIF(MAX(NULLIF(space_name, '')), '') AS space_name
            FROM clickup
-           WHERE project_key IS NOT NULL
-             AND NULLIF(project_key, '') IS NOT NULL
-           GROUP BY project_key
-           ORDER BY project_key`
+           WHERE folder_id IS NOT NULL
+             AND NULLIF(folder_id, '') IS NOT NULL
+           GROUP BY folder_id
+           ORDER BY COALESCE(NULLIF(MAX(NULLIF(folder_name, '')), ''), folder_id)`
         )
-        .catch(() => ({ rows: [] as { project_key: string; project_name: string | null }[] })),
+        .catch(
+          () =>
+            ({
+              rows: [] as {
+                folder_id: string;
+                folder_name: string | null;
+                space_name: string | null;
+              }[],
+            }) as const
+        ),
     ]);
 
     const jiraOptions: IntegrationProjectOption[] = jiraRes.rows.map((row) => {
@@ -293,14 +305,19 @@ export async function fetchUniqueJiraAndDevopsProjects(): Promise<
       }
     );
 
-    const clickupOptions: IntegrationProjectOption[] = clickupRes.rows.map((row) => {
-      const key = row.project_key?.trim() ?? "";
-      const name = (row.project_name ?? key).trim();
-      return {
-        value: `clickup:${key}`,
-        label: `ClickUp: ${key}${name && name !== key ? ` (${name})` : ""}`,
-      };
-    });
+    const clickupOptions: IntegrationProjectOption[] = clickupRes.rows.map(
+      (row) => {
+        const id = row.folder_id?.trim() ?? "";
+        const folderName = (row.folder_name ?? id).trim();
+        const spaceName = (row.space_name ?? "").trim();
+        return {
+          value: `clickup:${id}`,
+          label: `ClickUp: ${folderName}${
+            spaceName && spaceName !== folderName ? ` (${spaceName})` : ""
+          }`,
+        };
+      }
+    );
 
     return [{ value: "", label: "—" }, ...jiraOptions, ...devopsOptions, ...clickupOptions];
   } catch {

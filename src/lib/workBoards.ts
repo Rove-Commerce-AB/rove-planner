@@ -38,12 +38,18 @@ import {
   fetchIssueEvents,
   fetchIssueFiles,
   fetchIssueLabels,
+  fetchWorkIssueRelations,
   fetchWorkAssigneesForCustomer,
   fetchWorkBoardMembers,
   fetchWorkPeopleForCustomer,
   fetchWorkIssuesForBoard,
+  fetchLoggedHoursByIssueIds,
 } from "@/lib/workIssuesQueries";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
+import {
+  emptyWorkIssueRelations,
+  groupRelationsForIssues,
+} from "@/lib/workIssueRelations";
 
 export type {
   WorkBoardView,
@@ -301,14 +307,23 @@ export async function getWorkBoardView(
     ]);
   const statusIds = new Set(statuses.map((status) => status.id));
   const issueIds = issueRows.map((row) => row.id);
-  const [assigneeRows, labelRows, commentRows, eventRows, fileRows] =
-    await Promise.all([
-      fetchIssueAssignees(issueIds),
-      fetchIssueLabels(issueIds),
-      fetchIssueComments(issueIds),
-      fetchIssueEvents(issueIds),
-      fetchIssueFiles(issueIds),
-    ]);
+  const [
+    assigneeRows,
+    labelRows,
+    commentRows,
+    eventRows,
+    fileRows,
+    relationRows,
+    loggedHoursByIssue,
+  ] = await Promise.all([
+    fetchIssueAssignees(issueIds),
+    fetchIssueLabels(issueIds),
+    fetchIssueComments(issueIds),
+    fetchIssueEvents(issueIds),
+    fetchIssueFiles(issueIds),
+    fetchWorkIssueRelations(board.id),
+    fetchLoggedHoursByIssueIds(issueIds),
+  ]);
 
   const people = peopleRows.map(workPersonFromUser);
   const peopleById = new Map(people.map((person) => [person.id, person]));
@@ -403,7 +418,41 @@ export async function getWorkBoardView(
       comments: commentsByIssue.get(row.id) ?? [],
       events: eventsByIssue.get(row.id) ?? [],
       files: filesByIssue.get(row.id) ?? [],
+      relations: emptyWorkIssueRelations(),
+      estimateHours:
+        row.estimate_hours == null ? null : Number(row.estimate_hours),
+      loggedHours: loggedHoursByIssue.get(row.id) ?? 0,
     }));
+
+  const doneByStatus = new Map(
+    statuses.map((status) => [status.id, status.isDone])
+  );
+  const relationRefs = new Map(
+    issues.map((issue) => [
+      issue.id,
+      {
+        id: issue.id,
+        key: issue.key,
+        title: issue.title,
+        status: issue.status,
+        isDone: doneByStatus.get(issue.status) ?? false,
+      },
+    ])
+  );
+  const relationsByIssue = groupRelationsForIssues(
+    issues.map((issue) => issue.id),
+    relationRows.map((row) => ({
+      id: row.id,
+      boardId: row.board_id,
+      fromIssueId: row.from_issue_id,
+      toIssueId: row.to_issue_id,
+      kind: row.kind,
+    })),
+    relationRefs
+  );
+  for (const issue of issues) {
+    issue.relations = relationsByIssue.get(issue.id) ?? emptyWorkIssueRelations();
+  }
 
   return {
     id: board.id,

@@ -1,9 +1,9 @@
 import { useCallback } from "react";
-import type { useRouter } from "next/navigation";
+import { usePathname, type useRouter } from "next/navigation";
 import { addWeeksToYearWeek } from "@/lib/dateUtils";
-import { ROUTES } from "@/lib/routes";
 
-const SHIFT_WEEKS = 4;
+export const ALLOCATION_WEEK_STEP = 1;
+export const ALLOCATION_WEEK_PAGE = 5;
 
 type EmbedMode = { projectId: string } | undefined;
 
@@ -15,8 +15,13 @@ export function useAllocationWeekNavigation(
   weekFrom: number,
   weekTo: number,
   embedMode: EmbedMode,
-  onWeekRangeChange?: (year: number, weekFrom: number, weekTo: number) => void | Promise<void>
+  onWeekRangeChange?: (
+    year: number,
+    weekFrom: number,
+    weekTo: number
+  ) => void | Promise<void>
 ) {
+  const pathname = usePathname();
   const getFirstLastWeek = useCallback((): {
     first: { year: number; week: number };
     last: { year: number; week: number };
@@ -30,75 +35,46 @@ export function useAllocationWeekNavigation(
     };
   }, [year, weekFrom, weekTo]);
 
-  const toUrl = useCallback(
-    (first: { year: number; week: number }, last: { year: number; week: number }) => {
-      const q = `year=${first.year}&from=${first.week}&to=${last.week}`;
+  const shiftedRange = useCallback(
+    (weeks: number): { year: number; weekFrom: number; weekTo: number } => {
+      const { first, last } = getFirstLastWeek();
+      const newFirst = addWeeksToYearWeek(first.year, first.week, weeks);
+      const newLast = addWeeksToYearWeek(last.year, last.week, weeks);
+      return {
+        year: newFirst.year,
+        weekFrom: newFirst.week,
+        weekTo: newLast.week,
+      };
+    },
+    [getFirstLastWeek]
+  );
+
+  const getShiftUrl = useCallback(
+    (weeks: number) => {
+      const range = shiftedRange(weeks);
+      const q = `year=${range.year}&from=${range.weekFrom}&to=${range.weekTo}`;
       if (embedMode) {
         return `/projects/${embedMode.projectId}?${q}`;
       }
-      return `${ROUTES.allocation}?${q}`;
+      return `${pathname}?${q}`;
     },
-    [embedMode]
+    [embedMode, pathname, shiftedRange]
   );
 
-  const getPreviousUrl = useCallback(() => {
-    const { first, last } = getFirstLastWeek();
-    const newFirst = addWeeksToYearWeek(first.year, first.week, -SHIFT_WEEKS);
-    const newLast = addWeeksToYearWeek(last.year, last.week, -SHIFT_WEEKS);
-    return toUrl(newFirst, newLast);
-  }, [getFirstLastWeek, toUrl]);
-
-  const getNextUrl = useCallback(() => {
-    const { first, last } = getFirstLastWeek();
-    const newFirst = addWeeksToYearWeek(first.year, first.week, SHIFT_WEEKS);
-    const newLast = addWeeksToYearWeek(last.year, last.week, SHIFT_WEEKS);
-    return toUrl(newFirst, newLast);
-  }, [getFirstLastWeek, toUrl]);
-
-  const getPreviousRange = useCallback((): {
-    year: number;
-    weekFrom: number;
-    weekTo: number;
-  } => {
-    const { first, last } = getFirstLastWeek();
-    const newFirst = addWeeksToYearWeek(first.year, first.week, -SHIFT_WEEKS);
-    const newLast = addWeeksToYearWeek(last.year, last.week, -SHIFT_WEEKS);
-    return { year: newFirst.year, weekFrom: newFirst.week, weekTo: newLast.week };
-  }, [getFirstLastWeek]);
-
-  const getNextRange = useCallback((): {
-    year: number;
-    weekFrom: number;
-    weekTo: number;
-  } => {
-    const { first, last } = getFirstLastWeek();
-    const newFirst = addWeeksToYearWeek(first.year, first.week, SHIFT_WEEKS);
-    const newLast = addWeeksToYearWeek(last.year, last.week, SHIFT_WEEKS);
-    return { year: newFirst.year, weekFrom: newFirst.week, weekTo: newLast.week };
-  }, [getFirstLastWeek]);
-
-  const goToPreviousWeeks = useCallback(() => {
-    if (onWeekRangeChange) {
-      const { year: y, weekFrom: f, weekTo: t } = getPreviousRange();
-      void onWeekRangeChange(y, f, t);
-      return;
-    }
-    router.push(getPreviousUrl());
-  }, [onWeekRangeChange, getPreviousRange, router, getPreviousUrl]);
-
-  const goToNextWeeks = useCallback(() => {
-    if (onWeekRangeChange) {
-      const { year: y, weekFrom: f, weekTo: t } = getNextRange();
-      void onWeekRangeChange(y, f, t);
-      return;
-    }
-    router.push(getNextUrl());
-  }, [onWeekRangeChange, getNextRange, router, getNextUrl]);
+  const shiftWeeks = useCallback(
+    (weeks: number) => {
+      if (onWeekRangeChange) {
+        const range = shiftedRange(weeks);
+        void onWeekRangeChange(range.year, range.weekFrom, range.weekTo);
+        return;
+      }
+      router.push(getShiftUrl(weeks));
+    },
+    [onWeekRangeChange, shiftedRange, router, getShiftUrl]
+  );
 
   return {
-    getPreviousUrl,
-    getNextUrl,
-    goToPreviousWeeks,
-    goToNextWeeks,
+    shiftWeeks,
+    getShiftUrl,
   };
 }

@@ -362,7 +362,7 @@ export function Sidebar({
     work: boolean;
   }>({ planner: false, timeReport: false, settings: false, work: false });
 
-  const plannerActive = pathMatches(pathname, ROUTES.allocation, "prefix");
+  const plannerActive = pathMatches(pathname, ROUTES.planner, "prefix");
   const timeReportChildActive =
     pathMatches(pathname, ROUTES.timeReport, "exact") ||
     pathMatches(pathname, ROUTES.timeApproval, "prefix");
@@ -478,18 +478,40 @@ export function Sidebar({
             <AppGroup
               label="Planner"
               icon={CalendarCheck}
+              href={ROUTES.plannerConsultant}
               pathname={pathname}
               open={openApps.planner}
               onToggle={() =>
                 setOpenApps((prev) => ({ ...prev, planner: !prev.planner }))
               }
               collapsed={collapsed}
-              collapsedHref={ROUTES.allocation}
+              collapsedHref={ROUTES.plannerConsultant}
               active={plannerActive}
             >
               <NavLink
-                href={ROUTES.allocation}
-                label="Allocation"
+                href={ROUTES.plannerConsultant}
+                label="Consultant"
+                pathname={pathname}
+                indent
+                activeMatch="prefix"
+              />
+              <NavLink
+                href={ROUTES.plannerCustomer}
+                label="Customer"
+                pathname={pathname}
+                indent
+                activeMatch="prefix"
+              />
+              <NavLink
+                href={ROUTES.plannerProject}
+                label="Project"
+                pathname={pathname}
+                indent
+                activeMatch="prefix"
+              />
+              <NavLink
+                href={ROUTES.plannerHistory}
+                label="Allocation history"
                 pathname={pathname}
                 indent
                 activeMatch="prefix"
@@ -500,6 +522,7 @@ export function Sidebar({
             <AppGroup
               label="Time report"
               icon={Clock}
+              href={ROUTES.timeReport}
               pathname={pathname}
               open={openApps.timeReport}
               onToggle={() =>
@@ -584,6 +607,7 @@ export function Sidebar({
             <AppGroup
               label="Settings"
               icon={Settings}
+              href={settingsRailHref}
               pathname={pathname}
               open={openApps.settings}
               onToggle={() =>

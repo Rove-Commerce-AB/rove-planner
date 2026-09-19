@@ -76,6 +76,11 @@ export async function insertUserNotification(
   payload: Record<string, unknown>
 ): Promise<void> {
   await insertNotificationRow(appUserId, kind, payload);
+  const { rows } = await cloudSqlPool.query<{ email: string }>(
+    `SELECT email FROM app_users WHERE id = $1 LIMIT 1`,
+    [appUserId]
+  );
+  if (rows[0]?.email) revalidateUserNotificationCache(rows[0].email);
   revalidateDashboardShell();
 }
 

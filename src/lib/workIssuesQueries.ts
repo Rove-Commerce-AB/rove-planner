@@ -23,6 +23,7 @@ export type WorkIssueRow = {
   created_by_app_user_id: string;
   reporter_name: string | null;
   reporter_email: string;
+  estimate_hours: string | number | null;
 };
 
 export async function fetchWorkPeopleForCustomer(
@@ -109,7 +110,8 @@ export async function fetchWorkIssuesForBoard(
        o.email AS owner_email,
        i.created_by_app_user_id,
        r.name AS reporter_name,
-       r.email AS reporter_email
+       r.email AS reporter_email,
+       i.estimate_hours
      FROM work_issues i
      JOIN app_users r ON r.id = i.created_by_app_user_id
      LEFT JOIN app_users o ON o.id = i.owner_app_user_id
@@ -342,6 +344,42 @@ export async function updateWorkIssueField(
   return (result.rowCount ?? 0) === 1;
 }
 
+export async function updateWorkIssueEstimate(
+  boardId: string,
+  issueId: string,
+  estimateHours: number | null
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issues SET estimate_hours = $3 WHERE id = $2 AND board_id = $1`,
+    [boardId, issueId, estimateHours]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function fetchLoggedHoursByIssueIds(
+  issueIds: string[]
+): Promise<Map<string, number>> {
+  const hours = new Map<string, number>();
+  if (issueIds.length === 0) return hours;
+  const { rows } = await cloudSqlPool.query<{
+    work_issue_id: string;
+    hours: string | number | null;
+  }>(
+    `SELECT l.work_issue_id, COALESCE(SUM(e.hours), 0) AS hours
+     FROM time_report_entry_lines l
+     JOIN time_report_entries e
+       ON e.entry_line_id = l.id
+      AND e.consultant_id = l.consultant_id
+     WHERE l.work_issue_id = ANY($1::uuid[])
+     GROUP BY l.work_issue_id`,
+    [issueIds]
+  );
+  for (const row of rows) {
+    hours.set(row.work_issue_id, Number(row.hours ?? 0));
+  }
+  return hours;
+}
+
 export async function addWorkIssueAssignee(
   issueId: string,
   appUserId: string
@@ -436,6 +474,47 @@ export async function insertWorkIssueComment(input: {
   const id = rows[0]?.id;
   if (!id) throw new Error("Failed to add comment");
   return id;
+}
+
+export async function updateWorkIssueComment(input: {
+  commentId: string;
+  issueId: string;
+  authorAppUserId: string;
+  body: string;
+}): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issue_comments
+     SET body = $4
+     WHERE id = $1 AND issue_id = $2 AND author_app_user_id = $3`,
+    [input.commentId, input.issueId, input.authorAppUserId, input.body]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function deleteWorkIssueComment(input: {
+  commentId: string;
+  issueId: string;
+  authorAppUserId: string;
+}): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `DELETE FROM work_issue_comments
+     WHERE id = $1 AND issue_id = $2 AND author_app_user_id = $3`,
+    [input.commentId, input.issueId, input.authorAppUserId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function fetchWorkIssueNotifyMeta(
+  boardId: string,
+  issueId: string
+): Promise<{ number: number; title: string } | null> {
+  const { rows } = await cloudSqlPool.query<{ number: number; title: string }>(
+    `SELECT number, title
+     FROM work_issues
+     WHERE id = $1 AND board_id = $2`,
+    [issueId, boardId]
+  );
+  return rows[0] ?? null;
 }
 
 export async function moveWorkIssue(input: {
@@ -544,4 +623,66 @@ export async function deleteWorkIssueFile(
     [issueId, fileId]
   );
   return rows[0]?.file_name ?? null;
+}
+
+export async function fetchWorkIssueRelations(boardId: string) {
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    board_id: string;
+    from_issue_id: string;
+    to_issue_id: string;
+    kind: "blocks" | "relates" | "parent";
+  }>(
+    `SELECT id, board_id, from_issue_id, to_issue_id, kind
+     FROM work_issue_relations
+     WHERE board_id = $1`,
+    [boardId]
+  );
+  return rows;
+}
+
+export async function insertWorkIssueRelation(input: {
+  boardId: string;
+  fromIssueId: string;
+  toIssueId: string;
+  kind: "blocks" | "relates" | "parent";
+}): Promise<string> {
+  const { rows } = await cloudSqlPool.query<{ id: string }>(
+    `INSERT INTO work_issue_relations (board_id, from_issue_id, to_issue_id, kind)
+     SELECT $1, $2, $3, $4
+     WHERE EXISTS (
+       SELECT 1 FROM work_issues WHERE id = $2 AND board_id = $1
+     )
+       AND EXISTS (
+         SELECT 1 FROM work_issues WHERE id = $3 AND board_id = $1
+       )
+     RETURNING id`,
+    [input.boardId, input.fromIssueId, input.toIssueId, input.kind]
+  );
+  const id = rows[0]?.id;
+  if (!id) throw new Error("Issue not found");
+  return id;
+}
+
+export async function deleteWorkIssueRelation(
+  boardId: string,
+  relationId: string
+): Promise<{ fromIssueId: string; toIssueId: string; kind: string } | null> {
+  const { rows } = await cloudSqlPool.query<{
+    from_issue_id: string;
+    to_issue_id: string;
+    kind: string;
+  }>(
+    `DELETE FROM work_issue_relations
+     WHERE id = $2 AND board_id = $1
+     RETURNING from_issue_id, to_issue_id, kind`,
+    [boardId, relationId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    fromIssueId: row.from_issue_id,
+    toIssueId: row.to_issue_id,
+    kind: row.kind,
+  };
 }

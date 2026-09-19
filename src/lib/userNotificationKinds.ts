@@ -4,6 +4,7 @@ export const USER_NOTIFICATION_KIND = {
   FEATURE_REQUEST_DECLINED: "feature_request_declined",
   TASK_BOARD_INVITED: "task_board_invited",
   TASK_TODO_ASSIGNED: "task_todo_assigned",
+  WORK_ISSUE_MENTIONED: "work_issue_mentioned",
 } as const;
 
 export type UserNotificationKind =
