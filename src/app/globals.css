@@ -254,6 +254,41 @@ table thead th.time-grid-header-column-active {
     color-mix(in srgb, var(--color-interactive-primary) 32%, transparent);
 }
 
+/* Time report week/month grids: same row + column crosshair.
+   Hour cells use an absolute inset child that covers inset box-shadows,
+   so paint a ::after overlay above cell content instead. */
+.time-report-tables tbody tr.time-grid-row-hover > td,
+.time-report-tables tbody td.time-grid-column-hover {
+  position: relative;
+}
+.time-report-tables tbody tr.time-grid-row-hover > td::after,
+.time-report-tables tbody td.time-grid-column-hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: color-mix(
+    in srgb,
+    var(--color-interactive-primary) 18%,
+    transparent
+  );
+}
+.time-report-tables tbody td.time-grid-column-hover::after {
+  background: color-mix(
+    in srgb,
+    var(--color-interactive-primary) 16%,
+    transparent
+  );
+}
+.time-report-tables tbody tr.time-grid-row-hover > td.time-grid-column-hover::after {
+  background: color-mix(
+    in srgb,
+    var(--color-interactive-primary) 32%,
+    transparent
+  );
+}
+
 /* Current-week separators use overlays in both header and body.
    Keeping them out of the collapsed border model makes both sections share the
    exact same column edge while the header remains sticky. */

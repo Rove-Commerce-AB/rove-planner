@@ -10,6 +10,7 @@ import {
   useMemo,
   memo,
   type Dispatch,
+  type FocusEvent,
   type HTMLAttributes,
   type MutableRefObject,
   type SetStateAction,
@@ -552,6 +553,8 @@ type EditableHourTdProps = {
   showLeftBorder?: boolean;
   /** Trimmed internal comment for this day; corner marker + instant hover preview when set. */
   internalCommentText?: string;
+  /** Full-column highlight while this day column is hovered elsewhere in the grid. */
+  columnHover?: boolean;
   columnInteractionProps?: Pick<
     HTMLAttributes<HTMLTableCellElement>,
     "onMouseEnter" | "onMouseLeave" | "onFocusCapture" | "onBlurCapture"
@@ -572,6 +575,7 @@ const EditableHourTd = memo(function EditableHourTd({
   compact = false,
   showLeftBorder,
   internalCommentText,
+  columnHover = false,
   columnInteractionProps,
 }: EditableHourTdProps) {
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
@@ -585,7 +589,7 @@ const EditableHourTd = memo(function EditableHourTd({
   return (
     <td
       {...columnInteractionProps}
-      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""}`}
+      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""} ${columnHover ? "time-grid-column-hover" : ""}`}
     >
       <div
         role="button"
@@ -648,6 +652,28 @@ export function TimeReportPageClient({
 }: Props) {
   const { highlightedColumnIndex, setHighlightedColumnIndex } =
     useTimeGridColumnHighlight();
+  const [hoverRowKey, setHoverRowKey] = useState<string | null>(null);
+
+  const timeReportRowHoverHandlers = useCallback(
+    (rowKey: string) => ({
+      onMouseEnter: () => setHoverRowKey(rowKey),
+      onMouseLeave: () => setHoverRowKey(null),
+      onFocusCapture: () => setHoverRowKey(rowKey),
+      onBlurCapture: (e: FocusEvent<HTMLTableRowElement>) => {
+        const next = e.relatedTarget as Node | null;
+        if (next && e.currentTarget.contains(next)) return;
+        setHoverRowKey(null);
+      },
+    }),
+    []
+  );
+
+  const timeReportRowHoverClass = (rowKey: string) =>
+    hoverRowKey === rowKey ? "time-grid-row-hover" : "";
+
+  const timeReportColHoverClass = (colIndex: number) =>
+    highlightedColumnIndex === colIndex ? "time-grid-column-hover" : "";
+
   const [year, setYear] = useState(initialYear);
   const [week, setWeek] = useState(initialWeek);
   const [holidayDates, setHolidayDates] = useState<string[]>(initialHolidayDates);
@@ -2958,7 +2984,10 @@ export function TimeReportPageClient({
                 </tr>
               ) : (
                 <>
-                  <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
+                  <tr
+                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium ${timeReportRowHoverClass("week-totals")}`}
+                    {...timeReportRowHoverHandlers("week-totals")}
+                  >
                     <td colSpan={5} className="px-1.5 py-1 text-left text-text-primary" />
                     {totalHoursPerDay.map((h, i) => (
                       <td
@@ -2967,7 +2996,7 @@ export function TimeReportPageClient({
                           i,
                           setHighlightedColumnIndex
                         )}
-                        className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                        className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""} ${timeReportColHoverClass(i)}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
                           <span className={timeReportSumFigureClass("week")}>
@@ -2998,7 +3027,10 @@ export function TimeReportPageClient({
                         <td colSpan={13} className="h-2 p-0" />
                       </tr>
                     )}
-                    <tr className="border-b border-border-subtle bg-bg-muted/40">
+                    <tr
+                      className={`border-b border-border-subtle bg-bg-muted/40 ${timeReportRowHoverClass(`week-cust-${group.customerId}`)}`}
+                      {...timeReportRowHoverHandlers(`week-cust-${group.customerId}`)}
+                    >
                       <td
                         className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
                         style={{ borderLeftColor: color }}
@@ -3025,7 +3057,7 @@ export function TimeReportPageClient({
                             i,
                             setHighlightedColumnIndex
                           )}
-                          className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
+                          className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""} ${timeReportColHoverClass(i)}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className={timeReportSumFigureClass("week")}>
@@ -3045,7 +3077,8 @@ export function TimeReportPageClient({
                     {group.entries.map((entry) => (
                         <tr
                           key={entry.id}
-                          className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
+                          className={`border-b border-border-subtle bg-bg-default ${timeReportRowHoverClass(`week-entry-${entry.id}`)}`}
+                          {...timeReportRowHoverHandlers(`week-entry-${entry.id}`)}
                         >
                           <td
                             className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-1"
@@ -3286,6 +3319,7 @@ export function TimeReportPageClient({
                               }}
                               onBlur={() => setEditingCell(null)}
                               internalCommentText={(entry.comments[dayIndex] ?? "").trim() || undefined}
+                              columnHover={highlightedColumnIndex === dayIndex}
                               columnInteractionProps={timeGridColumnCellInteractionProps(
                                 dayIndex,
                                 setHighlightedColumnIndex
@@ -3416,7 +3450,10 @@ export function TimeReportPageClient({
                 </tr>
               ) : (
                 <>
-                  <tr className="border-b border-border-subtle bg-bg-muted/40 font-medium">
+                  <tr
+                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium ${timeReportRowHoverClass("month-totals")}`}
+                    {...timeReportRowHoverHandlers("month-totals")}
+                  >
                     <td colSpan={5} className="px-1 py-0.5 text-left text-text-primary" />
                     {monthDateDayTotals.map((h, dateIdx) => {
                       const dateStr = monthCalendarDates[dateIdx]!;
@@ -3427,7 +3464,7 @@ export function TimeReportPageClient({
                             dateIdx,
                             setHighlightedColumnIndex
                           )}
-                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""} ${timeReportColHoverClass(dateIdx)}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className={timeReportSumFigureClass("month")}>
@@ -3463,7 +3500,10 @@ export function TimeReportPageClient({
                             <td colSpan={monthTableColSpan} className="h-2 p-0" />
                           </tr>
                         )}
-                        <tr className="border-b border-border-subtle bg-bg-muted/40">
+                        <tr
+                          className={`border-b border-border-subtle bg-bg-muted/40 ${timeReportRowHoverClass(`month-cust-${customerId}`)}`}
+                          {...timeReportRowHoverHandlers(`month-cust-${customerId}`)}
+                        >
                           <td
                             className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
                             style={{ borderLeftColor: color }}
@@ -3490,7 +3530,7 @@ export function TimeReportPageClient({
                                 dateIdx,
                                 setHighlightedColumnIndex
                               )}
-                              className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
+                              className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""} ${timeReportColHoverClass(dateIdx)}`}
                             >
                               <div className="flex h-full w-full items-center justify-center">
                                 <span className={timeReportSumFigureClass("month")}>
@@ -3513,7 +3553,8 @@ export function TimeReportPageClient({
                           return (
                             <tr
                               key={row.rowKey}
-                              className="border-b border-border-subtle bg-bg-default hover:bg-bg-muted/20"
+                              className={`border-b border-border-subtle bg-bg-default ${timeReportRowHoverClass(`month-entry-${row.rowKey}`)}`}
+                              {...timeReportRowHoverHandlers(`month-entry-${row.rowKey}`)}
                             >
                               <td
                                 className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5"
@@ -3776,6 +3817,7 @@ export function TimeReportPageClient({
                                   internalCommentText={
                                     (row.commentsByDate[dateStr] ?? "").trim() || undefined
                                   }
+                                  columnHover={highlightedColumnIndex === dateIdx}
                                   columnInteractionProps={timeGridColumnCellInteractionProps(
                                     dateIdx,
                                     setHighlightedColumnIndex
