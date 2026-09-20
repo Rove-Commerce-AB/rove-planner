@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, Suspense, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   CalendarCheck,
   ChevronLeft,
@@ -10,16 +10,21 @@ import {
   Clock,
   Settings,
   LogOut,
-  Home,
   Briefcase,
   MessageCircle,
   Sparkles,
+  Star,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { ROUTES, workBoardHref, workCustomerHref } from "@/lib/routes";
 import type { AppKey } from "@/lib/peopleTypes";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
+import { useShortcuts } from "@/components/ShortcutsProvider";
+import {
+  buildCurrentPageHref,
+  shortcutMatchKey,
+} from "@/lib/shortcutHref";
 
 /** 10px left padding so the w-8 icon column is centered in the rail. */
 const SIDEBAR_RAIL_PAD_X = "10px";
@@ -266,6 +271,103 @@ function NavPlaceholder({
   );
 }
 
+function ShortcutsNav({
+  pathname,
+  collapsed,
+}: {
+  pathname: string;
+  collapsed: boolean;
+}) {
+  const { shortcuts } = useShortcuts();
+  const searchParams = useSearchParams();
+  const [open, setOpen] = useState(true);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const currentKey = shortcutMatchKey(
+    buildCurrentPageHref(pathname, searchParams.toString())
+  );
+
+  if (collapsed) {
+    return (
+      <div
+        className="relative"
+        onMouseEnter={() => setFlyoutOpen(true)}
+        onMouseLeave={() => setFlyoutOpen(false)}
+        onFocus={() => setFlyoutOpen(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setFlyoutOpen(false);
+          }
+        }}
+      >
+        <button
+          type="button"
+          aria-expanded={flyoutOpen}
+          aria-haspopup="true"
+          aria-label="Shortcuts"
+          title="Shortcuts"
+          className={`flex h-8 w-full min-w-0 items-center justify-center rounded-md py-0 text-heading-xs transition-colors hover:bg-nav-active ${
+            flyoutOpen ? "bg-nav-active text-text-primary" : "text-text-primary"
+          }`}
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
+            <Star className="h-4 w-4" />
+          </span>
+        </button>
+        {flyoutOpen ? (
+          <div
+            role="menu"
+            className="absolute left-full top-0 z-50 ml-1 min-w-[11rem] max-w-[16rem] rounded-md border border-border-subtle bg-bg-default py-1 shadow-lg"
+          >
+            <p className="px-3 py-1.5 text-overline text-text-muted">Shortcuts</p>
+            {shortcuts.map((shortcut) => {
+                const active = shortcutMatchKey(shortcut.href) === currentKey;
+                return (
+                  <Link
+                    key={shortcut.id}
+                    href={shortcut.href}
+                    prefetch={false}
+                    role="menuitem"
+                    title={shortcut.name}
+                    className={`block truncate px-3 py-1.5 text-body-m transition-colors hover:bg-nav-active hover:text-text-primary ${
+                      active
+                        ? "bg-nav-active text-text-primary"
+                        : "text-text-secondary"
+                    }`}
+                  >
+                    {shortcut.name}
+                  </Link>
+                );
+              })}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <AppGroup
+      label="Shortcuts"
+      icon={Star}
+      pathname={pathname}
+      open={open}
+      onToggle={() => setOpen((current) => !current)}
+    >
+      {shortcuts.length === 0 ? null : (
+        shortcuts.map((shortcut) => (
+          <NavLink
+            key={shortcut.id}
+            href={shortcut.href}
+            label={shortcut.name}
+            pathname={pathname}
+            indent
+            active={shortcutMatchKey(shortcut.href) === currentKey}
+          />
+        ))
+      )}
+    </AppGroup>
+  );
+}
+
 function WorkCustomerNav({
   customer,
   pathname,
@@ -431,7 +533,13 @@ export function Sidebar({
         style={headerPad}
       >
         {!collapsed ? (
-          <>
+          <Link
+            href={ROUTES.home}
+            prefetch={false}
+            title="Rove Apps"
+            aria-label="Rove Apps home"
+            className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md transition-colors hover:bg-nav-active"
+          >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center">
               <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-text-primary text-[12px] font-semibold leading-none text-bg-default">
                 R
@@ -440,7 +548,7 @@ export function Sidebar({
             <span className="min-w-0 flex-1 truncate text-left text-heading-m text-text-primary">
               Rove Apps
             </span>
-          </>
+          </Link>
         ) : null}
         <button
           type="button"
@@ -449,7 +557,7 @@ export function Sidebar({
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={toggleCollapsed}
           className={`flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-primary/50 transition-colors hover:bg-nav-active hover:text-text-primary ${
-            collapsed ? "w-8" : "ml-auto w-7"
+            collapsed ? "w-8" : "w-7"
           }`}
         >
           {collapsed ? (
@@ -467,13 +575,24 @@ export function Sidebar({
         style={navPadX}
       >
         <div className="flex flex-col gap-3">
-          <NavLink
-            href={ROUTES.home}
-            label="Home"
-            icon={Home}
-            pathname={pathname}
-            collapsed={collapsed}
-          />
+          <Suspense
+            fallback={
+              collapsed ? (
+                <div className="flex h-8 w-full items-center justify-center">
+                  <Star className="h-4 w-4 text-text-tertiary" aria-hidden />
+                </div>
+              ) : (
+                <div className="flex h-8 items-center gap-1.5 text-heading-xs text-text-tertiary">
+                  <span className="flex h-8 w-8 items-center justify-center">
+                    <Star className="h-4 w-4" aria-hidden />
+                  </span>
+                  Shortcuts
+                </div>
+              )
+            }
+          >
+            <ShortcutsNav pathname={pathname} collapsed={collapsed} />
+          </Suspense>
           {appKeys.includes("planner") && (
             <AppGroup
               label="Planner"

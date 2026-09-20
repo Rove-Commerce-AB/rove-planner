@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { allocationHrefWithWeek } from "@/lib/allocationUrl";
 
 const LEFT_COL_WIDTH = 300;
 const MIN_WEEK_WIDTH = 29;
@@ -29,6 +30,7 @@ export function AllocationViewportAdapter({
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const containerRef = useRef<HTMLDivElement>(null);
   const hasObservedRef = useRef(false);
 
@@ -48,10 +50,14 @@ export function AllocationViewportAdapter({
           : weekFrom + clamped - 1 - 52;
 
       router.replace(
-        `${pathname}?year=${year}&from=${newFrom}&to=${newTo}`
+        allocationHrefWithWeek(
+          pathname,
+          { year, from: newFrom, to: newTo },
+          searchParams
+        )
       );
     },
-    [pathname, year, weekFrom, weekTo, router]
+    [pathname, year, weekFrom, weekTo, router, searchParams]
   );
 
   useEffect(() => {

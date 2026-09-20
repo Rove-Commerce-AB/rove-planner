@@ -8,14 +8,24 @@ type Props = {
   loading: boolean;
 };
 
-const HISTORY_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US");
+/** Format as yy-mm-dd HH:mm in local time. */
+function formatHistoryWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${yy}-${mm}-${dd} ${hh}:${min}`;
+}
 
 export function AllocationHistoryTable({ entries, loading }: Props) {
   const entriesWithFormattedDate = useMemo(
     () =>
       entries.map((entry) => ({
         ...entry,
-        changedAtLabel: HISTORY_DATE_TIME_FORMATTER.format(new Date(entry.changed_at)),
+        changedAtLabel: formatHistoryWhen(entry.changed_at),
       })),
     [entries]
   );

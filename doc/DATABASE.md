@@ -92,6 +92,26 @@ none of the Rove apps.
 
 ---
 
+## app_user_shortcuts
+
+Per-user sidebar shortcuts. Each row stores a display name and a full app
+href (`pathname` + query) so filters and views round-trip when opened.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE CASCADE |
+| name | text | NOT NULL; trimmed non-empty; max 80 chars |
+| href | text | NOT NULL; must start with `/` |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(app_user_id, created_at)`.
+
+Added by
+[`scripts/20260920_app_user_shortcuts.sql`](../scripts/20260920_app_user_shortcuts.sql).
+
+---
+
 ## google_user_connections
 
 OAuth tokens for Google Tasks sync. Treat token columns as secrets.

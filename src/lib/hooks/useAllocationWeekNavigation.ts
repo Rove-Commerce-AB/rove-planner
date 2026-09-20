@@ -1,6 +1,7 @@
 import { useCallback } from "react";
-import { usePathname, type useRouter } from "next/navigation";
+import { usePathname, useSearchParams, type useRouter } from "next/navigation";
 import { addWeeksToYearWeek } from "@/lib/dateUtils";
+import { allocationHrefWithWeek } from "@/lib/allocationUrl";
 
 export const ALLOCATION_WEEK_STEP = 1;
 export const ALLOCATION_WEEK_PAGE = 5;
@@ -22,6 +23,7 @@ export function useAllocationWeekNavigation(
   ) => void | Promise<void>
 ) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const getFirstLastWeek = useCallback((): {
     first: { year: number; week: number };
     last: { year: number; week: number };
@@ -52,13 +54,20 @@ export function useAllocationWeekNavigation(
   const getShiftUrl = useCallback(
     (weeks: number) => {
       const range = shiftedRange(weeks);
-      const q = `year=${range.year}&from=${range.weekFrom}&to=${range.weekTo}`;
       if (embedMode) {
-        return `/projects/${embedMode.projectId}?${q}`;
+        return allocationHrefWithWeek(
+          `/projects/${embedMode.projectId}`,
+          { year: range.year, from: range.weekFrom, to: range.weekTo },
+          searchParams
+        );
       }
-      return `${pathname}?${q}`;
+      return allocationHrefWithWeek(
+        pathname,
+        { year: range.year, from: range.weekFrom, to: range.weekTo },
+        searchParams
+      );
     },
-    [embedMode, pathname, shiftedRange]
+    [embedMode, pathname, searchParams, shiftedRange]
   );
 
   const shiftWeeks = useCallback(

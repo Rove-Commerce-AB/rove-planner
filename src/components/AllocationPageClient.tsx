@@ -2,7 +2,7 @@
 
 import { useState, Fragment, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getMonthSpansForWeeks } from "@/lib/dateUtils";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
@@ -43,6 +43,13 @@ import {
   useTimeGridColumnHighlight,
 } from "@/components/TimeGridColumnHighlight";
 import type { PlannerView } from "@/lib/routes";
+import {
+  allocationFiltersKey,
+  buildAllocationSearch,
+  readAllocationFilters,
+  type AllocationFilterParams,
+  type AllocationFiltersState,
+} from "@/lib/allocationUrl";
 
 export type {
   ProbabilityDisplay,
@@ -102,6 +109,11 @@ type Props = {
   embedShowTeamFilter?: boolean;
   /** Planner sidebar page: consultant, customer, project, or history. */
   view?: PlannerView;
+  /**
+   * Snapshot of URL filters from the server so SSR and the first client render match.
+   * Do not read useSearchParams during render for filter-dependent table output.
+   */
+  initialFilters?: AllocationFiltersState;
 };
 
 export function AllocationPageClient(props: Props) {
@@ -125,9 +137,12 @@ function AllocationPageClientImpl({
   embedWeekNavLoading = false,
   embedShowTeamFilter = false,
   view = "consultant",
+  initialFilters,
 }: Props) {
   const { highlightedColumnIndex } = useTimeGridColumnHighlight();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { shiftWeeks, getShiftUrl } =
     useAllocationWeekNavigation(
       router,
@@ -178,11 +193,120 @@ function AllocationPageClientImpl({
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set()
   );
-  const [teamFilterId, setTeamFilterId] = useState<string | null>(null);
-  const [defaultRoleFilterId, setDefaultRoleFilterId] = useState<string | null>(null);
-  const [probabilityDisplay, setProbabilityDisplay] = useState<ProbabilityDisplay>("weighted");
-  const [projectVisibility, setProjectVisibility] = useState<ProjectVisibility>("all");
-  const [showProjectsWithoutBooking, setShowProjectsWithoutBooking] = useState(false);
+  const [filters, setFilters] = useState<AllocationFiltersState>(
+    () =>
+      initialFilters ?? {
+        team: null,
+        role: null,
+        prob: "weighted",
+        projects: "all",
+        unbooked: false,
+      }
+  );
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const [embedTeamFilterId, setEmbedTeamFilterId] = useState<string | null>(null);
+  const [embedDefaultRoleFilterId, setEmbedDefaultRoleFilterId] = useState<
+    string | null
+  >(null);
+  const [embedProbabilityDisplay, setEmbedProbabilityDisplay] =
+    useState<ProbabilityDisplay>("weighted");
+  const [embedProjectVisibility, setEmbedProjectVisibility] =
+    useState<ProjectVisibility>("all");
+  const [embedShowProjectsWithoutBooking, setEmbedShowProjectsWithoutBooking] =
+    useState(false);
+
+  // After mount / when the URL changes (shortcuts, week nav), adopt URL filters.
+  // Skip during the first render so SSR and hydration share `initialFilters`.
+  useEffect(() => {
+    if (embedMode) return;
+    const fromUrl = readAllocationFilters(searchParams);
+    setFilters((prev) =>
+      allocationFiltersKey(prev) === allocationFiltersKey(fromUrl)
+        ? prev
+        : fromUrl
+    );
+  }, [embedMode, searchParams]);
+
+  const teamFilterId = embedMode ? embedTeamFilterId : filters.team;
+  const defaultRoleFilterId = embedMode
+    ? embedDefaultRoleFilterId
+    : filters.role;
+  const probabilityDisplay = embedMode
+    ? embedProbabilityDisplay
+    : filters.prob;
+  const projectVisibility = embedMode
+    ? embedProjectVisibility
+    : filters.projects;
+  const showProjectsWithoutBooking = embedMode
+    ? embedShowProjectsWithoutBooking
+    : filters.unbooked;
+
+  const replaceAllocationFilters = useCallback(
+    (patch: AllocationFilterParams) => {
+      if (embedMode) {
+        if (patch.team !== undefined) setEmbedTeamFilterId(patch.team);
+        if (patch.role !== undefined) setEmbedDefaultRoleFilterId(patch.role);
+        if (patch.prob !== undefined && patch.prob) {
+          setEmbedProbabilityDisplay(patch.prob);
+        }
+        if (patch.projects !== undefined && patch.projects) {
+          setEmbedProjectVisibility(patch.projects);
+        }
+        if (patch.unbooked !== undefined) {
+          setEmbedShowProjectsWithoutBooking(Boolean(patch.unbooked));
+        }
+        return;
+      }
+      const prev = filtersRef.current;
+      const nextState: AllocationFiltersState = {
+        team: patch.team !== undefined ? patch.team : prev.team,
+        role: patch.role !== undefined ? patch.role : prev.role,
+        prob:
+          patch.prob !== undefined && patch.prob != null
+            ? patch.prob
+            : prev.prob,
+        projects:
+          patch.projects !== undefined && patch.projects != null
+            ? patch.projects
+            : prev.projects,
+        unbooked:
+          patch.unbooked !== undefined
+            ? Boolean(patch.unbooked)
+            : prev.unbooked,
+      };
+      setFilters(nextState);
+      const q = buildAllocationSearch(
+        { year, from: weekFrom, to: weekTo },
+        nextState
+      );
+      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+    },
+    [embedMode, pathname, router, year, weekFrom, weekTo]
+  );
+
+  const setTeamFilterId = useCallback(
+    (value: string | null) => replaceAllocationFilters({ team: value }),
+    [replaceAllocationFilters]
+  );
+  const setDefaultRoleFilterId = useCallback(
+    (value: string | null) => replaceAllocationFilters({ role: value }),
+    [replaceAllocationFilters]
+  );
+  const setProbabilityDisplay = useCallback(
+    (value: ProbabilityDisplay) => replaceAllocationFilters({ prob: value }),
+    [replaceAllocationFilters]
+  );
+  const setProjectVisibility = useCallback(
+    (value: ProjectVisibility) =>
+      replaceAllocationFilters({ projects: value }),
+    [replaceAllocationFilters]
+  );
+  const setShowProjectsWithoutBooking = useCallback(
+    (value: boolean) => replaceAllocationFilters({ unbooked: value }),
+    [replaceAllocationFilters]
+  );
+
   const [editingCell, setEditingCell] = useState<{
     customerId: string;
     consultantId: string;

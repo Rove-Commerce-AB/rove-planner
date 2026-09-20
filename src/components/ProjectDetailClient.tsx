@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft, Plus } from "lucide-react";
 import {
@@ -1064,6 +1064,7 @@ export function ProjectDetailClient({
           </PanelSectionTitle>
         <div className="p-2 min-h-[200px]">
           {planningViewportReady ? (
+          <Suspense fallback={<div className="flex items-center justify-center py-12"><PageLoading /></div>}>
           <AllocationPageClient
             data={planningData}
             error={planningError}
@@ -1077,6 +1078,7 @@ export function ProjectDetailClient({
             embedWeekNavLoading={planningLoading}
             embedShowTeamFilter
           />
+          </Suspense>
           ) : (
             <div className="flex items-center justify-center py-12">
               <PageLoading />
