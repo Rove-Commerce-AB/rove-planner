@@ -8,6 +8,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Dialog } from "./Dialog";
 export { SideDrawer } from "./SideDrawer";
 export { FilterChip } from "./FilterChip";
+export { SelectAllNone } from "./SelectAllNone";
 export {
   SegmentedControl,
   type SegmentedControlOption,

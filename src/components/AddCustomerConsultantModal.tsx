@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, Button } from "@/components/ui";
+import { Dialog, Button, SelectAllNone } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
 import { addConsultantToCustomer } from "@/lib/customerConsultantsClient";
 import type { CustomerConsultant } from "@/lib/customerConsultantsQueries";
@@ -94,9 +94,17 @@ export function AddCustomerConsultantModal({
 
         {options.length > 0 && (
           <div>
-            <p className="mb-2 block text-sm font-medium text-text-primary">
-              Consultants
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="block text-sm font-medium text-text-primary">
+                Consultants
+              </p>
+              <SelectAllNone
+                ids={options.map((option) => option.value)}
+                selectedIds={selectedIds}
+                onSelectedIdsChange={setSelectedIds}
+                disabled={submitting}
+              />
+            </div>
             <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
               {options.map((option) => (
                 <label

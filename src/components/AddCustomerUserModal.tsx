@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dialog, Button, Input } from "@/components/ui";
+import { Dialog, Button, Input, SelectAllNone } from "@/components/ui";
 import { addCustomerUserToCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import { createUserPerson } from "@/lib/people";
@@ -111,9 +111,17 @@ export function AddCustomerUserModal({
 
         {options.length > 0 ? (
           <div>
-            <p className="mb-2 block text-sm font-medium text-text-primary">
-              Existing customer users
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="block text-sm font-medium text-text-primary">
+                Existing customer users
+              </p>
+              <SelectAllNone
+                ids={options.map((user) => user.id)}
+                selectedIds={selectedIds}
+                onSelectedIdsChange={setSelectedIds}
+                disabled={submitting}
+              />
+            </div>
             <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
               {options.map((user) => (
                 <label

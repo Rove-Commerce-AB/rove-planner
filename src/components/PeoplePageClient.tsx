@@ -57,6 +57,7 @@ import {
   PageHeader,
   SAVED_DURATION_MS,
   Select,
+  SelectAllNone,
   Switch,
   SideDrawer,
   Tabs,
@@ -396,9 +397,17 @@ function UserFormDialog({
             />
             {assignableCustomers.length > 0 ? (
               <div>
-                <p className="mb-2 block text-sm font-medium text-text-primary">
-                  Customers
-                </p>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="block text-sm font-medium text-text-primary">
+                    Customers
+                  </p>
+                  <SelectAllNone
+                    ids={assignableCustomers.map((customer) => customer.id)}
+                    selectedIds={customerIds}
+                    onSelectedIdsChange={setCustomerIds}
+                    disabled={submitting}
+                  />
+                </div>
                 <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
                   {assignableCustomers.map((customer) => (
                     <label
