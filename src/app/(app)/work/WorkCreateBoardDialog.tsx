@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, InitialsAvatar, Input } from "@/components/ui";
+import { Button, Dialog, InitialsAvatar, Input, SelectAllNone } from "@/components/ui";
 import { workBoardHref } from "@/lib/routes";
 import { suggestWorkBoardPrefix } from "@/lib/workIssueKey";
 import type { WorkPerson } from "@/lib/workTypes";
@@ -104,7 +104,15 @@ export function WorkCreateBoardDialog({
         />
         {people.length > 0 ? (
           <fieldset className="space-y-2">
-            <legend className="text-label-s text-text-secondary">Access</legend>
+            <div className="flex items-center justify-between gap-3">
+              <legend className="text-label-s text-text-secondary">Access</legend>
+              <SelectAllNone
+                ids={people.map((person) => person.id)}
+                selectedIds={memberIds}
+                onSelectedIdsChange={setMemberIds}
+                disabled={pending}
+              />
+            </div>
             <ul className="max-h-52 space-y-1 overflow-y-auto">
               {people.map((person) => {
                 const checked = memberIds.includes(person.id);

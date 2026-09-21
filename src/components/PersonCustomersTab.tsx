@@ -10,6 +10,7 @@ import {
   ConfirmModal,
   Dialog,
   IconButton,
+  SelectAllNone,
 } from "@/components/ui";
 import {
   addCustomerUserToCustomer,
@@ -216,28 +217,38 @@ export function PersonCustomersTab({ person, customers }: Props) {
             </p>
           ) : null}
           {options.length > 0 ? (
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
-              {options.map((customer) => (
-                <label
-                  key={customer.id}
-                  htmlFor={`person-customer-${customer.id}`}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
-                >
-                  <input
-                    id={`person-customer-${customer.id}`}
-                    type="checkbox"
-                    checked={selectedIds.includes(customer.id)}
-                    onChange={() => toggleCustomer(customer.id)}
-                    disabled={submitting}
-                  />
-                  <CustomerFavicon
-                    name={customer.name}
-                    url={customer.url}
-                    color={customer.color}
-                  />
-                  <span>{customer.name}</span>
-                </label>
-              ))}
+            <div>
+              <div className="mb-2 flex justify-end">
+                <SelectAllNone
+                  ids={options.map((customer) => customer.id)}
+                  selectedIds={selectedIds}
+                  onSelectedIdsChange={setSelectedIds}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
+                {options.map((customer) => (
+                  <label
+                    key={customer.id}
+                    htmlFor={`person-customer-${customer.id}`}
+                    className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+                  >
+                    <input
+                      id={`person-customer-${customer.id}`}
+                      type="checkbox"
+                      checked={selectedIds.includes(customer.id)}
+                      onChange={() => toggleCustomer(customer.id)}
+                      disabled={submitting}
+                    />
+                    <CustomerFavicon
+                      name={customer.name}
+                      url={customer.url}
+                      color={customer.color}
+                    />
+                    <span>{customer.name}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-text-secondary">
