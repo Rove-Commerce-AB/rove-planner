@@ -589,7 +589,7 @@ const EditableHourTd = memo(function EditableHourTd({
   return (
     <td
       {...columnInteractionProps}
-      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "bg-brand-blue/32" : ""} ${columnHover ? "time-grid-column-hover" : ""}`}
+      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "time-report-today-cell" : ""} ${columnHover ? "time-grid-column-hover" : ""}`}
     >
       <div
         role="button"
@@ -1618,8 +1618,8 @@ export function TimeReportPageClient({
   const dayCellWeekendGrayClass = "bg-bg-muted/60";
   const dayCellHolidayWeekdayGrayClass = "bg-bg-muted/51";
   const dayHeaderGrayClass = "bg-bg-muted/40 text-text-muted";
-  const todayColumnClass = "bg-brand-blue/32";
-  const todayHeaderClass = "bg-brand-blue/15";
+  const todayColumnClass = "time-report-today-cell";
+  const todayHeaderClass = "time-report-today-header";
 
   const applyCalendarMonth = useCallback((newYear: number, newMonth: number) => {
     setDisplayYear(newYear);

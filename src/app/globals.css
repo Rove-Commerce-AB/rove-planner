@@ -210,6 +210,27 @@ textarea.border-form {
   background: var(--color-bg-muted);
 }
 
+/* Today's date column: persistent highlight so the current day is easy to
+   find when entering hours. Must beat the sticky thead background above.
+   Use interactive-primary (saturated), not brand-blue — brand-blue maps to
+   accent-primary-subtle (near-white), which is why the old Tailwind
+   bg-brand-blue/15 and /32 utilities disappeared visually. */
+.time-report-tables thead th.time-report-today-header {
+  background: color-mix(
+    in srgb,
+    var(--color-interactive-primary) 22%,
+    var(--color-bg-muted)
+  );
+  box-shadow: inset 0 -4px 0 0 var(--color-interactive-primary);
+}
+.time-report-tables tbody td.time-report-today-cell {
+  background: color-mix(
+    in srgb,
+    var(--color-interactive-primary) 16%,
+    var(--color-bg-default)
+  );
+}
+
 /* Week/day column: header highlight when a body cell in that column is hovered or focused.
    Strong fill + bottom accent bar so it stays obvious on sticky headers while scrolling.
    Mix interactive/primary (saturated), not brand-blue/subtle — subtle is near-white. */
