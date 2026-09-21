@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -53,6 +54,7 @@ import {
 import { WorkCardPeople, WorkIssueDrawer } from "./WorkIssueDrawer";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { isIssueBlocked } from "@/lib/workIssueRelations";
+import { useColumnDragAutoScroll } from "@/lib/hooks/useColumnDragAutoScroll";
 import type { WorkPerson } from "@/lib/workTypes";
 
 type Props = {
@@ -141,6 +143,18 @@ function mergeIssuesFromServer(
   });
 }
 
+function insertBeforeFromPoint(listEl: HTMLElement | null, clientY: number) {
+  if (!listEl) return null;
+  const cards = listEl.querySelectorAll<HTMLElement>(":scope > [data-issue-id]");
+  for (const card of cards) {
+    const id = card.dataset.issueId;
+    if (!id) continue;
+    const rect = card.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) return id;
+  }
+  return null;
+}
+
 function createTiltedDragImage(event: DragEvent<HTMLElement>): HTMLElement {
   const source = event.currentTarget;
   const rect = source.getBoundingClientRect();
@@ -184,6 +198,7 @@ export function WorkBoardPageClient({ board }: Props) {
     status: WorkIssueStatus;
     beforeIssueId: string | null;
   } | null>(null);
+  const [draggingIssueId, setDraggingIssueId] = useState<string | null>(null);
   const dragIssueIdRef = useRef<string | null>(null);
   const dragGhostRef = useRef<HTMLElement | null>(null);
   const dragSourceRef = useRef<HTMLElement | null>(null);
@@ -290,6 +305,64 @@ export function WorkBoardPageClient({ board }: Props) {
   const visibleIds = useMemo(
     () => visibleWorkIssueIds(issues, search, ownerFilterIds),
     [issues, search, ownerFilterIds]
+  );
+
+  const isIssueDragActive = useCallback(
+    () => dragIssueIdRef.current != null && draggingStatusIdRef.current == null,
+    []
+  );
+  const previewIssueDropAt = useCallback(
+    (status: WorkIssueStatus, beforeIssueId: string | null) => {
+      if (draggingStatusIdRef.current || !dragIssueIdRef.current) return false;
+      const issueId = dragIssueIdRef.current;
+      const nextTarget =
+        issueId === beforeIssueId
+          ? null
+          : { issueId, status, beforeIssueId };
+      dropTargetRef.current = nextTarget;
+      const showLine =
+        nextTarget != null &&
+        computeMove(
+          issuesRef.current,
+          issueId,
+          status,
+          beforeIssueId,
+          visibleIds
+        ) != null;
+      setIssueDropBefore((current) => {
+        if (!showLine) return current == null ? current : null;
+        if (
+          current?.status === status &&
+          current.beforeIssueId === beforeIssueId
+        ) {
+          return current;
+        }
+        return { status, beforeIssueId };
+      });
+      if (status !== dragSourceStatusRef.current && dragOverStatus !== status) {
+        setDragOverStatus(status);
+      }
+      return true;
+    },
+    [dragOverStatus, visibleIds]
+  );
+  const onColumnScrolled = useCallback(
+    (column: HTMLElement, clientY: number) => {
+      const status = column.dataset.statusId;
+      if (!status) return;
+      previewIssueDropAt(
+        status,
+        insertBeforeFromPoint(
+          column.querySelector<HTMLElement>("[data-issue-list]"),
+          clientY
+        )
+      );
+    },
+    [previewIssueDropAt]
+  );
+  const { startDragAutoScroll, stopDragAutoScroll } = useColumnDragAutoScroll(
+    isIssueDragActive,
+    onColumnScrolled
   );
 
   function openIssue(issueId: string) {
@@ -603,47 +676,7 @@ export function WorkBoardPageClient({ board }: Props) {
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
-    const issueId = dragIssueIdRef.current;
-    const nextTarget =
-      issueId === beforeIssueId
-        ? null
-        : { issueId, status, beforeIssueId };
-    dropTargetRef.current = nextTarget;
-    const showLine =
-      nextTarget != null &&
-      computeMove(
-        issuesRef.current,
-        issueId,
-        status,
-        beforeIssueId,
-        visibleIds
-      ) != null;
-    setIssueDropBefore((current) => {
-      if (!showLine) return current == null ? current : null;
-      if (
-        current?.status === status &&
-        current.beforeIssueId === beforeIssueId
-      ) {
-        return current;
-      }
-      return { status, beforeIssueId };
-    });
-    if (status !== dragSourceStatusRef.current && dragOverStatus !== status) {
-      setDragOverStatus(status);
-    }
-    return true;
-  }
-
-  function insertBeforeFromPoint(listEl: HTMLElement | null, clientY: number) {
-    if (!listEl) return null;
-    const cards = listEl.querySelectorAll<HTMLElement>(":scope > [data-issue-id]");
-    for (const card of cards) {
-      const id = card.dataset.issueId;
-      if (!id) continue;
-      const rect = card.getBoundingClientRect();
-      if (clientY < rect.top + rect.height / 2) return id;
-    }
-    return null;
+    return previewIssueDropAt(status, beforeIssueId);
   }
 
   function issueListFromEvent(event: DragEvent): HTMLElement | null {
@@ -665,6 +698,8 @@ export function WorkBoardPageClient({ board }: Props) {
     dragSourceStatusRef.current = null;
     dragGhostRef.current?.remove();
     dragGhostRef.current = null;
+    stopDragAutoScroll();
+    setDraggingIssueId(null);
     setDragOverStatus(null);
     setIssueDropBefore(null);
     if (source) source.style.opacity = "";
@@ -854,6 +889,8 @@ export function WorkBoardPageClient({ board }: Props) {
           return (
             <section
               key={status}
+              data-board-column
+              data-status-id={status}
               className={`relative flex h-full min-h-0 w-72 shrink-0 flex-col rounded-xl transition-colors ${
                 draggingStatusId === status ? "opacity-40" : ""
               } ${
@@ -993,6 +1030,7 @@ export function WorkBoardPageClient({ board }: Props) {
               </header>
 
               <div
+                data-column-scroll
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto"
                 onDragOver={(event) => {
                   if (handleStatusDragOver(event, status)) return;
@@ -1033,7 +1071,7 @@ export function WorkBoardPageClient({ board }: Props) {
                   const showInsertBefore =
                     issueDropBefore?.status === status &&
                     issueDropBefore.beforeIssueId === issue.id &&
-                    dragIssueIdRef.current !== issue.id;
+                    draggingIssueId !== issue.id;
                   return (
                   <li
                     key={`${group.key}-${issue.id}`}
@@ -1094,6 +1132,8 @@ export function WorkBoardPageClient({ board }: Props) {
                         dragSourceRef.current = source;
                         dropTargetRef.current = null;
                         skipCardClickRef.current = true;
+                        setDraggingIssueId(issue.id);
+                        startDragAutoScroll();
                         requestAnimationFrame(() => {
                           requestAnimationFrame(() => {
                             if (dragSourceRef.current === source) {
