@@ -289,6 +289,42 @@ table thead th.time-grid-header-column-active {
   );
 }
 
+/* Today column: stronger fill only (no side/edge bars). */
+.time-report-tables th.time-report-today-header {
+  position: relative;
+  background: color-mix(
+    in srgb,
+    var(--color-brand-signal) 20%,
+    var(--color-bg-muted)
+  ) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.time-report-tables th.time-report-today-header,
+.time-report-tables th.time-report-today-header .text-text-secondary,
+.time-report-tables th.time-report-today-header .text-text-muted {
+  color: var(--color-text-primary) !important;
+  font-weight: 600;
+}
+.time-report-tables td.time-report-today-cell {
+  position: relative;
+  background: color-mix(
+    in srgb,
+    var(--color-brand-signal) 14%,
+    transparent
+  ) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+/* Keep today cells on the normal grid border color (not signal). */
+.time-report-tables th.time-report-today-header,
+.time-report-tables td.time-report-today-cell {
+  border-left-color: var(--color-border-subtle) !important;
+  border-right-color: var(--color-border-subtle) !important;
+  border-top-color: var(--color-border-subtle) !important;
+  border-bottom-color: var(--color-border-subtle) !important;
+}
+
 /* Current-week separators use overlays in both header and body.
    Keeping them out of the collapsed border model makes both sections share the
    exact same column edge while the header remains sticky. */
