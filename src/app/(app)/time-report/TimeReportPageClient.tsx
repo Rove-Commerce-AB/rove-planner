@@ -83,6 +83,7 @@ import {
   TIME_REPORT_MONTH_GRID_DOW,
   TIME_REPORT_VIEW_MODE_STORAGE_KEY,
 } from "./timeReportShared";
+import { billableReportedHours, isUnpaidTimeEntry } from "@/lib/unpaidTimeEntry";
 import {
   type TimeReportEntry as Entry,
   type TimeReportCustomerGroup as CustomerGroup,
@@ -553,6 +554,8 @@ type EditableHourTdProps = {
   showLeftBorder?: boolean;
   /** Trimmed internal comment for this day; corner marker + instant hover preview when set. */
   internalCommentText?: string;
+  /** Described as (unpaid); still editable, but not counted in month totals. */
+  unpaid?: boolean;
   /** Full-column highlight while this day column is hovered elsewhere in the grid. */
   columnHover?: boolean;
   columnInteractionProps?: Pick<
@@ -575,6 +578,7 @@ const EditableHourTd = memo(function EditableHourTd({
   compact = false,
   showLeftBorder,
   internalCommentText,
+  unpaid = false,
   columnHover = false,
   columnInteractionProps,
 }: EditableHourTdProps) {
@@ -617,6 +621,7 @@ const EditableHourTd = memo(function EditableHourTd({
           onCommit={onCommit}
           onBlur={onBlur}
           compact={compact}
+          unpaid={unpaid}
         />
         {hasInternalComment ? (
           <div
@@ -2709,7 +2714,16 @@ export function TimeReportPageClient({
   const monthDateDayTotals = useMemo(
     () =>
       monthCalendarDates.map((dateStr) =>
-        monthMergedRows.reduce((sum, row) => sum + (row.hoursByDate[dateStr] ?? 0), 0)
+        monthMergedRows.reduce(
+          (sum, row) =>
+            sum +
+            billableReportedHours(
+              row.hoursByDate[dateStr] ?? 0,
+              row.task,
+              row.commentsByDate[dateStr]
+            ),
+          0
+        )
       ),
     [monthCalendarDates, monthMergedRows]
   );
@@ -3476,7 +3490,10 @@ export function TimeReportPageClient({
                     })}
                     <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
                       <div className="flex min-h-7 w-full items-center justify-center pr-7">
-                        <span className={timeReportSumFigureClass("month")}>
+                        <span
+                          className={timeReportSumFigureClass("month")}
+                          title="Billable hours. Time described as (unpaid) is not included."
+                        >
                           {monthGridTotalDisplay}
                         </span>
                       </div>
@@ -3487,7 +3504,16 @@ export function TimeReportPageClient({
                     const name = customer?.name ?? "—";
                     const color = customer?.color ?? DEFAULT_CUSTOMER_COLOR;
                     const customerMonthDayTotals = monthCalendarDates.map((dateStr) =>
-                      rows.reduce((sum, row) => sum + (row.hoursByDate[dateStr] ?? 0), 0)
+                      rows.reduce(
+                        (sum, row) =>
+                          sum +
+                          billableReportedHours(
+                            row.hoursByDate[dateStr] ?? 0,
+                            row.task,
+                            row.commentsByDate[dateStr]
+                          ),
+                        0
+                      )
                     );
                     const customerMonthTotal = customerMonthDayTotals.reduce(
                       (sum, hours) => sum + hours,
@@ -3543,7 +3569,10 @@ export function TimeReportPageClient({
                           ))}
                           <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
                             <div className="flex min-h-7 w-full items-center justify-center pr-7">
-                              <span className={timeReportSumFigureClass("month")}>
+                              <span
+                                className={timeReportSumFigureClass("month")}
+                                title="Billable hours. Time described as (unpaid) is not included."
+                              >
                                 {customerMonthTotal > 0 ? String(customerMonthTotal) : ""}
                               </span>
                             </div>
@@ -3778,6 +3807,7 @@ export function TimeReportPageClient({
                                   dayIndex={0}
                                   entryId={row.rowKey}
                                   value={row.hoursByDate[dateStr] ?? 0}
+                                  unpaid={isUnpaidTimeEntry(row.task, row.commentsByDate[dateStr])}
                                   compact
                                   showLeftBorder={dateIdx === 0}
                                   isEditing={
@@ -3828,11 +3858,17 @@ export function TimeReportPageClient({
                                 <div className="flex min-h-7 w-full items-center justify-center pr-7">
                                   <span
                                     className={timeReportSumFigureClass("month")}
-                                    title="Total hours this month on this row"
+                                    title="Billable hours this month on this row. Time described as (unpaid) is not included."
                                   >
                                     {formatReportHoursTotal(
                                       monthCalendarDates.reduce(
-                                        (s, d) => s + (row.hoursByDate[d] ?? 0),
+                                        (s, d) =>
+                                          s +
+                                          billableReportedHours(
+                                            row.hoursByDate[d] ?? 0,
+                                            row.task,
+                                            row.commentsByDate[d]
+                                          ),
                                         0
                                       ),
                                       "month"

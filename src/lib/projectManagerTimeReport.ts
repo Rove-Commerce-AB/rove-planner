@@ -3,6 +3,7 @@ import "server-only";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { unpaidTimeEntrySql } from "@/lib/unpaidTimeEntry";
 import type { ProjectManagerEntry } from "@/types";
 
 function getMonthRange(year: number, month: number): { start: string; end: string } {
@@ -51,7 +52,8 @@ export async function getProjectManagerTimeEntries(args: {
   const { rows: sumRows } = await cloudSqlPool.query<{ line_sum: string }>(
     `SELECT COALESCE(SUM(COALESCE(pm_edited_hours, hours)), 0)::text AS line_sum
      FROM time_report_entries
-     WHERE project_id = $1::uuid AND entry_date >= $2::date AND entry_date <= $3::date`,
+     WHERE project_id = $1::uuid AND entry_date >= $2::date AND entry_date <= $3::date
+       AND NOT ${unpaidTimeEntrySql()}`,
     [args.projectId, monthRange.start, monthRange.end]
   );
   const lineSum = Number(sumRows[0]?.line_sum ?? 0);
@@ -90,10 +92,12 @@ export async function getProjectManagerTimeEntries(args: {
     pm_edited_hours: string | number | null;
     pm_edited_comment: string | null;
     invoiced_at: string | null;
+    unpaid: boolean;
   }>(
     `SELECT id, entry_date::text AS entry_date, consultant_id, customer_id, project_id, role_id,
             jira_devops_key, description, hours, internal_comment,
-            pm_edited_hours, pm_edited_comment, invoiced_at::text AS invoiced_at
+            pm_edited_hours, pm_edited_comment, invoiced_at::text AS invoiced_at,
+            ${unpaidTimeEntrySql()} AS unpaid
      FROM time_report_entries
      WHERE project_id = $1 AND entry_date >= $2::date AND entry_date <= $3::date
      ORDER BY entry_date ASC`,
@@ -180,6 +184,7 @@ export async function getProjectManagerTimeEntries(args: {
     pmEditedHours: r.pm_edited_hours != null ? Number(r.pm_edited_hours) : null,
     pmEditedComment: r.pm_edited_comment ?? null,
     invoicedAt: r.invoiced_at ? String(r.invoiced_at) : null,
+    unpaid: r.unpaid === true,
   }));
 
   return { entries, invoicedHoursFromLines, invoicedHoursFixed };
@@ -228,6 +233,7 @@ export async function pmSetProjectMonthInvoicedHoursFixed(args: {
              WHERE t.project_id = $1::uuid
                AND t.entry_date >= $6::date
                AND t.entry_date <= $7::date
+               AND NOT ${unpaidTimeEntrySql("t")}
            ),
            0
          ),

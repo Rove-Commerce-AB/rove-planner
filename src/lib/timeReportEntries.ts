@@ -21,6 +21,7 @@ import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getInternalCustomerId } from "@/lib/customers";
+import { unpaidTimeEntrySql } from "@/lib/unpaidTimeEntry";
 import type {
   CopyEntryToWeekResult,
   CopyTimeReportEntriesBatchResult,
@@ -711,12 +712,14 @@ export async function getTimeReportMonthTotalHours(
          WHERE consultant_id = $1
            AND entry_date >= $2::date
            AND entry_date <= $3::date
-           AND customer_id <> $4::uuid`
+           AND customer_id <> $4::uuid
+           AND NOT ${unpaidTimeEntrySql()}`
       : `SELECT COALESCE(SUM(hours), 0) AS total_hours
          FROM time_report_entries
          WHERE consultant_id = $1
            AND entry_date >= $2::date
-           AND entry_date <= $3::date`,
+           AND entry_date <= $3::date
+           AND NOT ${unpaidTimeEntrySql()}`,
     internalCustomerId
       ? [consultantId, monthStart, monthEndStr, internalCustomerId]
       : [consultantId, monthStart, monthEndStr]

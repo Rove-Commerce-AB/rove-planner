@@ -354,10 +354,20 @@ export function ProjectManagerTimeReportClient({
   }, [filteredEntries, sortKey, sortDir]);
 
   const hourColumnTotals = useMemo(() => {
-    const totalReported = sortedEntries.reduce((s, e) => s + e.hours, 0);
-    const totalPmEdited = sortedEntries.reduce((s, e) => s + (e.pmEditedHours ?? 0), 0);
+    const billable = sortedEntries.filter((e) => !e.unpaid);
+    const totalReported = billable.reduce((s, e) => s + e.hours, 0);
+    const totalPmEdited = billable.reduce((s, e) => s + (e.pmEditedHours ?? 0), 0);
     return { totalReported, totalPmEdited };
   }, [sortedEntries]);
+
+  const unpaidHoursExcluded = useMemo(
+    () =>
+      entries.reduce(
+        (sum, entry) => sum + (entry.unpaid ? (entry.pmEditedHours ?? entry.hours) : 0),
+        0
+      ),
+    [entries]
+  );
 
   const displayedInvoicedHours =
     invoicedHoursFixed != null ? invoicedHoursFixed : invoicedHoursFromLines;
@@ -666,12 +676,26 @@ export function ProjectManagerTimeReportClient({
                       Using a <span className="font-medium text-text-primary">fixed</span> total for
                       this month. Stored line sum for this month is{" "}
                       {HOURS_NUMBER_FORMATTER.format(invoicedHoursFromLines)} h.
+                      {unpaidHoursExcluded > 0 ? (
+                        <>
+                          {" "}
+                          Excludes {HOURS_NUMBER_FORMATTER.format(unpaidHoursExcluded)} h described as
+                          (unpaid).
+                        </>
+                      ) : null}
                     </>
                   ) : (
                     <>
-                      Stored for this month from time entries (PM hour when set, else reported):{" "}
-                      {HOURS_NUMBER_FORMATTER.format(invoicedHoursFromLines)} h. Refreshes when you open
-                      Time approval.
+                      Stored for this month from billable time entries (PM hour when set, else
+                      reported): {HOURS_NUMBER_FORMATTER.format(invoicedHoursFromLines)} h.
+                      {unpaidHoursExcluded > 0 ? (
+                        <>
+                          {" "}
+                          Hours described as (unpaid) are not included (
+                          {HOURS_NUMBER_FORMATTER.format(unpaidHoursExcluded)} h).
+                        </>
+                      ) : null}{" "}
+                      Refreshes when you open Time approval.
                     </>
                   )}
                 </p>
@@ -972,7 +996,19 @@ export function ProjectManagerTimeReportClient({
                           )}
                         </td>
                         <td className="max-w-0 px-3 py-1 align-middle">
-                          <TruncatedWithTooltip text={e.task ?? ""} className="font-medium" />
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <div className="min-w-0 flex-1">
+                              <TruncatedWithTooltip text={e.task ?? ""} className="font-medium" />
+                            </div>
+                            {e.unpaid ? (
+                              <span
+                                className="shrink-0 rounded bg-bg-muted px-1 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide text-text-muted"
+                                title="Not included in invoiced hours"
+                              >
+                                Unpaid
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="max-w-0 px-3 py-1 align-middle">
                           <TruncatedWithTooltip
@@ -980,7 +1016,12 @@ export function ProjectManagerTimeReportClient({
                             className="text-text-secondary"
                           />
                         </td>
-                        <td className="max-w-0 px-3 py-1 align-middle text-right font-semibold tabular-nums">
+                        <td
+                          className={`max-w-0 px-3 py-1 align-middle text-right font-semibold tabular-nums ${
+                            e.unpaid ? "text-text-muted line-through" : ""
+                          }`}
+                          title={e.unpaid ? "Unpaid — not included in invoiced hours" : undefined}
+                        >
                           {HOURS_NUMBER_FORMATTER.format(reportedHours)}
                         </td>
                         <td className="max-w-0 px-3 py-1 align-middle text-right">
@@ -1104,10 +1145,16 @@ export function ProjectManagerTimeReportClient({
                 <tfoot>
                   <tr className="border-t-2 border-border-subtle bg-bg-muted/50 text-text-primary">
                     <td colSpan={6} className="px-3 py-1.5" aria-hidden />
-                    <td className="max-w-0 px-3 py-1.5 text-right text-xs font-semibold tabular-nums">
+                    <td
+                      className="max-w-0 px-3 py-1.5 text-right text-xs font-semibold tabular-nums"
+                      title="Billable hours. Time described as (unpaid) is not included."
+                    >
                       {HOURS_NUMBER_FORMATTER.format(hourColumnTotals.totalReported)}
                     </td>
-                    <td className="max-w-0 px-3 py-1.5 text-right text-xs font-semibold tabular-nums">
+                    <td
+                      className="max-w-0 px-3 py-1.5 text-right text-xs font-semibold tabular-nums"
+                      title="Billable PM hours. Time described as (unpaid) is not included."
+                    >
                       {HOURS_NUMBER_FORMATTER.format(hourColumnTotals.totalPmEdited)}
                     </td>
                     <td colSpan={2} className="px-3 py-1.5" aria-hidden />
