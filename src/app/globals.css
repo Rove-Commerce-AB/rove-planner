@@ -354,12 +354,25 @@ table thead th.time-grid-header-column-active {
   right: 0;
 }
 
-/* Header current-week separators are drawn via pseudo-elements as well (see below). */
+/* Header current-week separators are drawn via pseudo-elements as well (see below).
+   Sticky thead th sets its own background, which beats the Tailwind bg utility
+   on the week number, so the fill has to live here to stay visible while paging. */
 .allocation-tables th.current-week-header {
   border-left-width: 0 !important;
   border-right-width: 0 !important;
   border-left-color: transparent !important;
   border-right-color: transparent !important;
+  background: color-mix(
+    in srgb,
+    var(--color-brand-signal) 28%,
+    var(--color-allocation-thead)
+  );
+  color: var(--color-text-primary);
+  font-weight: 700;
+  opacity: 1;
+  box-shadow:
+    inset 0 -1px 0 #9a9a9a,
+    inset 0 -4px 0 0 var(--color-brand-signal);
 }
 
 /* When dragging over project row cells: force crosshair cursor everywhere so it wins over cell cursor-pointer. */

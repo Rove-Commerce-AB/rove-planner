@@ -1,7 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { usePathname, useSearchParams, type useRouter } from "next/navigation";
 import { addWeeksToYearWeek } from "@/lib/dateUtils";
 import { allocationHrefWithWeek } from "@/lib/allocationUrl";
+import {
+  allocationRangeIncludesWeek,
+  allocationWeekSpan,
+  allocationWindowAroundWeek,
+} from "@/lib/allocationWeekParams";
 
 export const ALLOCATION_WEEK_STEP = 1;
 export const ALLOCATION_WEEK_PAGE = 5;
@@ -20,7 +25,8 @@ export function useAllocationWeekNavigation(
     year: number,
     weekFrom: number,
     weekTo: number
-  ) => void | Promise<void>
+  ) => void | Promise<void>,
+  currentWeek?: { year: number; week: number }
 ) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -82,8 +88,66 @@ export function useAllocationWeekNavigation(
     [onWeekRangeChange, shiftedRange, router, getShiftUrl]
   );
 
+  const currentWeekInView = useMemo(() => {
+    if (!currentWeek) return false;
+    return allocationRangeIncludesWeek(
+      { year, weekFrom, weekTo },
+      currentWeek
+    );
+  }, [currentWeek, year, weekFrom, weekTo]);
+
+  const currentWeekTarget = useMemo(() => {
+    if (!currentWeek) return null;
+    return allocationWindowAroundWeek(
+      currentWeek.year,
+      currentWeek.week,
+      allocationWeekSpan(year, weekFrom, weekTo)
+    );
+  }, [currentWeek, year, weekFrom, weekTo]);
+
+  const hrefForRange = useCallback(
+    (range: { year: number; weekFrom: number; weekTo: number }) => {
+      const path = embedMode
+        ? `/projects/${embedMode.projectId}`
+        : pathname;
+      return allocationHrefWithWeek(
+        path,
+        { year: range.year, from: range.weekFrom, to: range.weekTo },
+        searchParams
+      );
+    },
+    [embedMode, pathname, searchParams]
+  );
+
+  const getCurrentWeekUrl = useCallback(() => {
+    if (!currentWeekTarget) return pathname;
+    return hrefForRange(currentWeekTarget);
+  }, [currentWeekTarget, hrefForRange, pathname]);
+
+  const jumpToCurrentWeek = useCallback(() => {
+    if (!currentWeekTarget || currentWeekInView) return;
+    if (onWeekRangeChange) {
+      void onWeekRangeChange(
+        currentWeekTarget.year,
+        currentWeekTarget.weekFrom,
+        currentWeekTarget.weekTo
+      );
+      return;
+    }
+    router.push(getCurrentWeekUrl());
+  }, [
+    currentWeekInView,
+    currentWeekTarget,
+    getCurrentWeekUrl,
+    onWeekRangeChange,
+    router,
+  ]);
+
   return {
     shiftWeeks,
     getShiftUrl,
+    jumpToCurrentWeek,
+    currentWeekInView,
+    getCurrentWeekUrl,
   };
 }
