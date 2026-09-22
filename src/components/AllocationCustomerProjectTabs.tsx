@@ -133,6 +133,9 @@ export type AllocationCustomerProjectTabsProps = {
   isCurrentWeek: (w: { year: number; week: number }) => boolean;
   renderWeekHeaderCells: (tableKey: string, borderClass?: string) => React.ReactNode;
   shiftWeeks: (weeks: number) => void;
+  jumpToCurrentWeek: () => void;
+  currentWeekInView: boolean;
+  getCurrentWeekUrl: () => string;
   getShiftUrl: (weeks: number) => string;
   router: { prefetch: (url: string) => void };
   expandedCustomers: Set<string>;
@@ -170,6 +173,9 @@ const weekNav = (p: AllocationCustomerProjectTabsProps) => (
       onShift={p.shiftWeeks}
       getUrl={p.getShiftUrl}
       prefetch={p.router.prefetch}
+      onJumpToCurrentWeek={p.jumpToCurrentWeek}
+      currentWeekInView={p.currentWeekInView}
+      getCurrentWeekUrl={p.getCurrentWeekUrl}
     />
   </div>
 );

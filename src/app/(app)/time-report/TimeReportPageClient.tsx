@@ -1710,6 +1710,24 @@ export function TimeReportPageClient({
     [flushSave, week, year]
   );
 
+  const viewingCurrentWeek = year === initialYear && week === initialWeek;
+  const viewingCurrentMonth =
+    displayYear === initialDisplayYear && displayMonth === initialDisplayMonth;
+  const onCurrentPeriod =
+    viewMode === "month"
+      ? viewingCurrentMonth
+      : viewingCurrentWeek && viewingCurrentMonth;
+
+  const goToCurrentWeek = async () => {
+    if (isWeekStripTransitioning || onCurrentPeriod) return;
+    const ok = await flushSave();
+    if (!ok) return;
+    setDisplayYear(initialDisplayYear);
+    setDisplayMonth(initialDisplayMonth);
+    setYear(initialYear);
+    setWeek(initialWeek);
+  };
+
   const onPickCalendarMonth = useCallback(
     async (ym: string) => {
       if (isWeekStripTransitioning) return;
@@ -2850,6 +2868,20 @@ export function TimeReportPageClient({
               >
                 <ChevronRight className="h-5 w-5" />
               </IconButton>
+              <button
+                type="button"
+                onClick={() => void goToCurrentWeek()}
+                disabled={isWeekStripTransitioning || onCurrentPeriod}
+                className="rounded-md px-2 py-1 text-xs font-medium text-text-primary hover:bg-bg-muted disabled:pointer-events-none disabled:opacity-40"
+                aria-label={
+                  onCurrentPeriod ? "Current week is in view" : "Jump to current week"
+                }
+                title={
+                  onCurrentPeriod ? "Current week is in view" : "Jump to current week"
+                }
+              >
+                This week
+              </button>
             </div>
             {viewMode === "week" && (
               <div
@@ -2858,16 +2890,17 @@ export function TimeReportPageClient({
                 {monthWeeks.map(({ year: wY, week: w }) => {
                   const isSelected = wY === year && w === week;
                   const isCurrentWeek = wY === initialYear && w === initialWeek;
+                  const chipClass = isSelected
+                    ? "bg-brand-signal text-text-inverse"
+                    : isCurrentWeek
+                      ? "bg-brand-signal/15 text-text-primary ring-2 ring-brand-signal ring-offset-1 ring-offset-bg-default"
+                      : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary";
                   return (
                     <button
                       key={`${wY}-${w}`}
                       type="button"
                       onClick={() => void jumpToWeek(wY, w)}
-                      className={`w-[4rem] cursor-pointer shrink-0 rounded-md px-1.5 py-0.5 text-center text-[11px] font-medium transition-colors whitespace-nowrap ${
-                        isSelected
-                          ? "bg-brand-blue text-white"
-                          : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary"
-                      } ${!isSelected && isCurrentWeek ? "ring-2 ring-brand-blue ring-offset-1 ring-offset-bg-default" : ""}`}
+                      className={`w-[4rem] cursor-pointer shrink-0 rounded-md px-1.5 py-0.5 text-center text-[11px] font-medium transition-colors whitespace-nowrap ${chipClass}`}
                       aria-label={`Week ${w}${isCurrentWeek ? " (current week)" : ""}`}
                       aria-pressed={isSelected}
                       title={isCurrentWeek ? "Current week" : `Week ${w}`}

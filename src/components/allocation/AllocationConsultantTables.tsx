@@ -83,6 +83,9 @@ export type AllocationConsultantTablesProps = {
   expandableConsultantIds: Set<string>;
   setExpandedConsultants: Dispatch<SetStateAction<Set<string>>>;
   shiftWeeks: (weeks: number) => void;
+  jumpToCurrentWeek: () => void;
+  currentWeekInView: boolean;
+  getCurrentWeekUrl: () => string;
   embedWeekNavLoading: boolean;
   onWeekRangeChange?: (
     year: number,
@@ -143,6 +146,9 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
     expandableConsultantIds,
     setExpandedConsultants,
     shiftWeeks,
+    jumpToCurrentWeek,
+    currentWeekInView,
+    getCurrentWeekUrl,
     embedWeekNavLoading,
     onWeekRangeChange,
     router,
@@ -275,6 +281,11 @@ export function AllocationConsultantTables(props: AllocationConsultantTablesProp
                     disabled={embedWeekNavLoading}
                     getUrl={onWeekRangeChange ? undefined : getShiftUrl}
                     prefetch={onWeekRangeChange ? undefined : router.prefetch}
+                    onJumpToCurrentWeek={jumpToCurrentWeek}
+                    currentWeekInView={currentWeekInView}
+                    getCurrentWeekUrl={
+                      onWeekRangeChange ? undefined : getCurrentWeekUrl
+                    }
                   />
                 </div>
                 <table className="w-full min-w-0 table-fixed border border-form text-[10px]">

@@ -143,14 +143,20 @@ function AllocationPageClientImpl({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { shiftWeeks, getShiftUrl } =
-    useAllocationWeekNavigation(
+  const {
+    shiftWeeks,
+    getShiftUrl,
+    jumpToCurrentWeek,
+    currentWeekInView,
+    getCurrentWeekUrl,
+  } = useAllocationWeekNavigation(
       router,
       year,
       weekFrom,
       weekTo,
       embedMode,
-      onWeekRangeChange
+      onWeekRangeChange,
+      { year: currentYearProp, week: currentWeekProp }
     );
   const [mounted, setMounted] = useState(false);
   const activeTab: PlannerView = embedMode ? "consultant" : view;
@@ -1112,6 +1118,9 @@ function AllocationPageClientImpl({
               expandableConsultantIds={expandableConsultantIds}
               setExpandedConsultants={setExpandedConsultants}
               shiftWeeks={shiftWeeks}
+              jumpToCurrentWeek={jumpToCurrentWeek}
+              currentWeekInView={currentWeekInView}
+              getCurrentWeekUrl={getCurrentWeekUrl}
               embedWeekNavLoading={embedWeekNavLoading}
               onWeekRangeChange={onWeekRangeChange}
               router={router}
@@ -1168,6 +1177,9 @@ function AllocationPageClientImpl({
               isCurrentWeek={isCurrentWeek}
               renderWeekHeaderCells={renderWeekHeaderCells}
               shiftWeeks={shiftWeeks}
+              jumpToCurrentWeek={jumpToCurrentWeek}
+              currentWeekInView={currentWeekInView}
+              getCurrentWeekUrl={getCurrentWeekUrl}
               getShiftUrl={getShiftUrl}
               router={router}
               expandedCustomers={expandedCustomers}
