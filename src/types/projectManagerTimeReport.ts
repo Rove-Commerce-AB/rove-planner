@@ -17,4 +17,6 @@ export type ProjectManagerEntry = {
   pmEditedHours: number | null;
   pmEditedComment: string | null;
   invoicedAt: string | null;
+  /** Description or internal comment contains (unpaid). Left out of invoice totals. */
+  unpaid: boolean;
 };

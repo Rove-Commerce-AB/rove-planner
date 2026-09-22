@@ -12,6 +12,7 @@ export function TimeReportHourCell({
   dayIndex: _dayIndex,
   onStartEdit: _onStartEdit,
   compact = false,
+  unpaid = false,
 }: {
   value: number;
   entryId: string;
@@ -22,6 +23,8 @@ export function TimeReportHourCell({
   onBlur: () => void;
   /** Narrow cells for month grid. */
   compact?: boolean;
+  /** Described as (unpaid); shown but left out of the month total. */
+  unpaid?: boolean;
 }) {
   const [localValue, setLocalValue] = useState(String(value || ""));
 
@@ -67,9 +70,10 @@ export function TimeReportHourCell({
   const display = value === 0 ? "" : String(value);
   return (
     <span
-      className={`inline-flex min-w-0 max-w-full items-center justify-center tabular-nums text-text-primary ${
-        compact ? "h-5 w-full text-[9px]" : "h-6 shrink-0 text-xs"
-      }`}
+      title={unpaid && display ? "Unpaid — not counted in the month total" : undefined}
+      className={`inline-flex min-w-0 max-w-full items-center justify-center tabular-nums ${
+        unpaid ? "text-text-muted line-through" : "text-text-primary"
+      } ${compact ? "h-5 w-full text-[9px]" : "h-6 shrink-0 text-xs"}`}
     >
       {display}
     </span>
