@@ -39,9 +39,14 @@ function issue(
     comments: [],
     events: [],
     files: [],
+    requirements: [],
+    definitionOfDone: [],
+    outOfScope: "",
+    references: [],
     relations: emptyWorkIssueRelations(),
     estimateHours: null,
     loggedHours: 0,
+    priority: null,
     ...partial,
   };
 }

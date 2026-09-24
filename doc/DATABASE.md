@@ -801,6 +801,8 @@ Issues on a Work board. Keys are `{prefix}-{number}` with `number` unique per bo
 | description | text | NOT NULL, default `''` |
 | current_state | text | NOT NULL, default `''` |
 | next_step | text | NOT NULL, default `''` |
+| out_of_scope | text | NOT NULL, default `''`; Requirements tab |
+| priority | text | nullable; `low` \| `medium` \| `high` |
 | estimate_hours | numeric(8,2) | nullable; planned hours. Must be `>= 0` when set. Logged hours are not stored here — they are summed from Time report lines linked via `time_report_entry_lines.work_issue_id`. |
 | created_by_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE RESTRICT; shown as Reporter |
 | created_at | timestamptz | NOT NULL, default `now()` |
@@ -816,7 +818,50 @@ DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
 [`scripts/20260913_work_board_statuses.sql`](../scripts/20260913_work_board_statuses.sql),
 [`scripts/20260913_work_issue_details.sql`](../scripts/20260913_work_issue_details.sql),
 [`scripts/20260919_work_issue_estimate.sql`](../scripts/20260919_work_issue_estimate.sql),
-[`scripts/20260924_work_issue_nullable_reporter.sql`](../scripts/20260924_work_issue_nullable_reporter.sql).
+[`scripts/20260924_work_issue_nullable_reporter.sql`](../scripts/20260924_work_issue_nullable_reporter.sql),
+[`scripts/20260924_work_issue_priority_requirements.sql`](../scripts/20260924_work_issue_priority_requirements.sql),
+[`scripts/20260924_work_issue_requirements_sections.sql`](../scripts/20260924_work_issue_requirements_sections.sql).
+
+---
+
+## work_issue_requirements
+
+Acceptance criteria and definition-of-done checklists on a Work issue (Requirements tab).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| body | text | NOT NULL |
+| is_done | boolean | NOT NULL, default false |
+| kind | text | NOT NULL, default `acceptance`; `acceptance` \| `dod` |
+| sort_order | integer | NOT NULL, default 0 |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(issue_id, kind, sort_order, created_at)`.
+
+DDL: [`scripts/20260924_work_issue_priority_requirements.sql`](../scripts/20260924_work_issue_priority_requirements.sql),
+[`scripts/20260924_work_issue_requirements_sections.sql`](../scripts/20260924_work_issue_requirements_sections.sql).
+
+---
+
+## work_issue_references
+
+Linked URLs on a Work issue (Requirements tab).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
+| url | text | NOT NULL |
+| label | text | NOT NULL, default `''` |
+| sort_order | integer | NOT NULL, default 0 |
+| created_at | timestamptz | NOT NULL, default `now()` |
+
+Index: `(issue_id, sort_order, created_at)`.
+
+DDL: [`scripts/20260924_work_issue_requirements_sections.sql`](../scripts/20260924_work_issue_requirements_sections.sql).
 
 ---
 

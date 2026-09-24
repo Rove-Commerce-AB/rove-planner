@@ -28,6 +28,7 @@ import type { WorkIssue, WorkBoardView } from "@/lib/workTypes";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import {
   addWorkBoardMemberAction,
+  addWorkIssueAssigneeAction,
   archiveWorkBoardAction,
   createWorkBoardStatusAction,
   createWorkIssueAction,
@@ -37,6 +38,7 @@ import {
   renameWorkBoardStatusAction,
   removeWorkBoardMemberAction,
   reorderWorkBoardStatusesAction,
+  updateWorkIssueOwnerAction,
 } from "../../actions";
 import {
   collectOwnerFilterPeople,
@@ -1186,23 +1188,82 @@ export function WorkBoardPageClient({ board }: Props) {
                           : "border-border-subtle hover:border-border-default"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2 text-left">
-                        <div className="min-w-0">
-                          <span className="text-label-s text-text-tertiary">
+                      <div className="text-left">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate text-label-s text-text-tertiary">
                             {issue.key}
                             {isIssueBlocked(issue.relations) ? (
                               <span className="ml-1.5 text-caption">Blocked</span>
                             ) : null}
                           </span>
-                          <p className="mt-1 text-body-m text-text-primary">
-                            {issue.title}
-                          </p>
-                          <WorkCardLabels labels={issue.labels} />
+                          <WorkCardPeople
+                            owner={issue.owner}
+                            assignees={issue.assignees}
+                            people={board.people}
+                            disabled={pending}
+                            onSetOwner={(person) => {
+                              setIssues((current) => {
+                                const next = current.map((row) =>
+                                  row.id === issue.id
+                                    ? { ...row, owner: person }
+                                    : row
+                                );
+                                issuesRef.current = next;
+                                return next;
+                              });
+                              startTransition(() => {
+                                void updateWorkIssueOwnerAction(
+                                  board.id,
+                                  issue.id,
+                                  person.id,
+                                  person.name
+                                ).then((result) => {
+                                  if (result.ok) return;
+                                  setError(result.error);
+                                  issuesRef.current = board.issues;
+                                  setIssues(board.issues);
+                                });
+                              });
+                            }}
+                            onAddAssignee={(person) => {
+                              setIssues((current) => {
+                                const next = current.map((row) => {
+                                  if (row.id !== issue.id) return row;
+                                  if (
+                                    row.assignees.some(
+                                      (assignee) => assignee.id === person.id
+                                    )
+                                  ) {
+                                    return row;
+                                  }
+                                  return {
+                                    ...row,
+                                    assignees: [...row.assignees, person],
+                                  };
+                                });
+                                issuesRef.current = next;
+                                return next;
+                              });
+                              startTransition(() => {
+                                void addWorkIssueAssigneeAction(
+                                  board.id,
+                                  issue.id,
+                                  person.id,
+                                  person.name
+                                ).then((result) => {
+                                  if (result.ok) return;
+                                  setError(result.error);
+                                  issuesRef.current = board.issues;
+                                  setIssues(board.issues);
+                                });
+                              });
+                            }}
+                          />
                         </div>
-                        <WorkCardPeople
-                          owner={issue.owner}
-                          assignees={issue.assignees}
-                        />
+                        <p className="mt-2 text-body-m text-text-primary">
+                          {issue.title}
+                        </p>
+                        <WorkCardLabels labels={issue.labels} />
                       </div>
                       <WorkTimeGraph
                         estimateHours={issue.estimateHours}

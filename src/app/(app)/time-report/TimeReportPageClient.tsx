@@ -2865,9 +2865,9 @@ export function TimeReportPageClient({
                       onClick={() => void jumpToWeek(wY, w)}
                       className={`w-[4rem] cursor-pointer shrink-0 rounded-md px-1.5 py-0.5 text-center text-[11px] font-medium transition-colors whitespace-nowrap ${
                         isSelected
-                          ? "bg-brand-blue text-white"
-                          : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary"
-                      } ${!isSelected && isCurrentWeek ? "ring-2 ring-brand-blue ring-offset-1 ring-offset-bg-default" : ""}`}
+                          ? "bg-interactive-primary text-text-inverse"
+                          : "border border-border-subtle bg-bg-default text-text-primary hover:bg-bg-muted"
+                      } ${!isSelected && isCurrentWeek ? "ring-2 ring-interactive-primary ring-offset-1 ring-offset-bg-default" : ""}`}
                       aria-label={`Week ${w}${isCurrentWeek ? " (current week)" : ""}`}
                       aria-pressed={isSelected}
                       title={isCurrentWeek ? "Current week" : `Week ${w}`}

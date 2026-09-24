@@ -37,6 +37,24 @@ export type WorkLabel = {
   name: string;
 };
 
+export type WorkIssuePriority = "low" | "medium" | "high";
+
+export type WorkRequirement = {
+  id: string;
+  body: string;
+  isDone: boolean;
+  sortOrder: number;
+};
+
+export type WorkRequirementKind = "acceptance" | "dod";
+
+export type WorkReference = {
+  id: string;
+  url: string;
+  label: string;
+  sortOrder: number;
+};
+
 export type WorkComment = {
   id: string;
   body: string;
@@ -70,6 +88,7 @@ export type WorkIssue = {
   description: string;
   currentState: string;
   nextStep: string;
+  priority: WorkIssuePriority | null;
   owner: WorkPerson | null;
   reporter: WorkPerson | null;
   assignees: WorkPerson[];
@@ -77,6 +96,10 @@ export type WorkIssue = {
   comments: WorkComment[];
   events: WorkEvent[];
   files: WorkFile[];
+  requirements: WorkRequirement[];
+  definitionOfDone: WorkRequirement[];
+  outOfScope: string;
+  references: WorkReference[];
   relations: WorkIssueRelations;
   estimateHours: number | null;
   loggedHours: number;

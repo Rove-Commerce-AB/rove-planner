@@ -22,10 +22,15 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
+  const isImage = file.mime_type.toLowerCase().startsWith("image/");
+  const safeName = file.file_name.replace(/"/g, "");
+
   return new NextResponse(new Uint8Array(file.content), {
     headers: {
       "Content-Type": file.mime_type,
-      "Content-Disposition": `attachment; filename="${file.file_name.replace(/"/g, "")}"`,
+      "Content-Disposition": isImage
+        ? `inline; filename="${safeName}"`
+        : `attachment; filename="${safeName}"`,
       "Cache-Control": "private, no-store",
     },
   });

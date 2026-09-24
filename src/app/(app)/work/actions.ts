@@ -15,21 +15,28 @@ import {
   restoreWorkBoard,
 } from "@/lib/workBoards";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
-import type { WorkPerson } from "@/lib/workTypes";
+import type { WorkIssuePriority, WorkPerson, WorkRequirementKind } from "@/lib/workTypes";
 import {
   addIssueAssignee,
   addIssueComment,
   addIssueLabel,
   addIssueRelation,
+  addIssueRequirement,
+  addIssueReference,
   deleteIssueComment,
   createWorkIssue,
   removeIssueAssignee,
   removeIssueFile,
   removeIssueLabel,
   removeIssueRelation,
+  removeIssueRequirement,
+  removeIssueReference,
   reorderWorkIssues,
+  setIssueRequirementBody,
+  setIssueRequirementDone,
   setWorkIssueEstimate,
   setWorkIssueOwner,
+  setWorkIssuePriority,
   updateIssueComment,
   setWorkIssueStatus,
   setWorkIssueTextField,
@@ -253,7 +260,7 @@ export async function updateWorkIssueOwnerAction(
 export async function updateWorkIssueFieldAction(
   boardId: string,
   issueId: string,
-  field: "description" | "current_state" | "next_step",
+  field: "description" | "current_state" | "next_step" | "out_of_scope",
   value: string
 ): Promise<Ok | Err> {
   try {
@@ -272,6 +279,108 @@ export async function updateWorkIssueEstimateAction(
 ): Promise<Ok | Err> {
   try {
     await setWorkIssueEstimate(boardId, issueId, hours);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssuePriorityAction(
+  boardId: string,
+  issueId: string,
+  priority: WorkIssuePriority | null
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssuePriority(boardId, issueId, priority);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssueRequirementAction(
+  boardId: string,
+  issueId: string,
+  body: string,
+  kind: WorkRequirementKind = "acceptance"
+): Promise<(Ok & { id: string; sortOrder: number }) | Err> {
+  try {
+    const created = await addIssueRequirement(boardId, issueId, body, kind);
+    revalidateBoard(boardId, issueId);
+    return { ok: true, ...created };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueRequirementBodyAction(
+  boardId: string,
+  issueId: string,
+  requirementId: string,
+  body: string
+): Promise<Ok | Err> {
+  try {
+    await setIssueRequirementBody(boardId, issueId, requirementId, body);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueRequirementDoneAction(
+  boardId: string,
+  issueId: string,
+  requirementId: string,
+  isDone: boolean
+): Promise<Ok | Err> {
+  try {
+    await setIssueRequirementDone(boardId, issueId, requirementId, isDone);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssueRequirementAction(
+  boardId: string,
+  issueId: string,
+  requirementId: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssueRequirement(boardId, issueId, requirementId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssueReferenceAction(
+  boardId: string,
+  issueId: string,
+  url: string,
+  label: string
+): Promise<(Ok & { id: string; sortOrder: number }) | Err> {
+  try {
+    const created = await addIssueReference(boardId, issueId, url, label);
+    revalidateBoard(boardId, issueId);
+    return { ok: true, ...created };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssueReferenceAction(
+  boardId: string,
+  issueId: string,
+  referenceId: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssueReference(boardId, issueId, referenceId);
     revalidateBoard(boardId, issueId);
     return { ok: true };
   } catch (error) {
@@ -412,19 +521,19 @@ export async function uploadWorkIssueFileAction(
   boardId: string,
   issueId: string,
   formData: FormData
-): Promise<Ok | Err> {
+): Promise<(Ok & { id: string }) | Err> {
   try {
     const file = formData.get("file");
     if (!(file instanceof File)) throw new Error("Choose a file");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    await uploadIssueFile(boardId, issueId, {
+    const id = await uploadIssueFile(boardId, issueId, {
       name: file.name,
       type: file.type,
       size: file.size,
       bytes,
     });
     revalidateBoard(boardId, issueId);
-    return { ok: true };
+    return { ok: true, id };
   } catch (error) {
     return fail(error);
   }

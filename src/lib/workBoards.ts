@@ -26,8 +26,11 @@ import type {
   WorkEvent,
   WorkFile,
   WorkIssue,
+  WorkIssuePriority,
   WorkLabel,
   WorkPerson,
+  WorkReference,
+  WorkRequirement,
   WorkSelectorBoard,
   WorkSelectorCustomer,
 } from "@/lib/workTypes";
@@ -38,6 +41,8 @@ import {
   fetchIssueEvents,
   fetchIssueFiles,
   fetchIssueLabels,
+  fetchIssueReferences,
+  fetchIssueRequirements,
   fetchWorkIssueRelations,
   fetchWorkAssigneesForCustomer,
   fetchWorkBoardMembers,
@@ -313,6 +318,8 @@ export async function getWorkBoardView(
     commentRows,
     eventRows,
     fileRows,
+    requirementRows,
+    referenceRows,
     relationRows,
     loggedHoursByIssue,
   ] = await Promise.all([
@@ -321,6 +328,8 @@ export async function getWorkBoardView(
     fetchIssueComments(issueIds),
     fetchIssueEvents(issueIds),
     fetchIssueFiles(issueIds),
+    fetchIssueRequirements(issueIds),
+    fetchIssueReferences(issueIds),
     fetchWorkIssueRelations(board.id),
     fetchLoggedHoursByIssueIds(issueIds),
   ]);
@@ -388,6 +397,36 @@ export async function getWorkBoardView(
     });
     filesByIssue.set(row.issue_id, list);
   }
+  const requirementsByIssue = new Map<string, WorkRequirement[]>();
+  const dodByIssue = new Map<string, WorkRequirement[]>();
+  for (const row of requirementRows) {
+    const item: WorkRequirement = {
+      id: row.id,
+      body: row.body,
+      isDone: row.is_done,
+      sortOrder: row.sort_order,
+    };
+    if (row.kind === "dod") {
+      const list = dodByIssue.get(row.issue_id) ?? [];
+      list.push(item);
+      dodByIssue.set(row.issue_id, list);
+    } else {
+      const list = requirementsByIssue.get(row.issue_id) ?? [];
+      list.push(item);
+      requirementsByIssue.set(row.issue_id, list);
+    }
+  }
+  const referencesByIssue = new Map<string, WorkReference[]>();
+  for (const row of referenceRows) {
+    const list = referencesByIssue.get(row.issue_id) ?? [];
+    list.push({
+      id: row.id,
+      url: row.url,
+      label: row.label,
+      sortOrder: row.sort_order,
+    });
+    referencesByIssue.set(row.issue_id, list);
+  }
 
   const issues: WorkIssue[] = issueRows
     .filter((row) => statusIds.has(row.status))
@@ -401,6 +440,8 @@ export async function getWorkBoardView(
       description: row.description,
       currentState: row.current_state,
       nextStep: row.next_step,
+      outOfScope: row.out_of_scope,
+      priority: (row.priority as WorkIssuePriority | null) ?? null,
       owner: row.owner_app_user_id
         ? personOrFallback(
             row.owner_app_user_id,
@@ -420,6 +461,9 @@ export async function getWorkBoardView(
       comments: commentsByIssue.get(row.id) ?? [],
       events: eventsByIssue.get(row.id) ?? [],
       files: filesByIssue.get(row.id) ?? [],
+      requirements: requirementsByIssue.get(row.id) ?? [],
+      definitionOfDone: dodByIssue.get(row.id) ?? [],
+      references: referencesByIssue.get(row.id) ?? [],
       relations: emptyWorkIssueRelations(),
       estimateHours:
         row.estimate_hours == null ? null : Number(row.estimate_hours),

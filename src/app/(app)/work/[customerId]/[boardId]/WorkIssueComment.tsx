@@ -2,10 +2,19 @@
 
 import { useState } from "react";
 import { Button, ConfirmModal, InitialsAvatar } from "@/components/ui";
+import {
+  joinWorkInlineImages,
+  splitWorkInlineImages,
+  workFileImageHref,
+} from "@/lib/workInlineImages";
 import { encodeMentions, mentionPlainText } from "@/lib/workMentions";
 import { formatWorkTimestamp } from "@/lib/workTimeAgo";
 import type { WorkComment, WorkPerson } from "@/lib/workTypes";
-import { WorkCommentBody, WorkCommentComposer } from "./WorkCommentComposer";
+import {
+  WorkCommentBody,
+  WorkCommentComposer,
+  WorkInlineImageThumbs,
+} from "./WorkCommentComposer";
 
 const editClass =
   "w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50";
@@ -27,30 +36,35 @@ export function WorkIssueComment({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [editImageIds, setEditImageIds] = useState<string[]>([]);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   function startEdit() {
-    setDraft(mentionPlainText(comment.body));
+    const split = splitWorkInlineImages(comment.body);
+    setDraft(mentionPlainText(split.text));
+    setEditImageIds(split.fileIds);
     setEditing(true);
   }
 
   function cancelEdit() {
     setEditing(false);
     setDraft("");
+    setEditImageIds([]);
     setDeleteOpen(false);
   }
 
   function commitEdit() {
     const encoded = encodeMentions(draft.trim(), people);
-    if (!encoded) {
+    const next = joinWorkInlineImages(encoded, editImageIds);
+    if (!next) {
       setDeleteOpen(true);
       return;
     }
-    if (encoded === comment.body) {
+    if (next === comment.body) {
       cancelEdit();
       return;
     }
-    onSave(encoded);
+    onSave(next);
     cancelEdit();
   }
 
@@ -104,6 +118,15 @@ export function WorkIssueComment({
               className={`${editClass} min-h-[5.5rem] resize-none`}
               onChange={setDraft}
             />
+            <WorkInlineImageThumbs
+              items={editImageIds.map((id) => ({
+                key: id,
+                src: workFileImageHref(id),
+              }))}
+              onRemove={(key) =>
+                setEditImageIds((ids) => ids.filter((id) => id !== key))
+              }
+            />
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
@@ -131,7 +154,9 @@ export function WorkIssueComment({
         variant="danger"
         onClose={() => {
           setDeleteOpen(false);
-          setDraft(mentionPlainText(comment.body));
+          const split = splitWorkInlineImages(comment.body);
+          setDraft(mentionPlainText(split.text));
+          setEditImageIds(split.fileIds);
         }}
         onConfirm={() => {
           onDelete();

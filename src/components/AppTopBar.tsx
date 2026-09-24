@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { breadcrumbsForPathname } from "@/lib/breadcrumbs";
@@ -16,7 +16,17 @@ type AppTopBarProps = {
 export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
   const pathname = usePathname();
   const workTrail = useWorkTrail();
-  const crumbs = breadcrumbsForPathname(pathname, workTrail ?? undefined);
+  // Work trail is set by page children after mount. AppTopBar sits in a Suspense
+  // boundary above them, so applying trail before mount causes hydration mismatch
+  // (server: "Customer", client: real name).
+  const [trailReady, setTrailReady] = useState(false);
+  useEffect(() => {
+    setTrailReady(true);
+  }, []);
+  const crumbs = breadcrumbsForPathname(
+    pathname,
+    trailReady ? workTrail ?? undefined : undefined
+  );
   const notificationsActive =
     pathname === ROUTES.notifications ||
     pathname.startsWith(`${ROUTES.notifications}/`);

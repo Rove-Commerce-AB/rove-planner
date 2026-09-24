@@ -17,6 +17,8 @@ import {
   insertWorkIssueEvent,
   insertWorkIssueFile,
   insertWorkIssueRelation,
+  insertWorkIssueRequirement,
+  insertWorkIssueReference,
   linkWorkIssueLabel,
   moveWorkIssue,
   removeWorkIssueAssignee,
@@ -26,6 +28,11 @@ import {
   updateWorkIssueEstimate,
   updateWorkIssueField,
   updateWorkIssueOwner,
+  updateWorkIssuePriority,
+  updateWorkIssueRequirementBody,
+  updateWorkIssueRequirementDone,
+  deleteWorkIssueRequirement,
+  deleteWorkIssueReference,
   updateWorkIssueTitle,
 } from "@/lib/workIssuesQueries";
 import { commentPreview, extractMentionedIds } from "@/lib/workMentions";
@@ -39,7 +46,7 @@ import {
 } from "@/lib/workIssueRelations";
 import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
 import { insertUserNotification } from "@/lib/userNotifications";
-import { WORK_FILE_MAX_BYTES } from "@/lib/workTypes";
+import { WORK_FILE_MAX_BYTES, type WorkIssuePriority, type WorkRequirementKind } from "@/lib/workTypes";
 import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
@@ -114,7 +121,7 @@ export async function setWorkIssueOwner(
 export async function setWorkIssueTextField(
   boardId: string,
   issueId: string,
-  field: "description" | "current_state" | "next_step",
+  field: "description" | "current_state" | "next_step" | "out_of_scope",
   value: string
 ): Promise<void> {
   const { actor } = await requireBoardAccess(boardId);
@@ -124,6 +131,7 @@ export async function setWorkIssueTextField(
     description: "description",
     current_state: "current state",
     next_step: "next step",
+    out_of_scope: "out of scope",
   } as const;
   await logEvent(
     issueId,
@@ -151,6 +159,140 @@ export async function setWorkIssueEstimate(
       ? "cleared the estimate"
       : `set the estimate to ${formatWorkHours(parsed.value)}`
   );
+}
+
+export async function setWorkIssuePriority(
+  boardId: string,
+  issueId: string,
+  priority: WorkIssuePriority | null
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await updateWorkIssuePriority(boardId, issueId, priority);
+  if (!ok) throw new Error("Issue not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "priority",
+    priority == null ? "cleared the priority" : `set priority to ${priority}`
+  );
+}
+
+export async function addIssueRequirement(
+  boardId: string,
+  issueId: string,
+  body: string,
+  kind: WorkRequirementKind = "acceptance"
+): Promise<{ id: string; sortOrder: number }> {
+  const { actor } = await requireBoardAccess(boardId);
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Requirement text is required");
+  const created = await insertWorkIssueRequirement({
+    issueId,
+    body: trimmed,
+    kind,
+  });
+  await logEvent(
+    issueId,
+    actor.id,
+    "requirement",
+    kind === "dod"
+      ? "added a definition-of-done item"
+      : "added a requirement"
+  );
+  return created;
+}
+
+export async function setIssueRequirementBody(
+  boardId: string,
+  issueId: string,
+  requirementId: string,
+  body: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Requirement text is required");
+  const ok = await updateWorkIssueRequirementBody(
+    issueId,
+    requirementId,
+    trimmed
+  );
+  if (!ok) throw new Error("Requirement not found");
+  await logEvent(issueId, actor.id, "requirement", "updated a requirement");
+}
+
+export async function setIssueRequirementDone(
+  boardId: string,
+  issueId: string,
+  requirementId: string,
+  isDone: boolean
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await updateWorkIssueRequirementDone(
+    issueId,
+    requirementId,
+    isDone
+  );
+  if (!ok) throw new Error("Requirement not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "requirement",
+    isDone ? "checked a requirement" : "unchecked a requirement"
+  );
+}
+
+export async function removeIssueRequirement(
+  boardId: string,
+  issueId: string,
+  requirementId: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await deleteWorkIssueRequirement(issueId, requirementId);
+  if (!ok) throw new Error("Requirement not found");
+  await logEvent(issueId, actor.id, "requirement", "removed a requirement");
+}
+
+function normalizeReferenceUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("URL is required");
+  let url: URL;
+  try {
+    url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+  } catch {
+    throw new Error("Enter a valid URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("URL must start with http:// or https://");
+  }
+  return url.toString();
+}
+
+export async function addIssueReference(
+  boardId: string,
+  issueId: string,
+  url: string,
+  label: string
+): Promise<{ id: string; sortOrder: number }> {
+  const { actor } = await requireBoardAccess(boardId);
+  const normalized = normalizeReferenceUrl(url);
+  const created = await insertWorkIssueReference({
+    issueId,
+    url: normalized,
+    label: label.trim(),
+  });
+  await logEvent(issueId, actor.id, "reference", "added a reference");
+  return created;
+}
+
+export async function removeIssueReference(
+  boardId: string,
+  issueId: string,
+  referenceId: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await deleteWorkIssueReference(issueId, referenceId);
+  if (!ok) throw new Error("Reference not found");
+  await logEvent(issueId, actor.id, "reference", "removed a reference");
 }
 
 export async function addIssueAssignee(
@@ -310,14 +452,14 @@ export async function uploadIssueFile(
   boardId: string,
   issueId: string,
   file: { name: string; type: string; size: number; bytes: Uint8Array }
-): Promise<void> {
+): Promise<string> {
   const { actor } = await requireBoardAccess(boardId);
   const fileName = file.name.trim() || "file";
   if (file.size <= 0) throw new Error("File is empty");
   if (file.size > WORK_FILE_MAX_BYTES) {
     throw new Error("File must be 8 MB or smaller");
   }
-  await insertWorkIssueFile({
+  const fileId = await insertWorkIssueFile({
     issueId,
     fileName,
     mimeType: file.type || "application/octet-stream",
@@ -326,6 +468,7 @@ export async function uploadIssueFile(
     uploadedByAppUserId: actor.id,
   });
   await logEvent(issueId, actor.id, "file", `uploaded ${fileName}`);
+  return fileId;
 }
 
 export async function removeIssueFile(

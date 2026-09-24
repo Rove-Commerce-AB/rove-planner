@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { InitialsAvatar } from "@/components/ui";
 import {
   filterMentionPeople,
@@ -9,25 +10,84 @@ import {
   parseMentionSegments,
   type MentionQuery,
 } from "@/lib/workMentions";
+import {
+  splitWorkInlineImages,
+  workFileImageHref,
+} from "@/lib/workInlineImages";
 import type { WorkPerson } from "@/lib/workTypes";
 
-export function WorkCommentBody({ body }: { body: string }) {
-  const parts = parseMentionSegments(body);
+export function WorkInlineImageThumbs({
+  items,
+  onRemove,
+}: {
+  items: { key: string; src: string; uploading?: boolean }[];
+  onRemove?: (key: string) => void;
+}) {
+  if (items.length === 0) return null;
   return (
-    <p className="mt-1 whitespace-pre-wrap text-body-m text-text-primary">
-      {parts.map((part, index) =>
-        part.type === "mention" ? (
-          <span
-            key={`${part.id}-${index}`}
-            className="font-medium text-accent-primary-text"
+    <ul className="mt-1.5 flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <li key={item.key} className="group relative">
+          <a
+            href={item.src}
+            target="_blank"
+            rel="noreferrer"
+            className={`block overflow-hidden rounded border border-border-subtle bg-bg-muted ${
+              item.uploading ? "opacity-60" : ""
+            }`}
+            title="Open image"
           >
-            @{part.value}
-          </span>
-        ) : (
-          <span key={index}>{part.value}</span>
-        )
-      )}
-    </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.src}
+              alt=""
+              className="h-8 w-8 object-cover"
+            />
+          </a>
+          {onRemove ? (
+            <button
+              type="button"
+              className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-bg-default text-text-secondary opacity-0 shadow-sm ring-1 ring-border-subtle group-hover:opacity-100 hover:text-danger"
+              aria-label="Remove image"
+              onClick={() => onRemove(item.key)}
+            >
+              <X className="h-2.5 w-2.5" aria-hidden />
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function WorkCommentBody({ body }: { body: string }) {
+  const { text, fileIds } = splitWorkInlineImages(body);
+  const parts = parseMentionSegments(text);
+  return (
+    <div className="mt-1">
+      {text.trim() ? (
+        <p className="whitespace-pre-wrap text-body-m text-text-primary">
+          {parts.map((part, index) =>
+            part.type === "mention" ? (
+              <span
+                key={`${part.id}-${index}`}
+                className="font-medium text-accent-primary-text"
+              >
+                @{part.value}
+              </span>
+            ) : (
+              <span key={index}>{part.value}</span>
+            )
+          )}
+        </p>
+      ) : null}
+      <WorkInlineImageThumbs
+        items={fileIds.map((id) => ({
+          key: id,
+          src: workFileImageHref(id),
+        }))}
+      />
+    </div>
   );
 }
 

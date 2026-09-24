@@ -599,11 +599,11 @@ export function ProjectManagerTimeReportClient({
                     onClick={() => setMonth(m)}
                     className={`w-[4.0rem] cursor-pointer shrink-0 rounded-md px-2 py-1 text-center text-xs font-medium transition-colors whitespace-nowrap ${
                       isSelected
-                        ? "bg-brand-blue text-white"
-                        : "bg-bg-muted text-text-secondary hover:bg-bg-muted/80 hover:text-text-primary"
+                        ? "bg-interactive-primary text-text-inverse"
+                        : "border border-border-subtle bg-bg-default text-text-primary hover:bg-bg-muted"
                     } ${
                       !isSelected && isCurrentMonth
-                        ? "ring-2 ring-brand-blue ring-offset-1 ring-offset-bg-default"
+                        ? "ring-2 ring-interactive-primary ring-offset-1 ring-offset-bg-default"
                         : ""
                     }`}
                     aria-label={`Month ${m}`}

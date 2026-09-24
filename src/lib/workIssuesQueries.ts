@@ -17,6 +17,8 @@ export type WorkIssueRow = {
   description: string;
   current_state: string;
   next_step: string;
+  out_of_scope: string;
+  priority: "low" | "medium" | "high" | null;
   owner_app_user_id: string | null;
   owner_name: string | null;
   owner_email: string | null;
@@ -105,6 +107,8 @@ export async function fetchWorkIssuesForBoard(
        i.description,
        i.current_state,
        i.next_step,
+       i.out_of_scope,
+       i.priority,
        i.owner_app_user_id,
        o.name AS owner_name,
        o.email AS owner_email,
@@ -346,7 +350,7 @@ export async function updateWorkIssueOwner(
 export async function updateWorkIssueField(
   boardId: string,
   issueId: string,
-  field: "description" | "current_state" | "next_step",
+  field: "description" | "current_state" | "next_step" | "out_of_scope",
   value: string
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
@@ -364,6 +368,157 @@ export async function updateWorkIssueEstimate(
   const result = await cloudSqlPool.query(
     `UPDATE work_issues SET estimate_hours = $3 WHERE id = $2 AND board_id = $1`,
     [boardId, issueId, estimateHours]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function updateWorkIssuePriority(
+  boardId: string,
+  issueId: string,
+  priority: "low" | "medium" | "high" | null
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issues SET priority = $3 WHERE id = $2 AND board_id = $1`,
+    [boardId, issueId, priority]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function fetchIssueRequirements(issueIds: string[]) {
+  if (issueIds.length === 0) return [];
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    issue_id: string;
+    body: string;
+    is_done: boolean;
+    sort_order: number;
+    kind: "acceptance" | "dod";
+  }>(
+    `SELECT id, issue_id, body, is_done, sort_order, kind
+     FROM work_issue_requirements
+     WHERE issue_id = ANY($1::uuid[])
+     ORDER BY sort_order ASC, created_at ASC`,
+    [issueIds]
+  );
+  return rows;
+}
+
+export async function insertWorkIssueRequirement(input: {
+  issueId: string;
+  body: string;
+  kind: "acceptance" | "dod";
+}): Promise<{ id: string; sortOrder: number }> {
+  return withCloudSqlTransaction("work-add-requirement", async (client) => {
+    const { rows: orderRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+       FROM work_issue_requirements
+       WHERE issue_id = $1 AND kind = $2`,
+      [input.issueId, input.kind]
+    );
+    const sortOrder = orderRows[0]?.next ?? 0;
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO work_issue_requirements (issue_id, body, sort_order, kind)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [input.issueId, input.body, sortOrder, input.kind]
+    );
+    const id = rows[0]?.id;
+    if (!id) throw new Error("Failed to create requirement");
+    return { id, sortOrder };
+  });
+}
+
+export async function updateWorkIssueRequirementBody(
+  issueId: string,
+  requirementId: string,
+  body: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issue_requirements
+     SET body = $3, updated_at = now()
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, requirementId, body]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function updateWorkIssueRequirementDone(
+  issueId: string,
+  requirementId: string,
+  isDone: boolean
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issue_requirements
+     SET is_done = $3, updated_at = now()
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, requirementId, isDone]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function deleteWorkIssueRequirement(
+  issueId: string,
+  requirementId: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `DELETE FROM work_issue_requirements
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, requirementId]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function fetchIssueReferences(issueIds: string[]) {
+  if (issueIds.length === 0) return [];
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    issue_id: string;
+    url: string;
+    label: string;
+    sort_order: number;
+  }>(
+    `SELECT id, issue_id, url, label, sort_order
+     FROM work_issue_references
+     WHERE issue_id = ANY($1::uuid[])
+     ORDER BY sort_order ASC, created_at ASC`,
+    [issueIds]
+  );
+  return rows;
+}
+
+export async function insertWorkIssueReference(input: {
+  issueId: string;
+  url: string;
+  label: string;
+}): Promise<{ id: string; sortOrder: number }> {
+  return withCloudSqlTransaction("work-add-reference", async (client) => {
+    const { rows: orderRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+       FROM work_issue_references
+       WHERE issue_id = $1`,
+      [input.issueId]
+    );
+    const sortOrder = orderRows[0]?.next ?? 0;
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO work_issue_references (issue_id, url, label, sort_order)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [input.issueId, input.url, input.label, sortOrder]
+    );
+    const id = rows[0]?.id;
+    if (!id) throw new Error("Failed to create reference");
+    return { id, sortOrder };
+  });
+}
+
+export async function deleteWorkIssueReference(
+  issueId: string,
+  referenceId: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `DELETE FROM work_issue_references
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, referenceId]
   );
   return (result.rowCount ?? 0) === 1;
 }
