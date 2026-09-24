@@ -1,263 +1,131 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
 import { getCurrentAppUser } from "@/lib/appUsers";
-import {
-  notifyFeatureRequestDeclined,
-  notifyFeatureRequestImplemented,
-} from "@/lib/userNotifications";
-import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
-import { ROUTES } from "@/lib/routes";
 
-type LinearConfig = {
-  apiKey: string;
-  teamId: string;
-  projectId: string;
-};
+const FEATURE_REQUEST_BOARD_TITLE = "Rove Apps";
+const STATUS_REQUEST = "Request";
 
-function getLinearConfig(): LinearConfig | null {
-  const apiKey = process.env.LINEAR_API_KEY?.trim();
-  const teamId = process.env.LINEAR_TEAM_ID?.trim();
-  const projectId = process.env.LINEAR_PROJECT_ID?.trim();
-
-  if (!apiKey || !teamId || !projectId) {
-    console.warn(
-      "[featureRequests] Linear disabled: missing LINEAR_API_KEY, LINEAR_TEAM_ID or LINEAR_PROJECT_ID"
-    );
-    return null;
-  }
-
-  return { apiKey, teamId, projectId };
+function titleFromContent(content: string): string {
+  const firstLine = content.split(/\r?\n/).find((line) => line.trim()) ?? content;
+  const trimmed = firstLine.trim();
+  if (trimmed.length <= 120) return trimmed;
+  return `${trimmed.slice(0, 117)}...`;
 }
 
-async function createLinearIssueForFeatureRequest(args: {
+function descriptionFromRequest(args: {
   content: string;
-  submittedByEmail: string | null;
-}) {
-  const config = getLinearConfig();
-  if (!config) return;
-
-  const title = args.content.length > 120 ? `${args.content.slice(0, 117)}...` : args.content;
-  const descriptionLines = [
-    "Created from Rove Apps feature request.",
+  requestedBy: string | null;
+  declineComment?: string | null;
+}): string {
+  const lines = [
+    `Requested by: ${args.requestedBy?.trim() || "unknown"}`,
     "",
-    `Requested by: ${args.submittedByEmail ?? "unknown"}`,
-    "",
-    "Request content:",
-    args.content,
+    args.content.trim(),
   ];
-
-  const mutation = `
-    mutation IssueCreate($input: IssueCreateInput!) {
-      issueCreate(input: $input) {
-        success
-        issue {
-          id
-          identifier
-          url
-        }
-      }
-    }
-  `;
-
-  const response = await fetch("https://api.linear.app/graphql", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: config.apiKey,
-    },
-    body: JSON.stringify({
-      query: mutation,
-      variables: {
-        input: {
-          title,
-          description: descriptionLines.join("\n"),
-          teamId: config.teamId,
-          projectId: config.projectId,
-        },
-      },
-    }),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Linear API HTTP ${response.status}`);
+  const decline = args.declineComment?.trim();
+  if (decline) {
+    lines.push("", `Decline reason: ${decline}`);
   }
-
-  const result = (await response.json()) as {
-    errors?: Array<{ message?: string }>;
-    data?: {
-      issueCreate?: {
-        success?: boolean;
-      };
-    };
-  };
-
-  if (result.errors?.length) {
-    throw new Error(result.errors.map((e) => e.message ?? "Unknown error").join("; "));
-  }
-
-  if (!result.data?.issueCreate?.success) {
-    throw new Error("Linear issueCreate returned success=false");
-  }
+  return lines.join("\n");
 }
 
-export type FeatureRequest = {
-  id: string;
-  content: string;
-  created_at: string;
-  updated_at: string;
-  submitted_by_email: string | null;
-  is_implemented: boolean;
-  declined_at: string | null;
-  decline_comment: string | null;
-};
-
-export async function getFeatureRequests(): Promise<FeatureRequest[]> {
-  const { rows } = await cloudSqlPool.query<FeatureRequest>(
-    `SELECT id, content, created_at::text, updated_at::text, submitted_by_email, is_implemented,
-            declined_at::text, decline_comment
-     FROM feature_requests
-     ORDER BY
-       CASE
-         WHEN declined_at IS NOT NULL THEN 2
-         WHEN is_implemented THEN 1
-         ELSE 0
-       END ASC,
-       updated_at DESC,
-       created_at DESC`
+async function resolveFeatureRequestBoard(): Promise<{
+  boardId: string;
+  requestStatusId: string;
+}> {
+  const { rows: boards } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id
+     FROM work_boards
+     WHERE title = $1 AND archived_at IS NULL
+     ORDER BY created_at ASC
+     LIMIT 2`,
+    [FEATURE_REQUEST_BOARD_TITLE]
   );
-  return rows;
-}
-
-export async function setFeatureRequestImplemented(
-  id: string,
-  is_implemented: boolean
-): Promise<void> {
-  await assertNotSubcontractorForWrite();
-  const { rows: beforeRows } = await cloudSqlPool.query<{
-    submitted_by_email: string | null;
-    is_implemented: boolean;
-    content: string;
-  }>(
-    `SELECT submitted_by_email, is_implemented, content FROM feature_requests WHERE id = $1`,
-    [id]
-  );
-  const prev = beforeRows[0];
-  if (!prev) throw new Error("Update failed");
-
-  const { rowCount } = await cloudSqlPool.query(
-    `UPDATE feature_requests
-     SET is_implemented = $2,
-         declined_at = CASE WHEN $2 THEN NULL ELSE declined_at END,
-         decline_comment = CASE WHEN $2 THEN NULL ELSE decline_comment END,
-         updated_at = now()
-     WHERE id = $1`,
-    [id, is_implemented]
-  );
-  if (!rowCount) throw new Error("Update failed");
-
-  if (
-    is_implemented &&
-    !prev.is_implemented &&
-    prev.submitted_by_email?.trim()
-  ) {
-    const c = prev.content;
-    const preview = c.length > 120 ? `${c.slice(0, 117)}...` : c;
-    await notifyFeatureRequestImplemented({
-      submittedByEmail: prev.submitted_by_email.trim(),
-      featureRequestId: id,
-      contentPreview: preview,
-    });
+  if (boards.length === 0) {
+    throw new Error(`Work board “${FEATURE_REQUEST_BOARD_TITLE}” was not found`);
   }
-  revalidatePath(ROUTES.settings);
-}
+  if (boards.length > 1) {
+    throw new Error(
+      `Multiple Work boards named “${FEATURE_REQUEST_BOARD_TITLE}” found`
+    );
+  }
+  const boardId = boards[0]!.id;
 
-export async function declineFeatureRequest(
-  id: string,
-  adminComment: string
-): Promise<void> {
-  await assertNotSubcontractorForWrite();
-  const trimmedComment = adminComment.trim();
-  if (!trimmedComment) throw new Error("Admin comment is required");
-
-  const { rows: beforeRows } = await cloudSqlPool.query<{
-    submitted_by_email: string | null;
-    content: string;
-  }>(
-    `SELECT submitted_by_email, content FROM feature_requests WHERE id = $1`,
-    [id]
+  const { rows: statuses } = await cloudSqlPool.query<{ id: string }>(
+    `SELECT id
+     FROM work_board_statuses
+     WHERE board_id = $1 AND name = $2
+     LIMIT 1`,
+    [boardId, STATUS_REQUEST]
   );
-  const prev = beforeRows[0];
-  if (!prev) throw new Error("Update failed");
-
-  const { rowCount } = await cloudSqlPool.query(
-    `UPDATE feature_requests
-     SET is_implemented = false,
-         declined_at = now(),
-         decline_comment = $2,
-         updated_at = now()
-     WHERE id = $1`,
-    [id, trimmedComment]
-  );
-  if (!rowCount) throw new Error("Update failed");
-
-  if (prev.submitted_by_email?.trim()) {
-    const c = prev.content;
-    const preview = c.length > 120 ? `${c.slice(0, 117)}...` : c;
-    await notifyFeatureRequestDeclined({
-      submittedByEmail: prev.submitted_by_email.trim(),
-      featureRequestId: id,
-      contentPreview: preview,
-      adminComment: trimmedComment,
-    });
+  const requestStatusId = statuses[0]?.id;
+  if (!requestStatusId) {
+    throw new Error(
+      `Status “${STATUS_REQUEST}” is missing on board “${FEATURE_REQUEST_BOARD_TITLE}”`
+    );
   }
 
-  revalidatePath(ROUTES.settings);
+  return { boardId, requestStatusId };
 }
 
+/**
+ * Creates a Work issue on the “Rove Apps” board (column Request).
+ * Any signed-in user may submit; board membership is not required.
+ * Reporter = submitter. Owner is left empty.
+ */
 export async function createFeatureRequest(content: string): Promise<void> {
   const trimmed = content?.trim();
   if (!trimmed) throw new Error("Content is required");
 
   const user = await getCurrentAppUser();
-  const submittedByEmail = user?.email ?? null;
-  await cloudSqlPool.query(
-    `INSERT INTO feature_requests (content, submitted_by_email) VALUES ($1, $2)`,
-    [trimmed, submittedByEmail]
-  );
+  if (!user?.id) throw new Error("Unauthorized");
 
-  try {
-    await createLinearIssueForFeatureRequest({
-      content: trimmed,
-      submittedByEmail,
-    });
-  } catch (error) {
-    console.error("[featureRequests] Failed to create Linear issue", error);
-  }
+  const { boardId, requestStatusId } = await resolveFeatureRequestBoard();
+  const title = titleFromContent(trimmed);
+  const description = descriptionFromRequest({
+    content: trimmed,
+    requestedBy: user.email ?? null,
+  });
 
-  revalidatePath(ROUTES.settings);
-}
-
-export async function updateFeatureRequest(
-  id: string,
-  content: string
-): Promise<void> {
-  await assertNotSubcontractorForWrite();
-  const trimmed = content?.trim();
-  if (!trimmed) throw new Error("Content is required");
-
-  const { rowCount } = await cloudSqlPool.query(
-    `UPDATE feature_requests SET content = $2, updated_at = now() WHERE id = $1`,
-    [id, trimmed]
-  );
-  if (!rowCount) throw new Error("Update failed");
-  revalidatePath(ROUTES.settings);
-}
-
-export async function deleteFeatureRequest(id: string): Promise<void> {
-  await assertNotSubcontractorForWrite();
-  await cloudSqlPool.query(`DELETE FROM feature_requests WHERE id = $1`, [id]);
-  revalidatePath(ROUTES.settings);
+  await withCloudSqlTransaction("feature-request-create", async (client) => {
+    await client.query("SELECT id FROM work_boards WHERE id = $1 FOR UPDATE", [
+      boardId,
+    ]);
+    const { rows: numberRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(number), 0) + 1 AS next
+       FROM work_issues
+       WHERE board_id = $1`,
+      [boardId]
+    );
+    const { rows: orderRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+       FROM work_issues
+       WHERE board_id = $1 AND status = $2`,
+      [boardId, requestStatusId]
+    );
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO work_issues (
+         board_id, number, title, status, sort_order,
+         owner_app_user_id, created_by_app_user_id, description
+       ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7)
+       RETURNING id`,
+      [
+        boardId,
+        numberRows[0]?.next ?? 1,
+        title,
+        requestStatusId,
+        orderRows[0]?.next ?? 0,
+        user.id,
+        description,
+      ]
+    );
+    const issueId = rows[0]?.id;
+    if (!issueId) throw new Error("Failed to create feature request");
+    await client.query(
+      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+       VALUES ($1, $2, 'created', 'created the issue')`,
+      [issueId, user.id]
+    );
+  });
 }

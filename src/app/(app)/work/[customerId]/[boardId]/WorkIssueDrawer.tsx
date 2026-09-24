@@ -395,7 +395,9 @@ export function WorkIssueDrawer({
               </div>
             </WorkMetaRow>
             <WorkMetaRow label="Reporter">
-              <p className="text-sm text-text-primary">{issue.reporter.name}</p>
+              <p className="text-sm text-text-primary">
+                {issue.reporter?.name ?? "—"}
+              </p>
             </WorkMetaRow>
             <WorkMetaRow label="Estimate">
               <div className="flex items-center gap-1">

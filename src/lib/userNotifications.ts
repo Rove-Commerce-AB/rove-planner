@@ -175,44 +175,6 @@ async function notifyAllocationInsertsInner(
 }
 
 
-export async function notifyFeatureRequestImplemented(args: {
-  submittedByEmail: string;
-  featureRequestId: string;
-  contentPreview: string;
-}): Promise<void> {
-  const appUserId = await getAppUserIdByEmail(args.submittedByEmail);
-  if (!appUserId) return;
-  try {
-    await insertNotificationRow(appUserId, USER_NOTIFICATION_KIND.FEATURE_REQUEST_IMPLEMENTED, {
-      featureRequestId: args.featureRequestId,
-      contentPreview: args.contentPreview,
-    });
-    revalidateDashboardShell();
-  } catch (e) {
-    console.error("[userNotifications] feature implemented insert failed", e);
-  }
-}
-
-export async function notifyFeatureRequestDeclined(args: {
-  submittedByEmail: string;
-  featureRequestId: string;
-  contentPreview: string;
-  adminComment: string;
-}): Promise<void> {
-  const appUserId = await getAppUserIdByEmail(args.submittedByEmail);
-  if (!appUserId) return;
-  try {
-    await insertNotificationRow(appUserId, USER_NOTIFICATION_KIND.FEATURE_REQUEST_DECLINED, {
-      featureRequestId: args.featureRequestId,
-      contentPreview: args.contentPreview,
-      adminComment: args.adminComment,
-    });
-    revalidateDashboardShell();
-  } catch (e) {
-    console.error("[userNotifications] feature declined insert failed", e);
-  }
-}
-
 export async function getNotificationsForCurrentUser(
   limit = 20
 ): Promise<UserNotificationRow[]> {

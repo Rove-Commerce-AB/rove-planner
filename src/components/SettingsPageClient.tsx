@@ -8,8 +8,6 @@ import { getRoles, deleteRole, updateRole } from "@/lib/rolesClient";
 import { getTeams, deleteTeam, updateTeam } from "@/lib/teamsClient";
 import { getCalendarsWithHolidayCount } from "@/lib/calendarsClient";
 import {
-  Button,
-  Dialog,
   IconButton,
   ConfirmModal,
   InlineEditStatus,
@@ -21,19 +19,10 @@ import {
   INLINE_EDIT_STATUS_ROW_MIN_H,
   editInputListClass,
   inlineEditTriggerListClassRowHover,
-  modalInputClass,
 } from "@/components/ui";
-import {
-  updateFeatureRequest,
-  deleteFeatureRequest,
-  setFeatureRequestImplemented,
-  declineFeatureRequest,
-  type FeatureRequest,
-} from "@/lib/featureRequests";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 
 import { SettingsCalendarsSection } from "./settings/SettingsCalendarsSection";
-import { SettingsFeatureRequestsSection } from "./settings/SettingsFeatureRequestsSection";
 
 const AddRoleModal = dynamic(() =>
   import("./AddRoleModal").then((mod) => mod.AddRoleModal)
@@ -49,7 +38,6 @@ type Props = {
   roles: Awaited<ReturnType<typeof getRoles>>;
   teams: Awaited<ReturnType<typeof getTeams>>;
   calendars: Awaited<ReturnType<typeof getCalendarsWithHolidayCount>>;
-  featureRequests: FeatureRequest[];
   error: string | null;
 };
 
@@ -57,7 +45,6 @@ export function SettingsPageClient({
   roles: initialRoles,
   teams: initialTeams,
   calendars: initialCalendars,
-  featureRequests: initialFeatureRequests,
   error,
 }: Props) {
   const router = useRouter();
@@ -87,19 +74,6 @@ export function SettingsPageClient({
     id: string;
     name: string;
   } | null>(null);
-  const [editingFeatureRequestId, setEditingFeatureRequestId] = useState<string | null>(null);
-  const [editingFeatureRequestValue, setEditingFeatureRequestValue] = useState("");
-  const [savingFeatureRequest, setSavingFeatureRequest] = useState(false);
-  const [showSavedFeatureRequest, setShowSavedFeatureRequest] = useState(false);
-  const [featureRequestError, setFeatureRequestError] = useState<string | null>(null);
-  const savedFeatureRequestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedFeatureRequestIdRef = useRef<string | null>(null);
-  const [featureRequestToDelete, setFeatureRequestToDelete] = useState<FeatureRequest | null>(null);
-  const [togglingImplementedId, setTogglingImplementedId] = useState<string | null>(null);
-  const [decliningFeatureRequestId, setDecliningFeatureRequestId] = useState<string | null>(null);
-  const [featureRequestToDecline, setFeatureRequestToDecline] = useState<FeatureRequest | null>(null);
-  const [declineCommentValue, setDeclineCommentValue] = useState("");
-  const [declineCommentError, setDeclineCommentError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -109,7 +83,6 @@ export function SettingsPageClient({
     return () => {
       if (savedRoleTimeoutRef.current) clearTimeout(savedRoleTimeoutRef.current);
       if (savedTeamTimeoutRef.current) clearTimeout(savedTeamTimeoutRef.current);
-      if (savedFeatureRequestTimeoutRef.current) clearTimeout(savedFeatureRequestTimeoutRef.current);
     };
   }, []);
 
@@ -137,105 +110,6 @@ export function SettingsPageClient({
 
   const handleSuccess = () => {
     router.refresh();
-  };
-
-  const saveFeatureRequestInline = async (originalContent: string) => {
-    if (!editingFeatureRequestId) return;
-    if (!editingFeatureRequestValue.trim()) {
-      setEditingFeatureRequestId(null);
-      setEditingFeatureRequestValue("");
-      return;
-    }
-    if (!isInlineEditValueChanged(originalContent, editingFeatureRequestValue)) {
-      setEditingFeatureRequestId(null);
-      setEditingFeatureRequestValue("");
-      return;
-    }
-    setFeatureRequestError(null);
-    const frIdToSave = editingFeatureRequestId;
-    const valueToSave = editingFeatureRequestValue.trim();
-    lastSavedFeatureRequestIdRef.current = frIdToSave;
-    setEditingFeatureRequestId(null);
-    setEditingFeatureRequestValue("");
-    setShowSavedFeatureRequest(true);
-    if (savedFeatureRequestTimeoutRef.current) clearTimeout(savedFeatureRequestTimeoutRef.current);
-    savedFeatureRequestTimeoutRef.current = setTimeout(() => {
-      savedFeatureRequestTimeoutRef.current = null;
-      lastSavedFeatureRequestIdRef.current = null;
-      setShowSavedFeatureRequest(false);
-    }, SAVED_DURATION_MS);
-    setSavingFeatureRequest(true);
-    try {
-      await updateFeatureRequest(frIdToSave, valueToSave);
-      router.refresh();
-    } catch (e) {
-      setFeatureRequestError(e instanceof Error ? e.message : "Failed to update");
-      setShowSavedFeatureRequest(false);
-      lastSavedFeatureRequestIdRef.current = null;
-    } finally {
-      setSavingFeatureRequest(false);
-    }
-  };
-
-  const cancelFeatureRequestEdit = (restoreContent: string) => {
-    setEditingFeatureRequestValue(restoreContent);
-    setEditingFeatureRequestId(null);
-    setFeatureRequestError(null);
-  };
-
-  const handleFeatureRequestDelete = async () => {
-    if (!featureRequestToDelete) return;
-    try {
-      await deleteFeatureRequest(featureRequestToDelete.id);
-      setFeatureRequestToDelete(null);
-      router.refresh();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete");
-    }
-  };
-
-  const handleToggleImplemented = async (fr: FeatureRequest) => {
-    setTogglingImplementedId(fr.id);
-    try {
-      await setFeatureRequestImplemented(fr.id, !fr.is_implemented);
-      router.refresh();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update");
-    } finally {
-      setTogglingImplementedId(null);
-    }
-  };
-
-  const handleDeclineFeatureRequest = async (fr: FeatureRequest) => {
-    setDeclineCommentError(null);
-    setDeclineCommentValue(fr.decline_comment ?? "");
-    setFeatureRequestToDecline(fr);
-  };
-
-  const handleDeclineModalClose = () => {
-    setFeatureRequestToDecline(null);
-    setDeclineCommentValue("");
-    setDeclineCommentError(null);
-  };
-
-  const handleDeclineModalConfirm = async () => {
-    if (!featureRequestToDecline) return;
-    const targetId = featureRequestToDecline.id;
-    const comment = declineCommentValue.trim();
-    if (!comment) {
-      setDeclineCommentError("A comment is required.");
-      return;
-    }
-    setDecliningFeatureRequestId(targetId);
-    try {
-      await declineFeatureRequest(targetId, comment);
-      handleDeclineModalClose();
-      router.refresh();
-    } catch (e) {
-      setDeclineCommentError(e instanceof Error ? e.message : "Failed to decline");
-    } finally {
-      setDecliningFeatureRequestId(null);
-    }
   };
 
   const saveRoleInline = async (originalName: string) => {
@@ -518,26 +392,6 @@ export function SettingsPageClient({
             <PanelSectionTitle>CALENDARS</PanelSectionTitle>
           </Panel>
         )}
-
-        <SettingsFeatureRequestsSection
-          featureRequests={initialFeatureRequests}
-          editingFeatureRequestId={editingFeatureRequestId}
-          setEditingFeatureRequestId={setEditingFeatureRequestId}
-          editingFeatureRequestValue={editingFeatureRequestValue}
-          setEditingFeatureRequestValue={setEditingFeatureRequestValue}
-          saveFeatureRequestInline={saveFeatureRequestInline}
-          cancelFeatureRequestEdit={cancelFeatureRequestEdit}
-          showSavedFeatureRequest={showSavedFeatureRequest}
-          lastSavedFeatureRequestIdRef={lastSavedFeatureRequestIdRef}
-          savingFeatureRequest={savingFeatureRequest}
-          featureRequestError={featureRequestError}
-          togglingImplementedId={togglingImplementedId}
-          decliningFeatureRequestId={decliningFeatureRequestId}
-          handleToggleImplemented={handleToggleImplemented}
-          handleDecline={handleDeclineFeatureRequest}
-          setFeatureRequestError={setFeatureRequestError}
-          setFeatureRequestToDelete={setFeatureRequestToDelete}
-        />
       </div>
 
       <AddRoleModal
@@ -577,57 +431,6 @@ export function SettingsPageClient({
         onClose={() => setAddCalendarOpen(false)}
         onSuccess={handleSuccess}
       />
-
-      <ConfirmModal
-        isOpen={featureRequestToDelete !== null}
-        title="Delete feature request"
-        message="Delete this feature request? This cannot be undone."
-        confirmLabel="Delete"
-        variant="danger"
-        onClose={() => setFeatureRequestToDelete(null)}
-        onConfirm={handleFeatureRequestDelete}
-      />
-
-      <Dialog
-        open={featureRequestToDecline !== null}
-        onOpenChange={(open) => {
-          if (!open) handleDeclineModalClose();
-        }}
-        title="Decline feature request"
-        subtitle="Reporter notification"
-      >
-        <div className="mt-4 space-y-4">
-          <p className="text-sm text-text-primary/85">
-            Add a comment for the reporter. This will be sent as a notification.
-          </p>
-          <textarea
-            value={declineCommentValue}
-            onChange={(e) => {
-              setDeclineCommentValue(e.target.value);
-              if (declineCommentError) setDeclineCommentError(null);
-            }}
-            rows={4}
-            className={`${modalInputClass} w-full resize-y`}
-            placeholder="Sorry, this will not be implemented because..."
-            autoFocus
-          />
-          {declineCommentError && (
-            <p className="text-sm font-medium text-red-700 dark:text-red-300">{declineCommentError}</p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={handleDeclineModalClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              disabled={featureRequestToDecline == null || decliningFeatureRequestId != null}
-              onClick={() => void handleDeclineModalConfirm()}
-            >
-              {decliningFeatureRequestId ? "Declining..." : "Decline request"}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
     </>
   );
 }

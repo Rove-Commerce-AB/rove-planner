@@ -802,7 +802,7 @@ Issues on a Work board. Keys are `{prefix}-{number}` with `number` unique per bo
 | current_state | text | NOT NULL, default `''` |
 | next_step | text | NOT NULL, default `''` |
 | estimate_hours | numeric(8,2) | nullable; planned hours. Must be `>= 0` when set. Logged hours are not stored here — they are summed from Time report lines linked via `time_report_entry_lines.work_issue_id`. |
-| created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
+| created_by_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE RESTRICT; shown as Reporter |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
@@ -815,7 +815,8 @@ Default columns: Todo, In progress, To be tested, In review, Done.
 DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
 [`scripts/20260913_work_board_statuses.sql`](../scripts/20260913_work_board_statuses.sql),
 [`scripts/20260913_work_issue_details.sql`](../scripts/20260913_work_issue_details.sql),
-[`scripts/20260919_work_issue_estimate.sql`](../scripts/20260919_work_issue_estimate.sql).
+[`scripts/20260919_work_issue_estimate.sql`](../scripts/20260919_work_issue_estimate.sql),
+[`scripts/20260924_work_issue_nullable_reporter.sql`](../scripts/20260924_work_issue_nullable_reporter.sql).
 
 ---
 
@@ -939,6 +940,10 @@ Index: `(issue_id, created_at)`.
 ---
 
 ## feature_requests
+
+**Deprecated.** New feature requests are Work issues on the “Rove Apps” board.
+The FAB writes there directly. Existing rows were migrated to that board; the
+table may still exist for historical reference but is unused by the app.
 
 | Column | Type | Notes |
 |--------|------|--------|

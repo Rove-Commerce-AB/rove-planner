@@ -20,9 +20,9 @@ export type WorkIssueRow = {
   owner_app_user_id: string | null;
   owner_name: string | null;
   owner_email: string | null;
-  created_by_app_user_id: string;
+  created_by_app_user_id: string | null;
   reporter_name: string | null;
-  reporter_email: string;
+  reporter_email: string | null;
   estimate_hours: string | number | null;
 };
 
@@ -113,7 +113,7 @@ export async function fetchWorkIssuesForBoard(
        r.email AS reporter_email,
        i.estimate_hours
      FROM work_issues i
-     JOIN app_users r ON r.id = i.created_by_app_user_id
+     LEFT JOIN app_users r ON r.id = i.created_by_app_user_id
      LEFT JOIN app_users o ON o.id = i.owner_app_user_id
      WHERE i.board_id = $1
      ORDER BY i.status, i.sort_order, i.number`,
@@ -262,7 +262,12 @@ export async function insertWorkIssue(input: {
   boardId: string;
   title: string;
   status: WorkIssueStatus;
-  createdByAppUserId: string;
+  createdByAppUserId: string | null;
+  /** Defaults to null (no owner). Pass an id to assign an owner on create. */
+  ownerAppUserId?: string | null;
+  description?: string;
+  /** Actor for the created event when reporter is null. */
+  eventActorAppUserId?: string | null;
 }): Promise<string> {
   return withCloudSqlTransaction("work-create-issue", async (client) => {
     await client.query("SELECT id FROM work_boards WHERE id = $1 FOR UPDATE", [
@@ -280,11 +285,13 @@ export async function insertWorkIssue(input: {
        WHERE board_id = $1 AND status = $2`,
       [input.boardId, input.status]
     );
+    const ownerAppUserId =
+      input.ownerAppUserId === undefined ? null : input.ownerAppUserId;
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO work_issues (
          board_id, number, title, status, sort_order,
-         owner_app_user_id, created_by_app_user_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         owner_app_user_id, created_by_app_user_id, description
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
         input.boardId,
@@ -292,17 +299,22 @@ export async function insertWorkIssue(input: {
         input.title,
         input.status,
         orderRows[0]?.next ?? 0,
+        ownerAppUserId,
         input.createdByAppUserId,
-        input.createdByAppUserId,
+        input.description ?? "",
       ]
     );
     const id = rows[0]?.id;
     if (!id) throw new Error("Failed to create issue");
-    await client.query(
-      `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
-       VALUES ($1, $2, 'created', 'created the issue')`,
-      [id, input.createdByAppUserId]
-    );
+    const eventActor =
+      input.eventActorAppUserId ?? input.createdByAppUserId ?? null;
+    if (eventActor) {
+      await client.query(
+        `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
+         VALUES ($1, $2, 'created', 'created the issue')`,
+        [id, eventActor]
+      );
+    }
     return id;
   });
 }

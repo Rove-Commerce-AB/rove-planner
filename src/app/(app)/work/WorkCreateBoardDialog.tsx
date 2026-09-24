@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, InitialsAvatar, Input } from "@/components/ui";
 import { workBoardHref } from "@/lib/routes";
@@ -32,6 +32,7 @@ export function WorkCreateBoardDialog({
   const [error, setError] = useState<string | null>(null);
   const [people, setPeople] = useState<WorkPerson[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open || !customer) return;
@@ -45,6 +46,13 @@ export function WorkCreateBoardDialog({
       setMemberIds(rows.map((person) => person.id));
     });
   }, [customer, open]);
+
+  useEffect(() => {
+    const el = selectAllRef.current;
+    if (!el) return;
+    el.indeterminate =
+      memberIds.length > 0 && memberIds.length < people.length;
+  }, [memberIds, people.length]);
 
   function toggleMember(id: string) {
     setMemberIds((current) =>
@@ -106,6 +114,26 @@ export function WorkCreateBoardDialog({
           <fieldset className="space-y-2">
             <legend className="text-label-s text-text-secondary">Access</legend>
             <ul className="max-h-52 space-y-1 overflow-y-auto">
+              <li className="border-b border-border-subtle pb-1 mb-0.5">
+                <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1.5 hover:bg-bg-muted">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={
+                      people.length > 0 && memberIds.length === people.length
+                    }
+                    onChange={() => {
+                      setMemberIds(
+                        memberIds.length === people.length
+                          ? []
+                          : people.map((person) => person.id)
+                      );
+                    }}
+                    className="h-4 w-4 rounded border-border-form"
+                    aria-label="Select all"
+                  />
+                </label>
+              </li>
               {people.map((person) => {
                 const checked = memberIds.includes(person.id);
                 return (

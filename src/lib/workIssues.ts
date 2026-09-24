@@ -75,6 +75,7 @@ export async function createWorkIssue(input: {
     title,
     status: input.status,
     createdByAppUserId: actor.id,
+    ownerAppUserId: actor.id,
   });
 }
 

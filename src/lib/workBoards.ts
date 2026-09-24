@@ -408,11 +408,13 @@ export async function getWorkBoardView(
             row.owner_email ?? ""
           )
         : null,
-      reporter: personOrFallback(
-        row.created_by_app_user_id,
-        row.reporter_name,
-        row.reporter_email
-      ),
+      reporter: row.created_by_app_user_id
+        ? personOrFallback(
+            row.created_by_app_user_id,
+            row.reporter_name,
+            row.reporter_email ?? ""
+          )
+        : null,
       assignees: assigneesByIssue.get(row.id) ?? [],
       labels: labelsByIssue.get(row.id) ?? [],
       comments: commentsByIssue.get(row.id) ?? [],

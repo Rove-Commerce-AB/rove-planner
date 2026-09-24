@@ -44,6 +44,11 @@ import {
   visibleWorkIssueIds,
   type WorkBoardGroupBy,
 } from "@/lib/workBoardView";
+import {
+  issueScrollElFromPoint,
+  startDragAutoScroll,
+  type DragAutoScrollController,
+} from "@/lib/workDragAutoScroll";
 import { WorkBoardMembers } from "./WorkBoardMembers";
 import {
   WorkBoardViewControls,
@@ -230,6 +235,41 @@ export function WorkBoardPageClient({ board }: Props) {
   const statusesRef = useRef(board.statuses);
   const draggingStatusIdRef = useRef<string | null>(null);
   const statusInsertBeforeRef = useRef<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const dragAutoScrollRef = useRef<DragAutoScrollController | null>(null);
+
+  function stopDragAutoScroll() {
+    dragAutoScrollRef.current?.stop();
+    dragAutoScrollRef.current = null;
+  }
+
+  function ensureDragAutoScroll() {
+    if (!dragAutoScrollRef.current) {
+      dragAutoScrollRef.current = startDragAutoScroll();
+    }
+    return dragAutoScrollRef.current;
+  }
+
+  function updateDragAutoScroll(
+    clientX: number,
+    clientY: number,
+    mode: "issue" | "status"
+  ) {
+    const controller = ensureDragAutoScroll();
+    controller.setPointer(clientX, clientY);
+    const targets: { el: HTMLElement; axis: "x" | "y" }[] = [];
+    const boardEl = boardScrollRef.current;
+    if (boardEl) targets.push({ el: boardEl, axis: "x" });
+    if (mode === "issue") {
+      const columnScroll = issueScrollElFromPoint(clientX, clientY);
+      if (columnScroll) targets.push({ el: columnScroll, axis: "y" });
+    }
+    controller.setTargets(targets);
+  }
+
+  useEffect(() => {
+    return () => stopDragAutoScroll();
+  }, []);
 
   useEffect(() => {
     setIssues((current) => {
@@ -365,6 +405,7 @@ export function WorkBoardPageClient({ board }: Props) {
     statusInsertBeforeRef.current = null;
     setDraggingStatusId(null);
     setStatusInsertBeforeId(undefined);
+    stopDragAutoScroll();
   }
 
   function setStatusInsertHint(beforeId: string | null) {
@@ -395,6 +436,7 @@ export function WorkBoardPageClient({ board }: Props) {
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
+    updateDragAutoScroll(event.clientX, event.clientY, "status");
     if (columnId == null) {
       setStatusInsertHint(null);
       return true;
@@ -603,6 +645,7 @@ export function WorkBoardPageClient({ board }: Props) {
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
+    updateDragAutoScroll(event.clientX, event.clientY, "issue");
     const issueId = dragIssueIdRef.current;
     const nextTarget =
       issueId === beforeIssueId
@@ -665,6 +708,7 @@ export function WorkBoardPageClient({ board }: Props) {
     dragSourceStatusRef.current = null;
     dragGhostRef.current?.remove();
     dragGhostRef.current = null;
+    stopDragAutoScroll();
     setDragOverStatus(null);
     setIssueDropBefore(null);
     if (source) source.style.opacity = "";
@@ -833,7 +877,23 @@ export function WorkBoardPageClient({ board }: Props) {
         </p>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden">
+      <div
+        ref={boardScrollRef}
+        data-work-board-scroll
+        className="flex min-h-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden"
+        onDragOver={(event) => {
+          if (draggingStatusIdRef.current) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            updateDragAutoScroll(event.clientX, event.clientY, "status");
+            return;
+          }
+          if (dragIssueIdRef.current) {
+            event.preventDefault();
+            updateDragAutoScroll(event.clientX, event.clientY, "issue");
+          }
+        }}
+      >
         {statuses.map((column, columnIndex) => {
           const status = column.id;
           const columnIssues = issuesInStatus(issues, status).filter((issue) =>
@@ -865,6 +925,7 @@ export function WorkBoardPageClient({ board }: Props) {
                 if (handleStatusDragOver(event, status)) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
+                updateDragAutoScroll(event.clientX, event.clientY, "issue");
                 if (status === dragSourceStatusRef.current) {
                   if (dragOverStatus != null) setDragOverStatus(null);
                   return;
@@ -921,6 +982,11 @@ export function WorkBoardPageClient({ board }: Props) {
                       event.dataTransfer.effectAllowed = "move";
                       draggingStatusIdRef.current = status;
                       setDraggingStatusId(status);
+                      updateDragAutoScroll(
+                        event.clientX,
+                        event.clientY,
+                        "status"
+                      );
                       const columnEl = event.currentTarget.closest("section");
                       if (columnEl instanceof HTMLElement) {
                         event.dataTransfer.setDragImage(columnEl, 24, 16);
@@ -993,6 +1059,7 @@ export function WorkBoardPageClient({ board }: Props) {
               </header>
 
               <div
+                data-issue-scroll
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto"
                 onDragOver={(event) => {
                   if (handleStatusDragOver(event, status)) return;
@@ -1094,6 +1161,11 @@ export function WorkBoardPageClient({ board }: Props) {
                         dragSourceRef.current = source;
                         dropTargetRef.current = null;
                         skipCardClickRef.current = true;
+                        updateDragAutoScroll(
+                          event.clientX,
+                          event.clientY,
+                          "issue"
+                        );
                         requestAnimationFrame(() => {
                           requestAnimationFrame(() => {
                             if (dragSourceRef.current === source) {

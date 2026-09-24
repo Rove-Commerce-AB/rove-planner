@@ -71,7 +71,7 @@ export type WorkIssue = {
   currentState: string;
   nextStep: string;
   owner: WorkPerson | null;
-  reporter: WorkPerson;
+  reporter: WorkPerson | null;
   assignees: WorkPerson[];
   labels: WorkLabel[];
   comments: WorkComment[];

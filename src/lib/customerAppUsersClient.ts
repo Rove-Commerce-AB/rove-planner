@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { assertAdmin } from "@/lib/accessGuards";
+import { assertNotSubcontractorForWrite } from "@/lib/accessGuards";
 import * as q from "./customerAppUsersQueries";
 import { ROUTES, customerHref, personHref } from "@/lib/routes";
 
@@ -9,7 +9,7 @@ export async function addCustomerUserToCustomer(
   customerId: string,
   appUserId: string
 ) {
-  await assertAdmin();
+  await assertNotSubcontractorForWrite();
   await q.addCustomerUserToCustomer(customerId, appUserId);
   revalidatePath(ROUTES.customers);
   revalidatePath(customerHref(customerId));
@@ -21,7 +21,7 @@ export async function removeCustomerUserFromCustomer(
   customerId: string,
   appUserId: string
 ) {
-  await assertAdmin();
+  await assertNotSubcontractorForWrite();
   await q.removeCustomerUserFromCustomer(customerId, appUserId);
   revalidatePath(ROUTES.customers);
   revalidatePath(customerHref(customerId));
