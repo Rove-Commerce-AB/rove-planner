@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, Button } from "@/components/ui";
 import { getConsultantsWithDefaultRole } from "@/lib/consultantsClient";
 import { addConsultantToCustomer } from "@/lib/customerConsultantsClient";
@@ -27,6 +27,7 @@ export function AddCustomerConsultantModal({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -42,6 +43,13 @@ export function AddCustomerConsultantModal({
   const options = allConsultants
     .filter((c) => !existingIds.has(c.id))
     .map((c) => ({ value: c.id, label: c.name }));
+
+  useEffect(() => {
+    const el = selectAllRef.current;
+    if (!el) return;
+    el.indeterminate =
+      selectedIds.length > 0 && selectedIds.length < options.length;
+  }, [selectedIds, options.length]);
 
   const toggleConsultant = (consultantId: string) => {
     setSelectedIds((prev) =>
@@ -98,6 +106,24 @@ export function AddCustomerConsultantModal({
               Consultants
             </p>
             <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-form bg-bg-default p-3">
+              <label className="flex cursor-pointer items-center gap-2 border-b border-border-subtle pb-2 text-sm text-text-primary">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={
+                    options.length > 0 && selectedIds.length === options.length
+                  }
+                  onChange={() => {
+                    setSelectedIds(
+                      selectedIds.length === options.length
+                        ? []
+                        : options.map((option) => option.value)
+                    );
+                  }}
+                  disabled={submitting}
+                  aria-label="Select all"
+                />
+              </label>
               {options.map((option) => (
                 <label
                   key={option.value}
