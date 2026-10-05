@@ -13,6 +13,7 @@ import { deleteProjectAction } from "@/app/(app)/projects/actions";
 import { getCustomers } from "@/lib/customersClient";
 import { getConsultantsList } from "@/lib/consultantsClient";
 import { ROUTES, customerHref } from "@/lib/routes";
+import { moneyLabel } from "@/lib/currency";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
@@ -84,7 +85,7 @@ type Props = {
   allocationWeekTo: number;
   currentYear: number;
   currentWeek: number;
-  /** Role ID -> rate per hour (SEK) for planning panel revenue row. */
+  /** Role ID -> rate per hour in the customer's billing currency. */
   allocationRates?: Record<string, number>;
   isAdmin?: boolean;
 };
@@ -322,7 +323,7 @@ export function ProjectDetailClient({
     if (field === "budgetMoney" && trimmed !== "") {
       const num = parseInt(trimmed, 10);
       if (num === null || Number.isNaN(num) || num < 0) {
-        setError("Enter a positive integer (SEK) or leave empty");
+        setError(`Enter a positive integer (${moneyLabel(initial.billingCurrency)}) or leave empty`);
         return;
       }
     }
@@ -806,7 +807,7 @@ export function ProjectDetailClient({
             </div>
 
             <div className="min-w-0">
-              <FieldLabel>Budget (SEK)</FieldLabel>
+              <FieldLabel>Budget ({moneyLabel(initial.billingCurrency)})</FieldLabel>
               <div className="mt-0.5">
                 <InlineEditFieldContainer
                   isEditing={editingField === "budgetMoney"}
@@ -823,7 +824,7 @@ export function ProjectDetailClient({
                     >
                       {budgetMoney != null ? (
                         <FieldValue>
-                          {String(budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} SEK
+                          {String(budgetMoney).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0")} {moneyLabel(initial.billingCurrency)}
                         </FieldValue>
                       ) : (
                         <span className="text-sm text-text-primary opacity-60">—</span>
@@ -1030,6 +1031,7 @@ export function ProjectDetailClient({
             )}
             <ProjectRatesTab
               projectId={initial.id}
+              billingCurrency={initial.billingCurrency}
               onError={setRatesError}
               showDescription={false}
               refreshTrigger={ratesRefreshKey}
@@ -1105,6 +1107,7 @@ export function ProjectDetailClient({
           router.refresh();
         }}
         projectId={initial.id}
+        billingCurrency={initial.billingCurrency}
       />
 
       {isAdmin && (

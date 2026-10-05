@@ -87,7 +87,8 @@ SELECT
   ck.status AS "ClickUpStatus",
   ck.issue_type AS "ClickUpType",
   ck.original_estimate_hours AS "ClickUpEstimate",
-  ck.url AS "ClickUpUrl"
+  ck.url AS "ClickUpUrl",
+  COALESCE(tre.currency_snapshot, cu.billing_currency, 'SEK') AS "Currency"
 FROM time_report_entries tre
 LEFT JOIN consultants c ON c.id = tre.consultant_id
 LEFT JOIN customers cu ON cu.id = tre.customer_id

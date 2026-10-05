@@ -16,11 +16,13 @@ import {
   deleteProjectRate,
 } from "@/lib/projectRatesClient";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
+import { hourlyRateSuffix } from "@/lib/currency";
 import type { Role } from "@/lib/rolesQueries";
 import type { ProjectRate } from "@/lib/projectRatesQueries";
 
 type Props = {
   projectId: string;
+  billingCurrency?: string;
   onError: (msg: string) => void;
   showDescription?: boolean;
   /** When this value changes, rates are refetched (e.g. after adding a new rate). */
@@ -29,6 +31,7 @@ type Props = {
 
 export function ProjectRatesTab({
   projectId,
+  billingCurrency = "SEK",
   onError,
   showDescription = false,
   refreshTrigger,
@@ -204,7 +207,7 @@ export function ProjectRatesTab({
                           onClick={() => startEdit(r)}
                           className={`${inlineEditTriggerClass} w-full min-w-[5rem] whitespace-nowrap text-right`}
                         >
-                          <span className="text-sm font-medium text-text-primary">{r.rate_per_hour} SEK/h</span>
+                          <span className="text-sm font-medium text-text-primary">{r.rate_per_hour} {hourlyRateSuffix(billingCurrency)}</span>
                         </button>
                       }
                       editContent={
@@ -231,7 +234,7 @@ export function ProjectRatesTab({
                             className={`w-20 text-right ${editInputClass}`}
                             autoFocus
                           />
-                          <span className="shrink-0 text-sm text-text-primary opacity-70">SEK/h</span>
+                          <span className="shrink-0 text-sm text-text-primary opacity-70">{hourlyRateSuffix(billingCurrency)}</span>
                         </div>
                       }
                       statusContent={

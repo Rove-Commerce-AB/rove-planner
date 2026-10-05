@@ -415,7 +415,7 @@ export function BillableUtilizationMonthlyPanel({
 
             <div>
               <h3 className="mb-2 text-heading-xs text-text-muted">
-                Revenue (SEK)
+                Revenue (not mixed across currencies)
               </h3>
               <div className="h-[260px] w-full min-h-0">
                 <ResponsiveContainer width="100%" height="100%">

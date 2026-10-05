@@ -1,6 +1,11 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
 
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
+import {
+  DEFAULT_BILLING_CURRENCY,
+  parseBillingCurrency,
+  type BillingCurrency,
+} from "./currency";
 import { parseLitiumVersionInput, parseSubscriptionIdInput } from "./litiumVersion";
 import { fetchProjectsByCustomerIds } from "./projectsLookupQueries";
 import type { CustomerWithDetails, ProjectType } from "@/types";
@@ -17,6 +22,7 @@ export type Customer = {
   url: string | null;
   subscription_id: string | null;
   litium_version: string | null;
+  billing_currency: BillingCurrency;
   is_internal: boolean;
   is_active: boolean;
 };
@@ -29,6 +35,7 @@ export type CreateCustomerInput = {
   color?: string | null;
   logo_url?: string | null;
   url?: string | null;
+  billing_currency?: BillingCurrency;
   is_internal?: boolean;
   is_active?: boolean;
 };
@@ -44,12 +51,13 @@ export type UpdateCustomerInput = {
   url?: string | null;
   subscription_id?: string | null;
   litium_version?: string | null;
+  billing_currency?: BillingCurrency;
   is_internal?: boolean;
   is_active?: boolean;
 };
 
 const CUSTOMER_SELECT =
-  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, subscription_id, litium_version, is_internal, is_active";
+  "id, name, contact_name, contact_email, contact_app_user_id, account_manager_id, color, logo_url, url, subscription_id, litium_version, billing_currency, is_internal, is_active";
 
 const SINGLE_INTERNAL_CUSTOMER_ERROR_PREFIX =
   "Only one customer can be internal";
@@ -185,6 +193,7 @@ function toCustomerWithDetails(
     url: customer.url ?? null,
     subscriptionId: customer.subscription_id ?? null,
     litiumVersion: customer.litium_version ?? null,
+    billingCurrency: parseBillingCurrency(customer.billing_currency),
     isInternal: customer.is_internal ?? false,
     initials: getInitials(customer.name),
     isActive: customer.is_active ?? true,
@@ -300,8 +309,8 @@ export async function createCustomerQuery(
   try {
     const result = await cloudSqlPool.query<Customer>(
       `INSERT INTO customers (
-         name, contact_name, contact_email, account_manager_id, color, logo_url, url, is_internal, is_active
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         name, contact_name, contact_email, account_manager_id, color, logo_url, url, billing_currency, is_internal, is_active
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING ${CUSTOMER_SELECT}`,
       [
         input.name.trim(),
@@ -311,6 +320,7 @@ export async function createCustomerQuery(
         input.color?.trim() || DEFAULT_CUSTOMER_COLOR,
         input.logo_url?.trim() || null,
         input.url?.trim() ?? null,
+        parseBillingCurrency(input.billing_currency ?? DEFAULT_BILLING_CURRENCY),
         input.is_internal ?? false,
         input.is_active ?? true,
       ]
@@ -403,6 +413,10 @@ export async function updateCustomerQuery(
     sets.push(`litium_version = $${i++}`);
     values.push(parseLitiumVersionInput(input.litium_version));
   }
+  if (input.billing_currency !== undefined) {
+    sets.push(`billing_currency = $${i++}`);
+    values.push(parseBillingCurrency(input.billing_currency));
+  }
   if (input.is_internal !== undefined) {
     sets.push(`is_internal = $${i++}`);
     values.push(input.is_internal);
@@ -424,6 +438,24 @@ export async function updateCustomerQuery(
       values
     );
     rows = result.rows;
+    if (input.billing_currency !== undefined && rows[0]) {
+      const billingCurrency = parseBillingCurrency(input.billing_currency);
+      await cloudSqlPool.query(
+        `UPDATE customer_rates
+         SET currency = $2, updated_at = now()
+         WHERE customer_id = $1 AND currency IS DISTINCT FROM $2`,
+        [id, billingCurrency]
+      );
+      await cloudSqlPool.query(
+        `UPDATE project_rates pr
+         SET currency = $2, updated_at = now()
+         FROM projects p
+         WHERE p.id = pr.project_id
+           AND p.customer_id = $1
+           AND pr.currency IS DISTINCT FROM $2`,
+        [id, billingCurrency]
+      );
+    }
   } catch (error) {
     if (isSingleInternalConstraintError(error)) {
       const existingInternalCustomerName =

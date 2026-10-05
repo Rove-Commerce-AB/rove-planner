@@ -5,6 +5,7 @@ import * as cc from "./customerConsultantsQueries";
 import * as customers from "./customersQueries";
 import * as consultants from "./consultantsQueries";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
+import { parseBillingCurrency } from "./currency";
 import type { ProjectWithDetails, ProjectType } from "@/types";
 
 let clickupProjectColumnAvailable: boolean | null = null;
@@ -348,6 +349,7 @@ export async function fetchProjectWithDetailsById(
       {
         name: c.name,
         color: c.color || DEFAULT_CUSTOMER_COLOR,
+        billingCurrency: parseBillingCurrency(c.billing_currency),
       },
     ])
   );
@@ -381,6 +383,7 @@ export async function fetchProjectWithDetailsById(
       p.budget_hours != null ? Number(p.budget_hours as number) : null,
     budgetMoney:
       p.budget_money != null ? Number(p.budget_money as number) : null,
+    billingCurrency: cust?.billingCurrency ?? "SEK",
     consultantCount: 0,
     totalHoursAllocated: 0,
     consultantInitials: [],
@@ -412,6 +415,7 @@ export async function fetchProjectsWithDetails(): Promise<
       {
         name: c.name,
         color: c.color || DEFAULT_CUSTOMER_COLOR,
+        billingCurrency: parseBillingCurrency(c.billing_currency),
       },
     ])
   );
@@ -505,6 +509,7 @@ export async function fetchProjectsWithDetails(): Promise<
       clickupProjectId: p.clickup_project_id ?? null,
       budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
       budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
+      billingCurrency: cust?.billingCurrency ?? "SEK",
       consultantCount: consultantIdsList.length,
       totalHoursAllocated: stats?.totalHours ?? 0,
       consultantInitials: initials,

@@ -16,6 +16,7 @@ import {
 import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
 import { DetailPageDeleteFooter } from "@/components/detail/DetailPageDeleteFooter";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
+import { parseBillingCurrency, type BillingCurrency } from "@/lib/currency";
 import { ROUTES } from "@/lib/routes";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import type { CustomerWithDetails } from "@/types";
@@ -29,6 +30,7 @@ type EditField =
   | "accountManager"
   | "logoUrl"
   | "color"
+  | "billingCurrency"
   | null;
 
 type Props = {
@@ -66,6 +68,9 @@ export function CustomerDrawerOverview({
   const [color, setColor] = useState(customer.color);
   const [isActive, setIsActive] = useState(customer.isActive);
   const [isInternal, setIsInternal] = useState(customer.isInternal);
+  const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(
+    parseBillingCurrency(customer.billingCurrency)
+  );
   const [editingField, setEditingField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +192,12 @@ export function CustomerDrawerOverview({
           await updateCustomerAction(customer.id, { color: trimmed || null });
           setColor(trimmed || customer.color);
           break;
+        case "billingCurrency": {
+          const next = parseBillingCurrency(value);
+          await updateCustomerAction(customer.id, { billing_currency: next });
+          setBillingCurrency(next);
+          break;
+        }
       }
       markSaved(field);
       router.refresh();
@@ -431,6 +442,25 @@ export function CustomerDrawerOverview({
               ]}
             />
           </DrawerFieldRow>
+          <DrawerFieldRow label="Billing currency">
+            <OptionSegments
+              name="Billing currency"
+              value={billingCurrency}
+              onChange={(value) => {
+                if (!isInlineEditValueChanged(billingCurrency, value)) return;
+                void saveField("billingCurrency", value);
+              }}
+              disabled={submitting}
+              options={[
+                { value: "SEK", label: "SEK" },
+                { value: "EUR", label: "EUR" },
+              ]}
+            />
+          </DrawerFieldRow>
+          <p className="px-0 pb-3 text-xs text-text-muted">
+            Existing rates keep their numbers but switch label to this currency.
+            Update hourly amounts if the contract price changed.
+          </p>
         </div>
 
         <div className="border-t border-border-subtle px-6">

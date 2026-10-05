@@ -1,4 +1,5 @@
 import { cloudSqlPool } from "@/lib/cloudSqlPool";
+import { parseBillingCurrency } from "./currency";
 
 export type CustomerRate = {
   id: string;
@@ -20,7 +21,7 @@ function mapRow(r: {
     customer_id: r.customer_id,
     role_id: r.role_id,
     rate_per_hour: Number(r.rate_per_hour),
-    currency: r.currency ?? "SEK",
+    currency: parseBillingCurrency(r.currency),
   };
 }
 
@@ -54,11 +55,12 @@ export async function createCustomerRateQuery(
   ratePerHour: number,
   currency = "SEK"
 ): Promise<CustomerRate> {
+  const billingCurrency = parseBillingCurrency(currency);
   const { rows } = await cloudSqlPool.query(
     `INSERT INTO customer_rates (customer_id, role_id, rate_per_hour, currency)
      VALUES ($1, $2, $3, $4)
      RETURNING id, customer_id, role_id, rate_per_hour, currency`,
-    [customerId, roleId, ratePerHour, currency]
+    [customerId, roleId, ratePerHour, billingCurrency]
   );
   if (!rows[0]) throw new Error("Failed to create customer rate");
   return mapRow(rows[0] as Parameters<typeof mapRow>[0]);

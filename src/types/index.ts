@@ -55,8 +55,10 @@ export type ProjectWithDetails = {
   clickupProjectId: string | null;
   /** Optional budget in hours; shown in planning footer. */
   budgetHours: number | null;
-  /** Optional budget in SEK; shown in planning footer. */
+  /** Optional budget in the customer's billing currency. */
   budgetMoney: number | null;
+  /** Customer's billing currency (SEK or EUR). */
+  billingCurrency: string;
   consultantCount: number;
   totalHoursAllocated: number;
   consultantInitials: string[];
@@ -111,6 +113,7 @@ export type CustomerWithDetails = {
   url: string | null;
   subscriptionId: string | null;
   litiumVersion: string | null;
+  billingCurrency: string;
   isInternal: boolean;
   initials: string;
   isActive: boolean;

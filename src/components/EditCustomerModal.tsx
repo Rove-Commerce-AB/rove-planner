@@ -266,6 +266,7 @@ export function EditCustomerModal({
               <CustomerRatesTab
                 mode="edit"
                 customerId={customer.id}
+                billingCurrency={customer.billingCurrency}
                 onError={setRatesError}
               />
             )}

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { getRoles } from "@/lib/rolesClient";
 import { getCustomerRates, createCustomerRate } from "@/lib/customerRatesClient";
 import { Button, Dialog, Input, Select } from "@/components/ui";
+import { hourlyRateLabel } from "@/lib/currency";
 import type { Role } from "@/lib/rolesQueries";
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   onClose: () => void;
   onSuccess: () => void;
   customerId: string;
+  billingCurrency?: string;
 };
 
 export function AddCustomerRateModal({
@@ -18,6 +20,7 @@ export function AddCustomerRateModal({
   onClose,
   onSuccess,
   customerId,
+  billingCurrency = "SEK",
 }: Props) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [usedRoleIds, setUsedRoleIds] = useState<string[]>([]);
@@ -103,7 +106,7 @@ export function AddCustomerRateModal({
               type="number"
               min={0}
               step={1}
-              label="Hourly rate (SEK)"
+              label={hourlyRateLabel(billingCurrency)}
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="e.g. 1200"

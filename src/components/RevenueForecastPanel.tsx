@@ -28,8 +28,7 @@ function monthKey(year: number, month: number): string {
 type YearGroup = {
   year: number;
   months: RevenueForecastMonth[];
-  totalRevenue: number;
-  currency: string;
+  totalsByCurrency: { currency: string; totalRevenue: number }[];
 };
 
 function groupForecastByYear(
@@ -37,24 +36,29 @@ function groupForecastByYear(
 ): YearGroup[] {
   const byYear = new Map<
     number,
-    { months: RevenueForecastMonth[]; totalRevenue: number; currency: string }
+    { months: RevenueForecastMonth[]; totals: Map<string, number> }
   >();
   for (const m of forecast) {
     let group = byYear.get(m.year);
     if (!group) {
-      group = { months: [], totalRevenue: 0, currency: m.currency };
+      group = { months: [], totals: new Map() };
       byYear.set(m.year, group);
     }
     group.months.push(m);
-    group.totalRevenue += m.revenue;
-    group.currency = m.currency;
+    group.totals.set(
+      m.currency,
+      (group.totals.get(m.currency) ?? 0) + m.revenue
+    );
   }
   return Array.from(byYear.entries())
-    .map(([year, { months, totalRevenue, currency }]) => ({
+    .map(([year, { months, totals }]) => ({
       year,
-      months: months.sort((a, b) => a.month - b.month),
-      totalRevenue,
-      currency,
+      months: months.sort((a, b) =>
+        a.month !== b.month ? a.month - b.month : a.currency.localeCompare(b.currency)
+      ),
+      totalsByCurrency: Array.from(totals.entries())
+        .map(([currency, totalRevenue]) => ({ currency, totalRevenue }))
+        .sort((a, b) => a.currency.localeCompare(b.currency)),
     }))
     .sort((a, b) => a.year - b.year);
 }
@@ -89,8 +93,13 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
           </p>
         ) : (
           <div className="space-y-2">
-            {yearGroups.map(({ year, months, totalRevenue, currency }) => {
+            {yearGroups.map(({ year, months, totalsByCurrency }) => {
               const isYearExpanded = expandedYears.has(year);
+              const yearTotalLabel = totalsByCurrency
+                .map(({ currency, totalRevenue }) =>
+                  formatRevenue(totalRevenue, currency)
+                )
+                .join(" · ");
               return (
                 <div
                   key={year}
@@ -110,14 +119,14 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
                       {year}
                     </span>
                     <span className="text-sm tabular-nums text-text-primary font-medium">
-                      {formatRevenue(totalRevenue, currency)}
+                      {yearTotalLabel}
                     </span>
                   </button>
                   {isYearExpanded && (
                     <div className="border-t border-panel">
                       <div className="bg-bg-muted/20">
                         {months.map(({ year: y, month, revenue, currency: mCurrency, byCustomer }) => {
-                          const key = monthKey(y, month);
+                          const key = `${monthKey(y, month)}|${mCurrency}`;
                           const isMonthExpanded = expandedMonth === key;
                           return (
                             <div
@@ -136,6 +145,9 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
                                     <ChevronRight className="h-4 w-4 shrink-0" />
                                   )}
                                   {getMonthLabel(month, y)}
+                                  {mCurrency !== "SEK" ? (
+                                    <span className="text-xs text-text-muted">{mCurrency}</span>
+                                  ) : null}
                                 </span>
                                 <span className="text-sm tabular-nums text-text-primary">
                                   {formatRevenue(revenue, mCurrency)}
@@ -149,6 +161,7 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
                                         customerId,
                                         customerName,
                                         revenue: custRevenue,
+                                        currency: custCurrency,
                                       }) => (
                                         <li
                                           key={customerId}
@@ -160,7 +173,7 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
                                           <span className="tabular-nums text-text-primary">
                                             {formatRevenue(
                                               custRevenue,
-                                              mCurrency
+                                              custCurrency ?? mCurrency
                                             )}
                                           </span>
                                         </li>
@@ -178,7 +191,7 @@ export function RevenueForecastPanel({ forecast, currentYear }: Props) {
                           Sum {year}
                         </span>
                         <span className="text-sm tabular-nums font-medium text-text-primary">
-                          {formatRevenue(totalRevenue, currency)}
+                          {yearTotalLabel}
                         </span>
                       </div>
                     </div>

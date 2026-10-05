@@ -20,6 +20,7 @@ import {
   deleteCustomerRate,
 } from "@/lib/customerRatesClient";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
+import { hourlyRateLabel, hourlyRateSuffix } from "@/lib/currency";
 import type { Role } from "@/lib/rolesQueries";
 import type { CustomerRate } from "@/lib/customerRatesQueries";
 
@@ -27,12 +28,14 @@ type Props =
   | {
       mode: "edit";
       customerId: string;
+      billingCurrency?: string;
       onError: (msg: string) => void;
       showDescription?: boolean;
     }
   | {
       mode: "create";
       pendingRates: { roleId: string; roleName: string; ratePerHour: number }[];
+      billingCurrency?: string;
       onAddRate: (roleId: string, roleName: string, ratePerHour: number) => void;
       onRemoveRate: (roleId: string) => void;
       onError: (msg: string) => void;
@@ -96,6 +99,13 @@ export function CustomerRatesTab(props: Props) {
       if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
     };
   }, []);
+
+  const displayCurrency =
+    props.billingCurrency ??
+    (props.mode === "edit" ? rates[0]?.currency : undefined) ??
+    "SEK";
+  const currencyLabel = hourlyRateSuffix(displayCurrency);
+  const ratePlaceholder = hourlyRateLabel(displayCurrency);
 
   const getRoleName = (roleId: string) =>
     roles.find((r) => r.id === roleId)?.name ?? "Unknown";
@@ -267,7 +277,7 @@ export function CustomerRatesTab(props: Props) {
                             onClick={() => startEdit(rate)}
                             className={`${inlineEditTriggerClass} w-full min-w-[5rem] whitespace-nowrap text-right`}
                           >
-                            {rate.rate_per_hour} SEK/h
+                            {rate.rate_per_hour} {currencyLabel}
                           </button>
                         }
                         editContent={
@@ -294,7 +304,7 @@ export function CustomerRatesTab(props: Props) {
                               className={`w-20 text-right ${editInputClass}`}
                               autoFocus
                             />
-                            <span className="shrink-0 text-sm text-text-primary opacity-70">SEK/h</span>
+                            <span className="shrink-0 text-sm text-text-primary opacity-70">{currencyLabel}</span>
                           </div>
                         }
                         statusContent={
@@ -307,7 +317,7 @@ export function CustomerRatesTab(props: Props) {
                     </div>
                   ) : (
                     <span className="shrink-0 whitespace-nowrap text-sm font-medium text-text-primary">
-                      {(r as { rate_per_hour: number }).rate_per_hour} SEK/h
+                      {(r as { rate_per_hour: number }).rate_per_hour} {currencyLabel}
                     </span>
                   )}
                   <IconButton
@@ -352,7 +362,7 @@ export function CustomerRatesTab(props: Props) {
                   step={1}
                   value={newRate}
                   onChange={(e) => setNewRate(e.target.value)}
-                  placeholder="Hourly rate (SEK)"
+                  placeholder={ratePlaceholder}
                   className="h-9 w-full border-form"
                 />
               </div>

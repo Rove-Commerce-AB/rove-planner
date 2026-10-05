@@ -321,7 +321,9 @@ export async function getBillableUtilizationMonthlyReport(
         const revenue = hoursInMonth * rateRow.rate_per_hour;
         const existing = revenueByKey.get(key);
         if (existing) {
-          existing.revenue += revenue;
+          if (existing.currency === rateRow.currency) {
+            existing.revenue += revenue;
+          }
         } else {
           revenueByKey.set(key, { revenue, currency: rateRow.currency });
         }
@@ -335,10 +337,18 @@ export async function getBillableUtilizationMonthlyReport(
       12
     );
     for (const m of revenueForecast) {
-      revenueByKey.set(yearMonthKey(m.year, m.month), {
-        revenue: m.revenue,
-        currency: m.currency,
-      });
+      const key = yearMonthKey(m.year, m.month);
+      const existing = revenueByKey.get(key);
+      if (existing) {
+        if (existing.currency === m.currency) {
+          existing.revenue += m.revenue;
+        }
+      } else {
+        revenueByKey.set(key, {
+          revenue: m.revenue,
+          currency: m.currency,
+        });
+      }
     }
   }
 

@@ -659,6 +659,7 @@ export function CustomerDetailClient({
                 <CustomerRatesTab
                   mode="edit"
                   customerId={initialCustomer.id}
+                  billingCurrency={initialCustomer.billingCurrency}
                   onError={setRatesError}
                   showDescription={false}
                 />
@@ -697,6 +698,7 @@ export function CustomerDetailClient({
         onClose={() => setAddRateModalOpen(false)}
         onSuccess={() => router.refresh()}
         customerId={initialCustomer.id}
+        billingCurrency={initialCustomer.billingCurrency}
       />
 
       {isAdmin && (

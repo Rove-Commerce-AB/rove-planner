@@ -906,7 +906,7 @@ function AllocationPageClientImpl({
     [weekTotalsHours]
   );
 
-  /** Week revenue (SEK) when embedMode has rates; computed from displayed project rows × rate per role. */
+  /** Week revenue in each row's rate currency when embedMode has rates. */
   const weekTotalsMoney = useMemo(() => {
     if (!embedMode?.rates || !data) return null;
     const rates = embedMode.rates;

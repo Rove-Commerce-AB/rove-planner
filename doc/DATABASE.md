@@ -152,6 +152,7 @@ Customer / company.
 | url | text | nullable (website for favicon / links) |
 | subscription_id | text | nullable; exactly 6 characters when set; unique on `lower(subscription_id)` |
 | litium_version | text | nullable; can be set in the app; overwritten by the Litium version ingest when `subscription_id` matches |
+| billing_currency | text | NOT NULL, default `SEK`; check `SEK` or `EUR` |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
@@ -500,7 +501,8 @@ One row per **calendar day** on a week line. The UI groups by week.
 | entry_date | date | NOT NULL |
 | hours | numeric(4,2) | NOT NULL, default 0; check `hours > 0` |
 | internal_comment | text | nullable (per-day comment) |
-| rate_snapshot | numeric(10,2) | nullable; rate at save, SEK |
+| rate_snapshot | numeric(10,2) | nullable; rate at save, in `currency_snapshot` |
+| currency_snapshot | text | nullable; `SEK` or `EUR` at save; existing rows with a rate default to `SEK` |
 | display_order | smallint | NOT NULL, default 0 |
 | description | text | nullable |
 | pm_edited_hours | numeric | nullable; consultant hours before PM edit |
@@ -1088,9 +1090,12 @@ are also coalesced into the existing `Jira*` columns so reports that already
 use `JiraKeyAndSummary` / `JiraType` / `JiraEstimate` include ClickUp without
 Looker chart changes. Dedicated `ClickUp*` columns are available for new
 charts. Also exposes `EntryCreatedAt` and `LateEntry` (created month after
-entry month).
+entry month). `Currency` is `currency_snapshot`, else the customer's
+`billing_currency`, else `SEK`. `Income` is hours × rate in that currency —
+do not sum across currencies.
 
 Apply / refresh: [`scripts/20261005_v_time_report_looker_clickup.sql`](../scripts/20261005_v_time_report_looker_clickup.sql).
+Customer currency DDL: [`scripts/20261005_customer_billing_currency.sql`](../scripts/20261005_customer_billing_currency.sql).
 
 ---
 

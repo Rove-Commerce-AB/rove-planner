@@ -1,6 +1,8 @@
 "use server";
 
 import * as q from "./customerRatesQueries";
+import { getCustomerById } from "./customers";
+import { parseBillingCurrency } from "./currency";
 
 export type { CustomerRate } from "./customerRatesQueries";
 
@@ -12,13 +14,17 @@ export async function createCustomerRate(
   customerId: string,
   roleId: string,
   ratePerHour: number,
-  currency = "SEK"
+  currency?: string
 ) {
+  const customer = await getCustomerById(customerId);
+  const billingCurrency = parseBillingCurrency(
+    currency ?? customer?.billingCurrency
+  );
   return q.createCustomerRateQuery(
     customerId,
     roleId,
     ratePerHour,
-    currency
+    billingCurrency
   );
 }
 

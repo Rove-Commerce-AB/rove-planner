@@ -1,6 +1,8 @@
 import "server-only";
 
 import * as q from "./projectRatesQueries";
+import { getProjectWithDetailsById } from "./projects";
+import { parseBillingCurrency } from "./currency";
 
 export type { ProjectRate } from "./projectRatesQueries";
 
@@ -16,13 +18,17 @@ export async function createProjectRate(
   projectId: string,
   roleId: string,
   ratePerHour: number,
-  currency = "SEK"
+  currency?: string
 ) {
+  const project = await getProjectWithDetailsById(projectId);
+  const billingCurrency = parseBillingCurrency(
+    currency ?? project?.billingCurrency
+  );
   return q.createProjectRateQuery(
     projectId,
     roleId,
     ratePerHour,
-    currency
+    billingCurrency
   );
 }
 

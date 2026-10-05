@@ -11,6 +11,8 @@ import {
   getClickUpItemsByProjectKey,
 } from "@/lib/timeReportIntegrations";
 import { getCustomerRates, getCustomerRatesByCustomerIds } from "@/lib/customerRates";
+import { getCustomersByIds } from "@/lib/customers";
+import { parseBillingCurrency, type BillingCurrency } from "@/lib/currency";
 import {
   getProjectRates,
   getProjectRatesByProjectIds,
@@ -391,16 +393,28 @@ async function getEffectiveRateSnapshot(
   projectId: string,
   customerId: string,
   roleId: string
-): Promise<number | null> {
-  const [projectRates, customerRates] = await Promise.all([
+): Promise<{ rate: number | null; currency: BillingCurrency }> {
+  const [projectRates, customerRates, customers] = await Promise.all([
     getProjectRates(projectId),
     getCustomerRates(customerId),
+    getCustomersByIds([customerId]),
   ]);
+  const billingCurrency = parseBillingCurrency(customers[0]?.billing_currency);
   const projectRate = projectRates.find((r) => r.role_id === roleId);
-  if (projectRate != null) return Number(projectRate.rate_per_hour);
+  if (projectRate != null) {
+    return {
+      rate: Number(projectRate.rate_per_hour),
+      currency: parseBillingCurrency(projectRate.currency ?? billingCurrency),
+    };
+  }
   const customerRate = customerRates.find((r) => r.role_id === roleId);
-  if (customerRate != null) return Number(customerRate.rate_per_hour);
-  return null;
+  if (customerRate != null) {
+    return {
+      rate: Number(customerRate.rate_per_hour),
+      currency: parseBillingCurrency(customerRate.currency ?? billingCurrency),
+    };
+  }
+  return { rate: null, currency: billingCurrency };
 }
 
 type TimeReportRowDb = {
@@ -415,6 +429,7 @@ type TimeReportRowDb = {
   hours: string | number;
   internal_comment: string | null;
   rate_snapshot: string | number | null;
+  currency_snapshot: string | null;
   display_order: string | number | null;
 };
 
@@ -455,6 +470,9 @@ function snapshotRowDb(r: TimeReportRowDb): Record<string, unknown> {
     hours: Number(r.hours ?? 0),
     internal_comment: r.internal_comment,
     rate_snapshot: r.rate_snapshot != null ? Number(r.rate_snapshot) : null,
+    currency_snapshot: r.currency_snapshot
+      ? parseBillingCurrency(r.currency_snapshot)
+      : null,
     display_order: Number(r.display_order ?? 0),
   };
 }
@@ -471,6 +489,7 @@ type DesiredCell = {
   hours: number;
   internal_comment: string | null;
   rate_snapshot: number | null;
+  currency_snapshot: BillingCurrency | null;
   display_order: number;
 };
 
@@ -487,6 +506,7 @@ function desiredCellSnapshot(d: DesiredCell, dbId?: string): Record<string, unkn
     hours: d.hours,
     internal_comment: d.internal_comment,
     rate_snapshot: d.rate_snapshot,
+    currency_snapshot: d.currency_snapshot,
     display_order: d.display_order,
   };
 }
@@ -501,6 +521,7 @@ function cellDiffers(db: TimeReportRowDb, d: DesiredCell): boolean {
     Number(db.hours ?? 0) !== d.hours ||
     (db.internal_comment ?? "") !== (d.internal_comment ?? "") ||
     Number(db.rate_snapshot ?? 0) !== Number(d.rate_snapshot ?? 0) ||
+    (db.currency_snapshot ?? null) !== (d.currency_snapshot ?? null) ||
     Number(db.display_order ?? 0) !== d.display_order
   );
 }
@@ -589,7 +610,7 @@ export async function getTimeReportEntries(
     ),
     cloudSqlPool.query<TimeReportRowDb>(
       `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
-              entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
+              entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, currency_snapshot, display_order
        FROM time_report_entries
        WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
        ORDER BY display_order ASC NULLS LAST, entry_date ASC`,
@@ -778,41 +799,54 @@ export async function saveTimeReportEntries(
       if (entry.projectId) projectIds.add(entry.projectId);
     }
   }
-  const [allProjectRates, allCustomerRates] = await Promise.all([
+  const [allProjectRates, allCustomerRates, customers] = await Promise.all([
     getProjectRatesByProjectIds(Array.from(projectIds)),
     getCustomerRatesByCustomerIds(Array.from(customerIds)),
+    getCustomersByIds(Array.from(customerIds)),
   ]);
 
-  const projectRoleRateMap = new Map<string, Map<string, number>>();
+  const customerCurrencyMap = new Map<string, BillingCurrency>();
+  for (const c of customers) {
+    customerCurrencyMap.set(c.id, parseBillingCurrency(c.billing_currency));
+  }
+
+  const projectRoleRateMap = new Map<string, Map<string, { rate: number; currency: BillingCurrency }>>();
   for (const r of allProjectRates) {
     let roleMap = projectRoleRateMap.get(r.project_id);
     if (!roleMap) {
-      roleMap = new Map<string, number>();
+      roleMap = new Map();
       projectRoleRateMap.set(r.project_id, roleMap);
     }
-    roleMap.set(r.role_id, Number(r.rate_per_hour));
+    roleMap.set(r.role_id, {
+      rate: Number(r.rate_per_hour),
+      currency: parseBillingCurrency(r.currency),
+    });
   }
 
-  const customerRoleRateMap = new Map<string, Map<string, number>>();
+  const customerRoleRateMap = new Map<string, Map<string, { rate: number; currency: BillingCurrency }>>();
   for (const r of allCustomerRates) {
     let roleMap = customerRoleRateMap.get(r.customer_id);
     if (!roleMap) {
-      roleMap = new Map<string, number>();
+      roleMap = new Map();
       customerRoleRateMap.set(r.customer_id, roleMap);
     }
-    roleMap.set(r.role_id, Number(r.rate_per_hour));
+    roleMap.set(r.role_id, {
+      rate: Number(r.rate_per_hour),
+      currency: parseBillingCurrency(r.currency),
+    });
   }
 
   const resolveRateSnapshot = (
     projectId: string,
     customerId: string,
     roleId: string
-  ): number | null => {
+  ): { rate: number | null; currency: BillingCurrency } => {
+    const billingCurrency = customerCurrencyMap.get(customerId) ?? "SEK";
     const fromProject = projectRoleRateMap.get(projectId)?.get(roleId);
     if (fromProject != null) return fromProject;
     const fromCustomer = customerRoleRateMap.get(customerId)?.get(roleId);
     if (fromCustomer != null) return fromCustomer;
-    return null;
+    return { rate: null, currency: billingCurrency };
   };
 
   for (let cgIndex = 0; cgIndex < customerGroups.length; cgIndex++) {
@@ -867,7 +901,8 @@ export async function saveTimeReportEntries(
             entry_date: entryDate,
             hours,
             internal_comment: comment || null,
-            rate_snapshot: rateSnapshot,
+            rate_snapshot: rateSnapshot.rate,
+            currency_snapshot: rateSnapshot.rate != null ? rateSnapshot.currency : null,
             display_order: displayOrder,
           });
         }
@@ -1066,7 +1101,7 @@ export async function saveTimeReportEntries(
     const lineIds = Array.from(desiredLineById.keys());
     const { rows: existingRows } = await client.query<TimeReportRowDb>(
       `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
-              entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, display_order
+              entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, currency_snapshot, display_order
        FROM time_report_entries
        WHERE consultant_id = $1
          AND entry_line_id = ANY($2::uuid[])
@@ -1114,9 +1149,9 @@ export async function saveTimeReportEntries(
         const ins = await client.query<{ id: string }>(
           `INSERT INTO time_report_entries (
              consultant_id, customer_id, project_id, role_id, jira_devops_key,
-             description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order,
+             description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, currency_snapshot, display_order,
              entry_line_id
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12)
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12,$13)
            RETURNING id`,
           [
             de.consultant_id,
@@ -1129,6 +1164,7 @@ export async function saveTimeReportEntries(
             de.hours,
             de.internal_comment,
             de.rate_snapshot,
+            de.currency_snapshot,
             de.display_order,
             de.entry_line_id,
           ]
@@ -1156,8 +1192,9 @@ export async function saveTimeReportEntries(
              pm_edited_hours = $7,
              internal_comment = $8,
              rate_snapshot = $9,
-             display_order = $10,
-             entry_line_id = $11
+             currency_snapshot = $10,
+             display_order = $11,
+             entry_line_id = $12
            WHERE id = $1`,
           [
             ex.id,
@@ -1169,6 +1206,7 @@ export async function saveTimeReportEntries(
             de.hours,
             de.internal_comment,
             de.rate_snapshot,
+            de.currency_snapshot,
             de.display_order,
             de.entry_line_id,
           ]
@@ -1231,7 +1269,7 @@ async function buildDesiredCellsForCopy(
   const rateSnapshot =
     entry.projectId && entry.roleId
       ? await getEffectiveRateSnapshot(entry.projectId, customerId, entry.roleId)
-      : null;
+      : { rate: null, currency: "SEK" as BillingCurrency };
 
   const toInsert: DesiredCell[] = [];
   const displayOrderPlaceholder = 0;
@@ -1253,7 +1291,8 @@ async function buildDesiredCellsForCopy(
           entry_date: weekDates[dayIndex]!,
           hours: hoursNum,
           internal_comment: comment || null,
-          rate_snapshot: rateSnapshot,
+          rate_snapshot: rateSnapshot.rate,
+          currency_snapshot: rateSnapshot.rate != null ? rateSnapshot.currency : null,
           display_order: displayOrderPlaceholder,
         });
       } else if (comment) {
@@ -1268,7 +1307,8 @@ async function buildDesiredCellsForCopy(
           entry_date: weekDates[dayIndex]!,
           hours: COMMENT_ONLY_PLACEHOLDER_HOURS,
           internal_comment: comment,
-          rate_snapshot: rateSnapshot,
+          rate_snapshot: rateSnapshot.rate,
+          currency_snapshot: rateSnapshot.rate != null ? rateSnapshot.currency : null,
           display_order: displayOrderPlaceholder,
         });
       }
@@ -1371,9 +1411,9 @@ async function copyEntryToWeekCore(
     const ins = await client.query<{ id: string }>(
       `INSERT INTO time_report_entries (
          consultant_id, customer_id, project_id, role_id, jira_devops_key,
-         description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, display_order,
+         description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, currency_snapshot, display_order,
          entry_line_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12,$13)
        RETURNING id`,
       [
         de.consultant_id,
@@ -1386,6 +1426,7 @@ async function copyEntryToWeekCore(
         de.hours,
         de.internal_comment,
         de.rate_snapshot,
+        de.currency_snapshot,
         de.display_order,
         de.entry_line_id,
       ]

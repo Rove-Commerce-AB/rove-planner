@@ -543,6 +543,7 @@ export function CustomerDrawerContent({
             <CustomerRatesTab
               mode="edit"
               customerId={customer.id}
+              billingCurrency={customer.billingCurrency}
               onError={setRatesError}
               showDescription={false}
             />
@@ -578,6 +579,7 @@ export function CustomerDrawerContent({
         onClose={() => setAddRateOpen(false)}
         onSuccess={() => router.refresh()}
         customerId={customer.id}
+        billingCurrency={customer.billingCurrency}
       />
 
       <ConfirmModal

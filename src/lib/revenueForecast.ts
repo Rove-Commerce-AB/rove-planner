@@ -157,7 +157,7 @@ export async function getRevenueForecast(
         );
       }
 
-      const revenueByMonth = new Map<
+      const revenueByMonthCurrency = new Map<
         string,
         { revenue: number; currency: string; byCustomer: Map<string, number> }
       >();
@@ -191,16 +191,17 @@ export async function getRevenueForecast(
         if (totalWorkingDays === 0) continue;
 
         const rate = rateRow.rate_per_hour;
-        const currency = rateRow.currency;
+        const currency = rateRow.currency ?? "SEK";
 
         for (const { year, month, workingDays } of workingDaysByMonth) {
-          const key = `${year}-${String(month).padStart(2, "0")}`;
+          const monthPart = `${year}-${String(month).padStart(2, "0")}`;
+          const key = `${monthPart}|${currency}`;
           const hoursInMonth = (a.hours * workingDays) / totalWorkingDays;
           const revenue = hoursInMonth * rate;
-          let existing = revenueByMonth.get(key);
+          let existing = revenueByMonthCurrency.get(key);
           if (!existing) {
             existing = { revenue: 0, currency, byCustomer: new Map() };
-            revenueByMonth.set(key, existing);
+            revenueByMonthCurrency.set(key, existing);
           }
           existing.revenue += revenue;
           const custRev = existing.byCustomer.get(customerId) ?? 0;
@@ -208,9 +209,10 @@ export async function getRevenueForecast(
         }
       }
 
-      return Array.from(revenueByMonth.entries())
+      return Array.from(revenueByMonthCurrency.entries())
         .map(([key, { revenue, currency, byCustomer }]) => {
-          const [y, m] = key.split("-").map(Number);
+          const [monthPart] = key.split("|");
+          const [y, m] = monthPart.split("-").map(Number);
           const byCustomerList: RevenueForecastByCustomer[] = Array.from(
             byCustomer.entries()
           )
@@ -218,6 +220,7 @@ export async function getRevenueForecast(
               customerId,
               customerName: customerNames.get(customerId) ?? customerId,
               revenue: rev,
+              currency,
             }))
             .sort((a, b) => a.customerName.localeCompare(b.customerName));
           return {
@@ -229,7 +232,11 @@ export async function getRevenueForecast(
           };
         })
         .sort((a, b) =>
-          a.year !== b.year ? a.year - b.year : a.month - b.month
+          a.year !== b.year
+            ? a.year - b.year
+            : a.month !== b.month
+              ? a.month - b.month
+              : a.currency.localeCompare(b.currency)
         );
     },
     [
