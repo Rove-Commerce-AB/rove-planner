@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bell } from "lucide-react";
 import { breadcrumbsForPathname } from "@/lib/breadcrumbs";
 import { useWorkTrail } from "@/components/WorkTrailContext";
 import { ShortcutStarButton } from "@/components/ShortcutStarButton";
-import { ROUTES } from "@/lib/routes";
+import { NotificationsBellDropdown } from "@/components/NotificationsBellDropdown";
 
 type AppTopBarProps = {
   unreadNotificationCount?: number;
@@ -27,12 +26,6 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
     pathname,
     trailReady ? workTrail ?? undefined : undefined
   );
-  const notificationsActive =
-    pathname === ROUTES.notifications ||
-    pathname.startsWith(`${ROUTES.notifications}/`);
-  const hasUnread = unreadNotificationCount > 0;
-  const unreadLabel =
-    unreadNotificationCount > 99 ? "99+" : String(unreadNotificationCount);
   const defaultShortcutName =
     crumbs.length > 0 ? crumbs[crumbs.length - 1]!.label : "Shortcut";
 
@@ -83,32 +76,7 @@ export function AppTopBar({ unreadNotificationCount = 0 }: AppTopBarProps) {
         </Suspense>
       </div>
 
-      <Link
-        href={ROUTES.notifications}
-        prefetch={false}
-        aria-label={
-          hasUnread
-            ? `Notifications, ${unreadLabel} unread`
-            : "Notifications"
-        }
-        title={
-          hasUnread
-            ? `Notifications (${unreadNotificationCount} unread)`
-            : "Notifications"
-        }
-        className={`relative flex shrink-0 items-center justify-center rounded-md px-3 py-3 transition-colors hover:bg-nav-hover ${
-          notificationsActive
-            ? "bg-nav-active text-nav-active-accent"
-            : "text-text-primary/70 hover:text-text-primary"
-        }`}
-      >
-        <Bell className="h-5 w-5" />
-        {hasUnread && (
-          <span className="absolute right-1 top-1 box-border inline-flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-bg-default bg-status-danger px-1 text-label-s leading-none text-text-inverse tabular-nums">
-            {unreadLabel}
-          </span>
-        )}
-      </Link>
+      <NotificationsBellDropdown unreadCount={unreadNotificationCount} />
     </header>
   );
 }

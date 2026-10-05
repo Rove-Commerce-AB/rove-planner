@@ -1,4 +1,5 @@
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
+import { compareTextSv } from "@/lib/sort";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
 
@@ -118,7 +119,7 @@ export function buildPerConsultantView(
   const sortedConsultants = [...data.consultants].sort((a, b) => {
     if (a.id === TO_PLAN_CONSULTANT_ID) return -1;
     if (b.id === TO_PLAN_CONSULTANT_ID) return 1;
-    return a.name.localeCompare(b.name);
+    return compareTextSv(a.name, b.name);
   });
 
   return sortedConsultants.map((c) => {
@@ -186,7 +187,7 @@ export function buildPerConsultantView(
       const rowsWithAllocations = rows.filter((pr) =>
         pr.weeks.some((w) => w.cell != null && w.cell.hours > 0)
       );
-      rowsWithAllocations.sort((a, b) => a.projectName.localeCompare(b.projectName));
+      rowsWithAllocations.sort((a, b) => compareTextSv(a.projectName, b.projectName));
       projectRows.push(...rowsWithAllocations);
     }
 
@@ -330,7 +331,7 @@ export function buildPerCustomerView(
   }
 
   const sortedCustomers = [...data.customers].sort((a, b) =>
-    a.name.localeCompare(b.name)
+    compareTextSv(a.name, b.name)
   );
   return sortedCustomers.map((cust) => {
     const byProject = byCustomerProject.get(cust.id);
@@ -352,7 +353,7 @@ export function buildPerCustomerView(
       const sortedProjectIds = [...byProject.keys()].sort((a, b) => {
         const aName = projectMap.get(a)?.name ?? "";
         const bName = projectMap.get(b)?.name ?? "";
-        return aName.localeCompare(bName);
+        return compareTextSv(aName, bName);
       });
 
       for (const projectId of sortedProjectIds) {
@@ -374,11 +375,11 @@ export function buildPerCustomerView(
         rows.sort((a, b) => {
           const nameA = consultantMap.get(a.consultantId)?.name ?? "";
           const nameB = consultantMap.get(b.consultantId)?.name ?? "";
-          const nameCmp = nameA.localeCompare(nameB);
+          const nameCmp = compareTextSv(nameA, nameB);
           if (nameCmp !== 0) return nameCmp;
           const roleA = a.roleId ? (roleMap.get(a.roleId) ?? "") : "";
           const roleB = b.roleId ? (roleMap.get(b.roleId) ?? "") : "";
-          return roleA.localeCompare(roleB);
+          return compareTextSv(roleA, roleB);
         });
 
         for (const { key: rowKey, consultantId, roleId } of rows) {
@@ -537,9 +538,9 @@ export function buildPerProjectView(
   const sortedProjects = [...data.projects]
     .filter((p) => p.isActive !== false && p.customerIsActive !== false)
     .sort((a, b) => {
-      const custCmp = a.customerName.localeCompare(b.customerName);
+      const custCmp = compareTextSv(a.customerName, b.customerName);
       if (custCmp !== 0) return custCmp;
-      return a.name.localeCompare(b.name);
+      return compareTextSv(a.name, b.name);
     });
 
   return sortedProjects.map((proj) => {
@@ -564,11 +565,11 @@ export function buildPerProjectView(
       rows.sort((a, b) => {
         const nameA = consultantMap.get(a.consultantId)?.name ?? "";
         const nameB = consultantMap.get(b.consultantId)?.name ?? "";
-        const nameCmp = nameA.localeCompare(nameB);
+        const nameCmp = compareTextSv(nameA, nameB);
         if (nameCmp !== 0) return nameCmp;
         const roleA = a.roleId ? (roleMap.get(a.roleId) ?? "") : "";
         const roleB = b.roleId ? (roleMap.get(b.roleId) ?? "") : "";
-        return roleA.localeCompare(roleB);
+        return compareTextSv(roleA, roleB);
       });
       for (const { key: rowKey, consultantId, roleId } of rows) {
         const c = consultantMap.get(consultantId);

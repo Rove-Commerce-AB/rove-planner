@@ -1,238 +1,22 @@
 "use client";
 
-import { useTransition, type ReactNode } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui";
 import type { UserNotificationRow } from "@/lib/userNotificationKinds";
-import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
 import {
   markAllDashboardNotificationsReadAction,
   markDashboardNotificationReadAction,
 } from "@/app/(app)/dashboardNotificationsActions";
-import { workIssueHref } from "@/lib/routes";
+import {
+  formatNotificationTimestamp,
+  notificationBody,
+} from "@/lib/notificationDisplay";
 
 type Props = {
   notifications: UserNotificationRow[];
 };
-
-function formatWeeksLabel(weeks: unknown): string {
-  if (!Array.isArray(weeks) || weeks.length === 0) return "";
-  const parsed = weeks
-    .filter(
-      (x): x is { year: number; week: number } =>
-        typeof x === "object" &&
-        x !== null &&
-        typeof (x as { year?: unknown }).year === "number" &&
-        typeof (x as { week?: unknown }).week === "number"
-    )
-    .sort((a, b) =>
-      a.year !== b.year ? a.year - b.year : a.week - b.week
-    );
-  if (parsed.length === 0) return "";
-  const first = parsed[0]!;
-  const last = parsed[parsed.length - 1]!;
-  if (first.year === last.year && first.week === last.week) {
-    return `${first.year} W${first.week}`;
-  }
-  if (first.year === last.year) {
-    return `${first.year} W${first.week}–W${last.week}`;
-  }
-  return `${first.year} W${first.week} – ${last.year} W${last.week}`;
-}
-
-function notificationBody(n: UserNotificationRow): { text: ReactNode } {
-  const p = n.payload;
-  if (n.kind === USER_NOTIFICATION_KIND.ALLOCATION_BOOKED) {
-    const customer =
-      typeof p.customerName === "string" && p.customerName.trim()
-        ? p.customerName.trim()
-        : null;
-    const project =
-      typeof p.projectName === "string" && p.projectName.trim()
-        ? p.projectName.trim()
-        : null;
-    const projectId =
-      typeof p.projectId === "string" && p.projectId ? p.projectId : null;
-    const weeksLabel = formatWeeksLabel(p.weeks);
-    const who =
-      customer && project
-        ? `${customer} · ${project}`
-        : project ?? customer ?? "a project";
-    const text = (
-      <>
-        You have been booked on{" "}
-        {projectId ? (
-          <Link
-            href={`/projects/${projectId}`}
-            prefetch={false}
-            className="font-medium text-brand-signal hover:underline"
-          >
-            {who}
-          </Link>
-        ) : (
-          <span className="font-medium">{who}</span>
-        )}
-        {weeksLabel ? <> ({weeksLabel})</> : null}.
-      </>
-    );
-    return { text };
-  }
-  if (n.kind === USER_NOTIFICATION_KIND.FEATURE_REQUEST_IMPLEMENTED) {
-    const preview =
-      typeof p.contentPreview === "string" && p.contentPreview.trim()
-        ? p.contentPreview.trim()
-        : "(no content)";
-    return {
-      text: (
-        <>
-          A feature request you submitted has been marked as done:{" "}
-          <span className="font-medium opacity-90">&quot;{preview}&quot;</span>
-        </>
-      ),
-    };
-  }
-  if (n.kind === USER_NOTIFICATION_KIND.FEATURE_REQUEST_DECLINED) {
-    const preview =
-      typeof p.contentPreview === "string" && p.contentPreview.trim()
-        ? p.contentPreview.trim()
-        : "(no content)";
-    const adminComment =
-      typeof p.adminComment === "string" && p.adminComment.trim()
-        ? p.adminComment.trim()
-        : "No comment provided.";
-    return {
-      text: (
-        <>
-          A feature request you submitted was declined:{" "}
-          <span className="font-medium opacity-90">&quot;{preview}&quot;</span>. Admin comment:{" "}
-          <span className="font-medium opacity-90">{adminComment}</span>
-        </>
-      ),
-    };
-  }
-  if (n.kind === USER_NOTIFICATION_KIND.TASK_BOARD_INVITED) {
-    const boardId =
-      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
-    const boardTitle =
-      typeof p.boardTitle === "string" && p.boardTitle.trim()
-        ? p.boardTitle.trim()
-        : "a board";
-    const inviter =
-      typeof p.inviterLabel === "string" && p.inviterLabel.trim()
-        ? p.inviterLabel.trim()
-        : "Someone";
-    const text = (
-      <>
-        <span className="font-medium">{inviter}</span> added you to the board{" "}
-        {boardId ? (
-          <Link
-            href={`/taskboard/${boardId}`}
-            className="font-medium text-brand-signal hover:underline"
-          >
-            {boardTitle}
-          </Link>
-        ) : (
-          <span className="font-medium">{boardTitle}</span>
-        )}
-        .
-      </>
-    );
-    return { text };
-  }
-  if (n.kind === USER_NOTIFICATION_KIND.TASK_TODO_ASSIGNED) {
-    const boardId =
-      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
-    const boardTitle =
-      typeof p.boardTitle === "string" && p.boardTitle.trim()
-        ? p.boardTitle.trim()
-        : "a board";
-    const todoTitle =
-      typeof p.todoTitle === "string" && p.todoTitle.trim()
-        ? p.todoTitle.trim()
-        : "a task";
-    const assigner =
-      typeof p.assignerLabel === "string" && p.assignerLabel.trim()
-        ? p.assignerLabel.trim()
-        : "Someone";
-    const text = (
-      <>
-        <span className="font-medium">{assigner}</span> assigned you a todo on{" "}
-        {boardId ? (
-          <Link
-            href={`/taskboard/${boardId}`}
-            className="font-medium text-brand-signal hover:underline"
-          >
-            {boardTitle}
-          </Link>
-        ) : (
-          <span className="font-medium">{boardTitle}</span>
-        )}
-        : <span className="font-medium opacity-90">&quot;{todoTitle}&quot;</span>
-      </>
-    );
-    return { text };
-  }
-  if (n.kind === USER_NOTIFICATION_KIND.WORK_ISSUE_MENTIONED) {
-    const mentioner =
-      typeof p.mentionerName === "string" && p.mentionerName.trim()
-        ? p.mentionerName.trim()
-        : "Someone";
-    const issueKey =
-      typeof p.issueKey === "string" && p.issueKey.trim()
-        ? p.issueKey.trim()
-        : "an issue";
-    const issueTitle =
-      typeof p.issueTitle === "string" && p.issueTitle.trim()
-        ? p.issueTitle.trim()
-        : null;
-    const customerId =
-      typeof p.customerId === "string" && p.customerId.trim()
-        ? p.customerId.trim()
-        : null;
-    const boardId =
-      typeof p.boardId === "string" && p.boardId.trim() ? p.boardId.trim() : null;
-    const issueId =
-      typeof p.issueId === "string" && p.issueId.trim() ? p.issueId.trim() : null;
-    const href =
-      customerId && boardId && issueId
-        ? workIssueHref(customerId, boardId, issueId)
-        : null;
-    const issueLabel = (
-      <>
-        {issueKey}
-        {issueTitle ? (
-          <>
-            {" "}
-            <span className="font-medium opacity-90">
-              &quot;{issueTitle}&quot;
-            </span>
-          </>
-        ) : null}
-      </>
-    );
-    return {
-      text: (
-        <>
-          <span className="font-medium">{mentioner}</span> mentioned you on{" "}
-          {href ? (
-            <Link
-              href={href}
-              prefetch={false}
-              className="font-medium text-brand-signal hover:underline"
-            >
-              {issueLabel}
-            </Link>
-          ) : (
-            issueLabel
-          )}
-          .
-        </>
-      ),
-    };
-  }
-  return { text: n.kind };
-}
 
 export function DashboardNotificationsPanel({ notifications }: Props) {
   const router = useRouter();
@@ -270,46 +54,44 @@ export function DashboardNotificationsPanel({ notifications }: Props) {
           </Button>
         </div>
       )}
-      <ul className="space-y-2">
+      <ul className="divide-y divide-border-default overflow-hidden rounded border border-form">
         {notifications.map((n) => {
           const unread = n.read_at == null;
           const { text } = notificationBody(n);
           return (
             <li
               key={n.id}
-              className={`flex flex-col gap-2 rounded border border-form p-3 text-sm sm:flex-row sm:items-start sm:justify-between ${
-                unread ? "border-l-2 border-l-brand-signal bg-bg-muted/40" : ""
+              className={`flex gap-2 px-3 py-3 text-sm ${
+                unread ? "bg-bg-muted/40" : "opacity-70"
               }`}
             >
-              <div className="min-w-0 flex-1 text-text-primary">{text}</div>
-              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+              <div className="min-w-0 flex-1 text-text-primary">
+                <div className="leading-snug">{text}</div>
                 <time
-                  className="text-xs text-text-primary opacity-60"
+                  className="mt-1.5 block text-xs tabular-nums text-text-tertiary"
                   dateTime={n.created_at}
                 >
-                  {new Date(n.created_at).toLocaleString("en-US", {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })}
+                  {formatNotificationTimestamp(n.created_at)}
                 </time>
-                {unread && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() =>
-                      startTransition(() => {
-                        void markDashboardNotificationReadAction(n.id).then(
-                          afterMarkRead
-                        );
-                      })
-                    }
-                  >
-                    Mark as read
-                  </Button>
-                )}
               </div>
+              {unread && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(() => {
+                      void markDashboardNotificationReadAction(n.id).then(
+                        afterMarkRead
+                      );
+                    })
+                  }
+                  className="shrink-0 self-start rounded p-1 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
+                  aria-label="Mark as read"
+                  title="Mark as read"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </li>
           );
         })}

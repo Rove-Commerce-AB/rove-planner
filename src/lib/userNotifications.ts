@@ -216,6 +216,49 @@ export async function getNotificationsForCurrentUser(
   }
 }
 
+/** Unread only — for the top-bar notification dropdown. */
+export async function getUnreadNotificationsForCurrentUser(
+  limit = 30
+): Promise<UserNotificationRow[]> {
+  const sessionUser = await getCurrentAppUser();
+  if (!sessionUser?.email) return [];
+
+  try {
+    const { rows } = await cloudSqlPool.query<{
+      id: string;
+      kind: string;
+      payload: Record<string, unknown>;
+      read_at: string | null;
+      created_at: string;
+    }>(
+      `SELECT un.id, un.kind, un.payload, un.read_at::text, un.created_at::text
+       FROM user_notifications un
+       INNER JOIN app_users au ON au.id = un.app_user_id
+       WHERE lower(trim(au.email)) = lower(trim($1))
+         AND un.read_at IS NULL
+       ORDER BY un.created_at DESC
+       LIMIT $2`,
+      [sessionUser.email, limit]
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      payload: r.payload ?? {},
+      read_at: r.read_at,
+      created_at: r.created_at,
+    }));
+  } catch (e) {
+    if (isUserNotificationsAccessError(e)) {
+      console.warn(
+        "[userNotifications] user_notifications not readable (missing GRANT or table?). See sql/20260418_user_notifications.sql footer.",
+        e
+      );
+      return [];
+    }
+    throw e;
+  }
+}
+
 /** Olästa notiser för vänstermeny / indikator (COUNT, lättviktsquery). */
 export async function getUnreadNotificationCountForCurrentUser(): Promise<number> {
   const sessionUser = await getCurrentAppUser();

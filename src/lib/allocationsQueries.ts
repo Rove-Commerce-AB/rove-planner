@@ -190,22 +190,45 @@ export type CreateAllocationInput = {
 export async function createAllocation(
   input: CreateAllocationInput
 ): Promise<AllocationRecord> {
-  const { rows } = await cloudSqlPool.query(
-    `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, consultant_id, project_id, role_id, year, week, hours`,
-    [
+  const created = await createAllocations([input]);
+  return created[0]!;
+}
+
+/** Multi-week insert with a single grouped booking notification. */
+export async function createAllocations(
+  inputs: CreateAllocationInput[]
+): Promise<AllocationRecord[]> {
+  if (inputs.length === 0) return [];
+  const values: unknown[] = [];
+  const placeholders = inputs
+    .map((_, i) => {
+      const o = i * 6;
+      return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+    })
+    .join(", ");
+  for (const input of inputs) {
+    values.push(
       input.consultant_id,
       input.project_id,
       input.role_id ?? null,
       input.year,
       input.week,
-      input.hours,
-    ]
+      input.hours
+    );
+  }
+  const { rows } = await cloudSqlPool.query(
+    `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
+     VALUES ${placeholders}
+     RETURNING id, consultant_id, project_id, role_id, year, week, hours`,
+    values
   );
-  if (!rows[0]) throw new Error("Failed to create allocation");
-  const created = mapAllocation(rows[0] as Parameters<typeof mapAllocation>[0]);
-  await notifyAllocationInserts([created]);
+  if (rows.length !== inputs.length) {
+    throw new Error("Failed to create allocation(s)");
+  }
+  const created = rows.map((r) =>
+    mapAllocation(r as Parameters<typeof mapAllocation>[0])
+  );
+  await notifyAllocationInserts(created);
   return created;
 }
 

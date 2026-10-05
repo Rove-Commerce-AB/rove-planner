@@ -40,6 +40,10 @@ export async function createAllocation(input: q.CreateAllocationInput) {
   return q.createAllocation(input);
 }
 
+export async function createAllocations(inputs: q.CreateAllocationInput[]) {
+  return q.createAllocations(inputs);
+}
+
 export async function createAllocationsForWeekRange(
   consultant_id: string | null,
   project_id: string,

@@ -1,9 +1,11 @@
 "use server";
 
 import {
+  getUnreadNotificationsForCurrentUser,
   markAllUserNotificationsRead,
   markUserNotificationRead,
 } from "@/lib/userNotifications";
+import type { UserNotificationRow } from "@/lib/userNotificationKinds";
 
 export async function markDashboardNotificationReadAction(
   notificationId: string
@@ -13,4 +15,10 @@ export async function markDashboardNotificationReadAction(
 
 export async function markAllDashboardNotificationsReadAction(): Promise<void> {
   await markAllUserNotificationsRead();
+}
+
+export async function getUnreadDashboardNotificationsAction(): Promise<
+  UserNotificationRow[]
+> {
+  return getUnreadNotificationsForCurrentUser(30);
 }

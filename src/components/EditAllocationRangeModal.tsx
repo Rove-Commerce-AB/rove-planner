@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { createAllocation, updateAllocation } from "@/lib/allocationsClient";
+import {
+  createAllocations,
+  updateAllocation,
+  type CreateAllocationInput,
+} from "@/lib/allocationsClient";
 import {
   revalidateAllocationPage,
-  logAllocationHistoryCreate,
   logAllocationHistoryUpdate,
+  logBulkAllocationHistory,
   deleteAllocationWithHistory,
 } from "@/app/(app)/allocation/actions";
 import { useEscToClose } from "@/lib/useEscToClose";
@@ -85,6 +89,50 @@ export function EditAllocationRangeModal({
     return String(Math.round((h / firstAvailable) * 100));
   };
 
+  async function applyWeekHours(
+    consultantIdOrNull: string | null,
+    hoursByWeek: number[]
+  ): Promise<void> {
+    const toDelete: string[] = [];
+    const toUpdate: { id: string; hours: number }[] = [];
+    const toCreate: CreateAllocationInput[] = [];
+
+    for (let i = 0; i < weeks.length; i++) {
+      const w = weeks[i]!;
+      const hours = hoursByWeek[i] ?? 0;
+      if (hours === 0) {
+        if (w.allocationId) toDelete.push(w.allocationId);
+      } else if (w.allocationId) {
+        toUpdate.push({ id: w.allocationId, hours });
+      } else {
+        toCreate.push({
+          consultant_id: consultantIdOrNull,
+          project_id: projectId,
+          role_id: roleId ?? undefined,
+          year: w.year,
+          week: w.week,
+          hours,
+        });
+      }
+    }
+
+    await Promise.all([
+      ...toDelete.map((id) => deleteAllocationWithHistory(id)),
+      ...toUpdate.map(async ({ id, hours }) => {
+        await updateAllocation(id, { hours });
+        await logAllocationHistoryUpdate(id, hours);
+      }),
+    ]);
+
+    if (toCreate.length > 0) {
+      const created = await createAllocations(toCreate);
+      await logBulkAllocationHistory(
+        created.map((r) => r.id),
+        created.reduce((sum, r) => sum + r.hours, 0)
+      );
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const consultantIdOrNull =
@@ -99,29 +147,10 @@ export function EditAllocationRangeModal({
       setError(null);
       setSubmitting(true);
       try {
-        const promises = weeks.map(async (w) => {
-          if (hours === 0) {
-            if (w.allocationId) {
-              await deleteAllocationWithHistory(w.allocationId);
-            }
-          } else {
-            if (w.allocationId) {
-              await updateAllocation(w.allocationId, { hours });
-              await logAllocationHistoryUpdate(w.allocationId, hours);
-            } else {
-              const created = await createAllocation({
-                consultant_id: consultantIdOrNull,
-                project_id: projectId,
-                role_id: roleId ?? undefined,
-                year: w.year,
-                week: w.week,
-                hours,
-              });
-              await logAllocationHistoryCreate(created.id);
-            }
-          }
-        });
-        await Promise.all(promises);
+        await applyWeekHours(
+          consultantIdOrNull,
+          weeks.map(() => hours)
+        );
         await revalidateAllocationPage();
         onSuccess(hours);
         onClose();
@@ -141,34 +170,11 @@ export function EditAllocationRangeModal({
     setError(null);
     setSubmitting(true);
     try {
-      const hoursPerWeek = weeks.map((w, i) => {
+      const hoursPerWeek = weeks.map((_, i) => {
         const available = availableHoursByWeek[i] ?? 0;
         return (p / 100) * available;
       });
-      const promises = weeks.map(async (w, i) => {
-        const hours = hoursPerWeek[i] ?? 0;
-        if (hours === 0) {
-          if (w.allocationId) {
-            await deleteAllocationWithHistory(w.allocationId);
-          }
-        } else {
-          if (w.allocationId) {
-            await updateAllocation(w.allocationId, { hours });
-            await logAllocationHistoryUpdate(w.allocationId, hours);
-          } else {
-            const created = await createAllocation({
-              consultant_id: consultantIdOrNull,
-              project_id: projectId,
-              role_id: roleId ?? undefined,
-              year: w.year,
-              week: w.week,
-              hours,
-            });
-            await logAllocationHistoryCreate(created.id);
-          }
-        }
-      });
-      await Promise.all(promises);
+      await applyWeekHours(consultantIdOrNull, hoursPerWeek);
       await revalidateAllocationPage();
       onSuccess(
         weeks.map((w, i) => ({ year: w.year, week: w.week, hours: hoursPerWeek[i] ?? 0 }))

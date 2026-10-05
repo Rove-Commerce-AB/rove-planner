@@ -1,4 +1,5 @@
 import "server-only";
+import { compareTextSv } from "@/lib/sort";
 
 import { unstable_cache } from "next/cache";
 
@@ -238,7 +239,7 @@ export async function getAllocationPageData(
   return {
     consultants,
     projects,
-    customers: customers.sort((a, b) => a.name.localeCompare(b.name)),
+    customers: customers.sort((a, b) => compareTextSv(a.name, b.name)),
     roles,
     teams,
     allocations,
@@ -420,7 +421,7 @@ export async function getAllocationPageDataForProject(
   const result = {
     consultants,
     projects,
-    customers: customers.sort((a, b) => a.name.localeCompare(b.name)),
+    customers: customers.sort((a, b) => compareTextSv(a.name, b.name)),
     roles: rolesData,
     teams: teamsData,
     allocations,
