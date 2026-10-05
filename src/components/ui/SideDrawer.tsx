@@ -46,6 +46,7 @@ export function SideDrawer({
               el?.closest?.("[data-radix-select-content]") ||
               el?.closest?.("[data-radix-alert-dialog-content]") ||
               el?.closest?.("[data-radix-dialog-content]") ||
+              el?.closest?.("[data-board-add-person]") ||
               document.querySelector("[data-radix-alert-dialog-content]") ||
               document.querySelectorAll("[data-radix-dialog-content]").length > 1
             ) {

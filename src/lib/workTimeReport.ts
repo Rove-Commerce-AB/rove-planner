@@ -16,7 +16,7 @@ function optionFromRow(row: {
   title: string;
   prefix: string;
   customer_id?: string;
-  board_id?: string;
+  project_id?: string;
 }): WorkIssueTimeOption {
   const key = workIssueKey(row.prefix, row.number);
   const title = row.title.trim();
@@ -24,10 +24,10 @@ function optionFromRow(row: {
     value: row.id,
     label: title ? `${key} ${title}` : key,
     customerId: row.customer_id,
-    boardId: row.board_id,
+    boardId: row.project_id,
     url:
-      row.customer_id && row.board_id
-        ? workIssueHref(row.customer_id, row.board_id, row.id)
+      row.customer_id && row.project_id
+        ? workIssueHref(row.customer_id, row.project_id, row.id)
         : undefined,
   };
 }
@@ -43,12 +43,12 @@ export async function fetchWorkIssueTimeOptionsForCustomer(
     title: string;
     prefix: string;
     customer_id: string;
-    board_id: string;
+    project_id: string;
   }>(
-    `SELECT i.id, i.number, i.title, b.prefix, b.customer_id, b.id AS board_id
+    `SELECT i.id, i.number, i.title, b.prefix, b.customer_id, b.id AS project_id
      FROM work_issues i
-     JOIN work_boards b ON b.id = i.board_id
-     JOIN work_board_members m ON m.board_id = b.id
+     JOIN work_projects b ON b.id = i.project_id
+     JOIN work_project_members m ON m.project_id = b.id
      WHERE b.customer_id = $1
        AND b.archived_at IS NULL
        AND m.app_user_id = $2
@@ -69,11 +69,11 @@ export async function fetchWorkIssueTimeOptionsByIds(
     title: string;
     prefix: string;
     customer_id: string;
-    board_id: string;
+    project_id: string;
   }>(
-    `SELECT i.id, i.number, i.title, b.prefix, b.customer_id, b.id AS board_id
+    `SELECT i.id, i.number, i.title, b.prefix, b.customer_id, b.id AS project_id
      FROM work_issues i
-     JOIN work_boards b ON b.id = i.board_id
+     JOIN work_projects b ON b.id = i.project_id
      WHERE i.id = ANY($1::uuid[])
      ORDER BY b.prefix, i.number`,
     [ids]
@@ -90,7 +90,7 @@ export async function workIssueIdsForCustomer(
   const { rows } = await cloudSqlPool.query<{ id: string }>(
     `SELECT i.id
      FROM work_issues i
-     JOIN work_boards b ON b.id = i.board_id
+     JOIN work_projects b ON b.id = i.project_id
      WHERE i.id = ANY($1::uuid[])
        AND b.customer_id = $2`,
     [ids, customerId]

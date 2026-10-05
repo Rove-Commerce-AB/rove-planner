@@ -62,14 +62,19 @@ export function workCustomerHref(customerId: string): string {
   return `${ROUTES.work}/${customerId}`;
 }
 
+/** @deprecated Use workProjectHref */
 export function workBoardHref(customerId: string, boardId: string): string {
-  return `${ROUTES.work}/${customerId}/${boardId}`;
+  return workProjectHref(customerId, boardId);
+}
+
+export function workProjectHref(customerId: string, projectId: string): string {
+  return `${ROUTES.work}/${customerId}/${projectId}`;
 }
 
 export function workIssueHref(
   customerId: string,
-  boardId: string,
+  projectId: string,
   issueId: string
 ): string {
-  return `${ROUTES.work}/${customerId}/${boardId}/${issueId}`;
+  return `${ROUTES.work}/${customerId}/${projectId}/${issueId}`;
 }

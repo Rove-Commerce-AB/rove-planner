@@ -5,9 +5,9 @@ import Link from "next/link";
 import { ChevronRight, Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
-import { workBoardHref, workCustomerHref } from "@/lib/routes";
+import { workCustomerHref, workProjectHref } from "@/lib/routes";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
-import { WorkCreateBoardDialog } from "./WorkCreateBoardDialog";
+import { WorkCreateProjectDialog } from "./WorkCreateProjectDialog";
 
 type Props = {
   customers: WorkSelectorCustomer[];
@@ -26,7 +26,7 @@ export function WorkSelectorPageClient({ customers }: Props) {
     <div className="w-full">
       <PageHeader
         title="Select customer"
-        description="Open a board to start working, or create one for a customer that has none yet."
+        description="Open a project to start working, or create one for a customer that has none yet."
         className="mb-6"
       />
 
@@ -59,8 +59,8 @@ export function WorkSelectorPageClient({ customers }: Props) {
                   type="button"
                   onClick={() => setCreateForCustomerId(customer.id)}
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
-                  aria-label={`Create board for ${customer.name}`}
-                  title="Create board"
+                  aria-label={`Create project for ${customer.name}`}
+                  title="Create project"
                 >
                   <Plus className="h-4 w-4" aria-hidden />
                 </button>
@@ -71,7 +71,7 @@ export function WorkSelectorPageClient({ customers }: Props) {
                   {customer.boards.map((board) => (
                     <li key={board.id}>
                       <Link
-                        href={workBoardHref(customer.id, board.id)}
+                        href={workProjectHref(customer.id, board.id)}
                         className="flex items-center justify-between gap-3 py-2.5 text-body-m text-text-primary transition-colors hover:text-accent-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2"
                       >
                         <span className="min-w-0 truncate">{board.title}</span>
@@ -89,7 +89,7 @@ export function WorkSelectorPageClient({ customers }: Props) {
         </div>
       )}
 
-      <WorkCreateBoardDialog
+      <WorkCreateProjectDialog
         customer={createCustomer ?? null}
         open={createForCustomerId != null}
         onOpenChange={(open) => {

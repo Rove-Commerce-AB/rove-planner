@@ -9,7 +9,7 @@ export type WorkUserRow = {
 
 export type WorkIssueRow = {
   id: string;
-  board_id: string;
+  project_id: string;
   number: number;
   title: string;
   status: WorkIssueStatus;
@@ -26,6 +26,9 @@ export type WorkIssueRow = {
   reporter_name: string | null;
   reporter_email: string | null;
   estimate_hours: string | number | null;
+  sprint_id: string | null;
+  start_date: Date | string | null;
+  due_date: Date | string | null;
 };
 
 export async function fetchWorkPeopleForCustomer(
@@ -51,6 +54,70 @@ export async function fetchWorkPeopleForCustomer(
   return rows;
 }
 
+export type WorkAccessPickerRow = WorkUserRow & {
+  on_customer: boolean;
+};
+
+/** Customer-linked people first, then other internal Work-capable users. */
+export async function fetchWorkAccessPickerPeople(
+  customerId: string
+): Promise<WorkAccessPickerRow[]> {
+  const { rows } = await cloudSqlPool.query<WorkAccessPickerRow>(
+    `WITH customer_people AS (
+       SELECT c.app_user_id AS id
+       FROM customer_consultants cc
+       JOIN consultants c ON c.id = cc.consultant_id
+       WHERE cc.customer_id = $1
+         AND c.app_user_id IS NOT NULL
+       UNION
+       SELECT cau.app_user_id
+       FROM customer_app_users cau
+       WHERE cau.customer_id = $1
+     ),
+     candidates AS (
+       SELECT DISTINCT u.id, u.name, u.email
+       FROM app_users u
+       WHERE u.role <> 'customer'
+         AND (
+           u.role = 'admin'
+           OR EXISTS (
+             SELECT 1 FROM consultants c WHERE c.app_user_id = u.id
+           )
+         )
+     )
+     SELECT
+       c.id,
+       c.name,
+       c.email,
+       EXISTS (SELECT 1 FROM customer_people cp WHERE cp.id = c.id) AS on_customer
+     FROM candidates c
+     ORDER BY
+       EXISTS (SELECT 1 FROM customer_people cp WHERE cp.id = c.id) DESC,
+       lower(COALESCE(NULLIF(trim(c.name), ''), c.email))`,
+    [customerId]
+  );
+  return rows;
+}
+
+export async function fetchWorkUserById(
+  appUserId: string
+): Promise<WorkUserRow | null> {
+  const { rows } = await cloudSqlPool.query<WorkUserRow>(
+    `SELECT u.id, u.name, u.email
+     FROM app_users u
+     WHERE u.id = $1
+       AND u.role <> 'customer'
+       AND (
+         u.role = 'admin'
+         OR EXISTS (
+           SELECT 1 FROM consultants c WHERE c.app_user_id = u.id
+         )
+       )`,
+    [appUserId]
+  );
+  return rows[0] ?? null;
+}
+
 export async function fetchWorkAssigneesForCustomer(
   customerId: string,
   boardId: string
@@ -70,8 +137,8 @@ export async function fetchWorkAssigneesForCustomer(
        WHERE cau.customer_id = $1
        UNION
        SELECT m.app_user_id
-       FROM work_board_members m
-       WHERE m.board_id = $2
+       FROM work_project_members m
+       WHERE m.project_id = $2
      )
      ORDER BY lower(COALESCE(NULLIF(trim(u.name), ''), u.email))`,
     [customerId, boardId]
@@ -84,9 +151,9 @@ export async function fetchWorkBoardMembers(
 ): Promise<WorkUserRow[]> {
   const { rows } = await cloudSqlPool.query<WorkUserRow>(
     `SELECT u.id, u.name, u.email
-     FROM work_board_members m
+     FROM work_project_members m
      JOIN app_users u ON u.id = m.app_user_id
-     WHERE m.board_id = $1
+     WHERE m.project_id = $1
      ORDER BY m.created_at, lower(COALESCE(NULLIF(trim(u.name), ''), u.email))`,
     [boardId]
   );
@@ -99,7 +166,7 @@ export async function fetchWorkIssuesForBoard(
   const { rows } = await cloudSqlPool.query<WorkIssueRow>(
     `SELECT
        i.id,
-       i.board_id,
+       i.project_id,
        i.number,
        i.title,
        i.status,
@@ -115,11 +182,14 @@ export async function fetchWorkIssuesForBoard(
        i.created_by_app_user_id,
        r.name AS reporter_name,
        r.email AS reporter_email,
-       i.estimate_hours
+       i.estimate_hours,
+       i.sprint_id,
+       i.start_date,
+       i.due_date
      FROM work_issues i
      LEFT JOIN app_users r ON r.id = i.created_by_app_user_id
      LEFT JOIN app_users o ON o.id = i.owner_app_user_id
-     WHERE i.board_id = $1
+     WHERE i.project_id = $1
      ORDER BY i.status, i.sort_order, i.number`,
     [boardId]
   );
@@ -165,7 +235,7 @@ export async function fetchBoardLabels(boardId: string) {
   const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
     `SELECT id, name
      FROM work_issue_labels
-     WHERE board_id = $1
+     WHERE project_id = $1
      ORDER BY lower(name)`,
     [boardId]
   );
@@ -274,26 +344,26 @@ export async function insertWorkIssue(input: {
   eventActorAppUserId?: string | null;
 }): Promise<string> {
   return withCloudSqlTransaction("work-create-issue", async (client) => {
-    await client.query("SELECT id FROM work_boards WHERE id = $1 FOR UPDATE", [
+    await client.query("SELECT id FROM work_projects WHERE id = $1 FOR UPDATE", [
       input.boardId,
     ]);
     const { rows: numberRows } = await client.query<{ next: number }>(
       `SELECT COALESCE(MAX(number), 0) + 1 AS next
        FROM work_issues
-       WHERE board_id = $1`,
+       WHERE project_id = $1`,
       [input.boardId]
     );
     const { rows: orderRows } = await client.query<{ next: number }>(
       `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
        FROM work_issues
-       WHERE board_id = $1 AND status = $2`,
+       WHERE project_id = $1 AND status = $2`,
       [input.boardId, input.status]
     );
     const ownerAppUserId =
       input.ownerAppUserId === undefined ? null : input.ownerAppUserId;
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO work_issues (
-         board_id, number, title, status, sort_order,
+         project_id, number, title, status, sort_order,
          owner_app_user_id, created_by_app_user_id, description
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
@@ -329,7 +399,7 @@ export async function updateWorkIssueTitle(
   title: string
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
-    `UPDATE work_issues SET title = $3 WHERE id = $2 AND board_id = $1`,
+    `UPDATE work_issues SET title = $3 WHERE id = $2 AND project_id = $1`,
     [boardId, issueId, title]
   );
   return (result.rowCount ?? 0) === 1;
@@ -341,7 +411,7 @@ export async function updateWorkIssueOwner(
   ownerAppUserId: string | null
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
-    `UPDATE work_issues SET owner_app_user_id = $3 WHERE id = $2 AND board_id = $1`,
+    `UPDATE work_issues SET owner_app_user_id = $3 WHERE id = $2 AND project_id = $1`,
     [boardId, issueId, ownerAppUserId]
   );
   return (result.rowCount ?? 0) === 1;
@@ -354,7 +424,7 @@ export async function updateWorkIssueField(
   value: string
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
-    `UPDATE work_issues SET ${field} = $3 WHERE id = $2 AND board_id = $1`,
+    `UPDATE work_issues SET ${field} = $3 WHERE id = $2 AND project_id = $1`,
     [boardId, issueId, value]
   );
   return (result.rowCount ?? 0) === 1;
@@ -366,7 +436,7 @@ export async function updateWorkIssueEstimate(
   estimateHours: number | null
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
-    `UPDATE work_issues SET estimate_hours = $3 WHERE id = $2 AND board_id = $1`,
+    `UPDATE work_issues SET estimate_hours = $3 WHERE id = $2 AND project_id = $1`,
     [boardId, issueId, estimateHours]
   );
   return (result.rowCount ?? 0) === 1;
@@ -378,7 +448,7 @@ export async function updateWorkIssuePriority(
   priority: "low" | "medium" | "high" | null
 ): Promise<boolean> {
   const result = await cloudSqlPool.query(
-    `UPDATE work_issues SET priority = $3 WHERE id = $2 AND board_id = $1`,
+    `UPDATE work_issues SET priority = $3 WHERE id = $2 AND project_id = $1`,
     [boardId, issueId, priority]
   );
   return (result.rowCount ?? 0) === 1;
@@ -579,13 +649,13 @@ export async function findOrCreateBoardLabel(
   }>(
     `SELECT id, name
      FROM work_issue_labels
-     WHERE board_id = $1 AND lower(name) = lower($2)`,
+     WHERE project_id = $1 AND lower(name) = lower($2)`,
     [boardId, name]
   );
   if (existing[0]) return existing[0];
   try {
     const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
-      `INSERT INTO work_issue_labels (board_id, name)
+      `INSERT INTO work_issue_labels (project_id, name)
        VALUES ($1, $2)
        RETURNING id, name`,
       [boardId, name]
@@ -597,7 +667,7 @@ export async function findOrCreateBoardLabel(
     const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
       `SELECT id, name
        FROM work_issue_labels
-       WHERE board_id = $1 AND lower(name) = lower($2)`,
+       WHERE project_id = $1 AND lower(name) = lower($2)`,
       [boardId, name]
     );
     if (rows[0]) return rows[0];
@@ -678,7 +748,7 @@ export async function fetchWorkIssueNotifyMeta(
   const { rows } = await cloudSqlPool.query<{ number: number; title: string }>(
     `SELECT number, title
      FROM work_issues
-     WHERE id = $1 AND board_id = $2`,
+     WHERE id = $1 AND project_id = $2`,
     [issueId, boardId]
   );
   return rows[0] ?? null;
@@ -693,7 +763,7 @@ export async function moveWorkIssue(input: {
   const result = await cloudSqlPool.query(
     `UPDATE work_issues
      SET status = $3, sort_order = $4
-     WHERE id = $2 AND board_id = $1`,
+     WHERE id = $2 AND project_id = $1`,
     [input.boardId, input.issueId, input.status, input.sortOrder]
   );
   return (result.rowCount ?? 0) === 1;
@@ -704,7 +774,7 @@ export async function fetchWorkIssueStatus(
   issueId: string
 ): Promise<WorkIssueStatus | null> {
   const { rows } = await cloudSqlPool.query<{ status: WorkIssueStatus }>(
-    `SELECT status FROM work_issues WHERE id = $2 AND board_id = $1`,
+    `SELECT status FROM work_issues WHERE id = $2 AND project_id = $1`,
     [boardId, issueId]
   );
   return rows[0]?.status ?? null;
@@ -720,7 +790,7 @@ export async function reorderWorkIssuesInStatus(input: {
       await client.query(
         `UPDATE work_issues
          SET status = $3, sort_order = $4
-         WHERE id = $2 AND board_id = $1`,
+         WHERE id = $2 AND project_id = $1`,
         [input.boardId, input.issueIds[index], input.status, index]
       );
     }
@@ -757,7 +827,7 @@ export async function insertWorkIssueFile(input: {
 export async function fetchWorkIssueFileForDownload(fileId: string): Promise<{
   id: string;
   issue_id: string;
-  board_id: string;
+  project_id: string;
   file_name: string;
   mime_type: string;
   content: Buffer;
@@ -765,12 +835,12 @@ export async function fetchWorkIssueFileForDownload(fileId: string): Promise<{
   const { rows } = await cloudSqlPool.query<{
     id: string;
     issue_id: string;
-    board_id: string;
+    project_id: string;
     file_name: string;
     mime_type: string;
     content: Buffer;
   }>(
-    `SELECT f.id, f.issue_id, i.board_id, f.file_name, f.mime_type, f.content
+    `SELECT f.id, f.issue_id, i.project_id, f.file_name, f.mime_type, f.content
      FROM work_issue_files f
      JOIN work_issues i ON i.id = f.issue_id
      WHERE f.id = $1`,
@@ -795,14 +865,14 @@ export async function deleteWorkIssueFile(
 export async function fetchWorkIssueRelations(boardId: string) {
   const { rows } = await cloudSqlPool.query<{
     id: string;
-    board_id: string;
+    project_id: string;
     from_issue_id: string;
     to_issue_id: string;
     kind: "blocks" | "relates" | "parent";
   }>(
-    `SELECT id, board_id, from_issue_id, to_issue_id, kind
+    `SELECT id, project_id, from_issue_id, to_issue_id, kind
      FROM work_issue_relations
-     WHERE board_id = $1`,
+     WHERE project_id = $1`,
     [boardId]
   );
   return rows;
@@ -815,13 +885,13 @@ export async function insertWorkIssueRelation(input: {
   kind: "blocks" | "relates" | "parent";
 }): Promise<string> {
   const { rows } = await cloudSqlPool.query<{ id: string }>(
-    `INSERT INTO work_issue_relations (board_id, from_issue_id, to_issue_id, kind)
+    `INSERT INTO work_issue_relations (project_id, from_issue_id, to_issue_id, kind)
      SELECT $1, $2, $3, $4
      WHERE EXISTS (
-       SELECT 1 FROM work_issues WHERE id = $2 AND board_id = $1
+       SELECT 1 FROM work_issues WHERE id = $2 AND project_id = $1
      )
        AND EXISTS (
-         SELECT 1 FROM work_issues WHERE id = $3 AND board_id = $1
+         SELECT 1 FROM work_issues WHERE id = $3 AND project_id = $1
        )
      RETURNING id`,
     [input.boardId, input.fromIssueId, input.toIssueId, input.kind]
@@ -841,7 +911,7 @@ export async function deleteWorkIssueRelation(
     kind: string;
   }>(
     `DELETE FROM work_issue_relations
-     WHERE id = $2 AND board_id = $1
+     WHERE id = $2 AND project_id = $1
      RETURNING from_issue_id, to_issue_id, kind`,
     [boardId, relationId]
   );

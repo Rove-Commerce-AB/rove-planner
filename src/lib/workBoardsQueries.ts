@@ -1,5 +1,5 @@
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { DEFAULT_WORK_BOARD_STATUSES } from "@/lib/workStatuses";
+import { DEFAULT_WORK_PROJECT_STATUSES } from "@/lib/workStatuses";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 
 export type WorkBoardRow = {
@@ -70,8 +70,8 @@ export async function fetchWorkBoardsForCustomerIds(
          array_agg(m.app_user_id::text) FILTER (WHERE m.app_user_id IS NOT NULL),
          ARRAY[]::text[]
        ) AS member_ids
-     FROM work_boards b
-     LEFT JOIN work_board_members m ON m.board_id = b.id
+     FROM work_projects b
+     LEFT JOIN work_project_members m ON m.project_id = b.id
      WHERE b.customer_id = ANY($1::uuid[])
        AND ${archived ? "b.archived_at IS NOT NULL" : "b.archived_at IS NULL"}
      GROUP BY b.id
@@ -108,9 +108,9 @@ export async function fetchWorkBoardById(
          array_agg(m.app_user_id::text) FILTER (WHERE m.app_user_id IS NOT NULL),
          ARRAY[]::text[]
        ) AS member_ids
-     FROM work_boards b
+     FROM work_projects b
      JOIN customers c ON c.id = b.customer_id
-     LEFT JOIN work_board_members m ON m.board_id = b.id
+     LEFT JOIN work_project_members m ON m.project_id = b.id
      WHERE b.id = $1
        AND b.archived_at IS NULL
      GROUP BY b.id, c.name, c.is_internal`,
@@ -130,22 +130,54 @@ export async function insertWorkBoard(input: {
   prefix: string;
   createdByAppUserId: string;
   memberAppUserIds: string[];
+  plannerProjectId?: string | null;
 }): Promise<string> {
   const memberIds = [...new Set([input.createdByAppUserId, ...input.memberAppUserIds])].filter(
     Boolean
   );
   return withCloudSqlTransaction("work-create-board", async (client) => {
+    if (input.plannerProjectId) {
+      const { rows: plannerRows } = await client.query<{
+        id: string;
+        customer_id: string;
+      }>(
+        `SELECT id, customer_id FROM projects WHERE id = $1`,
+        [input.plannerProjectId]
+      );
+      const planner = plannerRows[0];
+      if (!planner || planner.customer_id !== input.customerId) {
+        throw new Error("Customer project not found");
+      }
+      const { rows: linked } = await client.query<{ id: string }>(
+        `SELECT id FROM work_projects
+         WHERE planner_project_id = $1
+         LIMIT 1`,
+        [input.plannerProjectId]
+      );
+      if (linked[0]) {
+        throw new Error("That customer project already has a Work project");
+      }
+    }
+
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO work_boards (customer_id, title, prefix, created_by_app_user_id)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO work_projects (
+         customer_id, title, prefix, created_by_app_user_id, planner_project_id
+       )
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [input.customerId, input.title, input.prefix, input.createdByAppUserId]
+      [
+        input.customerId,
+        input.title,
+        input.prefix,
+        input.createdByAppUserId,
+        input.plannerProjectId ?? null,
+      ]
     );
     const boardId = rows[0]?.id;
-    if (!boardId) throw new Error("Failed to create board");
+    if (!boardId) throw new Error("Failed to create project");
     if (memberIds.length > 0) {
       await client.query(
-        `INSERT INTO work_board_members (board_id, app_user_id)
+        `INSERT INTO work_project_members (project_id, app_user_id)
          SELECT $1, unnest($2::uuid[])`,
         [boardId, memberIds]
       );
@@ -160,35 +192,35 @@ export async function renameWorkBoard(
   title: string
 ): Promise<string> {
   const { rows } = await cloudSqlPool.query<{ title: string }>(
-    `UPDATE work_boards
+    `UPDATE work_projects
      SET title = $2
      WHERE id = $1 AND archived_at IS NULL
      RETURNING title`,
     [boardId, title]
   );
   const next = rows[0]?.title;
-  if (!next) throw new Error("Board not found");
+  if (!next) throw new Error("Project not found");
   return next;
 }
 
 export async function archiveWorkBoard(boardId: string): Promise<void> {
   const { rowCount } = await cloudSqlPool.query(
-    `UPDATE work_boards
+    `UPDATE work_projects
      SET archived_at = now()
      WHERE id = $1 AND archived_at IS NULL`,
     [boardId]
   );
-  if (!rowCount) throw new Error("Board not found");
+  if (!rowCount) throw new Error("Project not found");
 }
 
 export async function restoreWorkBoard(boardId: string): Promise<void> {
   const { rowCount } = await cloudSqlPool.query(
-    `UPDATE work_boards
+    `UPDATE work_projects
      SET archived_at = NULL
      WHERE id = $1 AND archived_at IS NOT NULL`,
     [boardId]
   );
-  if (!rowCount) throw new Error("Board not found");
+  if (!rowCount) throw new Error("Project not found");
 }
 
 export async function fetchArchivedWorkBoardById(
@@ -221,9 +253,9 @@ export async function fetchArchivedWorkBoardById(
          array_agg(m.app_user_id::text) FILTER (WHERE m.app_user_id IS NOT NULL),
          ARRAY[]::text[]
        ) AS member_ids
-     FROM work_boards b
+     FROM work_projects b
      JOIN customers c ON c.id = b.customer_id
-     LEFT JOIN work_board_members m ON m.board_id = b.id
+     LEFT JOIN work_project_members m ON m.project_id = b.id
      WHERE b.id = $1
        AND b.archived_at IS NOT NULL
      GROUP BY b.id, c.name, c.is_internal`,
@@ -241,9 +273,9 @@ async function insertDefaultWorkBoardStatuses(
   client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
   boardId: string
 ) {
-  for (const [index, status] of DEFAULT_WORK_BOARD_STATUSES.entries()) {
+  for (const [index, status] of DEFAULT_WORK_PROJECT_STATUSES.entries()) {
     await client.query(
-      `INSERT INTO work_board_statuses (board_id, name, sort_order, is_done)
+      `INSERT INTO work_project_statuses (project_id, name, sort_order, is_done)
        VALUES ($1, $2, $3, $4)`,
       [boardId, status.name, index, status.isDone]
     );
@@ -260,8 +292,8 @@ export async function fetchWorkBoardStatuses(
     is_done: boolean;
   }>(
     `SELECT id, name, sort_order, is_done
-     FROM work_board_statuses
-     WHERE board_id = $1
+     FROM work_project_statuses
+     WHERE project_id = $1
      ORDER BY sort_order, name`,
     [boardId]
   );
@@ -283,11 +315,11 @@ export async function insertWorkBoardStatus(input: {
     sort_order: number;
     is_done: boolean;
   }>(
-    `INSERT INTO work_board_statuses (board_id, name, sort_order, is_done)
+    `INSERT INTO work_project_statuses (project_id, name, sort_order, is_done)
      VALUES (
        $1,
        $2,
-       (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_board_statuses WHERE board_id = $1),
+       (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_project_statuses WHERE project_id = $1),
        false
      )
      RETURNING id, name, sort_order, is_done`,
@@ -314,9 +346,9 @@ export async function renameWorkBoardStatus(input: {
     sort_order: number;
     is_done: boolean;
   }>(
-    `UPDATE work_board_statuses
+    `UPDATE work_project_statuses
      SET name = $3
-     WHERE id = $2 AND board_id = $1
+     WHERE id = $2 AND project_id = $1
      RETURNING id, name, sort_order, is_done`,
     [input.boardId, input.statusId, input.name]
   );
@@ -337,9 +369,9 @@ export async function reorderWorkBoardStatuses(
   await withCloudSqlTransaction("work-reorder-statuses", async (client) => {
     for (let index = 0; index < statusIds.length; index += 1) {
       await client.query(
-        `UPDATE work_board_statuses
+        `UPDATE work_project_statuses
          SET sort_order = $3
-         WHERE id = $2 AND board_id = $1`,
+         WHERE id = $2 AND project_id = $1`,
         [boardId, statusIds[index], index]
       );
     }
@@ -358,8 +390,8 @@ export async function deleteWorkBoardStatus(input: {
       name: string;
     }>(
       `SELECT id, name
-       FROM work_board_statuses
-       WHERE board_id = $1
+       FROM work_project_statuses
+       WHERE project_id = $1
        ORDER BY sort_order
        FOR UPDATE`,
       [input.boardId]
@@ -382,7 +414,7 @@ export async function deleteWorkBoardStatus(input: {
     const { rows: issueRows } = await client.query<{ id: string }>(
       `SELECT id
        FROM work_issues
-       WHERE board_id = $1 AND status = $2`,
+       WHERE project_id = $1 AND status = $2`,
       [input.boardId, input.statusId]
     );
     if (issueRows.length > 0) {
@@ -391,7 +423,7 @@ export async function deleteWorkBoardStatus(input: {
         `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
          SELECT i.id, $3, 'status', $4
          FROM work_issues i
-         WHERE i.board_id = $1 AND i.status = $2`,
+         WHERE i.project_id = $1 AND i.status = $2`,
         [
           input.boardId,
           input.statusId,
@@ -402,7 +434,7 @@ export async function deleteWorkBoardStatus(input: {
       const { rows: orderRows } = await client.query<{ next: number }>(
         `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
          FROM work_issues
-         WHERE board_id = $1 AND status = $2`,
+         WHERE project_id = $1 AND status = $2`,
         [input.boardId, moveTo.id]
       );
       await client.query(
@@ -413,7 +445,7 @@ export async function deleteWorkBoardStatus(input: {
            SELECT id,
                   ROW_NUMBER() OVER (ORDER BY sort_order, number) - 1 AS rn
            FROM work_issues
-           WHERE board_id = $1 AND status = $2
+           WHERE project_id = $1 AND status = $2
          ) sub
          WHERE i.id = sub.id`,
         [input.boardId, input.statusId, moveTo.id, orderRows[0]?.next ?? 0]
@@ -421,17 +453,17 @@ export async function deleteWorkBoardStatus(input: {
     }
 
     await client.query(
-      `DELETE FROM work_board_statuses
-       WHERE id = $1 AND board_id = $2`,
+      `DELETE FROM work_project_statuses
+       WHERE id = $1 AND project_id = $2`,
       [input.statusId, input.boardId]
     );
 
     const remaining = statuses.filter((row) => row.id !== input.statusId);
     for (let index = 0; index < remaining.length; index += 1) {
       await client.query(
-        `UPDATE work_board_statuses
+        `UPDATE work_project_statuses
          SET sort_order = $3
-         WHERE id = $2 AND board_id = $1`,
+         WHERE id = $2 AND project_id = $1`,
         [input.boardId, remaining[index].id, index]
       );
     }
@@ -443,7 +475,7 @@ export async function insertWorkBoardMember(
   appUserId: string
 ): Promise<void> {
   await cloudSqlPool.query(
-    `INSERT INTO work_board_members (board_id, app_user_id)
+    `INSERT INTO work_project_members (project_id, app_user_id)
      VALUES ($1, $2)
      ON CONFLICT DO NOTHING`,
     [boardId, appUserId]
@@ -455,8 +487,55 @@ export async function deleteWorkBoardMember(
   appUserId: string
 ): Promise<void> {
   await cloudSqlPool.query(
-    `DELETE FROM work_board_members
-     WHERE board_id = $1 AND app_user_id = $2`,
+    `DELETE FROM work_project_members
+     WHERE project_id = $1 AND app_user_id = $2`,
     [boardId, appUserId]
+  );
+}
+
+export async function fetchLinkablePlannerProjects(
+  customerId: string
+): Promise<{ id: string; name: string }[]> {
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT p.id, p.name
+     FROM projects p
+     WHERE p.customer_id = $1
+       AND p.is_active = true
+       AND p.type <> 'absence'
+       AND NOT EXISTS (
+         SELECT 1 FROM work_projects wp
+         WHERE wp.planner_project_id = p.id
+       )
+     ORDER BY lower(p.name)`,
+    [customerId]
+  );
+  return rows;
+}
+
+export async function fetchMemberPreferredView(
+  projectId: string,
+  appUserId: string
+): Promise<"board" | "sprint" | "timeline" | null> {
+  const { rows } = await cloudSqlPool.query<{ preferred_view: string | null }>(
+    `SELECT preferred_view
+     FROM work_project_members
+     WHERE project_id = $1 AND app_user_id = $2`,
+    [projectId, appUserId]
+  );
+  const view = rows[0]?.preferred_view;
+  if (view === "board" || view === "sprint" || view === "timeline") return view;
+  return null;
+}
+
+export async function updateMemberPreferredView(
+  projectId: string,
+  appUserId: string,
+  view: "board" | "sprint" | "timeline"
+): Promise<void> {
+  await cloudSqlPool.query(
+    `UPDATE work_project_members
+     SET preferred_view = $3
+     WHERE project_id = $1 AND app_user_id = $2`,
+    [projectId, appUserId, view]
   );
 }

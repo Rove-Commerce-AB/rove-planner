@@ -716,9 +716,10 @@ Index: `(app_user_id, board_id)`.
 
 ---
 
-## work_boards
+## work_projects
 
-Customer-scoped boards for Rove Work. Independent of Planner `projects`.
+Customer-scoped Work projects (formerly `work_boards`). Board / Sprint / Timeline
+are views on a project. Optionally linked to a Planner `projects` row.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -726,76 +727,73 @@ Customer-scoped boards for Rove Work. Independent of Planner `projects`.
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
 | title | text | NOT NULL |
 | prefix | text | NOT NULL; 2–8 chars `^[A-Z][A-Z0-9]{1,7}$`; unique per customer |
+| planner_project_id | uuid | nullable, FK → `projects.id`, ON DELETE SET NULL; at most one Work project per planner project |
 | created_by_app_user_id | uuid | NOT NULL, FK → `app_users.id`, ON DELETE RESTRICT |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
-| archived_at | timestamptz | NULL when active; set when the board is archived |
+| archived_at | timestamptz | NULL when active; set when the project is archived |
 
 Index: `(customer_id)`; unique `(customer_id, prefix)`; partial
-`(customer_id) WHERE archived_at IS NULL`.
-Trigger `trg_work_boards_updated_at` → `set_updated_at()`.
+`(customer_id) WHERE archived_at IS NULL`; unique `(planner_project_id) WHERE NOT NULL`.
+Trigger `trg_work_projects_updated_at` → `set_updated_at()`.
 
-Archived boards are hidden from lists and nav. Issues stay. The prefix remains
-reserved (unique still includes archived rows). Opening an archived board 404s.
-Restore clears `archived_at` from the customer Work page.
-
-Board visibility is `work_board_members`. Admins can still open any board.
-Creating a board defaults members to people linked to the customer (consultants
-with an app user, plus customer users), and always includes the creator.
-Customer users never see the internal customer.
+Visibility is `work_project_members`. Child tables use `project_id`
+(`work_issues`, `work_sprints`, `work_project_statuses`, …).
 
 DDL: [`scripts/20260913_rove_work_boards.sql`](../scripts/20260913_rove_work_boards.sql),
-[`scripts/20260914_work_board_archive.sql`](../scripts/20260914_work_board_archive.sql).
+[`scripts/20260914_work_board_archive.sql`](../scripts/20260914_work_board_archive.sql),
+[`scripts/20260925_work_boards_to_projects.sql`](../scripts/20260925_work_boards_to_projects.sql).
 
 ---
 
-## work_board_members
+## work_project_members
 
-People with access to a Work board.
+People with access to a Work project (formerly `work_board_members`).
 
 | Column | Type | Notes |
 |--------|------|--------|
-| board_id | uuid | PK part, FK → `work_boards.id`, ON DELETE CASCADE |
+| project_id | uuid | PK part, FK → `work_projects.id`, ON DELETE CASCADE |
 | app_user_id | uuid | PK part, FK → `app_users.id`, ON DELETE CASCADE |
+| preferred_view | text | nullable; `board` \| `sprint` \| `timeline` — last view for this member |
 | created_at | timestamptz | NOT NULL, default `now()` |
 
 Index: `(app_user_id)`.
 
-Creating a board adds the chosen people, defaulting to everyone linked to the
-customer, and always includes the creator.
-
 ---
 
-## work_board_statuses
+## work_project_statuses
 
-Columns on a Work board. New boards get Todo → In progress → To be tested →
-In review → Done. Statuses can be added, reordered, or removed. Removing a
-status moves its issues to another status first. A board keeps at least one.
-Order is `sort_order`.
+Columns on a Work project (formerly `work_board_statuses`). New projects get
+Todo → In progress → To be tested → In review → Done.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| project_id | uuid | NOT NULL, FK → `work_projects.id`, ON DELETE CASCADE |
 | name | text | NOT NULL |
 | sort_order | integer | NOT NULL, default 0 |
 | is_done | boolean | NOT NULL, default false; Done-style header |
 
-Index: `(board_id, sort_order)`.
+Index: `(project_id, sort_order)`.
 
 ---
 
+## work_boards (removed)
+
+Renamed to `work_projects` in
+[`scripts/20260925_work_boards_to_projects.sql`](../scripts/20260925_work_boards_to_projects.sql).
+
 ## work_issues
 
-Issues on a Work board. Keys are `{prefix}-{number}` with `number` unique per board.
+Issues on a Work project. Keys are `{prefix}-{number}` with `number` unique per project.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
-| number | integer | NOT NULL; sequential per board |
+| project_id | uuid | NOT NULL, FK → `work_projects.id`, ON DELETE CASCADE |
+| number | integer | NOT NULL; sequential per project |
 | title | text | NOT NULL |
-| status | uuid | NOT NULL, FK → `work_board_statuses.id` |
+| status | uuid | NOT NULL, FK → `work_project_statuses.id` |
 | sort_order | integer | NOT NULL, default 0; order within a status |
 | owner_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL |
 | description | text | NOT NULL, default `''` |
@@ -804,14 +802,17 @@ Issues on a Work board. Keys are `{prefix}-{number}` with `number` unique per bo
 | out_of_scope | text | NOT NULL, default `''`; Requirements tab |
 | priority | text | nullable; `low` \| `medium` \| `high` |
 | estimate_hours | numeric(8,2) | nullable; planned hours. Must be `>= 0` when set. Logged hours are not stored here — they are summed from Time report lines linked via `time_report_entry_lines.work_issue_id`. |
+| sprint_id | uuid | nullable, FK → `work_sprints.id`, ON DELETE SET NULL |
+| start_date | date | nullable; Timeline bar start |
+| due_date | date | nullable; Timeline bar end; must be `>= start_date` when both set |
 | created_by_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE RESTRICT; shown as Reporter |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Unique: `(board_id, number)`. Index: `(board_id, status, sort_order)`.
+Unique: `(project_id, number)`. Index: `(project_id, status, sort_order)`.
 Trigger `trg_work_issues_updated_at` → `set_updated_at()`.
 
-Statuses live in `work_board_statuses` and can be added or reordered per board.
+Statuses live in `work_project_statuses` and can be added or reordered per project.
 Default columns: Todo, In progress, To be tested, In review, Done.
 
 DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
@@ -820,7 +821,31 @@ DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
 [`scripts/20260919_work_issue_estimate.sql`](../scripts/20260919_work_issue_estimate.sql),
 [`scripts/20260924_work_issue_nullable_reporter.sql`](../scripts/20260924_work_issue_nullable_reporter.sql),
 [`scripts/20260924_work_issue_priority_requirements.sql`](../scripts/20260924_work_issue_priority_requirements.sql),
-[`scripts/20260924_work_issue_requirements_sections.sql`](../scripts/20260924_work_issue_requirements_sections.sql).
+[`scripts/20260924_work_issue_requirements_sections.sql`](../scripts/20260924_work_issue_requirements_sections.sql),
+[`scripts/20260924_work_sprints_schedule.sql`](../scripts/20260924_work_sprints_schedule.sql).
+
+---
+
+## work_sprints
+
+Timeboxed sprints on a Work project (Sprint mode + Timeline bands).
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| project_id | uuid | NOT NULL, FK → `work_projects.id`, ON DELETE CASCADE |
+| number | integer | NOT NULL; sequential per project (`Sprint N`) |
+| title | text | NOT NULL, default `''`; optional subtitle |
+| starts_on | date | NOT NULL |
+| ends_on | date | NOT NULL; must be `>= starts_on` |
+| status | text | `current` \| `next` \| `completed`; at most one current and one next per project |
+| capacity_hours | numeric(8,2) | nullable; manual capacity for Σ estimates |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(project_id, number)`. Partial unique indexes enforce one `current` and one `next` per project.
+
+DDL: [`scripts/20260924_work_sprints_schedule.sql`](../scripts/20260924_work_sprints_schedule.sql).
 
 ---
 
@@ -881,16 +906,16 @@ Index: `(app_user_id)`.
 
 ## work_issue_labels
 
-Free-text labels scoped to a board.
+Free-text labels scoped to a project.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| project_id | uuid | NOT NULL, FK → `work_projects.id`, ON DELETE CASCADE |
 | name | text | NOT NULL |
 | created_at | timestamptz | NOT NULL, default `now()` |
 
-Unique: `(board_id, lower(name))`.
+Unique: `(project_id, lower(name))`.
 
 ---
 
@@ -906,12 +931,12 @@ Unique: `(board_id, lower(name))`.
 
 ## work_issue_relations
 
-Directed links between two issues on the same board.
+Directed links between two issues on the same project.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
-| board_id | uuid | NOT NULL, FK → `work_boards.id`, ON DELETE CASCADE |
+| project_id | uuid | NOT NULL, FK → `work_projects.id`, ON DELETE CASCADE |
 | from_issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
 | to_issue_id | uuid | NOT NULL, FK → `work_issues.id`, ON DELETE CASCADE |
 | kind | text | NOT NULL; `blocks`, `relates`, `parent` |
@@ -924,9 +949,9 @@ Meaning:
 - `relates`: undirected; stored with `from_issue_id < to_issue_id`
 - `parent`: from is parent of to. At most one parent per child.
 
-Same board only. Parent and blocks cycles are rejected in the app.
+Same project only. Parent and blocks cycles are rejected in the app.
 
-Indexes: `(board_id)`; `(to_issue_id)`; unique parent on `to_issue_id` where `kind = 'parent'`.
+Indexes: `(project_id)`; `(to_issue_id)`; unique parent on `to_issue_id` where `kind = 'parent'`.
 
 DDL: [`scripts/20260919_work_issue_relations.sql`](../scripts/20260919_work_issue_relations.sql).
 
@@ -1055,7 +1080,17 @@ production; may be absent in some dev snapshots.
 ### v_time_report_looker
 
 Flattened time-report export for Looker (entry, consultant, customer, project,
-Jira, DevOps, PM edits).
+Jira, ClickUp, DevOps, PM edits, late-entry flags).
+
+`jira_devops_key` values `jira:…`, `clickup:…`, and `devops:…` join
+`jira_issues`, `clickup`, and `devops_work_items` respectively. ClickUp fields
+are also coalesced into the existing `Jira*` columns so reports that already
+use `JiraKeyAndSummary` / `JiraType` / `JiraEstimate` include ClickUp without
+Looker chart changes. Dedicated `ClickUp*` columns are available for new
+charts. Also exposes `EntryCreatedAt` and `LateEntry` (created month after
+entry month).
+
+Apply / refresh: [`scripts/20261005_v_time_report_looker_clickup.sql`](../scripts/20261005_v_time_report_looker_clickup.sql).
 
 ---
 
@@ -1071,7 +1106,7 @@ Jira, DevOps, PM edits).
 
 | Function | Used by |
 |----------|---------|
-| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams, work_boards, work_issues |
+| `set_updated_at()` | BEFORE UPDATE on allocations, calendars, calendar_holidays, consultants, customer_rates, customers, projects, roles, teams, work_projects, work_issues |
 | `enforce_customer_user_rules()` | BEFORE INSERT/UPDATE on `app_users`, `app_user_apps`, `consultants`, `customer_app_users`, `customers` |
 | `clear_customer_contact_on_unlink()` | AFTER DELETE on `customer_app_users` |
 
@@ -1084,7 +1119,7 @@ Those are not part of the application model.
 
 - **customers** → **projects** → **allocations** / **time_report_entries**
 - **app_users** ↔ **apps** via **app_user_apps**; Rove accounts must have one or more apps; `customer` accounts may have Work only
-- **work_boards** belong to **customers**; visibility is **work_board_members**; **work_issues** belong to a board (`prefix` + per-board `number`) with owner, assignees, labels, comments, events, and files
+- **work_projects** belong to **customers**; visibility is **work_project_members**; **work_issues** belong to a project (`prefix` + per-project `number`) with owner, assignees, labels, comments, events, and files
 - **app_users** → zero or one **consultants** profile via `consultants.app_user_id` (not allowed when `role = customer`)
 - **consultants** ↔ **customers** via **customer_consultants**
 - **customer** role **app_users** ↔ **customers** via **customer_app_users**; `customers.contact_app_user_id` picks one of those users

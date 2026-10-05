@@ -36,7 +36,7 @@ async function resolveFeatureRequestBoard(): Promise<{
 }> {
   const { rows: boards } = await cloudSqlPool.query<{ id: string }>(
     `SELECT id
-     FROM work_boards
+     FROM work_projects
      WHERE title = $1 AND archived_at IS NULL
      ORDER BY created_at ASC
      LIMIT 2`,
@@ -54,8 +54,8 @@ async function resolveFeatureRequestBoard(): Promise<{
 
   const { rows: statuses } = await cloudSqlPool.query<{ id: string }>(
     `SELECT id
-     FROM work_board_statuses
-     WHERE board_id = $1 AND name = $2
+     FROM work_project_statuses
+     WHERE project_id = $1 AND name = $2
      LIMIT 1`,
     [boardId, STATUS_REQUEST]
   );
@@ -89,24 +89,24 @@ export async function createFeatureRequest(content: string): Promise<void> {
   });
 
   await withCloudSqlTransaction("feature-request-create", async (client) => {
-    await client.query("SELECT id FROM work_boards WHERE id = $1 FOR UPDATE", [
+    await client.query("SELECT id FROM work_projects WHERE id = $1 FOR UPDATE", [
       boardId,
     ]);
     const { rows: numberRows } = await client.query<{ next: number }>(
       `SELECT COALESCE(MAX(number), 0) + 1 AS next
        FROM work_issues
-       WHERE board_id = $1`,
+       WHERE project_id = $1`,
       [boardId]
     );
     const { rows: orderRows } = await client.query<{ next: number }>(
       `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
        FROM work_issues
-       WHERE board_id = $1 AND status = $2`,
+       WHERE project_id = $1 AND status = $2`,
       [boardId, requestStatusId]
     );
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO work_issues (
-         board_id, number, title, status, sort_order,
+         project_id, number, title, status, sort_order,
          owner_app_user_id, created_by_app_user_id, description
        ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7)
        RETURNING id`,

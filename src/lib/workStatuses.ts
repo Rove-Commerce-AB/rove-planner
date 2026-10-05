@@ -7,7 +7,7 @@ export type WorkBoardStatus = {
   isDone: boolean;
 };
 
-export const DEFAULT_WORK_BOARD_STATUSES: {
+export const DEFAULT_WORK_PROJECT_STATUSES: {
   name: string;
   isDone: boolean;
 }[] = [

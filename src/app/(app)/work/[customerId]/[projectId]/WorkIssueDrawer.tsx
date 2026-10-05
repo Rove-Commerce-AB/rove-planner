@@ -7,13 +7,14 @@ import {
   useState,
   useTransition,
   type ClipboardEvent,
+  type MouseEvent,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from "react";
-import { createPortal } from "react-dom";
 import { Plus, Send, X } from "lucide-react";
 import {
   Button,
+  Dialog,
   InitialsAvatar,
   Input,
   Select,
@@ -61,6 +62,7 @@ import {
   updateWorkIssuePriorityAction,
   updateWorkIssueRequirementBodyAction,
   updateWorkIssueRequirementDoneAction,
+  updateWorkIssueScheduleAction,
   updateWorkIssueTitleAction,
   uploadWorkIssueFileAction,
 } from "../../actions";
@@ -409,6 +411,8 @@ export function WorkIssueDrawer({
   const [estimateDraft, setEstimateDraft] = useState(
     issue.estimateHours == null ? "" : String(issue.estimateHours)
   );
+  const [startDateDraft, setStartDateDraft] = useState(issue.startDate ?? "");
+  const [dueDateDraft, setDueDateDraft] = useState(issue.dueDate ?? "");
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadBarVisible, setUploadBarVisible] = useState(false);
   const uploadingCountRef = useRef(0);
@@ -474,6 +478,8 @@ export function WorkIssueDrawer({
     setEstimateDraft(
       issue.estimateHours == null ? "" : String(issue.estimateHours)
     );
+    setStartDateDraft(issue.startDate ?? "");
+    setDueDateDraft(issue.dueDate ?? "");
   }, [
     issue.id,
     issue.title,
@@ -482,6 +488,8 @@ export function WorkIssueDrawer({
     issue.nextStep,
     issue.outOfScope,
     issue.estimateHours,
+    issue.startDate,
+    issue.dueDate,
   ]);
 
   useEffect(() => {
@@ -551,7 +559,11 @@ export function WorkIssueDrawer({
       return;
     }
     onIssuePatch({ title: trimmed });
-    run(() => updateWorkIssueTitleAction(board.id, issue.id, trimmed));
+    // Optimistic patch already updates the board; avoid pending+refresh while
+    // dismiss (click outside) is closing the drawer — that combo freezes the UI.
+    run(() => updateWorkIssueTitleAction(board.id, issue.id, trimmed), {
+      refresh: false,
+    });
   }
 
   function saveField(
@@ -569,7 +581,9 @@ export function WorkIssueDrawer({
             ? { nextStep: value }
             : { outOfScope: value }
     );
-    run(() => updateWorkIssueFieldAction(board.id, issue.id, field, value));
+    run(() => updateWorkIssueFieldAction(board.id, issue.id, field, value), {
+      refresh: false,
+    });
   }
 
   function saveDescription() {
@@ -597,12 +611,33 @@ export function WorkIssueDrawer({
       return;
     }
     onIssuePatch({ estimateHours: parsed.value });
-    run(() =>
-      updateWorkIssueEstimateAction(
-        board.id,
-        issue.id,
-        parsed.value == null ? "" : String(parsed.value)
-      )
+    run(
+      () =>
+        updateWorkIssueEstimateAction(
+          board.id,
+          issue.id,
+          parsed.value == null ? "" : String(parsed.value)
+        ),
+      { refresh: false }
+    );
+  }
+
+  function saveSchedule() {
+    const start = startDateDraft.trim() || null;
+    const due = dueDateDraft.trim() || null;
+    if (start === (issue.startDate ?? null) && due === (issue.dueDate ?? null)) {
+      return;
+    }
+    if (start && due && due < start) {
+      setStartDateDraft(issue.startDate ?? "");
+      setDueDateDraft(issue.dueDate ?? "");
+      onError("Due date must be on or after start date");
+      return;
+    }
+    onIssuePatch({ startDate: start, dueDate: due });
+    run(
+      () => updateWorkIssueScheduleAction(board.id, issue.id, start, due),
+      { refresh: false }
     );
   }
 
@@ -937,6 +972,26 @@ export function WorkIssueDrawer({
                 />
                 <span className="text-sm text-text-tertiary">h</span>
               </div>
+            </WorkMetaRow>
+            <WorkMetaRow label="Start">
+              <input
+                type="date"
+                value={startDateDraft}
+                disabled={pending}
+                onChange={(event) => setStartDateDraft(event.target.value)}
+                onBlur={saveSchedule}
+                className="h-8 border-0 bg-transparent px-0 text-sm font-medium text-text-primary focus:outline-none disabled:opacity-50"
+              />
+            </WorkMetaRow>
+            <WorkMetaRow label="Due">
+              <input
+                type="date"
+                value={dueDateDraft}
+                disabled={pending}
+                onChange={(event) => setDueDateDraft(event.target.value)}
+                onBlur={saveSchedule}
+                className="h-8 border-0 bg-transparent px-0 text-sm font-medium text-text-primary focus:outline-none disabled:opacity-50"
+              />
             </WorkMetaRow>
             <WorkMetaRow label="Logged">
               <p className="text-sm tabular-nums text-text-primary">
@@ -1693,11 +1748,10 @@ const CARD_AVATAR_GAP =
 const CARD_OWNER_FRAME =
   "shadow-[0_0_0_1.5px_var(--color-bg-default),0_0_0_2.5px_var(--color-border-strong)]";
 
-type CardAssignRole = "owner" | "assignee";
-
-type CardAssignMenu =
-  | { step: "role"; top: number; left: number }
-  | { step: "person"; role: CardAssignRole; top: number; left: number };
+type CardPeopleDialog =
+  | { kind: "all" }
+  | { kind: "owner" }
+  | { kind: "assignee"; person: WorkPerson };
 
 export function WorkCardPeople({
   owner,
@@ -1706,181 +1760,293 @@ export function WorkCardPeople({
   disabled,
   onSetOwner,
   onAddAssignee,
+  onRemoveAssignee,
 }: {
   owner: WorkPerson | null;
   assignees: WorkPerson[];
   people?: WorkPerson[];
   disabled?: boolean;
-  onSetOwner?: (person: WorkPerson) => void;
+  onSetOwner?: (person: WorkPerson | null) => void;
   onAddAssignee?: (person: WorkPerson) => void;
+  onRemoveAssignee?: (person: WorkPerson) => void;
 }) {
   const interactive = onSetOwner != null && onAddAssignee != null;
-  const [menu, setMenu] = useState<CardAssignMenu | null>(null);
+  const [dialog, setDialog] = useState<CardPeopleDialog | null>(null);
   const extras = assignees
     .filter((person) => person.id !== owner?.id)
     .slice(0, 3);
 
-  const personChoices = useMemo(() => {
-    if (!menu || menu.step !== "person") return [];
-    if (menu.role === "owner") return people;
-    const taken = new Set(assignees.map((person) => person.id));
-    return people.filter((person) => !taken.has(person.id));
-  }, [assignees, menu, people]);
-
-  useEffect(() => {
-    if (!menu) return;
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest("[data-card-assign-people]")
-      ) {
-        return;
-      }
-      setMenu(null);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [menu]);
+  const assigneeIds = useMemo(
+    () => new Set(assignees.map((person) => person.id)),
+    [assignees]
+  );
 
   if (!interactive && !owner && extras.length === 0) return null;
 
+  function openDialog(event: MouseEvent, next: CardPeopleDialog) {
+    event.stopPropagation();
+    if (!interactive || disabled || people.length === 0) return;
+    setDialog(next);
+  }
+
+  const dialogTitle =
+    dialog?.kind === "owner"
+      ? "Owner"
+      : dialog?.kind === "assignee"
+        ? "Assignee"
+        : "People";
+
   return (
-    <span
-      className="relative flex shrink-0 items-center gap-1"
-      data-card-assign-people
-      onClick={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
-    >
-      <span className="flex items-center -space-x-1.5">
-        {owner ? (
-          <span title={`Owner: ${owner.name}`}>
-            <InitialsAvatar
-              name={owner.name}
-              initials={owner.initials}
-              size="xxs"
-              className={CARD_OWNER_FRAME}
-            />
-          </span>
-        ) : null}
-        {extras.map((person) => (
-          <span key={person.id} title={`Assignee: ${person.name}`}>
-            <InitialsAvatar
-              name={person.name}
-              initials={person.initials}
-              size="xxs"
-              className={CARD_AVATAR_GAP}
-            />
-          </span>
-        ))}
-      </span>
-      {interactive && people.length > 0 ? (
-        <button
-          type="button"
-          disabled={disabled}
-          data-card-assign-people
-          aria-label="Add owner or assignee"
-          aria-expanded={menu != null}
-          aria-haspopup="menu"
-          title="Add owner or assignee"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border-subtle text-text-tertiary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (menu) {
-              setMenu(null);
-              return;
-            }
-            const rect = event.currentTarget.getBoundingClientRect();
-            const width = 168;
-            setMenu({
-              step: "role",
-              top: rect.bottom + 4,
-              left: Math.min(rect.left, window.innerWidth - width - 8),
-            });
-          }}
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-        </button>
-      ) : null}
-      {menu
-        ? createPortal(
-            <div
-              data-card-assign-people
-              role="menu"
-              aria-label={
-                menu.step === "role"
-                  ? "Choose role"
-                  : menu.role === "owner"
-                    ? "Choose owner"
-                    : "Choose assignee"
-              }
-              className="fixed z-50 max-h-60 min-w-[10.5rem] overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
-              style={{ top: menu.top, left: menu.left }}
+    <>
+      <span
+        className="relative flex shrink-0 items-center gap-1"
+        data-card-assign-people
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <span className="flex items-center -space-x-1.5">
+          {owner ? (
+            <button
+              type="button"
+              disabled={!interactive || disabled}
+              title={`Owner: ${owner.name}`}
+              aria-label={`Change or remove owner ${owner.name}`}
+              className="rounded-full disabled:opacity-100"
+              onClick={(event) => openDialog(event, { kind: "owner" })}
             >
-              {menu.step === "role" ? (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full px-2.5 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
-                    onClick={() =>
-                      setMenu({
-                        step: "person",
-                        role: "owner",
-                        top: menu.top,
-                        left: menu.left,
-                      })
-                    }
-                  >
+              <InitialsAvatar
+                name={owner.name}
+                initials={owner.initials}
+                size="xxs"
+                className={CARD_OWNER_FRAME}
+              />
+            </button>
+          ) : null}
+          {extras.map((person) => (
+            <button
+              key={person.id}
+              type="button"
+              disabled={!interactive || disabled}
+              title={`Assignee: ${person.name}`}
+              aria-label={`Change or remove assignee ${person.name}`}
+              className="rounded-full disabled:opacity-100"
+              onClick={(event) =>
+                openDialog(event, { kind: "assignee", person })
+              }
+            >
+              <InitialsAvatar
+                name={person.name}
+                initials={person.initials}
+                size="xxs"
+                className={CARD_AVATAR_GAP}
+              />
+            </button>
+          ))}
+        </span>
+        {interactive && people.length > 0 ? (
+          <button
+            type="button"
+            disabled={disabled}
+            data-card-assign-people
+            aria-label="Add owner or assignee"
+            title="Add owner or assignee"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border-subtle text-text-tertiary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
+            onClick={(event) => openDialog(event, { kind: "all" })}
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+          </button>
+        ) : null}
+      </span>
+
+      {interactive ? (
+        <Dialog
+          open={dialog != null}
+          onOpenChange={(open) => {
+            if (!open) setDialog(null);
+          }}
+          title={dialogTitle}
+          contentClassName="max-w-sm"
+        >
+          <div
+            className="modal-form-discreet mt-6 space-y-5"
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {dialog?.kind === "owner" || dialog?.kind === "all" ? (
+              <section className="space-y-2">
+                {dialog.kind === "all" ? (
+                  <h2 className="text-sm font-medium text-text-primary">
                     Owner
-                  </button>
-                  <button
+                  </h2>
+                ) : owner ? (
+                  <p className="text-sm text-text-secondary">
+                    Current owner:{" "}
+                    <span className="text-text-primary">{owner.name}</span>
+                  </p>
+                ) : null}
+                <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {people.map((person) => {
+                    const selected = owner?.id === person.id;
+                    return (
+                      <li key={person.id}>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-bg-muted ${
+                            selected ? "bg-accent-primary-subtle" : ""
+                          }`}
+                          onClick={() => {
+                            onSetOwner?.(person);
+                            if (dialog.kind === "owner") setDialog(null);
+                          }}
+                        >
+                          <InitialsAvatar
+                            name={person.name}
+                            initials={person.initials}
+                            size="xs"
+                            className="!h-6 !w-6 text-[9px]"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                            {person.name}
+                          </span>
+                          {selected ? (
+                            <span className="text-caption text-accent-primary-text">
+                              Owner
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {dialog.kind === "owner" && owner ? (
+                  <Button
                     type="button"
-                    role="menuitem"
-                    className="flex w-full px-2.5 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
-                    onClick={() =>
-                      setMenu({
-                        step: "person",
-                        role: "assignee",
-                        top: menu.top,
-                        left: menu.left,
-                      })
-                    }
-                  >
-                    Assignee
-                  </button>
-                </>
-              ) : personChoices.length === 0 ? (
-                <p className="px-2.5 py-1.5 text-body-m text-text-tertiary">
-                  No people available
-                </p>
-              ) : (
-                personChoices.map((person) => (
-                  <button
-                    key={person.id}
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
+                    variant="secondary"
+                    className="w-full"
+                    disabled={disabled}
                     onClick={() => {
-                      if (menu.role === "owner") onSetOwner?.(person);
-                      else onAddAssignee?.(person);
-                      setMenu(null);
+                      onSetOwner?.(null);
+                      setDialog(null);
                     }}
                   >
-                    <InitialsAvatar
-                      name={person.name}
-                      initials={person.initials}
-                      size="xxs"
-                    />
-                    <span className="truncate">{person.name}</span>
-                  </button>
-                ))
-              )}
-            </div>,
-            document.body
-          )
-        : null}
-    </span>
+                    Remove owner
+                  </Button>
+                ) : null}
+              </section>
+            ) : null}
+
+            {dialog?.kind === "assignee" ? (
+              <section className="space-y-2">
+                <p className="text-sm text-text-secondary">
+                  Current assignee:{" "}
+                  <span className="text-text-primary">
+                    {dialog.person.name}
+                  </span>
+                </p>
+                <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {people
+                    .filter((person) => person.id !== dialog.person.id)
+                    .map((person) => (
+                      <li key={person.id}>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-bg-muted"
+                          onClick={() => {
+                            onRemoveAssignee?.(dialog.person);
+                            if (!assigneeIds.has(person.id)) {
+                              onAddAssignee?.(person);
+                            }
+                            setDialog(null);
+                          }}
+                        >
+                          <InitialsAvatar
+                            name={person.name}
+                            initials={person.initials}
+                            size="xs"
+                            className="!h-6 !w-6 text-[9px]"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                            {person.name}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  disabled={disabled}
+                  onClick={() => {
+                    onRemoveAssignee?.(dialog.person);
+                    setDialog(null);
+                  }}
+                >
+                  Remove assignee
+                </Button>
+              </section>
+            ) : null}
+
+            {dialog?.kind === "all" ? (
+              <section className="space-y-2">
+                <h2 className="text-sm font-medium text-text-primary">
+                  Assignees
+                </h2>
+                <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {people.map((person) => {
+                    const selected = assigneeIds.has(person.id);
+                    return (
+                      <li key={person.id}>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-bg-muted ${
+                            selected ? "bg-accent-primary-subtle" : ""
+                          }`}
+                          onClick={() => {
+                            if (selected) onRemoveAssignee?.(person);
+                            else onAddAssignee?.(person);
+                          }}
+                        >
+                          <InitialsAvatar
+                            name={person.name}
+                            initials={person.initials}
+                            size="xs"
+                            className="!h-6 !w-6 text-[9px]"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                            {person.name}
+                          </span>
+                          {selected ? (
+                            <span className="text-caption text-accent-primary-text">
+                              Assigned
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+
+            {dialog?.kind === "all" ? (
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDialog(null)}
+                >
+                  Done
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </Dialog>
+      ) : null}
+    </>
   );
 }

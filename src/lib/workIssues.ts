@@ -538,7 +538,7 @@ export async function addIssueRelation(
   const edge = relationEdgeFromRole(issueId, otherIssueId, role);
   const rows = (await fetchWorkIssueRelations(boardId)).map((row) => ({
     id: row.id,
-    boardId: row.board_id,
+    boardId: row.project_id,
     fromIssueId: row.from_issue_id,
     toIssueId: row.to_issue_id,
     kind: row.kind,

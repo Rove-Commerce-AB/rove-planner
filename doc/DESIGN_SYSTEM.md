@@ -378,6 +378,7 @@ Hierarchy comes from spacing, type, and tokens – not heavy borders.
 - **Input / Select:** `label`, `id`, and `error` when in a form; wire `aria-invalid` and `aria-describedby`.
 - **Switch:** associate `label` and `id`.
 - Always provide a visible label or `aria-label`.
+- **Modal / form field labels** (including `legend` for grouped fields): match `Input` / `Select` — `text-sm font-medium text-text-primary` with `mb-1` (or `mb-2` before a control group). Do not use `text-label-s text-text-secondary` for form field labels; that style is for compact UI chrome (badges, metadata), not forms. Detail-page `FieldLabel` (uppercase muted) is drawer/detail only.
 
 ---
 

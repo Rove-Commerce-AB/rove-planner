@@ -20,6 +20,7 @@ import {
   workPersonFromUser,
 } from "@/lib/workIssueKey";
 import type {
+  WorkAccessPerson,
   WorkBoardView,
   WorkComment,
   WorkCustomerView,
@@ -33,6 +34,7 @@ import type {
   WorkRequirement,
   WorkSelectorBoard,
   WorkSelectorCustomer,
+  WorkSprint,
 } from "@/lib/workTypes";
 import {
   fetchBoardLabels,
@@ -44,12 +46,17 @@ import {
   fetchIssueReferences,
   fetchIssueRequirements,
   fetchWorkIssueRelations,
-  fetchWorkAssigneesForCustomer,
   fetchWorkBoardMembers,
+  fetchWorkAccessPickerPeople,
   fetchWorkPeopleForCustomer,
+  fetchWorkUserById,
   fetchWorkIssuesForBoard,
   fetchLoggedHoursByIssueIds,
 } from "@/lib/workIssuesQueries";
+import {
+  fetchWorkSprintsForBoard,
+  mapWorkSprintRow,
+} from "@/lib/workSprintsQueries";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
 import {
   emptyWorkIssueRelations,
@@ -302,13 +309,14 @@ export async function getWorkBoardView(
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return null;
   const { board } = visible;
-  const [issueRows, peopleRows, memberRows, statuses, boardLabels] =
+  const [issueRows, peopleRows, memberRows, statuses, boardLabels, sprintRows] =
     await Promise.all([
       fetchWorkIssuesForBoard(board.id),
-      fetchWorkAssigneesForCustomer(board.customer_id, board.id),
+      fetchWorkAccessPickerPeople(board.customer_id),
       fetchWorkBoardMembers(board.id),
       q.fetchWorkBoardStatuses(board.id),
       fetchBoardLabels(board.id),
+      fetchWorkSprintsForBoard(board.id),
     ]);
   const statusIds = new Set(statuses.map((status) => status.id));
   const issueIds = issueRows.map((row) => row.id);
@@ -428,6 +436,14 @@ export async function getWorkBoardView(
     referencesByIssue.set(row.issue_id, list);
   }
 
+  const sprints: WorkSprint[] = sprintRows.map(mapWorkSprintRow);
+
+  function dateOnly(value: Date | string | null): string | null {
+    if (value == null) return null;
+    if (typeof value === "string") return value.slice(0, 10);
+    return value.toISOString().slice(0, 10);
+  }
+
   const issues: WorkIssue[] = issueRows
     .filter((row) => statusIds.has(row.status))
     .map((row) => ({
@@ -468,6 +484,9 @@ export async function getWorkBoardView(
       estimateHours:
         row.estimate_hours == null ? null : Number(row.estimate_hours),
       loggedHours: loggedHoursByIssue.get(row.id) ?? 0,
+      sprintId: row.sprint_id,
+      startDate: dateOnly(row.start_date),
+      dueDate: dateOnly(row.due_date),
     }));
 
   const doneByStatus = new Map(
@@ -489,7 +508,7 @@ export async function getWorkBoardView(
     issues.map((issue) => issue.id),
     relationRows.map((row) => ({
       id: row.id,
-      boardId: row.board_id,
+      boardId: row.project_id,
       fromIssueId: row.from_issue_id,
       toIssueId: row.to_issue_id,
       kind: row.kind,
@@ -516,6 +535,7 @@ export async function getWorkBoardView(
     statuses,
     boardLabels,
     issues,
+    sprints,
   };
 }
 
@@ -529,6 +549,23 @@ export async function listWorkCustomerPeople(
   }
   const rows = await fetchWorkPeopleForCustomer(customerId);
   return rows.map(workPersonFromUser);
+}
+
+export type { WorkAccessPerson } from "@/lib/workTypes";
+
+export async function listWorkAccessPeople(
+  customerId: string
+): Promise<WorkAccessPerson[]> {
+  const actor = await requireWorkActorOrThrow();
+  const assignedIds = await assignedCustomerIdsForActor(actor);
+  if (!canSeeWorkCustomer(actor, assignedIds, customerId)) {
+    throw new Error("Unauthorized");
+  }
+  const rows = await fetchWorkAccessPickerPeople(customerId);
+  return rows.map((row) => ({
+    ...workPersonFromUser(row),
+    onCustomer: row.on_customer,
+  }));
 }
 
 export async function createWorkBoardStatus(
@@ -584,9 +621,9 @@ export async function addWorkBoardMember(
 ): Promise<void> {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) throw new Error("Board not found");
-  const allowed = await fetchWorkPeopleForCustomer(visible.board.customer_id);
-  if (!allowed.some((row) => row.id === appUserId)) {
-    throw new Error("That person is not linked to this customer");
+  const allowed = await fetchWorkUserById(appUserId);
+  if (!allowed) {
+    throw new Error("That person does not have access to Work");
   }
   await q.insertWorkBoardMember(boardId, appUserId);
 }
@@ -646,7 +683,8 @@ export async function createWorkBoard(
   customerId: string,
   title: string,
   prefixInput: string,
-  memberAppUserIds?: string[]
+  memberAppUserIds?: string[],
+  plannerProjectId?: string | null
 ): Promise<string> {
   const actor = await requireWorkActorOrThrow();
   const trimmed = title.trim();
@@ -674,8 +712,17 @@ export async function createWorkBoard(
 
   const customerPeople = await fetchWorkPeopleForCustomer(customerId);
   const customerPeopleIds = new Set(customerPeople.map((row) => row.id));
-  const requested = (memberAppUserIds ?? customerPeople.map((row) => row.id))
-    .filter((id) => customerPeopleIds.has(id) || id === actor.id);
+  const requestedIds = [
+    ...new Set(memberAppUserIds ?? customerPeople.map((row) => row.id)),
+  ];
+  const allowedRows = await Promise.all(
+    requestedIds.map((id) => fetchWorkUserById(id))
+  );
+  const requested = requestedIds.filter((id, index) => {
+    if (id === actor.id) return true;
+    if (customerPeopleIds.has(id)) return true;
+    return allowedRows[index] != null;
+  });
 
   try {
     return await q.insertWorkBoard({
@@ -684,12 +731,52 @@ export async function createWorkBoard(
       prefix,
       createdByAppUserId: actor.id,
       memberAppUserIds: requested,
+      plannerProjectId: plannerProjectId ?? null,
     });
   } catch (error) {
     const maybePg = error as { code?: string; constraint?: string };
-    if (maybePg.code === "23505" && maybePg.constraint === "work_boards_customer_prefix_idx") {
-      throw new Error("That prefix is already used on another board for this customer");
+    if (
+      maybePg.code === "23505" &&
+      (maybePg.constraint === "work_projects_customer_prefix_idx" ||
+        maybePg.constraint === "work_boards_customer_prefix_idx")
+    ) {
+      throw new Error("That prefix is already used on another project for this customer");
+    }
+    if (
+      maybePg.code === "23505" &&
+      maybePg.constraint === "work_projects_planner_project_uidx"
+    ) {
+      throw new Error("That customer project already has a Work project");
     }
     throw error;
   }
+}
+
+export async function listLinkablePlannerProjects(
+  customerId: string
+): Promise<{ id: string; name: string }[]> {
+  const actor = await requireWorkActorOrThrow();
+  const assignedIds = await assignedCustomerIdsForActor(actor);
+  if (!canSeeWorkCustomer(actor, assignedIds, customerId)) {
+    throw new Error("Unauthorized");
+  }
+  return q.fetchLinkablePlannerProjects(customerId);
+}
+
+export async function setWorkProjectPreferredView(
+  projectId: string,
+  view: "board" | "sprint" | "timeline"
+): Promise<void> {
+  const actor = await requireWorkActorOrThrow();
+  const visible = await requireVisibleWorkBoard(projectId);
+  if (!visible) throw new Error("Unauthorized");
+  await q.updateMemberPreferredView(projectId, actor.id, view);
+}
+
+export async function getWorkProjectPreferredView(
+  projectId: string
+): Promise<"board" | "sprint" | "timeline" | null> {
+  const actor = await getWorkActor();
+  if (!actor) return null;
+  return q.fetchMemberPreferredView(projectId, actor.id);
 }

@@ -47,6 +47,9 @@ function issue(
     estimateHours: null,
     loggedHours: 0,
     priority: null,
+    sprintId: null,
+    startDate: null,
+    dueDate: null,
     ...partial,
   };
 }

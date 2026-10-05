@@ -14,7 +14,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   try {
-    const visible = await requireVisibleWorkBoard(file.board_id);
+    const visible = await requireVisibleWorkBoard(file.project_id);
     if (!visible) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }

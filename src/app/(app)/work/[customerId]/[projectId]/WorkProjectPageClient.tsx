@@ -12,7 +12,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { GripVertical, MoreHorizontal, Plus, Search } from "lucide-react";
+import { GripVertical, MoreHorizontal, Plus, Search, Settings } from "lucide-react";
 import {
   Button,
   ConfirmModal,
@@ -29,6 +29,7 @@ import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import {
   addWorkBoardMemberAction,
   addWorkIssueAssigneeAction,
+  removeWorkIssueAssigneeAction,
   archiveWorkBoardAction,
   createWorkBoardStatusAction,
   createWorkIssueAction,
@@ -38,6 +39,7 @@ import {
   renameWorkBoardStatusAction,
   removeWorkBoardMemberAction,
   reorderWorkBoardStatusesAction,
+  setWorkProjectPreferredViewAction,
   updateWorkIssueOwnerAction,
 } from "../../actions";
 import {
@@ -58,12 +60,18 @@ import {
   WorkColumnGroupHeader,
 } from "./WorkBoardViewControls";
 import { WorkCardPeople, WorkIssueDrawer } from "./WorkIssueDrawer";
+import { WorkProjectSettingsDrawer } from "./WorkProjectSettingsDrawer";
+import { WorkSprintView } from "./WorkSprintView";
+import { WorkTimelineView } from "./WorkTimelineView";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { isIssueBlocked } from "@/lib/workIssueRelations";
-import type { WorkPerson } from "@/lib/workTypes";
+import type { WorkPerson, WorkSprint } from "@/lib/workTypes";
+
+type BoardMode = "board" | "sprint" | "timeline";
 
 type Props = {
   board: WorkBoardView;
+  initialView?: BoardMode;
 };
 
 const renameFieldClass =
@@ -175,12 +183,17 @@ function createTiltedDragImage(event: DragEvent<HTMLElement>): HTMLElement {
   return wrap;
 }
 
-export function WorkBoardPageClient({ board }: Props) {
+export function WorkBoardPageClient({
+  board,
+  initialView = "board",
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const selectedIssueId = pathname.split("/").filter(Boolean)[3] ?? null;
   const [pending, startTransition] = useTransition();
   const [issues, setIssues] = useState(board.issues);
+  const [sprints, setSprints] = useState<WorkSprint[]>(board.sprints);
+  const [boardMode, setBoardMode] = useState<BoardMode>(initialView);
   const [search, setSearch] = useState("");
   const [ownerFilterIds, setOwnerFilterIds] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState<WorkBoardGroupBy>("none");
@@ -220,14 +233,11 @@ export function WorkBoardPageClient({ board }: Props) {
     top: number;
     left: number;
   } | null>(null);
-  const [boardMenu, setBoardMenu] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   const [boardTitle, setBoardTitle] = useState(board.title);
   const [renamingBoard, setRenamingBoard] = useState(false);
   const [boardRenameDraft, setBoardRenameDraft] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [renamingStatusId, setRenamingStatusId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [draggingStatusId, setDraggingStatusId] = useState<string | null>(null);
@@ -282,6 +292,10 @@ export function WorkBoardPageClient({ board }: Props) {
   }, [board.issues]);
 
   useEffect(() => {
+    setSprints(board.sprints);
+  }, [board.sprints]);
+
+  useEffect(() => {
     setMembers(board.members);
   }, [board.members]);
 
@@ -306,19 +320,6 @@ export function WorkBoardPageClient({ board }: Props) {
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [statusMenu]);
-
-  useEffect(() => {
-    if (!boardMenu) return;
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (target instanceof Element && target.closest("[data-board-menu]")) {
-        return;
-      }
-      setBoardMenu(null);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [boardMenu]);
 
   const selected = issues.find((issue) => issue.id === selectedIssueId) ?? null;
   const deletingIssueCount = deletingStatus
@@ -510,7 +511,7 @@ export function WorkBoardPageClient({ board }: Props) {
   }
 
   function startRenameBoard() {
-    setBoardMenu(null);
+    setSettingsOpen(false);
     setRenamingBoard(true);
     setBoardRenameDraft(boardTitle);
   }
@@ -520,18 +521,35 @@ export function WorkBoardPageClient({ board }: Props) {
     const trimmed = boardRenameDraft.trim();
     setRenamingBoard(false);
     if (!trimmed || trimmed === boardTitle) return;
+    const ok = await applyBoardRename(trimmed);
+    if (!ok) {
+      /* error already set */
+    }
+  }
+
+  async function applyBoardRename(nextTitle: string): Promise<boolean> {
+    const trimmed = nextTitle.trim();
+    if (!trimmed || trimmed === boardTitle) return true;
     const previous = boardTitle;
     setBoardTitle(trimmed);
     const result = await renameWorkBoardAction(board.id, trimmed);
     if (result.ok) {
       setBoardTitle(result.title);
-      return;
+      return true;
     }
     setBoardTitle(previous);
     setError(result.error);
+    return false;
+  }
+
+  function openProjectSettings() {
+    if (selectedIssueId) closeIssue();
+    setSettingsOpen(true);
   }
 
   async function confirmArchiveBoard() {
+    setArchiveOpen(false);
+    setSettingsOpen(false);
     setError(null);
     const result = await archiveWorkBoardAction(board.id);
     if (!result.ok) {
@@ -743,7 +761,7 @@ export function WorkBoardPageClient({ board }: Props) {
         boardTitle={boardTitle}
         issueKey={selected?.key}
       />
-      <header className="mb-6 shrink-0">
+      <header className="mb-6 flex shrink-0 items-start justify-between gap-4">
         <div className="min-w-0">
           {renamingBoard ? (
             <form
@@ -765,15 +783,22 @@ export function WorkBoardPageClient({ board }: Props) {
                     setRenamingBoard(false);
                   }
                 }}
-                aria-label="Rename board"
+                aria-label="Rename project"
                 autoFocus
                 className={`${renameFieldClass} w-full max-w-xl text-heading-xl`}
               />
             </form>
           ) : (
-            <h1 className="min-w-0 text-heading-xl text-text-primary">
-              {boardTitle}
-            </h1>
+            <button
+              type="button"
+              onClick={() => startRenameBoard()}
+              className="min-w-0 max-w-full text-left"
+              title="Rename project"
+            >
+              <h1 className="min-w-0 truncate text-heading-xl text-text-primary">
+                {boardTitle}
+              </h1>
+            </button>
           )}
           <p className="mt-1.5 text-[13px] text-text-secondary">
             <Link
@@ -784,47 +809,54 @@ export function WorkBoardPageClient({ board }: Props) {
             </Link>
           </p>
         </div>
+        <div className="mt-1 flex shrink-0 items-center gap-2">
+          <div
+            className="inline-flex rounded-md border border-border-subtle p-0.5"
+            role="tablist"
+            aria-label="Board view"
+          >
+            {(
+              [
+                ["board", "Board"],
+                ["sprint", "Sprint"],
+                ["timeline", "Timeline"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                role="tab"
+                aria-selected={boardMode === mode}
+                className={`rounded px-2.5 py-1 text-[13px] transition-colors ${
+                  boardMode === mode
+                    ? "bg-accent-primary-subtle text-accent-primary-text"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+                onClick={() => {
+                  setBoardMode(mode);
+                  void setWorkProjectPreferredViewAction(board.id, mode);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <IconButton
+            aria-label="Project settings"
+            title="Project settings"
+            onClick={() => openProjectSettings()}
+          >
+            <Settings className="h-4 w-4" aria-hidden />
+          </IconButton>
+        </div>
       </header>
 
       <div className="mb-4 flex shrink-0 items-center gap-3">
         <WorkBoardMembers
           members={members}
           people={board.people}
-          onAdd={(person) => {
-            setMembers((current) =>
-              current.some((row) => row.id === person.id)
-                ? current
-                : [...current, person]
-            );
-            void addWorkBoardMemberAction(board.id, person.id).then(
-              (result) => {
-                if (result.ok) return;
-                setMembers(board.members);
-                setError(result.error);
-              }
-            );
-          }}
-          onRemove={(person: WorkPerson) => {
-            if (members.length <= 1) {
-              setError("A board needs at least one person");
-              return;
-            }
-            setMembers((current) =>
-              current.filter((row) => row.id !== person.id)
-            );
-            void removeWorkBoardMemberAction(board.id, person.id).then(
-              (result) => {
-                if (result.ok) {
-                  if (person.id === board.currentUser.id) {
-                    router.push(workCustomerHref(board.customerId));
-                  }
-                  return;
-                }
-                setMembers(board.members);
-                setError(result.error);
-              }
-            );
-          }}
+          layout="summary"
+          onOpenSettings={() => openProjectSettings()}
         />
         <div className="relative w-44 shrink-0">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
@@ -839,37 +871,15 @@ export function WorkBoardPageClient({ board }: Props) {
           />
         </div>
         <div className="ml-auto flex items-center gap-1">
-          <WorkBoardViewControls
-            people={ownerPeople}
-            ownerFilterIds={ownerFilterIds}
-            onOwnerFilterChange={setOwnerFilterIds}
-            groupBy={groupBy}
-            onGroupByChange={setGroupBy}
-          />
-          <IconButton
-            data-board-menu
-            aria-label="Board options"
-            aria-expanded={boardMenu != null}
-            aria-haspopup="menu"
-            title="Board options"
-            onClick={(event) => {
-              if (boardMenu) {
-                setBoardMenu(null);
-                return;
-              }
-              const rect = event.currentTarget.getBoundingClientRect();
-              const width = 160;
-              setBoardMenu({
-                top: rect.bottom + 4,
-                left: Math.min(
-                  rect.right - width,
-                  window.innerWidth - width - 8
-                ),
-              });
-            }}
-          >
-            <MoreHorizontal className="h-4 w-4" aria-hidden />
-          </IconButton>
+          {boardMode === "board" ? (
+            <WorkBoardViewControls
+              people={ownerPeople}
+              ownerFilterIds={ownerFilterIds}
+              onOwnerFilterChange={setOwnerFilterIds}
+              groupBy={groupBy}
+              onGroupByChange={setGroupBy}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -879,6 +889,39 @@ export function WorkBoardPageClient({ board }: Props) {
         </p>
       ) : null}
 
+      {boardMode === "sprint" ? (
+        <WorkSprintView
+          board={{ ...board, issues, sprints }}
+          issues={issues}
+          sprints={sprints}
+          doneStatusIds={new Set(statuses.filter((s) => s.isDone).map((s) => s.id))}
+          onIssuesChange={(next) => {
+            issuesRef.current = next;
+            setIssues(next);
+          }}
+          onSprintsChange={setSprints}
+          onOpenIssue={(issueId) =>
+            router.push(workIssueHref(board.customerId, board.id, issueId))
+          }
+          onError={setError}
+          onChanged={() => router.refresh()}
+        />
+      ) : boardMode === "timeline" ? (
+        <WorkTimelineView
+          board={{ ...board, issues, sprints }}
+          issues={issues}
+          sprints={sprints}
+          onIssuesChange={(next) => {
+            issuesRef.current = next;
+            setIssues(next);
+          }}
+          onOpenIssue={(issueId) =>
+            router.push(workIssueHref(board.customerId, board.id, issueId))
+          }
+          onError={setError}
+          onChanged={() => router.refresh()}
+        />
+      ) : (
       <div
         ref={boardScrollRef}
         data-work-board-scroll
@@ -1215,8 +1258,8 @@ export function WorkBoardPageClient({ board }: Props) {
                                 void updateWorkIssueOwnerAction(
                                   board.id,
                                   issue.id,
-                                  person.id,
-                                  person.name
+                                  person?.id ?? null,
+                                  person?.name ?? ""
                                 ).then((result) => {
                                   if (result.ok) return;
                                   setError(result.error);
@@ -1246,6 +1289,36 @@ export function WorkBoardPageClient({ board }: Props) {
                               });
                               startTransition(() => {
                                 void addWorkIssueAssigneeAction(
+                                  board.id,
+                                  issue.id,
+                                  person.id,
+                                  person.name
+                                ).then((result) => {
+                                  if (result.ok) return;
+                                  setError(result.error);
+                                  issuesRef.current = board.issues;
+                                  setIssues(board.issues);
+                                });
+                              });
+                            }}
+                            onRemoveAssignee={(person) => {
+                              setIssues((current) => {
+                                const next = current.map((row) =>
+                                  row.id === issue.id
+                                    ? {
+                                        ...row,
+                                        assignees: row.assignees.filter(
+                                          (assignee) =>
+                                            assignee.id !== person.id
+                                        ),
+                                      }
+                                    : row
+                                );
+                                issuesRef.current = next;
+                                return next;
+                              });
+                              startTransition(() => {
+                                void removeWorkIssueAssigneeAction(
                                   board.id,
                                   issue.id,
                                   person.id,
@@ -1363,43 +1436,59 @@ export function WorkBoardPageClient({ board }: Props) {
           )}
         </div>
       </div>
+      )}
 
-      {boardMenu
-        ? createPortal(
-            <div
-              data-board-menu
-              role="menu"
-              className="fixed z-50 min-w-40 rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
-              style={{ top: boardMenu.top, left: boardMenu.left }}
-            >
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full px-3 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
-                onClick={() => startRenameBoard()}
-              >
-                Rename board
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full px-3 py-1.5 text-left text-body-m text-danger hover:bg-danger/10"
-                onClick={() => {
-                  setBoardMenu(null);
-                  setArchiveOpen(true);
-                }}
-              >
-                Archive
-              </button>
-            </div>,
-            document.body
-          )
-        : null}
+      <WorkProjectSettingsDrawer
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        title={boardTitle}
+        customerName={board.customerName}
+        members={members}
+        people={board.people}
+        onRename={applyBoardRename}
+        onAddMember={(person) => {
+          setMembers((current) =>
+            current.some((row) => row.id === person.id)
+              ? current
+              : [...current, person]
+          );
+          void addWorkBoardMemberAction(board.id, person.id).then((result) => {
+            if (result.ok) return;
+            setMembers(board.members);
+            setError(result.error);
+          });
+        }}
+        onRemoveMember={(person) => {
+          if (members.length <= 1) {
+            setError("A project needs at least one person");
+            return;
+          }
+          setMembers((current) =>
+            current.filter((row) => row.id !== person.id)
+          );
+          void removeWorkBoardMemberAction(board.id, person.id).then(
+            (result) => {
+              if (result.ok) {
+                if (person.id === board.currentUser.id) {
+                  router.push(workCustomerHref(board.customerId));
+                }
+                return;
+              }
+              setMembers(board.members);
+              setError(result.error);
+            }
+          );
+        }}
+        onArchive={() => {
+          setSettingsOpen(false);
+          setArchiveOpen(true);
+        }}
+      />
 
       <ConfirmModal
         isOpen={archiveOpen}
-        title="Archive board"
-        message="This board will be hidden from Rove Work. Issues are kept."
+        title="Archive project"
+        message="This project will be hidden from Rove Work. Issues are kept."
         confirmLabel="Archive"
         variant="danger"
         onClose={() => setArchiveOpen(false)}
@@ -1549,3 +1638,5 @@ export function WorkBoardPageClient({ board }: Props) {
     </div>
   );
 }
+
+export { WorkBoardPageClient as WorkProjectPageClient };

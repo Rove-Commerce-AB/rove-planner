@@ -16,7 +16,7 @@ import {
   Star,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
-import { ROUTES, workBoardHref, workCustomerHref } from "@/lib/routes";
+import { ROUTES, workCustomerHref, workProjectHref } from "@/lib/routes";
 import type { AppKey } from "@/lib/peopleTypes";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
@@ -409,7 +409,7 @@ function WorkCustomerNav({
           <button
             type="button"
             aria-expanded={open}
-            aria-label={`${open ? "Collapse" : "Expand"} ${customer.name} boards`}
+            aria-label={`${open ? "Collapse" : "Expand"} ${customer.name} projects`}
             onClick={() => setOpen((current) => !current)}
             className="flex h-8 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-tertiary hover:bg-nav-active hover:text-text-primary"
           >
@@ -426,7 +426,7 @@ function WorkCustomerNav({
         ? customer.boards.map((board) => (
             <NavLink
               key={board.id}
-              href={workBoardHref(customer.id, board.id)}
+              href={workProjectHref(customer.id, board.id)}
               label={board.title}
               pathname={pathname}
               depth={2}

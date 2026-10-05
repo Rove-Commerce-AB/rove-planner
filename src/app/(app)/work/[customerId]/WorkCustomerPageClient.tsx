@@ -7,11 +7,11 @@ import { ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { SetWorkTrail } from "@/components/WorkTrailContext";
-import { workBoardHref } from "@/lib/routes";
+import { workProjectHref } from "@/lib/routes";
 import { compareTextSv } from "@/lib/sort";
 import type { WorkCustomerView, WorkSelectorBoard } from "@/lib/workTypes";
 import { restoreWorkBoardAction } from "../actions";
-import { WorkCreateBoardDialog } from "../WorkCreateBoardDialog";
+import { WorkCreateProjectDialog } from "../WorkCreateProjectDialog";
 
 export function WorkCustomerPageClient({
   customer,
@@ -65,7 +65,7 @@ export function WorkCustomerPageClient({
         </div>
         <Button type="button" onClick={() => setCreating(true)}>
           <Plus className="h-4 w-4" aria-hidden />
-          New board
+          New project
         </Button>
       </header>
 
@@ -80,7 +80,7 @@ export function WorkCustomerPageClient({
           {boards.map((board) => (
             <li key={board.id}>
               <Link
-                href={workBoardHref(customer.id, board.id)}
+                href={workProjectHref(customer.id, board.id)}
                 className="block h-full rounded-xl border border-border-subtle bg-bg-default p-4 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2"
               >
                 <span className="block truncate text-heading-s text-text-primary">
@@ -93,7 +93,9 @@ export function WorkCustomerPageClient({
             </li>
           ))}
         </ul>
-      ) : null}
+      ) : (
+        <p className="text-sm text-text-secondary">No projects yet.</p>
+      )}
 
       {archivedBoards.length > 0 ? (
         <section className={boards.length > 0 ? "mt-8" : undefined}>
@@ -109,7 +111,7 @@ export function WorkCustomerPageClient({
               }`}
               aria-hidden
             />
-            Archived boards ({archivedBoards.length})
+            Archived projects ({archivedBoards.length})
           </button>
           {archivedOpen ? (
             <ul className="mt-2 max-w-md">
@@ -139,7 +141,7 @@ export function WorkCustomerPageClient({
         </section>
       ) : null}
 
-      <WorkCreateBoardDialog
+      <WorkCreateProjectDialog
         customer={customer}
         open={creating}
         onOpenChange={setCreating}

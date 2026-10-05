@@ -32,12 +32,26 @@ export type WorkPerson = {
   initials: string;
 };
 
+export type WorkAccessPerson = WorkPerson & { onCustomer: boolean };
+
 export type WorkLabel = {
   id: string;
   name: string;
 };
 
 export type WorkIssuePriority = "low" | "medium" | "high";
+
+export type WorkSprintStatus = "current" | "next" | "completed";
+
+export type WorkSprint = {
+  id: string;
+  number: number;
+  title: string;
+  startsOn: string;
+  endsOn: string;
+  status: WorkSprintStatus;
+  capacityHours: number | null;
+};
 
 export type WorkRequirement = {
   id: string;
@@ -103,6 +117,9 @@ export type WorkIssue = {
   relations: WorkIssueRelations;
   estimateHours: number | null;
   loggedHours: number;
+  sprintId: string | null;
+  startDate: string | null;
+  dueDate: string | null;
 };
 
 export type WorkBoardView = {
@@ -117,4 +134,5 @@ export type WorkBoardView = {
   statuses: WorkBoardStatus[];
   boardLabels: WorkLabel[];
   issues: WorkIssue[];
+  sprints: WorkSprint[];
 };

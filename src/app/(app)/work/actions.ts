@@ -7,15 +7,18 @@ import {
   createWorkBoard,
   createWorkBoardStatus,
   deleteWorkBoardStatus,
+  listLinkablePlannerProjects,
+  listWorkAccessPeople,
   listWorkCustomerPeople,
   removeWorkBoardMember,
   renameWorkBoard,
   renameWorkBoardStatus,
   reorderWorkBoardStatuses,
   restoreWorkBoard,
+  setWorkProjectPreferredView,
 } from "@/lib/workBoards";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
-import type { WorkIssuePriority, WorkPerson, WorkRequirementKind } from "@/lib/workTypes";
+import type { WorkAccessPerson, WorkIssuePriority, WorkPerson, WorkRequirementKind } from "@/lib/workTypes";
 import {
   addIssueAssignee,
   addIssueComment,
@@ -43,6 +46,14 @@ import {
   setWorkIssueTitle,
   uploadIssueFile,
 } from "@/lib/workIssues";
+import {
+  completeWorkSprint,
+  createWorkSprint,
+  editWorkSprint,
+  setWorkIssueSchedule,
+  setWorkIssueSprint,
+} from "@/lib/workSprints";
+import type { WorkSprint } from "@/lib/workTypes";
 import { ROUTES, workCustomerHref } from "@/lib/routes";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkRelationRole } from "@/lib/workIssueRelations";
@@ -73,22 +84,56 @@ export async function listWorkCustomerPeopleAction(
   }
 }
 
+export async function listWorkAccessPeopleAction(
+  customerId: string
+): Promise<WorkAccessPerson[]> {
+  try {
+    return await listWorkAccessPeople(customerId);
+  } catch {
+    return [];
+  }
+}
+
 export async function createWorkBoardAction(
   customerId: string,
   title: string,
   prefix: string,
-  memberAppUserIds?: string[]
+  memberAppUserIds?: string[],
+  plannerProjectId?: string | null
 ): Promise<OkBoard | Err> {
   try {
     const boardId = await createWorkBoard(
       customerId,
       title,
       prefix,
-      memberAppUserIds
+      memberAppUserIds,
+      plannerProjectId
     );
     revalidatePath(ROUTES.work, "layout");
     revalidatePath(workCustomerHref(customerId));
     return { ok: true, boardId };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function listLinkablePlannerProjectsAction(
+  customerId: string
+): Promise<{ id: string; name: string }[]> {
+  try {
+    return await listLinkablePlannerProjects(customerId);
+  } catch {
+    return [];
+  }
+}
+
+export async function setWorkProjectPreferredViewAction(
+  projectId: string,
+  view: "board" | "sprint" | "timeline"
+): Promise<Ok | Err> {
+  try {
+    await setWorkProjectPreferredView(projectId, view);
+    return { ok: true };
   } catch (error) {
     return fail(error);
   }
@@ -569,6 +614,87 @@ export async function moveWorkIssueAction(input: {
     );
     await reorderWorkIssues(input.boardId, input.status, input.issueIds);
     revalidateBoard(input.boardId, input.issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createWorkSprintAction(
+  boardId: string,
+  input: {
+    title?: string;
+    startsOn?: string;
+    lengthDays?: number;
+    as: "current" | "next";
+    capacityHours?: number | null;
+  }
+): Promise<(Ok & { sprint: WorkSprint }) | Err> {
+  try {
+    const sprint = await createWorkSprint(boardId, input);
+    revalidateBoard(boardId);
+    return { ok: true, sprint };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkSprintAction(
+  boardId: string,
+  sprintId: string,
+  patch: {
+    title?: string;
+    startsOn?: string;
+    endsOn?: string;
+    capacityHours?: number | null;
+  }
+): Promise<(Ok & { sprint: WorkSprint }) | Err> {
+  try {
+    const sprint = await editWorkSprint(boardId, sprintId, patch);
+    revalidateBoard(boardId);
+    return { ok: true, sprint };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function closeWorkSprintAction(
+  boardId: string,
+  sprintId: string,
+  unfinishedAction: "next" | "backlog" | "leave"
+): Promise<Ok | Err> {
+  try {
+    await completeWorkSprint(boardId, sprintId, unfinishedAction);
+    revalidateBoard(boardId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setWorkIssueSprintAction(
+  boardId: string,
+  issueId: string,
+  sprintId: string | null
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueSprint(boardId, issueId, sprintId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueScheduleAction(
+  boardId: string,
+  issueId: string,
+  startDate: string | null,
+  dueDate: string | null
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueSchedule(boardId, issueId, startDate, dueDate);
+    revalidateBoard(boardId, issueId);
     return { ok: true };
   } catch (error) {
     return fail(error);
