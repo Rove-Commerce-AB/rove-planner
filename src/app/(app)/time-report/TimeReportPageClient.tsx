@@ -10,8 +10,6 @@ import {
   useMemo,
   memo,
   type Dispatch,
-  type FocusEvent,
-  type HTMLAttributes,
   type MutableRefObject,
   type SetStateAction,
 } from "react";
@@ -93,10 +91,6 @@ import {
   timeReportDayTotals as dayTotals,
 } from "./timeReportEntryModel";
 import { TimeReportHourCell } from "./TimeReportHourCell";
-import {
-  useTimeGridColumnHighlight,
-  timeGridColumnCellInteractionProps,
-} from "@/components/TimeGridColumnHighlight";
 
 const ENABLE_PERF_DEBUG = process.env.NEXT_PUBLIC_DEBUG_PERF === "1";
 
@@ -553,12 +547,8 @@ type EditableHourTdProps = {
   showLeftBorder?: boolean;
   /** Trimmed internal comment for this day; corner marker + instant hover preview when set. */
   internalCommentText?: string;
-  /** Full-column highlight while this day column is hovered elsewhere in the grid. */
-  columnHover?: boolean;
-  columnInteractionProps?: Pick<
-    HTMLAttributes<HTMLTableCellElement>,
-    "onMouseEnter" | "onMouseLeave" | "onFocusCapture" | "onBlurCapture"
-  >;
+  /** Day/date column index for CSS :has() column crosshair (0–31). */
+  colIndex: number;
 };
 
 const EditableHourTd = memo(function EditableHourTd({
@@ -575,8 +565,7 @@ const EditableHourTd = memo(function EditableHourTd({
   compact = false,
   showLeftBorder,
   internalCommentText,
-  columnHover = false,
-  columnInteractionProps,
+  colIndex,
 }: EditableHourTdProps) {
   const leftBorder = showLeftBorder ?? (dayIndex === 0 && !compact);
   const cellW = compact
@@ -588,8 +577,8 @@ const EditableHourTd = memo(function EditableHourTd({
   const hasInternalComment = Boolean(commentPreview);
   return (
     <td
-      {...columnInteractionProps}
-      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "time-report-today-cell" : ""} ${columnHover ? "time-grid-column-hover" : ""}`}
+      data-col-index={colIndex}
+      className={`relative ${rowH} ${cellW} border-r border-border-subtle p-0 align-middle ${leftBorder ? "border-l border-border-subtle" : ""} ${grayBg} ${isToday ? "time-report-today-cell" : ""}`}
     >
       <div
         role="button"
@@ -650,30 +639,6 @@ export function TimeReportPageClient({
   calendarId,
   initialHolidayDates,
 }: Props) {
-  const { highlightedColumnIndex, setHighlightedColumnIndex } =
-    useTimeGridColumnHighlight();
-  const [hoverRowKey, setHoverRowKey] = useState<string | null>(null);
-
-  const timeReportRowHoverHandlers = useCallback(
-    (rowKey: string) => ({
-      onMouseEnter: () => setHoverRowKey(rowKey),
-      onMouseLeave: () => setHoverRowKey(null),
-      onFocusCapture: () => setHoverRowKey(rowKey),
-      onBlurCapture: (e: FocusEvent<HTMLTableRowElement>) => {
-        const next = e.relatedTarget as Node | null;
-        if (next && e.currentTarget.contains(next)) return;
-        setHoverRowKey(null);
-      },
-    }),
-    []
-  );
-
-  const timeReportRowHoverClass = (rowKey: string) =>
-    hoverRowKey === rowKey ? "time-grid-row-hover" : "";
-
-  const timeReportColHoverClass = (colIndex: number) =>
-    highlightedColumnIndex === colIndex ? "time-grid-column-hover" : "";
-
   const [year, setYear] = useState(initialYear);
   const [week, setWeek] = useState(initialWeek);
   const [holidayDates, setHolidayDates] = useState<string[]>(initialHolidayDates);
@@ -2956,7 +2921,8 @@ export function TimeReportPageClient({
                 {TIME_REPORT_DAY_LABELS.map((label, i) => (
                   <th
                     key={i}
-                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""} ${highlightedColumnIndex === i ? "time-grid-header-column-active" : ""}`}
+                    data-col-index={i}
+                    className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1.5 font-medium text-text-secondary ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? dayHeaderGrayClass : ""} ${isTodayColumn(i) ? todayHeaderClass : ""}`}
                     title={isTodayColumn(i) ? "Today" : undefined}
                   >
                     <div className="flex h-full w-full items-center justify-center text-left text-text-secondary">
@@ -2985,18 +2951,14 @@ export function TimeReportPageClient({
               ) : (
                 <>
                   <tr
-                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium ${timeReportRowHoverClass("week-totals")}`}
-                    {...timeReportRowHoverHandlers("week-totals")}
+                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium`}
                   >
                     <td colSpan={5} className="px-1.5 py-1 text-left text-text-primary" />
                     {totalHoursPerDay.map((h, i) => (
                       <td
                         key={i}
-                        {...timeGridColumnCellInteractionProps(
-                          i,
-                          setHighlightedColumnIndex
-                        )}
-                        className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""} ${timeReportColHoverClass(i)}`}
+                        data-col-index={i}
+                        className={`h-8 w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-1 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                       >
                         <div className="flex h-full w-full items-center justify-center">
                           <span className={timeReportSumFigureClass("week")}>
@@ -3028,8 +2990,7 @@ export function TimeReportPageClient({
                       </tr>
                     )}
                     <tr
-                      className={`border-b border-border-subtle bg-bg-muted/40 ${timeReportRowHoverClass(`week-cust-${group.customerId}`)}`}
-                      {...timeReportRowHoverHandlers(`week-cust-${group.customerId}`)}
+                      className={`border-b border-border-subtle bg-bg-muted/40`}
                     >
                       <td
                         className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
@@ -3053,11 +3014,8 @@ export function TimeReportPageClient({
                       {TIME_REPORT_DAY_LABELS.map((_, i) => (
                         <td
                           key={i}
-                          {...timeGridColumnCellInteractionProps(
-                            i,
-                            setHighlightedColumnIndex
-                          )}
-                          className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""} ${timeReportColHoverClass(i)}`}
+                          data-col-index={i}
+                          className={`w-[clamp(2.25rem,3.6vw,3rem)] min-w-[2.25rem] border-r border-border-subtle p-0 py-0.5 align-middle ${i === 0 ? "border-l border-border-subtle" : ""} ${isDayGrayed(i) ? (isWeekDayWeekend(i) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isTodayColumn(i) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className={timeReportSumFigureClass("week")}>
@@ -3077,8 +3035,7 @@ export function TimeReportPageClient({
                     {group.entries.map((entry) => (
                         <tr
                           key={entry.id}
-                          className={`border-b border-border-subtle bg-bg-default ${timeReportRowHoverClass(`week-entry-${entry.id}`)}`}
-                          {...timeReportRowHoverHandlers(`week-entry-${entry.id}`)}
+                          className={`border-b border-border-subtle bg-bg-default`}
                         >
                           <td
                             className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-1"
@@ -3215,11 +3172,7 @@ export function TimeReportPageClient({
                                       void loadJiraDevOpsForProject(entry.projectId, { force: true });
                                     }
                                   }}
-                                  className={`min-w-0 flex-1 truncate cursor-pointer rounded px-1 py-0.5 text-left text-xs ${
-                                    entry.jiraDevOpsValue.startsWith("jira:")
-                                      ? "text-text-primary"
-                                      : "text-brand-signal"
-                                  } hover:bg-bg-muted`}
+                                  className="min-w-0 flex-1 truncate cursor-pointer rounded px-1 py-0.5 text-left text-xs text-text-primary hover:bg-bg-muted"
                                   title={jiraDevOpsKeyTooltipTitle(displayLabel, opt?.description)}
                                 >
                                   {displayLabel}
@@ -3319,11 +3272,7 @@ export function TimeReportPageClient({
                               }}
                               onBlur={() => setEditingCell(null)}
                               internalCommentText={(entry.comments[dayIndex] ?? "").trim() || undefined}
-                              columnHover={highlightedColumnIndex === dayIndex}
-                              columnInteractionProps={timeGridColumnCellInteractionProps(
-                                dayIndex,
-                                setHighlightedColumnIndex
-                              )}
+                              colIndex={dayIndex}
                             />
                           ))}
                           <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-1 align-middle">
@@ -3419,7 +3368,8 @@ export function TimeReportPageClient({
                   return (
                     <th
                       key={dateStr}
-                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""} ${highlightedColumnIndex === dateIdx ? "time-grid-header-column-active" : ""}`}
+                      data-col-index={dateIdx}
+                      className={`min-w-0 border-r border-border-subtle px-0 py-1 font-medium leading-tight text-text-secondary ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? dayHeaderGrayClass : ""} ${isTodayHeader ? todayHeaderClass : ""}`}
                       title={
                         isTodayHeader
                           ? `Today — ${longDow} ${dom} (${dateStr})`
@@ -3451,8 +3401,7 @@ export function TimeReportPageClient({
               ) : (
                 <>
                   <tr
-                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium ${timeReportRowHoverClass("month-totals")}`}
-                    {...timeReportRowHoverHandlers("month-totals")}
+                    className={`border-b border-border-subtle bg-bg-muted/40 font-medium`}
                   >
                     <td colSpan={5} className="px-1 py-0.5 text-left text-text-primary" />
                     {monthDateDayTotals.map((h, dateIdx) => {
@@ -3460,11 +3409,8 @@ export function TimeReportPageClient({
                       return (
                         <td
                           key={dateStr}
-                          {...timeGridColumnCellInteractionProps(
-                            dateIdx,
-                            setHighlightedColumnIndex
-                          )}
-                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""} ${timeReportColHoverClass(dateIdx)}`}
+                          data-col-index={dateIdx}
+                          className={`h-7 min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <span className={timeReportSumFigureClass("month")}>
@@ -3501,8 +3447,7 @@ export function TimeReportPageClient({
                           </tr>
                         )}
                         <tr
-                          className={`border-b border-border-subtle bg-bg-muted/40 ${timeReportRowHoverClass(`month-cust-${customerId}`)}`}
-                          {...timeReportRowHoverHandlers(`month-cust-${customerId}`)}
+                          className={`border-b border-border-subtle bg-bg-muted/40`}
                         >
                           <td
                             className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5 align-middle"
@@ -3526,11 +3471,8 @@ export function TimeReportPageClient({
                           {monthCalendarDates.map((dateStr, dateIdx) => (
                             <td
                               key={dateStr}
-                              {...timeGridColumnCellInteractionProps(
-                                dateIdx,
-                                setHighlightedColumnIndex
-                              )}
-                              className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""} ${timeReportColHoverClass(dateIdx)}`}
+                              data-col-index={dateIdx}
+                              className={`min-w-0 border-r border-border-subtle p-0 py-0.5 align-middle ${dateIdx === 0 ? "border-l border-border-subtle" : ""} ${isMonthDateGrayed(dateStr) ? (isMonthDateWeekend(dateStr) ? dayCellWeekendGrayClass : dayCellHolidayWeekdayGrayClass) : ""} ${isMonthDateToday(dateStr) ? todayColumnClass : ""}`}
                             >
                               <div className="flex h-full w-full items-center justify-center">
                                 <span className={timeReportSumFigureClass("month")}>
@@ -3553,8 +3495,7 @@ export function TimeReportPageClient({
                           return (
                             <tr
                               key={row.rowKey}
-                              className={`border-b border-border-subtle bg-bg-default ${timeReportRowHoverClass(`month-entry-${row.rowKey}`)}`}
-                              {...timeReportRowHoverHandlers(`month-entry-${row.rowKey}`)}
+                              className={`border-b border-border-subtle bg-bg-default`}
                             >
                               <td
                                 className="w-[4.75rem] min-w-[4.75rem] border-l-[4px] border-solid px-0 py-0.5"
@@ -3691,11 +3632,7 @@ export function TimeReportPageClient({
                                           void loadJiraDevOpsForProject(row.projectId, { force: true });
                                         }
                                       }}
-                                      className={`min-w-0 max-w-full flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded px-0.5 py-0.5 text-left text-[10px] leading-tight ${
-                                        row.jiraDevOpsValue.startsWith("jira:")
-                                          ? "text-text-primary"
-                                          : "text-brand-signal"
-                                      } hover:bg-bg-muted`}
+                                      className="min-w-0 max-w-full flex-1 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded px-0.5 py-0.5 text-left text-[10px] leading-tight text-text-primary hover:bg-bg-muted"
                                       title={jiraDevOpsKeyTooltipTitle(displayLabel, opt?.description)}
                                     >
                                       {displayLabel}
@@ -3817,11 +3754,7 @@ export function TimeReportPageClient({
                                   internalCommentText={
                                     (row.commentsByDate[dateStr] ?? "").trim() || undefined
                                   }
-                                  columnHover={highlightedColumnIndex === dateIdx}
-                                  columnInteractionProps={timeGridColumnCellInteractionProps(
-                                    dateIdx,
-                                    setHighlightedColumnIndex
-                                  )}
+                                  colIndex={dateIdx}
                                 />
                               ))}
                               <td className="relative w-[3.5rem] min-w-[3.5rem] px-0.5 py-0.5 align-middle">
