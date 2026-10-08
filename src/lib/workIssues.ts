@@ -41,6 +41,9 @@ import {
   deleteWorkIssueRequirement,
   deleteWorkIssueReference,
   updateWorkIssueTitle,
+  isWorkBoardMember,
+  workIssueHasLoggedTime,
+  deleteWorkIssue as deleteWorkIssueRow,
 } from "@/lib/workIssuesQueries";
 import { commentPreview, extractMentionedIds } from "@/lib/workMentions";
 import {
@@ -148,6 +151,18 @@ export async function setWorkIssueTitle(
   await logEvent(issueId, actor.id, "title", `changed the title to “${trimmed}”`);
 }
 
+export async function deleteWorkIssue(
+  boardId: string,
+  issueId: string
+): Promise<void> {
+  await requireBoardAccess(boardId);
+  if (await workIssueHasLoggedTime(issueId)) {
+    throw new Error("Issues with logged time cannot be deleted");
+  }
+  const ok = await deleteWorkIssueRow(boardId, issueId);
+  if (!ok) throw new Error("Issue not found");
+}
+
 export async function setWorkIssueOwner(
   boardId: string,
   issueId: string,
@@ -155,6 +170,12 @@ export async function setWorkIssueOwner(
   ownerName: string
 ): Promise<void> {
   const { actor } = await requireBoardAccess(boardId);
+  if (ownerAppUserId) {
+    const member = await isWorkBoardMember(boardId, ownerAppUserId);
+    if (!member) {
+      throw new Error("Owner must have access to the project");
+    }
+  }
   const ok = await updateWorkIssueOwner(boardId, issueId, ownerAppUserId);
   if (!ok) throw new Error("Issue not found");
   await logEvent(
@@ -448,6 +469,10 @@ export async function addIssueAssignee(
   personName: string
 ): Promise<void> {
   const { actor } = await requireBoardAccess(boardId);
+  const member = await isWorkBoardMember(boardId, appUserId);
+  if (!member) {
+    throw new Error("Assignee must have access to the project");
+  }
   await addWorkIssueAssignee(issueId, appUserId);
   await logEvent(issueId, actor.id, "assignees", `assigned ${personName}`);
 }

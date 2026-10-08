@@ -49,6 +49,7 @@ import {
   addWorkIssueReferenceAction,
   addWorkIssueRequirementAction,
   assignWorkIssueComponentAction,
+  deleteWorkIssueAction,
   deleteWorkIssueCommentAction,
   deleteWorkIssueFileAction,
   deleteWorkIssueReferenceAction,
@@ -399,6 +400,7 @@ type Props = {
   onChanged: () => void;
   onError: (message: string) => void;
   onIssuePatch: (patch: Partial<WorkIssue>) => void;
+  onDeleted: () => void;
 };
 
 export function WorkIssueDrawer({
@@ -408,9 +410,12 @@ export function WorkIssueDrawer({
   onChanged,
   onError,
   onIssuePatch,
+  onDeleted,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState("details");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [feed, setFeed] = useState<"comments" | "activity">("comments");
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(
@@ -613,13 +618,7 @@ export function WorkIssueDrawer({
     };
   }, []);
 
-  const people = useMemo(() => {
-    const list = [...board.people];
-    if (issue.owner && !list.some((person) => person.id === issue.owner?.id)) {
-      list.unshift(issue.owner);
-    }
-    return list;
-  }, [board.people, issue.owner]);
+  const people = board.members;
 
   function run(
     action: () => Promise<{ ok: true } | { ok: false; error: string }>,
@@ -986,15 +985,15 @@ export function WorkIssueDrawer({
             </TabsTrigger>
             <TabsTrigger value="requirements" className="px-3 !px-3">
               Requirements
-              {issue.requirements.length > 0
-                ? ` ${issue.requirements.filter((row) => row.isDone).length}/${issue.requirements.length}`
-                : ""}
             </TabsTrigger>
             <TabsTrigger value="time" className="px-3 !px-3">
               Time
             </TabsTrigger>
             <TabsTrigger value="files" className="px-3 !px-3">
-              Files {issue.files.length > 0 ? issue.files.length : ""}
+              Files
+            </TabsTrigger>
+            <TabsTrigger value="danger" className="px-3 !px-3">
+              Danger
             </TabsTrigger>
           </TabsList>
           <TabsContent value="details" className="mt-5 space-y-6">
@@ -2098,8 +2097,57 @@ export function WorkIssueDrawer({
               </div>
             )}
           </TabsContent>
+
+          <TabsContent value="danger" className="mt-5 space-y-4">
+            <div>
+              <h2 className="text-sm font-medium text-text-primary">
+                Danger zone
+              </h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Delete permanently removes this issue and its comments, files,
+                and activity. This cannot be undone.
+              </p>
+              {issue.loggedHours > 0 ? (
+                <p className="mt-3 text-sm text-text-secondary">
+                  This issue has logged time and cannot be deleted.
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="danger"
+                className="mt-4"
+                disabled={pending || issue.loggedHours > 0}
+                onClick={() => setDeleteOpen(true)}
+              >
+                Delete issue
+              </Button>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
+
+      <ConfirmModal
+        isOpen={deleteOpen}
+        title={`Delete ${issue.key}?`}
+        message="This permanently deletes the issue and its comments, files, and activity. Issues with logged time cannot be deleted."
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        variant="danger"
+        onClose={() => {
+          if (deleting) return;
+          setDeleteOpen(false);
+        }}
+        onConfirm={async () => {
+          if (deleting) return;
+          setDeleting(true);
+          const result = await deleteWorkIssueAction(board.id, issue.id);
+          setDeleting(false);
+          if (!result.ok) {
+            onError(result.error);
+            return;
+          }
+          onDeleted();
+        }}
+      />
 
       {uploadBarVisible ? (
         <div
@@ -2284,13 +2332,27 @@ export function WorkCardPeople({
     [assignees]
   );
 
+  // Picker is project members only; keep current owner/assignees visible so
+  // they can still be cleared if they lost access.
+  const pickablePeople = useMemo(() => {
+    const byId = new Map(people.map((person) => [person.id, person]));
+    const extras: WorkPerson[] = [];
+    if (owner && !byId.has(owner.id)) extras.push(owner);
+    for (const person of assignees) {
+      if (!byId.has(person.id) && person.id !== owner?.id) {
+        extras.push(person);
+      }
+    }
+    return extras.length > 0 ? [...extras, ...people] : people;
+  }, [people, owner, assignees]);
+
   const filteredPeople = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return people;
-    return people.filter((person) =>
+    if (!needle) return pickablePeople;
+    return pickablePeople.filter((person) =>
       person.name.toLowerCase().includes(needle)
     );
-  }, [people, query]);
+  }, [pickablePeople, query]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -2329,7 +2391,7 @@ export function WorkCardPeople({
 
   function openMenu(event: MouseEvent<HTMLElement>) {
     event.stopPropagation();
-    if (!interactive || disabled || people.length === 0) return;
+    if (!interactive || disabled || pickablePeople.length === 0) return;
     if (menuOpen) {
       setMenu(null);
       setQuery("");
@@ -2480,7 +2542,7 @@ export function WorkCardPeople({
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      {interactive && people.length > 0 ? (
+      {interactive && pickablePeople.length > 0 ? (
         <button
           type="button"
           disabled={disabled}

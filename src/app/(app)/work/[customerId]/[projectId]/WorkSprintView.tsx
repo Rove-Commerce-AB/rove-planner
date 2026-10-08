@@ -1232,7 +1232,7 @@ function SprintColumn({
           <WorkCardPeople
             owner={issue.owner}
             assignees={issue.assignees}
-            people={board?.people ?? []}
+            people={board?.members ?? []}
             disabled={estimateDisabled}
             onSetOwner={(person) => onSetOwner(issue.id, person)}
             onAddAssignee={(person) => onAddAssignee(issue.id, person)}

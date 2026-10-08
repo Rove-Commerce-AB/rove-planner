@@ -163,6 +163,20 @@ export async function fetchWorkBoardMembers(
   return rows;
 }
 
+export async function isWorkBoardMember(
+  boardId: string,
+  appUserId: string
+): Promise<boolean> {
+  const { rows } = await cloudSqlPool.query<{ ok: number }>(
+    `SELECT 1 AS ok
+     FROM work_project_members
+     WHERE project_id = $1 AND app_user_id = $2
+     LIMIT 1`,
+    [boardId, appUserId]
+  );
+  return rows.length > 0;
+}
+
 export async function fetchWorkIssuesForBoard(
   boardId: string
 ): Promise<WorkIssueRow[]> {
@@ -753,6 +767,35 @@ export async function fetchLoggedHoursByIssueIds(
     hours.set(row.work_issue_id, Number(row.hours ?? 0));
   }
   return hours;
+}
+
+export async function workIssueHasLoggedTime(
+  issueId: string
+): Promise<boolean> {
+  const { rows } = await cloudSqlPool.query<{ ok: number }>(
+    `SELECT 1 AS ok
+     FROM time_report_entry_lines l
+     JOIN time_report_entries e
+       ON e.entry_line_id = l.id
+      AND e.consultant_id = l.consultant_id
+     WHERE l.work_issue_id = $1
+       AND e.hours > 0
+     LIMIT 1`,
+    [issueId]
+  );
+  return rows.length > 0;
+}
+
+export async function deleteWorkIssue(
+  boardId: string,
+  issueId: string
+): Promise<boolean> {
+  const { rowCount } = await cloudSqlPool.query(
+    `DELETE FROM work_issues
+     WHERE id = $2 AND project_id = $1`,
+    [boardId, issueId]
+  );
+  return (rowCount ?? 0) > 0;
 }
 
 export async function addWorkIssueAssignee(

@@ -38,6 +38,7 @@ import {
   createBoardComponent,
   deleteIssueComment,
   createWorkIssue,
+  deleteWorkIssue,
   removeBoardComponent,
   renameBoardComponentName,
   removeIssueAssignee,
@@ -314,6 +315,19 @@ export async function createWorkIssueAction(input: {
     const issueId = await createWorkIssue(input);
     revalidateBoard(input.boardId, issueId);
     return { ok: true, issueId };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssueAction(
+  boardId: string,
+  issueId: string
+): Promise<Ok | Err> {
+  try {
+    await deleteWorkIssue(boardId, issueId);
+    revalidateBoard(boardId);
+    return { ok: true };
   } catch (error) {
     return fail(error);
   }

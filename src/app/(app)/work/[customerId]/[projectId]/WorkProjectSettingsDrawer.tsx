@@ -16,11 +16,16 @@ import type { WorkComponent, WorkPerson } from "@/lib/workTypes";
 import { listLinkablePlannerProjectsAction } from "../../actions";
 import { WorkBoardMembers } from "./WorkBoardMembers";
 
-type SettingsTab = "details" | "access" | "components" | "danger";
+export type WorkProjectSettingsTab =
+  | "details"
+  | "access"
+  | "components"
+  | "danger";
 
 export function WorkProjectSettingsDrawer({
   open,
   onOpenChange,
+  initialTab = "details",
   title,
   customerId,
   customerName,
@@ -40,6 +45,7 @@ export function WorkProjectSettingsDrawer({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialTab?: WorkProjectSettingsTab;
   title: string;
   customerId: string;
   customerName: string;
@@ -62,7 +68,7 @@ export function WorkProjectSettingsDrawer({
   onDeleteComponent: (component: WorkComponent) => Promise<boolean>;
   onArchive: () => void;
 }) {
-  const [tab, setTab] = useState<SettingsTab>("details");
+  const [tab, setTab] = useState<WorkProjectSettingsTab>(initialTab);
   const [nameDraft, setNameDraft] = useState(title);
   const [savingName, setSavingName] = useState(false);
   const [deletingComponent, setDeletingComponent] =
@@ -87,10 +93,10 @@ export function WorkProjectSettingsDrawer({
   useEffect(() => {
     if (!open) return;
     setNameDraft(title);
-    setTab("details");
+    setTab(initialTab);
     setAddingComponent(false);
     setNewComponentName("");
-  }, [open, title]);
+  }, [open, title, initialTab]);
 
   useEffect(() => {
     if (!open || plannerProjectId) {
@@ -180,7 +186,7 @@ export function WorkProjectSettingsDrawer({
         <div className="flex min-h-0 flex-1 flex-col">
           <Tabs
             value={tab}
-            onValueChange={(value) => setTab(value as SettingsTab)}
+            onValueChange={(value) => setTab(value as WorkProjectSettingsTab)}
             className="flex min-h-0 flex-1 flex-col"
           >
             <div className="shrink-0 px-6 pt-3">
@@ -193,7 +199,6 @@ export function WorkProjectSettingsDrawer({
                 </TabsTrigger>
                 <TabsTrigger value="components" className="px-3 !px-3">
                   Components
-                  {components.length > 0 ? ` ${components.length}` : ""}
                 </TabsTrigger>
                 <TabsTrigger value="danger" className="px-3 !px-3">
                   Danger

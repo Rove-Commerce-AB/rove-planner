@@ -77,7 +77,10 @@ import {
 } from "./WorkBoardViewControls";
 import { WorkCardPeople, WorkIssueDrawer } from "./WorkIssueDrawer";
 import { WorkIssueTypePicker } from "./WorkIssueTypeIcon";
-import { WorkProjectSettingsDrawer } from "./WorkProjectSettingsDrawer";
+import {
+  WorkProjectSettingsDrawer,
+  type WorkProjectSettingsTab,
+} from "./WorkProjectSettingsDrawer";
 import { WorkCardEstimate } from "./WorkCardEstimate";
 import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
@@ -352,6 +355,8 @@ export function WorkBoardPageClient({
   const [boardRenameDraft, setBoardRenameDraft] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] =
+    useState<WorkProjectSettingsTab>("details");
   const [renamingStatusId, setRenamingStatusId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [draggingStatusId, setDraggingStatusId] = useState<string | null>(null);
@@ -696,8 +701,9 @@ export function WorkBoardPageClient({
     return false;
   }
 
-  function openProjectSettings() {
+  function openProjectSettings(tab: WorkProjectSettingsTab = "details") {
     if (selectedIssueId) closeIssue();
+    setSettingsTab(tab);
     setSettingsOpen(true);
   }
 
@@ -1012,7 +1018,7 @@ export function WorkBoardPageClient({
           members={members}
           people={board.people}
           layout="summary"
-          onOpenSettings={() => openProjectSettings()}
+          onOpenSettings={() => openProjectSettings("access")}
         />
         <div className="relative w-44 shrink-0">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
@@ -1470,7 +1476,7 @@ export function WorkBoardPageClient({
                           <WorkCardPeople
                             owner={issue.owner}
                             assignees={issue.assignees}
-                            people={board.people}
+                            people={members}
                             onSetOwner={(person) => {
                               setIssues((current) => {
                                 const next = current.map((row) =>
@@ -1700,6 +1706,7 @@ export function WorkBoardPageClient({
       <WorkProjectSettingsDrawer
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+        initialTab={settingsTab}
         title={boardTitle}
         customerId={board.customerId}
         customerName={board.customerName}
@@ -1973,6 +1980,7 @@ export function WorkBoardPageClient({
           <WorkIssueDrawer
             board={{
               ...board,
+              members,
               components,
               issues,
               plannerProjectId,
@@ -2010,6 +2018,17 @@ export function WorkBoardPageClient({
                 issuesRef.current = next;
                 return next;
               });
+            }}
+            onDeleted={() => {
+              const deletedId = selected.id;
+              setIssues((current) => {
+                const next = current.filter((issue) => issue.id !== deletedId);
+                issuesRef.current = next;
+                return next;
+              });
+              setError(null);
+              closeIssue();
+              router.refresh();
             }}
           />
         ) : null}
