@@ -90,6 +90,7 @@ export function CustomerDetailClient({
   const [showInactiveProjects, setShowInactiveProjects] = useState(false);
   const [addConsultantModalOpen, setAddConsultantModalOpen] = useState(false);
   const [addRateModalOpen, setAddRateModalOpen] = useState(false);
+  const [ratesRefreshKey, setRatesRefreshKey] = useState(0);
   const [removingConsultantId, setRemovingConsultantId] = useState<string | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const colorEditWrapperRef = useRef<HTMLDivElement>(null);
@@ -662,6 +663,7 @@ export function CustomerDetailClient({
                   billingCurrency={initialCustomer.billingCurrency}
                   onError={setRatesError}
                   showDescription={false}
+                  refreshTrigger={ratesRefreshKey}
                 />
               </div>
             </Panel>
@@ -696,7 +698,10 @@ export function CustomerDetailClient({
       <AddCustomerRateModal
         isOpen={addRateModalOpen}
         onClose={() => setAddRateModalOpen(false)}
-        onSuccess={() => router.refresh()}
+        onSuccess={() => {
+          setRatesRefreshKey((k) => k + 1);
+          router.refresh();
+        }}
         customerId={initialCustomer.id}
         billingCurrency={initialCustomer.billingCurrency}
       />

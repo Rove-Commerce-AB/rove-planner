@@ -8,7 +8,12 @@ import {
   deleteWorkIssueFile,
   fetchWorkIssueNotifyMeta,
   fetchWorkIssueStatus,
+  countIssuesUsingComponent,
+  deleteBoardComponent,
+  findBoardComponentByName,
+  findOrCreateBoardComponent,
   findOrCreateBoardLabel,
+  renameBoardComponent,
   insertWorkIssue,
   deleteWorkIssueComment,
   deleteWorkIssueRelation,
@@ -25,10 +30,12 @@ import {
   reorderWorkIssuesInStatus,
   unlinkWorkIssueLabel,
   updateWorkIssueComment,
+  updateWorkIssueComponent,
   updateWorkIssueEstimate,
   updateWorkIssueField,
   updateWorkIssueOwner,
   updateWorkIssuePriority,
+  updateWorkIssueType,
   updateWorkIssueRequirementBody,
   updateWorkIssueRequirementDone,
   deleteWorkIssueRequirement,
@@ -46,10 +53,18 @@ import {
 } from "@/lib/workIssueRelations";
 import { USER_NOTIFICATION_KIND } from "@/lib/userNotificationKinds";
 import { insertUserNotification } from "@/lib/userNotifications";
-import { WORK_FILE_MAX_BYTES, type WorkIssuePriority, type WorkRequirementKind } from "@/lib/workTypes";
+import {
+  WORK_FILE_MAX_BYTES,
+  type WorkComponent,
+  type WorkIssuePriority,
+  type WorkIssueType,
+  type WorkRequirementKind,
+} from "@/lib/workTypes";
 import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import { fetchWorkBoardStatuses } from "@/lib/workBoardsQueries";
+import { setWorkIssueSprint } from "@/lib/workSprints";
+import { fetchWorkSprintById } from "@/lib/workSprintsQueries";
 
 export { WORK_FILE_MAX_BYTES };
 
@@ -71,19 +86,53 @@ async function logEvent(
 export async function createWorkIssue(input: {
   boardId: string;
   title: string;
-  status: WorkIssueStatus;
+  /** Defaults to the board's first status (by sort order). */
+  status?: WorkIssueStatus;
+  issueType?: WorkIssueType;
+  componentId?: string | null;
+  /** When set, issue is placed in that sprint (current/next only). */
+  sprintId?: string | null;
 }): Promise<string> {
   const { actor } = await requireBoardAccess(input.boardId);
   const title = input.title.trim();
   if (!title) throw new Error("Title is required");
-  await assertBoardStatus(input.boardId, input.status);
-  return insertWorkIssue({
+
+  let status = input.status;
+  if (status) {
+    await assertBoardStatus(input.boardId, status);
+  } else {
+    const statuses = await fetchWorkBoardStatuses(input.boardId);
+    status = statuses[0]?.id;
+    if (!status) throw new Error("Board has no statuses");
+  }
+
+  const sprintId = input.sprintId?.trim() || null;
+  if (sprintId) {
+    const sprint = await fetchWorkSprintById(sprintId);
+    if (!sprint || sprint.project_id !== input.boardId) {
+      throw new Error("Sprint not found");
+    }
+    if (sprint.status !== "current" && sprint.status !== "next") {
+      throw new Error("Can only add issues to the current or next sprint");
+    }
+  }
+
+  const issueType = input.issueType === "bug" ? "bug" : "issue";
+  const issueId = await insertWorkIssue({
     boardId: input.boardId,
     title,
-    status: input.status,
+    status,
     createdByAppUserId: actor.id,
     ownerAppUserId: actor.id,
+    issueType,
+    componentId: input.componentId ?? null,
   });
+
+  if (sprintId) {
+    await setWorkIssueSprint(input.boardId, issueId, sprintId);
+  }
+
+  return issueId;
 }
 
 export async function setWorkIssueTitle(
@@ -175,6 +224,103 @@ export async function setWorkIssuePriority(
     "priority",
     priority == null ? "cleared the priority" : `set priority to ${priority}`
   );
+}
+
+export async function setWorkIssueType(
+  boardId: string,
+  issueId: string,
+  issueType: WorkIssueType
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const next = issueType === "bug" ? "bug" : "issue";
+  const ok = await updateWorkIssueType(boardId, issueId, next);
+  if (!ok) throw new Error("Issue not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "type",
+    `changed the type to ${next === "bug" ? "Bug" : "Issue"}`
+  );
+}
+
+export async function setWorkIssueComponent(
+  boardId: string,
+  issueId: string,
+  componentId: string | null,
+  componentName: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await updateWorkIssueComponent(boardId, issueId, componentId);
+  if (!ok) throw new Error("Issue not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "component",
+    componentId
+      ? `changed the component to “${componentName}”`
+      : "cleared the component"
+  );
+}
+
+export async function assignOrCreateIssueComponent(
+  boardId: string,
+  issueId: string,
+  name: string
+): Promise<WorkComponent> {
+  const { actor } = await requireBoardAccess(boardId);
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Component name is required");
+  const component = await findOrCreateBoardComponent(boardId, trimmed);
+  const ok = await updateWorkIssueComponent(boardId, issueId, component.id);
+  if (!ok) throw new Error("Issue not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "component",
+    `changed the component to “${component.name}”`
+  );
+  return component;
+}
+
+export async function createBoardComponent(
+  boardId: string,
+  name: string
+): Promise<WorkComponent> {
+  await requireBoardAccess(boardId);
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Component name is required");
+  return findOrCreateBoardComponent(boardId, trimmed);
+}
+
+export async function renameBoardComponentName(
+  boardId: string,
+  componentId: string,
+  name: string
+): Promise<WorkComponent> {
+  await requireBoardAccess(boardId);
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Component name is required");
+  const clash = await findBoardComponentByName(boardId, trimmed);
+  if (clash && clash.id !== componentId) {
+    throw new Error("A component with that name already exists");
+  }
+  const row = await renameBoardComponent(boardId, componentId, trimmed);
+  if (!row) throw new Error("Component not found");
+  return row;
+}
+
+export async function removeBoardComponent(
+  boardId: string,
+  componentId: string
+): Promise<{ clearedIssueCount: number }> {
+  await requireBoardAccess(boardId);
+  const clearedIssueCount = await countIssuesUsingComponent(
+    boardId,
+    componentId
+  );
+  const ok = await deleteBoardComponent(boardId, componentId);
+  if (!ok) throw new Error("Component not found");
+  return { clearedIssueCount };
 }
 
 export async function addIssueRequirement(

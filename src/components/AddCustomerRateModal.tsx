@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { getRoles } from "@/lib/rolesClient";
 import { getCustomerRates, createCustomerRate } from "@/lib/customerRatesClient";
 import { Button, Dialog, Input, Select } from "@/components/ui";
+import { OptionSegments } from "@/components/ui/OptionSegments";
 import { hourlyRateLabel } from "@/lib/currency";
 import type { Role } from "@/lib/rolesQueries";
 
@@ -25,7 +26,9 @@ export function AddCustomerRateModal({
   const [roles, setRoles] = useState<Role[]>([]);
   const [usedRoleIds, setUsedRoleIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"role" | "custom">("role");
   const [selectedRoleId, setSelectedRoleId] = useState("");
+  const [customName, setCustomName] = useState("");
   const [rate, setRate] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -37,7 +40,7 @@ export function AddCustomerRateModal({
     Promise.all([getRoles(), getCustomerRates(customerId)])
       .then(([r, rates]) => {
         setRoles(r);
-        setUsedRoleIds(rates.map((x) => x.role_id));
+        setUsedRoleIds(rates.map((x) => x.role_id).filter((id): id is string => Boolean(id)));
       })
       .catch(() => {
         setRoles([]);
@@ -51,15 +54,29 @@ export function AddCustomerRateModal({
   const handleSubmit = async () => {
     setError(null);
     const rateNum = parseFloat(rate.replace(",", "."));
-    if (!selectedRoleId || isNaN(rateNum) || rateNum < 0) {
+    if (isNaN(rateNum) || rateNum < 0) {
+      setError("Enter a valid rate");
+      return;
+    }
+    if (mode === "role" && !selectedRoleId) {
       setError("Select a role and enter a valid rate");
+      return;
+    }
+    if (mode === "custom" && !customName.trim()) {
+      setError("Enter a task name and a valid rate");
       return;
     }
     setSubmitting(true);
     try {
-      await createCustomerRate(customerId, selectedRoleId, rateNum);
+      await createCustomerRate(customerId, {
+        roleId: mode === "role" ? selectedRoleId : null,
+        name: mode === "custom" ? customName : null,
+        ratePerHour: rateNum,
+      });
       setSelectedRoleId("");
+      setCustomName("");
       setRate("");
+      setMode("role");
       onSuccess();
       onClose();
     } catch (e) {
@@ -72,14 +89,19 @@ export function AddCustomerRateModal({
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setSelectedRoleId("");
+      setCustomName("");
       setRate("");
+      setMode("role");
       setError(null);
       onClose();
     }
   };
 
-  /* Only show dialog when data is ready so it doesn’t flash loading state (no jump). */
   const dialogOpen = isOpen && !loading;
+  const canSubmit =
+    !submitting &&
+    !loading &&
+    (mode === "custom" || availableRoles.length > 0);
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange} title="Add rate">
@@ -92,15 +114,38 @@ export function AddCustomerRateModal({
       >
         {loading ? null : (
           <>
-            <Select
-              id="add-customer-rate-role"
-              label="Role"
-              value={selectedRoleId}
-              onValueChange={setSelectedRoleId}
-              placeholder="Role"
-              variant="modal"
-              options={availableRoles.map((r) => ({ value: r.id, label: r.name }))}
-            />
+            <div>
+              <p className="mb-2 text-sm font-medium text-text-primary">Type</p>
+              <OptionSegments
+                name="add-customer-rate-type"
+                value={mode}
+                onChange={(v) => setMode(v as "role" | "custom")}
+                options={[
+                  { value: "role", label: "Global role" },
+                  { value: "custom", label: "Custom task" },
+                ]}
+              />
+            </div>
+            {mode === "role" ? (
+              <Select
+                id="add-customer-rate-role"
+                label="Role"
+                value={selectedRoleId}
+                onValueChange={setSelectedRoleId}
+                placeholder="Role"
+                variant="modal"
+                options={availableRoles.map((r) => ({ value: r.id, label: r.name }))}
+              />
+            ) : (
+              <Input
+                id="add-customer-rate-name"
+                label="Task name"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="e.g. Workshop"
+                modalStyle
+              />
+            )}
             <Input
               id="add-customer-rate-value"
               type="number"
@@ -115,19 +160,16 @@ export function AddCustomerRateModal({
             />
           </>
         )}
-        {availableRoles.length === 0 && !loading && (
+        {mode === "role" && availableRoles.length === 0 && !loading && (
           <p className="text-sm text-text-primary opacity-60">
-            All roles already have rates. Add more roles in Settings to define additional rates.
+            All global roles already have rates. Add a custom task, or add more roles in Settings.
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={submitting || loading || availableRoles.length === 0}
-          >
+          <Button type="submit" disabled={!canSubmit}>
             {submitting ? "Adding…" : "Add"}
           </Button>
         </div>

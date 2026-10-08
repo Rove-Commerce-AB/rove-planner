@@ -16,6 +16,7 @@ import {
   getTimeReportWeekRevision,
   getTimeReportWeekRevisions,
 } from "@/lib/timeReportEntries";
+import { getTimeReportSummary } from "@/lib/timeReportSummary";
 
 export {
   getActiveProjectsForCustomer,
@@ -33,3 +34,7 @@ export {
   getTimeReportWeekRevision,
   getTimeReportWeekRevisions,
 };
+
+export async function getTimeReportSummaryAction(year: number) {
+  return getTimeReportSummary(year);
+}

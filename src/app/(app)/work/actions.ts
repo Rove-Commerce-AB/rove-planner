@@ -7,6 +7,7 @@ import {
   createWorkBoard,
   createWorkBoardStatus,
   deleteWorkBoardStatus,
+  linkWorkProjectToPlannerProject,
   listLinkablePlannerProjects,
   listWorkAccessPeople,
   listWorkCustomerPeople,
@@ -18,7 +19,14 @@ import {
   setWorkProjectPreferredView,
 } from "@/lib/workBoards";
 import type { WorkBoardStatus } from "@/lib/workStatuses";
-import type { WorkAccessPerson, WorkIssuePriority, WorkPerson, WorkRequirementKind } from "@/lib/workTypes";
+import type {
+  WorkAccessPerson,
+  WorkComponent,
+  WorkIssuePriority,
+  WorkIssueType,
+  WorkPerson,
+  WorkRequirementKind,
+} from "@/lib/workTypes";
 import {
   addIssueAssignee,
   addIssueComment,
@@ -26,8 +34,12 @@ import {
   addIssueRelation,
   addIssueRequirement,
   addIssueReference,
+  assignOrCreateIssueComponent,
+  createBoardComponent,
   deleteIssueComment,
   createWorkIssue,
+  removeBoardComponent,
+  renameBoardComponentName,
   removeIssueAssignee,
   removeIssueFile,
   removeIssueLabel,
@@ -37,9 +49,11 @@ import {
   reorderWorkIssues,
   setIssueRequirementBody,
   setIssueRequirementDone,
+  setWorkIssueComponent,
   setWorkIssueEstimate,
   setWorkIssueOwner,
   setWorkIssuePriority,
+  setWorkIssueType,
   updateIssueComment,
   setWorkIssueStatus,
   setWorkIssueTextField,
@@ -57,6 +71,16 @@ import type { WorkSprint } from "@/lib/workTypes";
 import { ROUTES, workCustomerHref } from "@/lib/routes";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import type { WorkRelationRole } from "@/lib/workIssueRelations";
+import {
+  deleteTimeOnWorkIssue,
+  getWorkIssueTimeLogState,
+  logTimeOnWorkIssue,
+  updateTimeOnWorkIssue,
+} from "@/lib/workIssueTimeLog";
+import type {
+  WorkIssueTimeLogEntry,
+  WorkIssueTimeLogState,
+} from "@/lib/workIssueTimeLogTypes";
 
 type Ok = { ok: true };
 type OkBoard = { ok: true; boardId: string };
@@ -124,6 +148,25 @@ export async function listLinkablePlannerProjectsAction(
     return await listLinkablePlannerProjects(customerId);
   } catch {
     return [];
+  }
+}
+
+export async function linkWorkProjectToPlannerProjectAction(
+  boardId: string,
+  plannerProjectId: string
+): Promise<
+  | (Ok & { plannerProjectId: string; plannerProjectName: string })
+  | Err
+> {
+  try {
+    const linked = await linkWorkProjectToPlannerProject(
+      boardId,
+      plannerProjectId
+    );
+    revalidateBoard(boardId);
+    return { ok: true, ...linked };
+  } catch (error) {
+    return fail(error);
   }
 }
 
@@ -262,7 +305,10 @@ export async function deleteWorkBoardStatusAction(
 export async function createWorkIssueAction(input: {
   boardId: string;
   title: string;
-  status: WorkIssueStatus;
+  status?: WorkIssueStatus;
+  issueType?: WorkIssueType;
+  componentId?: string | null;
+  sprintId?: string | null;
 }): Promise<OkIssue | Err> {
   try {
     const issueId = await createWorkIssue(input);
@@ -340,6 +386,97 @@ export async function updateWorkIssuePriorityAction(
     await setWorkIssuePriority(boardId, issueId, priority);
     revalidateBoard(boardId, issueId);
     return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueTypeAction(
+  boardId: string,
+  issueId: string,
+  issueType: WorkIssueType
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueType(boardId, issueId, issueType);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueComponentAction(
+  boardId: string,
+  issueId: string,
+  componentId: string | null,
+  componentName: string
+): Promise<Ok | Err> {
+  try {
+    await setWorkIssueComponent(boardId, issueId, componentId, componentName);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function assignWorkIssueComponentAction(
+  boardId: string,
+  issueId: string,
+  name: string
+): Promise<(Ok & { component: WorkComponent }) | Err> {
+  try {
+    const component = await assignOrCreateIssueComponent(
+      boardId,
+      issueId,
+      name
+    );
+    revalidateBoard(boardId, issueId);
+    return { ok: true, component };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createWorkComponentAction(
+  boardId: string,
+  name: string
+): Promise<(Ok & { component: WorkComponent }) | Err> {
+  try {
+    const component = await createBoardComponent(boardId, name);
+    revalidateBoard(boardId);
+    return { ok: true, component };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function renameWorkComponentAction(
+  boardId: string,
+  componentId: string,
+  name: string
+): Promise<(Ok & { component: WorkComponent }) | Err> {
+  try {
+    const component = await renameBoardComponentName(
+      boardId,
+      componentId,
+      name
+    );
+    revalidateBoard(boardId);
+    return { ok: true, component };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkComponentAction(
+  boardId: string,
+  componentId: string
+): Promise<(Ok & { clearedIssueCount: number }) | Err> {
+  try {
+    const result = await removeBoardComponent(boardId, componentId);
+    revalidateBoard(boardId);
+    return { ok: true, clearedIssueCount: result.clearedIssueCount };
   } catch (error) {
     return fail(error);
   }
@@ -696,6 +833,115 @@ export async function updateWorkIssueScheduleAction(
     await setWorkIssueSchedule(boardId, issueId, startDate, dueDate);
     revalidateBoard(boardId, issueId);
     return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function getWorkIssueTimeLogAction(
+  boardId: string,
+  issueId: string
+): Promise<WorkIssueTimeLogState> {
+  try {
+    return await getWorkIssueTimeLogState(boardId, issueId);
+  } catch {
+    return {
+      canLog: false,
+      cannotLogReason: "Failed to load time entries",
+      currentConsultantId: null,
+      roleOptions: [],
+      defaultRoleId: null,
+      entries: [],
+      loggedHours: 0,
+    };
+  }
+}
+
+export async function logWorkIssueTimeAction(
+  boardId: string,
+  issueId: string,
+  input: { hours: string; date: string; note?: string; roleId: string }
+): Promise<
+  | (Ok & { loggedHours: number; entries: WorkIssueTimeLogEntry[] })
+  | Err
+> {
+  try {
+    const hours = Number(String(input.hours).trim().replace(",", "."));
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return { ok: false, error: "Enter hours greater than 0." };
+    }
+    if (!input.roleId.trim()) {
+      return { ok: false, error: "Role is required." };
+    }
+    const result = await logTimeOnWorkIssue(boardId, issueId, {
+      hours,
+      date: input.date,
+      note: input.note,
+      roleId: input.roleId.trim(),
+    });
+    if (!result.ok) return result;
+    revalidateBoard(boardId, issueId);
+    return {
+      ok: true,
+      loggedHours: result.loggedHours,
+      entries: result.entries,
+    };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssueTimeEntryAction(
+  boardId: string,
+  issueId: string,
+  entryId: string,
+  input: { hours: string; date: string; note?: string }
+): Promise<
+  | (Ok & { loggedHours: number; entries: WorkIssueTimeLogEntry[] })
+  | Err
+> {
+  try {
+    const hours = Number(String(input.hours).trim().replace(",", "."));
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return { ok: false, error: "Enter hours greater than 0." };
+    }
+    if (!input.date.trim()) {
+      return { ok: false, error: "Pick a date." };
+    }
+    const result = await updateTimeOnWorkIssue(boardId, issueId, entryId, {
+      hours,
+      date: input.date.trim(),
+      note: input.note,
+    });
+    if (!result.ok) return result;
+    revalidateBoard(boardId, issueId);
+    return {
+      ok: true,
+      loggedHours: result.loggedHours,
+      entries: result.entries,
+    };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssueTimeEntryAction(
+  boardId: string,
+  issueId: string,
+  entryId: string
+): Promise<
+  | (Ok & { loggedHours: number; entries: WorkIssueTimeLogEntry[] })
+  | Err
+> {
+  try {
+    const result = await deleteTimeOnWorkIssue(boardId, issueId, entryId);
+    if (!result.ok) return result;
+    revalidateBoard(boardId, issueId);
+    return {
+      ok: true,
+      loggedHours: result.loggedHours,
+      entries: result.entries,
+    };
   } catch (error) {
     return fail(error);
   }

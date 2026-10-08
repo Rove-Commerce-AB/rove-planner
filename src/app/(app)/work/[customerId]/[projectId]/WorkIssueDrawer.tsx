@@ -11,9 +11,11 @@ import {
   type ReactNode,
   type TextareaHTMLAttributes,
 } from "react";
-import { Plus, Send, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Check, Circle, CircleDot, Clock, Send, X } from "lucide-react";
 import {
   Button,
+  ConfirmModal,
   Dialog,
   InitialsAvatar,
   Input,
@@ -23,6 +25,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui";
+import { drawerSelectTriggerClass } from "@/components/ui/inlineEditStyles";
 import { formatWorkTimestamp } from "@/lib/workTimeAgo";
 import {
   joinWorkInlineImages,
@@ -37,10 +40,7 @@ import {
   type WorkPerson,
   type WorkRequirement,
 } from "@/lib/workTypes";
-import {
-  workStatusDotClass,
-  type WorkIssueStatus,
-} from "@/lib/workStatuses";
+import type { WorkIssueStatus } from "@/lib/workStatuses";
 import {
   addWorkIssueAssigneeAction,
   addWorkIssueCommentAction,
@@ -48,6 +48,7 @@ import {
   addWorkIssueRelationAction,
   addWorkIssueReferenceAction,
   addWorkIssueRequirementAction,
+  assignWorkIssueComponentAction,
   deleteWorkIssueCommentAction,
   deleteWorkIssueFileAction,
   deleteWorkIssueReferenceAction,
@@ -56,22 +57,33 @@ import {
   removeWorkIssueLabelAction,
   removeWorkIssueRelationAction,
   updateWorkIssueCommentAction,
+  updateWorkIssueComponentAction,
   updateWorkIssueEstimateAction,
   updateWorkIssueFieldAction,
   updateWorkIssueOwnerAction,
   updateWorkIssuePriorityAction,
   updateWorkIssueRequirementBodyAction,
   updateWorkIssueRequirementDoneAction,
+  deleteWorkIssueTimeEntryAction,
+  getWorkIssueTimeLogAction,
+  logWorkIssueTimeAction,
+  updateWorkIssueTimeEntryAction,
   updateWorkIssueScheduleAction,
   updateWorkIssueTitleAction,
+  updateWorkIssueTypeAction,
   uploadWorkIssueFileAction,
 } from "../../actions";
+import { WorkCardTypeBadge } from "./WorkBoardViewControls";
 import { WorkCommentComposer, WorkInlineImageThumbs } from "./WorkCommentComposer";
 import { WorkIssueComment } from "./WorkIssueComment";
 import { WorkIssueRelations } from "./WorkIssueRelations";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { encodeMentions } from "@/lib/workMentions";
 import { formatWorkHours, parseWorkEstimateHours } from "@/lib/workTime";
+import type {
+  WorkIssueTimeLogEntry,
+  WorkIssueTimeLogRoleOption,
+} from "@/lib/workIssueTimeLogTypes";
 
 const textFieldClass =
   "w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-1 text-sm leading-relaxed text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50";
@@ -79,8 +91,17 @@ const textFieldClass =
 const commentClass =
   "w-full rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50";
 
+const commentCollapsedClass =
+  "box-border !h-9 !min-h-9 !max-h-9 w-full rounded-lg border border-form bg-bg-default px-3 py-0 text-sm leading-[34px] text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50 resize-none";
+
 const metaSelectTriggerClass =
-  "h-8 !w-auto max-w-full border-0 bg-transparent px-0 py-0 text-sm font-medium text-text-primary hover:bg-transparent focus:border-transparent focus:ring-0";
+  "h-7 !w-auto max-w-full border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-text-primary hover:bg-transparent focus:border-transparent focus:ring-0";
+
+const propertyChipClass =
+  "inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-bg-muted";
+
+const addPropertyClass =
+  "inline-flex items-center rounded-md px-1.5 py-0.5 text-[13px] text-text-tertiary hover:bg-bg-muted hover:text-text-secondary disabled:opacity-50";
 
 function AutosizeTextarea({
   value,
@@ -165,51 +186,57 @@ function thumbsFromFileIds(fileIds: string[]): InlinePasteThumb[] {
   }));
 }
 
-function WorkMetaRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-4 py-1.5">
-      <span className="text-[13px] text-text-secondary">{label}</span>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
+function localTodayYmd(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-function WorkMetaSelect({
-  label,
+function formatTimeLogDate(ymd: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) return ymd;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function WorkPropertySelect({
   value,
   onValueChange,
   options,
   disabled,
   prefix,
+  placeholder,
+  title,
 }: {
-  label: string;
   value: string;
   onValueChange: (value: string) => void;
   options: { value: string; label: string }[];
   disabled?: boolean;
   prefix?: ReactNode;
+  placeholder?: string;
+  title?: string;
 }) {
   return (
-    <WorkMetaRow label={label}>
-      <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-form bg-bg-default py-0 pl-2.5 pr-1.5 hover:bg-interactive-secondary">
-        {prefix}
-        <Select
-          value={value}
-          onValueChange={onValueChange}
-          options={options}
-          disabled={disabled}
-          variant="inlineEdit"
-          className="w-fit min-w-0"
-          triggerClassName={metaSelectTriggerClass}
-        />
-      </div>
-    </WorkMetaRow>
+    <div className={propertyChipClass}>
+      {prefix}
+      <Select
+        value={value}
+        onValueChange={onValueChange}
+        options={options}
+        disabled={disabled}
+        placeholder={placeholder}
+        triggerTitle={title}
+        variant="inlineEdit"
+        className="w-fit min-w-0"
+        triggerClassName={metaSelectTriggerClass}
+      />
+    </div>
   );
 }
 
@@ -395,6 +422,8 @@ export function WorkIssueDrawer({
   const [currentState, setCurrentState] = useState(issue.currentState);
   const [nextStep, setNextStep] = useState(issue.nextStep);
   const [labelDraft, setLabelDraft] = useState("");
+  const [componentDraft, setComponentDraft] = useState("");
+  const [addingComponent, setAddingComponent] = useState(false);
   const [requirementDraft, setRequirementDraft] = useState("");
   const [dodDraft, setDodDraft] = useState("");
   const [outOfScope, setOutOfScope] = useState(issue.outOfScope);
@@ -402,7 +431,6 @@ export function WorkIssueDrawer({
   const [referenceLabelDraft, setReferenceLabelDraft] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const [commentThumbs, setCommentThumbs] = useState<InlinePasteThumb[]>([]);
-  const [addingAssignee, setAddingAssignee] = useState(false);
   const [addingLabel, setAddingLabel] = useState(false);
   const [editingRequirementId, setEditingRequirementId] = useState<string | null>(
     null
@@ -413,6 +441,37 @@ export function WorkIssueDrawer({
   );
   const [startDateDraft, setStartDateDraft] = useState(issue.startDate ?? "");
   const [dueDateDraft, setDueDateDraft] = useState(issue.dueDate ?? "");
+  const [timeEntries, setTimeEntries] = useState<WorkIssueTimeLogEntry[]>([]);
+  const [timeCanLog, setTimeCanLog] = useState(false);
+  const [timeCannotLogReason, setTimeCannotLogReason] = useState<string | null>(
+    null
+  );
+  const [currentConsultantId, setCurrentConsultantId] = useState<string | null>(
+    null
+  );
+  const [loggingTime, setLoggingTime] = useState(false);
+  const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
+  const [deletingTimeId, setDeletingTimeId] = useState<string | null>(null);
+  const [logHoursDraft, setLogHoursDraft] = useState("");
+  const [logDateDraft, setLogDateDraft] = useState(localTodayYmd);
+  const [logNoteDraft, setLogNoteDraft] = useState("");
+  const [logRoleDraft, setLogRoleDraft] = useState("");
+  const [timeRoleOptions, setTimeRoleOptions] = useState<
+    WorkIssueTimeLogRoleOption[]
+  >([]);
+  const [timeDefaultRoleId, setTimeDefaultRoleId] = useState<string | null>(
+    null
+  );
+  const [showDates, setShowDates] = useState(
+    () => Boolean(issue.startDate || issue.dueDate)
+  );
+  const [showCurrentState, setShowCurrentState] = useState(
+    () => Boolean(issue.currentState.trim())
+  );
+  const [showNextStep, setShowNextStep] = useState(() =>
+    Boolean(issue.nextStep.trim())
+  );
+  const [commentFocused, setCommentFocused] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadBarVisible, setUploadBarVisible] = useState(false);
   const uploadingCountRef = useRef(0);
@@ -480,6 +539,9 @@ export function WorkIssueDrawer({
     );
     setStartDateDraft(issue.startDate ?? "");
     setDueDateDraft(issue.dueDate ?? "");
+    if (issue.currentState.trim()) setShowCurrentState(true);
+    if (issue.nextStep.trim()) setShowNextStep(true);
+    if (issue.startDate || issue.dueDate) setShowDates(true);
   }, [
     issue.id,
     issue.title,
@@ -506,7 +568,42 @@ export function WorkIssueDrawer({
       return [];
     });
     setCommentDraft("");
+    setCommentFocused(false);
+    setLoggingTime(false);
+    setEditingTimeId(null);
+    setDeletingTimeId(null);
+    setLogHoursDraft("");
+    setLogDateDraft(localTodayYmd());
+    setLogNoteDraft("");
+    setLogRoleDraft("");
+    setShowDates(Boolean(issue.startDate || issue.dueDate));
+    setShowCurrentState(Boolean(issue.currentState.trim()));
+    setShowNextStep(Boolean(issue.nextStep.trim()));
   }, [issue.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getWorkIssueTimeLogAction(board.id, issue.id).then((state) => {
+      if (cancelled) return;
+      setTimeEntries(state.entries);
+      setTimeCanLog(state.canLog);
+      setTimeCannotLogReason(state.cannotLogReason);
+      setCurrentConsultantId(state.currentConsultantId);
+      setTimeRoleOptions(state.roleOptions ?? []);
+      setTimeDefaultRoleId(state.defaultRoleId ?? null);
+      setLogRoleDraft((prev) => {
+        const nextDefault = state.defaultRoleId ?? "";
+        if (prev && (state.roleOptions ?? []).some((r) => r.id === prev)) {
+          return prev;
+        }
+        return nextDefault;
+      });
+      onIssuePatch({ loggedHours: state.loggedHours });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [board.id, issue.id, board.plannerProjectId]);
 
   useEffect(() => {
     return () => {
@@ -523,14 +620,6 @@ export function WorkIssueDrawer({
     }
     return list;
   }, [board.people, issue.owner]);
-
-  const addablePeople = useMemo(
-    () =>
-      people.filter(
-        (person) => !issue.assignees.some((assignee) => assignee.id === person.id)
-      ),
-    [people, issue.assignees]
-  );
 
   function run(
     action: () => Promise<{ ok: true } | { ok: false; error: string }>,
@@ -637,6 +726,87 @@ export function WorkIssueDrawer({
     onIssuePatch({ startDate: start, dueDate: due });
     run(
       () => updateWorkIssueScheduleAction(board.id, issue.id, start, due),
+      { refresh: false }
+    );
+  }
+
+  function resetLogForm() {
+    setLoggingTime(false);
+    setEditingTimeId(null);
+    setLogHoursDraft("");
+    setLogNoteDraft("");
+    setLogDateDraft(localTodayYmd());
+    setLogRoleDraft(timeDefaultRoleId ?? "");
+  }
+
+  function beginEditTime(entry: WorkIssueTimeLogEntry) {
+    setLoggingTime(false);
+    setEditingTimeId(entry.id);
+    setLogHoursDraft(String(entry.hours));
+    setLogDateDraft(entry.date);
+    setLogNoteDraft(entry.note ?? "");
+  }
+
+  function saveLogTime() {
+    const hoursRaw = logHoursDraft.trim().replace(",", ".");
+    const hours = Number(hoursRaw);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      onError("Enter hours greater than 0.");
+      return;
+    }
+    if (!logDateDraft.trim()) {
+      onError("Pick a date.");
+      return;
+    }
+    const editingId = editingTimeId;
+    if (!editingId && !logRoleDraft.trim()) {
+      onError("Role is required.");
+      return;
+    }
+    run(
+      async () => {
+        const result = editingId
+          ? await updateWorkIssueTimeEntryAction(
+              board.id,
+              issue.id,
+              editingId,
+              {
+                hours: hoursRaw,
+                date: logDateDraft.trim(),
+                note: logNoteDraft.trim() || undefined,
+              }
+            )
+          : await logWorkIssueTimeAction(board.id, issue.id, {
+              hours: hoursRaw,
+              date: logDateDraft.trim(),
+              note: logNoteDraft.trim() || undefined,
+              roleId: logRoleDraft.trim(),
+            });
+        if (!result.ok) return result;
+        setTimeEntries(result.entries);
+        onIssuePatch({ loggedHours: result.loggedHours });
+        resetLogForm();
+        return result;
+      },
+      { refresh: false }
+    );
+  }
+
+  function deleteLogTime(entryId: string) {
+    run(
+      async () => {
+        const result = await deleteWorkIssueTimeEntryAction(
+          board.id,
+          issue.id,
+          entryId
+        );
+        if (!result.ok) return result;
+        setTimeEntries(result.entries);
+        onIssuePatch({ loggedHours: result.loggedHours });
+        setDeletingTimeId(null);
+        if (editingTimeId === entryId) resetLogForm();
+        return result;
+      },
       { refresh: false }
     );
   }
@@ -764,20 +934,50 @@ export function WorkIssueDrawer({
     [issue.files]
   );
 
+  const deletingTimeEntry =
+    deletingTimeId == null
+      ? null
+      : timeEntries.find((entry) => entry.id === deletingTimeId) ?? null;
+
   return (
+    <>
     <div
       className="flex min-h-0 flex-1 flex-col"
       onPaste={handlePaste}
     >
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-        <Input
-          value={title}
-          disabled={pending}
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={saveTitle}
-          aria-label="Issue title"
-          className="border-0 bg-transparent px-0 text-heading-l focus:ring-0"
-        />
+        <div className="relative z-10 flex items-start gap-2 overflow-visible">
+          <span className="mt-1.5 shrink-0">
+            <WorkCardTypeBadge
+              issueType={issue.issueType}
+              disabled={pending}
+              portal={false}
+              onChange={(issueType) => {
+                onIssuePatch({ issueType });
+                run(
+                  () =>
+                    updateWorkIssueTypeAction(board.id, issue.id, issueType),
+                  { refresh: false }
+                );
+              }}
+            />
+          </span>
+          <AutosizeTextarea
+            value={title}
+            minRows={1}
+            disabled={pending}
+            onChange={(event) => setTitle(event.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+            }}
+            aria-label="Issue title"
+            className="min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-heading-l leading-snug text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-0 disabled:opacity-50"
+          />
+        </div>
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="!gap-0">
@@ -790,129 +990,132 @@ export function WorkIssueDrawer({
                 ? ` ${issue.requirements.filter((row) => row.isDone).length}/${issue.requirements.length}`
                 : ""}
             </TabsTrigger>
+            <TabsTrigger value="time" className="px-3 !px-3">
+              Time
+            </TabsTrigger>
             <TabsTrigger value="files" className="px-3 !px-3">
               Files {issue.files.length > 0 ? issue.files.length : ""}
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="details" className="mt-5">
-            <WorkMetaSelect
-              label="Status"
-              value={issue.status}
-              disabled={pending}
-              prefix={
-                <span
-                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${workStatusDotClass(
-                    board.statuses.findIndex((row) => row.id === issue.status)
-                  )}`}
-                  aria-hidden
+          <TabsContent value="details" className="mt-5 space-y-6">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1">
+                <WorkPropertySelect
+                  title="Status"
+                  value={issue.status}
+                  disabled={pending}
+                  onValueChange={(value) => onStatus(value as WorkIssueStatus)}
+                  options={board.statuses.map((status) => ({
+                    value: status.id,
+                    label: status.name,
+                  }))}
                 />
-              }
-              onValueChange={(value) => onStatus(value as WorkIssueStatus)}
-              options={board.statuses.map((status) => ({
-                value: status.id,
-                label: status.name,
-              }))}
-            />
-            <WorkMetaSelect
-              label="Priority"
-              value={issue.priority ?? ""}
-              disabled={pending}
-              onValueChange={(value) => {
-                const priority =
-                  value === "" ? null : (value as WorkIssuePriority);
-                onIssuePatch({ priority });
-                run(() =>
-                  updateWorkIssuePriorityAction(board.id, issue.id, priority)
-                );
-              }}
-              options={[
-                { value: "", label: "None" },
-                { value: "high", label: "High" },
-                { value: "medium", label: "Medium" },
-                { value: "low", label: "Low" },
-              ]}
-            />
-            <WorkMetaSelect
-              label="Owner"
-              value={issue.owner?.id ?? ""}
-              disabled={pending}
-              prefix={
-                issue.owner ? (
-                  <InitialsAvatar
-                    name={issue.owner.name}
-                    initials={issue.owner.initials}
-                    size="xs"
-                    className="!h-5 !w-5 text-[9px]"
-                  />
-                ) : undefined
-              }
-              onValueChange={(value) => {
-                const person = people.find((row) => row.id === value) ?? null;
-                onIssuePatch({ owner: person });
-                run(() =>
-                  updateWorkIssueOwnerAction(
-                    board.id,
-                    issue.id,
-                    value || null,
-                    person?.name ?? "Unassigned"
-                  )
-                );
-              }}
-              options={[
-                { value: "", label: "Unassigned" },
-                ...people.map((person) => ({
-                  value: person.id,
-                  label: person.name,
-                })),
-              ]}
-            />
-            <WorkMetaRow label="Assignees">
-              <div className="flex min-h-8 items-center gap-1.5">
-                <span className="flex items-center -space-x-1.5">
-                  {issue.assignees.map((person) => (
-                    <button
-                      key={person.id}
-                      type="button"
-                      disabled={pending}
-                      onClick={() => {
-                        onIssuePatch({
-                          assignees: issue.assignees.filter(
-                            (row) => row.id !== person.id
-                          ),
-                        });
-                        run(
-                          () =>
-                            removeWorkIssueAssigneeAction(
-                              board.id,
-                              issue.id,
-                              person.id,
-                              person.name
-                            ),
-                          { refresh: false }
+                <WorkPropertySelect
+                  title="Priority"
+                  value={issue.priority ?? ""}
+                  disabled={pending}
+                  onValueChange={(value) => {
+                    const priority =
+                      value === "" ? null : (value as WorkIssuePriority);
+                    onIssuePatch({ priority });
+                    run(() =>
+                      updateWorkIssuePriorityAction(board.id, issue.id, priority)
+                    );
+                  }}
+                  options={[
+                    { value: "", label: "Priority" },
+                    { value: "high", label: "High" },
+                    { value: "medium", label: "Medium" },
+                    { value: "low", label: "Low" },
+                  ]}
+                />
+                {addingComponent ? (
+                  <form
+                    className="inline-flex min-w-[8rem] items-center"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const name = componentDraft.trim();
+                      if (!name) return;
+                      setComponentDraft("");
+                      setAddingComponent(false);
+                      run(async () => {
+                        const result = await assignWorkIssueComponentAction(
+                          board.id,
+                          issue.id,
+                          name
                         );
+                        if (result.ok) {
+                          onIssuePatch({ component: result.component });
+                        }
+                        return result;
+                      });
+                    }}
+                  >
+                    <Input
+                      value={componentDraft}
+                      onChange={(event) => setComponentDraft(event.target.value)}
+                      placeholder="Component"
+                      className="h-7 min-w-0 flex-1 py-0 text-[13px]"
+                      disabled={pending}
+                      autoFocus
+                      onBlur={() => {
+                        if (!componentDraft.trim()) setAddingComponent(false);
                       }}
-                      title={`Remove ${person.name}`}
-                      className="rounded-full"
-                    >
-                      <InitialsAvatar
-                        name={person.name}
-                        initials={person.initials}
-                        size="xs"
-                        className="ring-2 ring-bg-default"
-                      />
-                    </button>
-                  ))}
-                </span>
-                {addingAssignee && addablePeople.length > 0 ? (
-                  <Select
-                    value=""
+                    />
+                  </form>
+                ) : (
+                  <WorkPropertySelect
+                    title="Component"
+                    value={issue.component?.id ?? ""}
                     disabled={pending}
-                    defaultOpen
-                    placeholder="Add"
                     onValueChange={(value) => {
-                      const person = people.find((row) => row.id === value);
-                      setAddingAssignee(false);
-                      if (!person) return;
+                      if (value === "__create__") {
+                        setAddingComponent(true);
+                        return;
+                      }
+                      const component =
+                        board.components.find((row) => row.id === value) ?? null;
+                      onIssuePatch({ component });
+                      run(() =>
+                        updateWorkIssueComponentAction(
+                          board.id,
+                          issue.id,
+                          value || null,
+                          component?.name ?? ""
+                        )
+                      );
+                    }}
+                    options={[
+                      { value: "", label: "Component" },
+                      ...board.components.map((component) => ({
+                        value: component.id,
+                        label: component.name,
+                      })),
+                      { value: "__create__", label: "Create component…" },
+                    ]}
+                  />
+                )}
+                <div className="ml-auto flex shrink-0 items-center pl-2">
+                  <WorkCardPeople
+                    owner={issue.owner}
+                    assignees={issue.assignees}
+                    people={people}
+                    disabled={pending}
+                    portal={false}
+                    onSetOwner={(person) => {
+                      onIssuePatch({ owner: person });
+                      run(
+                        () =>
+                          updateWorkIssueOwnerAction(
+                            board.id,
+                            issue.id,
+                            person?.id ?? null,
+                            person?.name ?? "Unassigned"
+                          ),
+                        { refresh: false }
+                      );
+                    }}
+                    onAddAssignee={(person) => {
                       onIssuePatch({ assignees: [...issue.assignees, person] });
                       run(
                         () =>
@@ -925,88 +1128,91 @@ export function WorkIssueDrawer({
                         { refresh: false }
                       );
                     }}
-                    onBlur={() => setAddingAssignee(false)}
-                    options={addablePeople.map((person) => ({
-                      value: person.id,
-                      label: person.name,
-                    }))}
-                    variant="inlineEdit"
-                    className="min-w-0"
-                    triggerClassName={metaSelectTriggerClass}
+                    onRemoveAssignee={(person) => {
+                      onIssuePatch({
+                        assignees: issue.assignees.filter(
+                          (row) => row.id !== person.id
+                        ),
+                      });
+                      run(
+                        () =>
+                          removeWorkIssueAssigneeAction(
+                            board.id,
+                            issue.id,
+                            person.id,
+                            person.name
+                          ),
+                        { refresh: false }
+                      );
+                    }}
                   />
-                ) : addablePeople.length > 0 ? (
+                </div>
+              </div>
+              <div>
+                <label
+                  className={`${propertyChipClass} cursor-text gap-1`}
+                  title="Estimate in hours"
+                >
+                  <Clock
+                    className="h-3 w-3 shrink-0 text-text-tertiary"
+                    aria-hidden
+                  />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={estimateDraft}
+                    disabled={pending}
+                    aria-label="Estimate in hours"
+                    placeholder="Est"
+                    onChange={(event) => setEstimateDraft(event.target.value)}
+                    onBlur={saveEstimate}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    className="w-6 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+                  />
+                  <span className="text-[13px] text-text-tertiary">h</span>
+                </label>
+              </div>
+              <div>
+                {showDates ? (
+                  <div className={`${propertyChipClass} gap-1.5`}>
+                    <input
+                      type="date"
+                      value={startDateDraft}
+                      disabled={pending}
+                      aria-label="Start date"
+                      onChange={(event) => setStartDateDraft(event.target.value)}
+                      onBlur={saveSchedule}
+                      className="h-7 border-0 bg-transparent px-0 text-[13px] text-text-primary focus:outline-none disabled:opacity-50"
+                    />
+                    <span className="text-text-tertiary">→</span>
+                    <input
+                      type="date"
+                      value={dueDateDraft}
+                      disabled={pending}
+                      aria-label="Due date"
+                      onChange={(event) => setDueDateDraft(event.target.value)}
+                      onBlur={saveSchedule}
+                      className="h-7 border-0 bg-transparent px-0 text-[13px] text-text-primary focus:outline-none disabled:opacity-50"
+                    />
+                  </div>
+                ) : (
                   <button
                     type="button"
                     disabled={pending}
-                    onClick={() => setAddingAssignee(true)}
-                    aria-label="Add assignee"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border-subtle text-text-tertiary hover:bg-bg-muted hover:text-text-primary"
+                    className={addPropertyClass}
+                    onClick={() => setShowDates(true)}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    + Dates
                   </button>
-                ) : null}
+                )}
               </div>
-            </WorkMetaRow>
-            <WorkMetaRow label="Reporter">
-              <p className="text-sm text-text-primary">
-                {issue.reporter?.name ?? "—"}
-              </p>
-            </WorkMetaRow>
-            <WorkMetaRow label="Estimate">
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={estimateDraft}
-                  disabled={pending}
-                  aria-label="Estimate in hours"
-                  placeholder="—"
-                  onChange={(event) => setEstimateDraft(event.target.value)}
-                  onBlur={saveEstimate}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.currentTarget.blur();
-                    }
-                  }}
-                  className="h-8 w-14 border-0 bg-transparent px-0 text-sm font-medium tabular-nums text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
-                />
-                <span className="text-sm text-text-tertiary">h</span>
-              </div>
-            </WorkMetaRow>
-            <WorkMetaRow label="Start">
-              <input
-                type="date"
-                value={startDateDraft}
-                disabled={pending}
-                onChange={(event) => setStartDateDraft(event.target.value)}
-                onBlur={saveSchedule}
-                className="h-8 border-0 bg-transparent px-0 text-sm font-medium text-text-primary focus:outline-none disabled:opacity-50"
-              />
-            </WorkMetaRow>
-            <WorkMetaRow label="Due">
-              <input
-                type="date"
-                value={dueDateDraft}
-                disabled={pending}
-                onChange={(event) => setDueDateDraft(event.target.value)}
-                onBlur={saveSchedule}
-                className="h-8 border-0 bg-transparent px-0 text-sm font-medium text-text-primary focus:outline-none disabled:opacity-50"
-              />
-            </WorkMetaRow>
-            <WorkMetaRow label="Logged">
-              <p className="text-sm tabular-nums text-text-primary">
-                {formatWorkHours(issue.loggedHours)}
-              </p>
-            </WorkMetaRow>
-            <div className="py-1.5">
-              <WorkTimeGraph
-                size="drawer"
-                estimateHours={issue.estimateHours}
-                loggedHours={issue.loggedHours}
-              />
             </div>
 
-            <div className="space-y-5 pt-6">
+            <div className="space-y-4">
               <label className="block" data-paste-zone="description">
                 <span className="mb-0.5 block text-[13px] text-text-secondary">
                   Description
@@ -1038,126 +1244,163 @@ export function WorkIssueDrawer({
                   }}
                 />
               </label>
-              <label className="block">
-                <span className="mb-0.5 block text-[13px] text-text-secondary">
-                  Current state
-                </span>
-                <AutosizeTextarea
-                  className={textFieldClass}
-                  value={currentState}
-                  disabled={pending}
-                  placeholder="Add current state…"
-                  onChange={(event) => setCurrentState(event.target.value)}
-                  onBlur={() =>
-                    saveField("current_state", currentState, issue.currentState)
-                  }
-                />
-              </label>
-              <label className="block">
-                <span className="mb-0.5 block text-[13px] text-text-secondary">
-                  Next step
-                </span>
-                <AutosizeTextarea
-                  className={textFieldClass}
-                  value={nextStep}
-                  disabled={pending}
-                  placeholder="Add next step…"
-                  onChange={(event) => setNextStep(event.target.value)}
-                  onBlur={() => saveField("next_step", nextStep, issue.nextStep)}
-                />
-              </label>
-              <div>
-                <p className="mb-1.5 text-[13px] text-text-secondary">Labels</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {issue.labels.map((label) => (
-                    <button
-                      key={label.id}
-                      type="button"
+
+              {showCurrentState ? (
+                <label className="block">
+                  <span className="mb-0.5 block text-[13px] text-text-secondary">
+                    Current state
+                  </span>
+                  <AutosizeTextarea
+                    className={textFieldClass}
+                    value={currentState}
+                    disabled={pending}
+                    placeholder="Add current state…"
+                    autoFocus={!issue.currentState.trim()}
+                    onChange={(event) => setCurrentState(event.target.value)}
+                    onBlur={() => {
+                      if (!currentState.trim()) setShowCurrentState(false);
+                      saveField(
+                        "current_state",
+                        currentState,
+                        issue.currentState
+                      );
+                    }}
+                  />
+                </label>
+              ) : null}
+
+              {showNextStep ? (
+                <label className="block">
+                  <span className="mb-0.5 block text-[13px] text-text-secondary">
+                    Next step
+                  </span>
+                  <AutosizeTextarea
+                    className={textFieldClass}
+                    value={nextStep}
+                    disabled={pending}
+                    placeholder="Add next step…"
+                    autoFocus={!issue.nextStep.trim()}
+                    onChange={(event) => setNextStep(event.target.value)}
+                    onBlur={() => {
+                      if (!nextStep.trim()) setShowNextStep(false);
+                      saveField("next_step", nextStep, issue.nextStep);
+                    }}
+                  />
+                </label>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                {!showCurrentState ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className={addPropertyClass}
+                    onClick={() => setShowCurrentState(true)}
+                  >
+                    + Current state
+                  </button>
+                ) : null}
+                {!showNextStep ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className={addPropertyClass}
+                    onClick={() => setShowNextStep(true)}
+                  >
+                    + Next step
+                  </button>
+                ) : null}
+                {issue.labels.map((label) => (
+                  <button
+                    key={label.id}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => {
+                      onIssuePatch({
+                        labels: issue.labels.filter((row) => row.id !== label.id),
+                      });
+                      run(() =>
+                        removeWorkIssueLabelAction(
+                          board.id,
+                          issue.id,
+                          label.id,
+                          label.name
+                        )
+                      );
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full bg-bg-muted px-2 py-0.5 text-label-s text-text-primary hover:bg-border-subtle"
+                  >
+                    {label.name}
+                    <X className="h-3 w-3 text-text-tertiary" aria-hidden />
+                  </button>
+                ))}
+                {addingLabel ? (
+                  <form
+                    className="inline-flex items-center gap-1"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const name = labelDraft.trim();
+                      if (!name) return;
+                      setLabelDraft("");
+                      setAddingLabel(false);
+                      run(() =>
+                        addWorkIssueLabelAction(board.id, issue.id, name)
+                      );
+                    }}
+                  >
+                    <Input
+                      value={labelDraft}
+                      onChange={(event) => setLabelDraft(event.target.value)}
+                      placeholder="Label name"
+                      className="h-7 w-32 py-0 text-[13px]"
                       disabled={pending}
-                      onClick={() => {
-                        onIssuePatch({
-                          labels: issue.labels.filter((row) => row.id !== label.id),
-                        });
-                        run(() =>
-                          removeWorkIssueLabelAction(
-                            board.id,
-                            issue.id,
-                            label.id,
-                            label.name
-                          )
-                        );
+                      autoFocus
+                      onBlur={() => {
+                        if (!labelDraft.trim()) setAddingLabel(false);
                       }}
-                      className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-label-s text-text-primary hover:bg-bg-muted"
-                    >
-                      {label.name}
-                      <X className="h-3 w-3 text-text-tertiary" aria-hidden />
-                    </button>
-                  ))}
-                  {addingLabel ? (
-                    <form
-                      className="inline-flex items-center gap-1"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const name = labelDraft.trim();
-                        if (!name) return;
-                        setLabelDraft("");
-                        setAddingLabel(false);
-                        run(() => addWorkIssueLabelAction(board.id, issue.id, name));
-                      }}
-                    >
-                      <Input
-                        value={labelDraft}
-                        onChange={(event) => setLabelDraft(event.target.value)}
-                        placeholder="Label name"
-                        className="w-36 py-1.5"
-                        disabled={pending}
-                        autoFocus
-                        onBlur={() => {
-                          if (!labelDraft.trim()) setAddingLabel(false);
-                        }}
-                      />
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => setAddingLabel(true)}
-                      className="text-[13px] text-text-secondary hover:text-text-primary"
-                    >
-                      + Add label
-                    </button>
-                  )}
-                </div>
+                    />
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setAddingLabel(true)}
+                    className={addPropertyClass}
+                  >
+                    + Label
+                  </button>
+                )}
+                <WorkIssueRelations
+                  issue={issue}
+                  issues={board.issues}
+                  customerId={board.customerId}
+                  boardId={board.id}
+                  pending={pending}
+                  compact
+                  onAdd={(otherIssueId, role) => {
+                    run(() =>
+                      addWorkIssueRelationAction(
+                        board.id,
+                        issue.id,
+                        otherIssueId,
+                        role
+                      )
+                    );
+                  }}
+                  onRemove={(relationId) => {
+                    run(() =>
+                      removeWorkIssueRelationAction(
+                        board.id,
+                        issue.id,
+                        relationId
+                      )
+                    );
+                  }}
+                />
               </div>
-              <WorkIssueRelations
-                issue={issue}
-                issues={board.issues}
-                customerId={board.customerId}
-                boardId={board.id}
-                pending={pending}
-                onAdd={(otherIssueId, role) => {
-                  run(() =>
-                    addWorkIssueRelationAction(
-                      board.id,
-                      issue.id,
-                      otherIssueId,
-                      role
-                    )
-                  );
-                }}
-                onRemove={(relationId) => {
-                  run(() =>
-                    removeWorkIssueRelationAction(
-                      board.id,
-                      issue.id,
-                      relationId
-                    )
-                  );
-                }}
-              />
             </div>
 
-            <div className="pt-6">
+            <div>
               <div className="flex gap-4 border-b border-border-subtle">
                 <button
                   type="button"
@@ -1190,7 +1433,7 @@ export function WorkIssueDrawer({
               {feed === "comments" ? (
                 <ul className="mt-4 space-y-4">
                   {issue.comments.length === 0 ? (
-                    <li className="text-sm text-text-secondary">No comments yet.</li>
+                    <li className="text-sm text-text-tertiary">No comments yet.</li>
                   ) : (
                     issue.comments.map((comment) => (
                       <WorkIssueComment
@@ -1235,7 +1478,7 @@ export function WorkIssueDrawer({
               ) : (
                 <ul className="mt-4 space-y-3">
                   {issue.events.length === 0 ? (
-                    <li className="text-sm text-text-secondary">No activity yet.</li>
+                    <li className="text-sm text-text-tertiary">No activity yet.</li>
                   ) : (
                     issue.events.map((event) => (
                       <li
@@ -1259,6 +1502,211 @@ export function WorkIssueDrawer({
               )}
             </div>
           </TabsContent>
+
+          <TabsContent value="time" className="mt-5 space-y-5">
+            <div className="flex items-center gap-3">
+              <p className="min-w-0 shrink-0 text-sm tabular-nums text-text-primary">
+                {formatWorkHours(issue.loggedHours)}
+                {issue.estimateHours != null
+                  ? ` / ${formatWorkHours(issue.estimateHours)} est`
+                  : ""}
+              </p>
+              <div className="min-w-0 flex-1">
+                <WorkTimeGraph
+                  size="drawer"
+                  estimateHours={issue.estimateHours}
+                  loggedHours={issue.loggedHours}
+                />
+              </div>
+              {timeCanLog && !loggingTime && editingTimeId == null ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    setEditingTimeId(null);
+                    setLoggingTime(true);
+                    setLogHoursDraft("");
+                    setLogNoteDraft("");
+                    setLogDateDraft(localTodayYmd());
+                    setLogRoleDraft(timeDefaultRoleId ?? "");
+                  }}
+                  className={addPropertyClass}
+                >
+                  + Log time
+                </button>
+              ) : null}
+            </div>
+
+            {!timeCanLog && timeCannotLogReason ? (
+              <p className="text-[13px] leading-snug text-text-muted">
+                {timeCannotLogReason}
+              </p>
+            ) : null}
+
+            {loggingTime || editingTimeId != null ? (
+              <div className="space-y-2 rounded-md bg-bg-muted/60 p-2.5">
+                <p className="text-[13px] font-medium text-text-primary">
+                  {editingTimeId ? "Edit time" : "Log time"}
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="block min-w-[4.5rem]">
+                    <span className="mb-0.5 block text-[12px] text-text-secondary">
+                      Hours
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={logHoursDraft}
+                      disabled={pending}
+                      autoFocus
+                      placeholder="0"
+                      onChange={(event) => setLogHoursDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          saveLogTime();
+                        }
+                        if (event.key === "Escape") {
+                          resetLogForm();
+                        }
+                      }}
+                      className="h-8 w-full rounded-md border border-form bg-bg-default px-2 text-sm tabular-nums text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="block min-w-[9rem]">
+                    <span className="mb-0.5 block text-[12px] text-text-secondary">
+                      Date
+                    </span>
+                    <input
+                      type="date"
+                      value={logDateDraft}
+                      disabled={pending}
+                      onChange={(event) => setLogDateDraft(event.target.value)}
+                      className="h-8 w-full rounded-md border border-form bg-bg-default px-2 text-sm text-text-primary focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
+                    />
+                  </label>
+                  {editingTimeId == null ? (
+                    <div className="block min-w-[10rem] flex-1">
+                      <span className="mb-0.5 block text-[12px] text-text-secondary">
+                        Role
+                      </span>
+                      <Select
+                        value={logRoleDraft}
+                        onValueChange={setLogRoleDraft}
+                        disabled={pending || timeRoleOptions.length === 0}
+                        size="sm"
+                        variant="inlineEdit"
+                        placeholder="Select role"
+                        triggerClassName={drawerSelectTriggerClass}
+                        options={timeRoleOptions.map((role) => ({
+                          value: role.id,
+                          label: role.name,
+                        }))}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+                <label className="block">
+                  <span className="mb-0.5 block text-[12px] text-text-secondary">
+                    Note
+                  </span>
+                  <input
+                    type="text"
+                    value={logNoteDraft}
+                    disabled={pending}
+                    placeholder="Optional"
+                    onChange={(event) => setLogNoteDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        saveLogTime();
+                      }
+                      if (event.key === "Escape") {
+                        resetLogForm();
+                      }
+                    }}
+                    className="h-8 w-full rounded-md border border-form bg-bg-default px-2 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-brand-signal disabled:opacity-50"
+                  />
+                </label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={pending}
+                    onClick={saveLogTime}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={resetLogForm}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {timeEntries.length === 0 ? (
+              <p className="text-sm text-text-tertiary">No time logged yet.</p>
+            ) : (
+              <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
+                {timeEntries.map((entry) => {
+                  const isOwn =
+                    currentConsultantId != null &&
+                    entry.consultantId === currentConsultantId;
+                  return (
+                    <li
+                      key={entry.id}
+                      className="flex items-start gap-3 px-3 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-text-primary">
+                          <span className="font-medium">
+                            {entry.consultantName}
+                          </span>
+                          <span className="text-text-secondary">
+                            {" "}
+                            · {formatWorkHours(entry.hours)} ·{" "}
+                            {formatTimeLogDate(entry.date)}
+                          </span>
+                        </p>
+                        {entry.note ? (
+                          <p className="mt-0.5 truncate text-[13px] text-text-muted">
+                            {entry.note}
+                          </p>
+                        ) : null}
+                      </div>
+                      {isOwn && timeCanLog ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pending || editingTimeId === entry.id}
+                            className="text-[13px] text-text-secondary hover:text-text-primary disabled:opacity-50"
+                            onClick={() => beginEditTime(entry)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            className="text-[13px] text-text-secondary hover:text-danger disabled:opacity-50"
+                            onClick={() => setDeletingTimeId(entry.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </TabsContent>
+
           <TabsContent value="requirements" className="mt-5 space-y-8">
             <RequirementsChecklistSection
               title="Acceptance criteria"
@@ -1674,7 +2122,7 @@ export function WorkIssueDrawer({
 
       {tab === "details" ? (
       <form
-        className="flex shrink-0 items-end gap-2 border-t border-border-subtle px-6 py-3"
+        className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-t border-border-subtle px-6 py-3"
         onSubmit={(event) => {
           event.preventDefault();
           const text = encodeMentions(commentDraft.trim(), board.members);
@@ -1687,6 +2135,7 @@ export function WorkIssueDrawer({
           if (!body) return;
           if (commentThumbs.some((thumb) => thumb.uploading)) return;
           setCommentDraft("");
+          setCommentFocused(false);
           setCommentThumbs((prev) => {
             clearThumbs(prev);
             return [];
@@ -1697,15 +2146,38 @@ export function WorkIssueDrawer({
         <InitialsAvatar
           name={board.currentUser.name}
           initials={board.currentUser.initials}
-          size="xs"
+          size="sm"
+          className="!h-9 !w-9"
         />
-        <div className="min-w-0 flex-1" data-paste-zone="comment">
+        <div className="min-h-0 min-w-0" data-paste-zone="comment">
           <WorkCommentComposer
             people={board.members}
             value={commentDraft}
             disabled={pending}
-            className={`${commentClass} min-h-[5.5rem] resize-none`}
+            rows={
+              commentFocused || commentDraft.trim() || commentThumbs.length > 0
+                ? 3
+                : 1
+            }
+            showShortcutHint={
+              commentFocused ||
+              Boolean(commentDraft.trim()) ||
+              commentThumbs.length > 0
+            }
+            className={
+              commentFocused ||
+              commentDraft.trim() ||
+              commentThumbs.length > 0
+                ? `${commentClass} min-h-[5.5rem] resize-none`
+                : commentCollapsedClass
+            }
             onChange={setCommentDraft}
+            onFocus={() => setCommentFocused(true)}
+            onBlur={() => {
+              if (!commentDraft.trim() && commentThumbs.length === 0) {
+                setCommentFocused(false);
+              }
+            }}
           />
           <WorkInlineImageThumbs
             items={commentThumbs.map((thumb) => ({
@@ -1727,6 +2199,7 @@ export function WorkIssueDrawer({
         <Button
           type="submit"
           size="sm"
+          className="!h-9 !min-h-9 !py-0 self-center"
           disabled={
             pending ||
             commentThumbs.some((thumb) => thumb.uploading) ||
@@ -1740,6 +2213,33 @@ export function WorkIssueDrawer({
       </form>
       ) : null}
     </div>
+
+    <ConfirmModal
+      isOpen={deletingTimeEntry != null}
+      title="Delete time entry?"
+      message={
+        deletingTimeEntry
+          ? [
+              "Remove ",
+              formatWorkHours(deletingTimeEntry.hours),
+              " on ",
+              formatTimeLogDate(deletingTimeEntry.date),
+              "?",
+            ].join("")
+          : "Remove this time entry?"
+      }
+      confirmLabel="Delete"
+      variant="danger"
+      onClose={() => {
+        if (pending) return;
+        setDeletingTimeId(null);
+      }}
+      onConfirm={() => {
+        if (!deletingTimeId || pending) return;
+        deleteLogTime(deletingTimeId);
+      }}
+    />
+    </>
   );
 }
 
@@ -1748,10 +2248,7 @@ const CARD_AVATAR_GAP =
 const CARD_OWNER_FRAME =
   "shadow-[0_0_0_1.5px_var(--color-bg-default),0_0_0_2.5px_var(--color-border-strong)]";
 
-type CardPeopleDialog =
-  | { kind: "all" }
-  | { kind: "owner" }
-  | { kind: "assignee"; person: WorkPerson };
+const PEOPLE_MENU_WIDTH = 280;
 
 export function WorkCardPeople({
   owner,
@@ -1761,6 +2258,8 @@ export function WorkCardPeople({
   onSetOwner,
   onAddAssignee,
   onRemoveAssignee,
+  /** Portals to document.body (cards). Set false inside dialogs/drawers. */
+  portal = true,
 }: {
   owner: WorkPerson | null;
   assignees: WorkPerson[];
@@ -1769,9 +2268,13 @@ export function WorkCardPeople({
   onSetOwner?: (person: WorkPerson | null) => void;
   onAddAssignee?: (person: WorkPerson) => void;
   onRemoveAssignee?: (person: WorkPerson) => void;
+  portal?: boolean;
 }) {
   const interactive = onSetOwner != null && onAddAssignee != null;
-  const [dialog, setDialog] = useState<CardPeopleDialog | null>(null);
+  const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const menuOpen = menu != null;
   const extras = assignees
     .filter((person) => person.id !== owner?.id)
     .slice(0, 3);
@@ -1781,272 +2284,269 @@ export function WorkCardPeople({
     [assignees]
   );
 
+  const filteredPeople = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return people;
+    return people.filter((person) =>
+      person.name.toLowerCase().includes(needle)
+    );
+  }, [people, query]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("[data-card-assign-people]")
+      ) {
+        return;
+      }
+      setMenu(null);
+      setQuery("");
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenu(null);
+        setQuery("");
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const id = window.requestAnimationFrame(() => searchRef.current?.focus());
+    return () => window.cancelAnimationFrame(id);
+  }, [menuOpen]);
+
   if (!interactive && !owner && extras.length === 0) return null;
 
-  function openDialog(event: MouseEvent, next: CardPeopleDialog) {
+  function openMenu(event: MouseEvent<HTMLElement>) {
     event.stopPropagation();
     if (!interactive || disabled || people.length === 0) return;
-    setDialog(next);
+    if (menuOpen) {
+      setMenu(null);
+      setQuery("");
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const left = Math.max(
+      8,
+      Math.min(
+        portal ? rect.left : rect.right - PEOPLE_MENU_WIDTH,
+        window.innerWidth - PEOPLE_MENU_WIDTH - 8
+      )
+    );
+    const top = Math.min(rect.bottom + 4, window.innerHeight - 320);
+    setMenu({ top: Math.max(8, top), left });
   }
 
-  const dialogTitle =
-    dialog?.kind === "owner"
-      ? "Owner"
-      : dialog?.kind === "assignee"
-        ? "Assignee"
-        : "People";
+  const menuNode = interactive && menuOpen && menu ? (
+    <div
+      data-card-assign-people
+      role="dialog"
+      aria-label="Owner and assignees"
+      className="fixed z-[80] overflow-hidden rounded-lg border border-border-subtle bg-bg-default shadow-lg"
+      style={{
+        top: menu.top,
+        left: menu.left,
+        width: PEOPLE_MENU_WIDTH,
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="border-b border-border-subtle px-2 py-1.5">
+        <input
+          ref={searchRef}
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search people"
+          aria-label="Search people"
+          className="w-full rounded-md border-0 bg-transparent px-1 py-1 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+        />
+      </div>
+      <div className="flex items-center justify-end gap-0.5 border-b border-border-subtle px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
+        <span className="w-11 text-center">Owner</span>
+        <span className="w-11 text-center">Assign</span>
+      </div>
+      <ul className="max-h-56 overflow-y-auto py-1">
+        {filteredPeople.length === 0 ? (
+          <li className="px-2.5 py-3 text-center text-sm text-text-tertiary">
+            No matches
+          </li>
+        ) : (
+          filteredPeople.map((person) => {
+            const isOwner = owner?.id === person.id;
+            const isAssignee = assigneeIds.has(person.id);
+            return (
+              <li
+                key={person.id}
+                className="flex items-center gap-0.5 px-1.5 py-0.5"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1">
+                  <InitialsAvatar
+                    name={person.name}
+                    initials={person.initials}
+                    size="xxs"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                    {person.name}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  title={isOwner ? "Remove owner" : "Set as owner"}
+                  aria-label={
+                    isOwner
+                      ? `Remove owner ${person.name}`
+                      : `Set ${person.name} as owner`
+                  }
+                  aria-pressed={isOwner}
+                  className={[
+                    "flex h-7 w-11 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50",
+                    isOwner
+                      ? "text-accent-primary-text hover:bg-accent-primary-subtle"
+                      : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary",
+                  ].join(" ")}
+                  onClick={() => {
+                    onSetOwner?.(isOwner ? null : person);
+                  }}
+                >
+                  {isOwner ? (
+                    <CircleDot className="h-3.5 w-3.5" aria-hidden />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled || onRemoveAssignee == null}
+                  title={isAssignee ? "Remove assignee" : "Add assignee"}
+                  aria-label={
+                    isAssignee
+                      ? `Remove assignee ${person.name}`
+                      : `Add assignee ${person.name}`
+                  }
+                  aria-pressed={isAssignee}
+                  className={[
+                    "flex h-7 w-11 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50",
+                    isAssignee
+                      ? "text-accent-primary-text hover:bg-accent-primary-subtle"
+                      : "text-text-tertiary hover:bg-bg-muted hover:text-text-secondary",
+                  ].join(" ")}
+                  onClick={() => {
+                    if (isAssignee) onRemoveAssignee?.(person);
+                    else onAddAssignee?.(person);
+                  }}
+                >
+                  <Check
+                    className={
+                      isAssignee ? "h-3.5 w-3.5" : "h-3.5 w-3.5 opacity-30"
+                    }
+                    aria-hidden
+                  />
+                </button>
+              </li>
+            );
+          })
+        )}
+      </ul>
+    </div>
+  ) : null;
+
+  const hasAvatars = Boolean(owner) || extras.length > 0;
+  const peopleTitle = [
+    owner ? `Owner: ${owner.name}` : null,
+    extras.length > 0
+      ? `Assignees: ${extras.map((person) => person.name).join(", ")}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <>
-      <span
-        className="relative flex shrink-0 items-center gap-1"
-        data-card-assign-people
-        onClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        <span className="flex items-center -space-x-1.5">
-          {owner ? (
-            <button
-              type="button"
-              disabled={!interactive || disabled}
-              title={`Owner: ${owner.name}`}
-              aria-label={`Change or remove owner ${owner.name}`}
-              className="rounded-full disabled:opacity-100"
-              onClick={(event) => openDialog(event, { kind: "owner" })}
-            >
+    <span
+      className="relative flex shrink-0 items-center"
+      data-card-assign-people
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {interactive && people.length > 0 ? (
+        <button
+          type="button"
+          disabled={disabled}
+          title={peopleTitle || "Owner & assignees"}
+          aria-label={
+            peopleTitle
+              ? `Change people · ${peopleTitle}`
+              : "Set owner or assignees"
+          }
+          aria-expanded={menuOpen}
+          aria-haspopup="dialog"
+          className="flex items-center rounded-full disabled:opacity-50"
+          onClick={openMenu}
+        >
+          <span className="flex items-center -space-x-1.5">
+            {owner ? (
               <InitialsAvatar
                 name={owner.name}
                 initials={owner.initials}
                 size="xxs"
                 className={CARD_OWNER_FRAME}
               />
-            </button>
-          ) : null}
-          {extras.map((person) => (
-            <button
-              key={person.id}
-              type="button"
-              disabled={!interactive || disabled}
-              title={`Assignee: ${person.name}`}
-              aria-label={`Change or remove assignee ${person.name}`}
-              className="rounded-full disabled:opacity-100"
-              onClick={(event) =>
-                openDialog(event, { kind: "assignee", person })
-              }
-            >
+            ) : null}
+            {extras.map((person) => (
               <InitialsAvatar
+                key={person.id}
                 name={person.name}
                 initials={person.initials}
                 size="xxs"
                 className={CARD_AVATAR_GAP}
               />
-            </button>
+            ))}
+            {!hasAvatars ? (
+              <span
+                aria-hidden
+                className={`inline-flex h-6 w-6 rounded-full border border-dashed border-border-strong bg-bg-muted/60 ${CARD_AVATAR_GAP}`}
+              />
+            ) : null}
+          </span>
+        </button>
+      ) : hasAvatars ? (
+        <span className="flex items-center -space-x-1.5" title={peopleTitle}>
+          {owner ? (
+            <InitialsAvatar
+              name={owner.name}
+              initials={owner.initials}
+              size="xxs"
+              className={CARD_OWNER_FRAME}
+            />
+          ) : null}
+          {extras.map((person) => (
+            <InitialsAvatar
+              key={person.id}
+              name={person.name}
+              initials={person.initials}
+              size="xxs"
+              className={CARD_AVATAR_GAP}
+            />
           ))}
         </span>
-        {interactive && people.length > 0 ? (
-          <button
-            type="button"
-            disabled={disabled}
-            data-card-assign-people
-            aria-label="Add owner or assignee"
-            title="Add owner or assignee"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border-subtle text-text-tertiary hover:bg-bg-muted hover:text-text-primary disabled:opacity-50"
-            onClick={(event) => openDialog(event, { kind: "all" })}
-          >
-            <Plus className="h-3 w-3" aria-hidden />
-          </button>
-        ) : null}
-      </span>
-
-      {interactive ? (
-        <Dialog
-          open={dialog != null}
-          onOpenChange={(open) => {
-            if (!open) setDialog(null);
-          }}
-          title={dialogTitle}
-          contentClassName="max-w-sm"
-        >
-          <div
-            className="modal-form-discreet mt-6 space-y-5"
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            {dialog?.kind === "owner" || dialog?.kind === "all" ? (
-              <section className="space-y-2">
-                {dialog.kind === "all" ? (
-                  <h2 className="text-sm font-medium text-text-primary">
-                    Owner
-                  </h2>
-                ) : owner ? (
-                  <p className="text-sm text-text-secondary">
-                    Current owner:{" "}
-                    <span className="text-text-primary">{owner.name}</span>
-                  </p>
-                ) : null}
-                <ul className="max-h-48 space-y-0.5 overflow-y-auto">
-                  {people.map((person) => {
-                    const selected = owner?.id === person.id;
-                    return (
-                      <li key={person.id}>
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-bg-muted ${
-                            selected ? "bg-accent-primary-subtle" : ""
-                          }`}
-                          onClick={() => {
-                            onSetOwner?.(person);
-                            if (dialog.kind === "owner") setDialog(null);
-                          }}
-                        >
-                          <InitialsAvatar
-                            name={person.name}
-                            initials={person.initials}
-                            size="xs"
-                            className="!h-6 !w-6 text-[9px]"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                            {person.name}
-                          </span>
-                          {selected ? (
-                            <span className="text-caption text-accent-primary-text">
-                              Owner
-                            </span>
-                          ) : null}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {dialog.kind === "owner" && owner ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full"
-                    disabled={disabled}
-                    onClick={() => {
-                      onSetOwner?.(null);
-                      setDialog(null);
-                    }}
-                  >
-                    Remove owner
-                  </Button>
-                ) : null}
-              </section>
-            ) : null}
-
-            {dialog?.kind === "assignee" ? (
-              <section className="space-y-2">
-                <p className="text-sm text-text-secondary">
-                  Current assignee:{" "}
-                  <span className="text-text-primary">
-                    {dialog.person.name}
-                  </span>
-                </p>
-                <ul className="max-h-48 space-y-0.5 overflow-y-auto">
-                  {people
-                    .filter((person) => person.id !== dialog.person.id)
-                    .map((person) => (
-                      <li key={person.id}>
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-bg-muted"
-                          onClick={() => {
-                            onRemoveAssignee?.(dialog.person);
-                            if (!assigneeIds.has(person.id)) {
-                              onAddAssignee?.(person);
-                            }
-                            setDialog(null);
-                          }}
-                        >
-                          <InitialsAvatar
-                            name={person.name}
-                            initials={person.initials}
-                            size="xs"
-                            className="!h-6 !w-6 text-[9px]"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                            {person.name}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                </ul>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full"
-                  disabled={disabled}
-                  onClick={() => {
-                    onRemoveAssignee?.(dialog.person);
-                    setDialog(null);
-                  }}
-                >
-                  Remove assignee
-                </Button>
-              </section>
-            ) : null}
-
-            {dialog?.kind === "all" ? (
-              <section className="space-y-2">
-                <h2 className="text-sm font-medium text-text-primary">
-                  Assignees
-                </h2>
-                <ul className="max-h-48 space-y-0.5 overflow-y-auto">
-                  {people.map((person) => {
-                    const selected = assigneeIds.has(person.id);
-                    return (
-                      <li key={person.id}>
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-bg-muted ${
-                            selected ? "bg-accent-primary-subtle" : ""
-                          }`}
-                          onClick={() => {
-                            if (selected) onRemoveAssignee?.(person);
-                            else onAddAssignee?.(person);
-                          }}
-                        >
-                          <InitialsAvatar
-                            name={person.name}
-                            initials={person.initials}
-                            size="xs"
-                            className="!h-6 !w-6 text-[9px]"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                            {person.name}
-                          </span>
-                          {selected ? (
-                            <span className="text-caption text-accent-primary-text">
-                              Assigned
-                            </span>
-                          ) : null}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ) : null}
-
-            {dialog?.kind === "all" ? (
-              <div className="flex justify-end pt-1">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setDialog(null)}
-                >
-                  Done
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </Dialog>
       ) : null}
-    </>
+      {menuNode
+        ? portal && typeof document !== "undefined"
+          ? createPortal(menuNode, document.body)
+          : menuNode
+        : null}
+    </span>
   );
 }

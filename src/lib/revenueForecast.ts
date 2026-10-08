@@ -6,6 +6,7 @@ import { getWorkingDaysByMonthInWeek, isoWeeksInYear } from "./dateUtils";
 import { getAllocationsForWeeks } from "./allocationsQueries";
 import { fetchCalendarHolidaysByCalendarIds } from "./calendarHolidaysQueries";
 import { fetchCustomerRatesByCustomerIds } from "./customerRatesQueries";
+import { fetchProjectRatesByProjectIds } from "./projectRatesQueries";
 
 import type {
   RevenueForecastByCustomer,
@@ -124,9 +125,10 @@ export async function getRevenueForecast(
         customersRes.rows.map((c) => [c.id, c.name ?? c.id])
       );
       const allRates = await fetchCustomerRatesByCustomerIds(customerIds);
+      const allProjectRates = await fetchProjectRatesByProjectIds(projectIds);
       const ratesByCustomer = new Map<
         string,
-        { role_id: string; rate_per_hour: number; currency: string }[]
+        { id: string; role_id: string | null; rate_per_hour: number; currency: string }[]
       >();
       for (const cid of customerIds) {
         ratesByCustomer.set(
@@ -134,6 +136,7 @@ export async function getRevenueForecast(
           allRates
             .filter((r) => r.customer_id === cid)
             .map((r) => ({
+              id: r.id,
               role_id: r.role_id,
               rate_per_hour: r.rate_per_hour,
               currency: r.currency ?? "SEK",
@@ -170,11 +173,24 @@ export async function getRevenueForecast(
         if (project.type !== "customer") continue;
 
         const customerId = project.customer_id;
-        const roleId = a.role_id ?? consultant.role_id;
-        if (!roleId) continue;
-
-        const rates = ratesByCustomer.get(customerId) ?? [];
-        const rateRow = rates.find((r) => r.role_id === roleId);
+        let rateRow:
+          | { rate_per_hour: number; currency: string }
+          | undefined;
+        if (a.project_rate_id) {
+          rateRow = allProjectRates.find((r) => r.id === a.project_rate_id);
+        } else if (a.customer_rate_id) {
+          rateRow = (ratesByCustomer.get(customerId) ?? []).find(
+            (r) => r.id === a.customer_rate_id
+          );
+        } else {
+          const roleId = a.role_id ?? consultant.role_id;
+          if (!roleId) continue;
+          rateRow =
+            allProjectRates.find(
+              (r) => r.project_id === a.project_id && r.role_id === roleId
+            ) ??
+            (ratesByCustomer.get(customerId) ?? []).find((r) => r.role_id === roleId);
+        }
         if (!rateRow) continue;
 
         const holidaySet =

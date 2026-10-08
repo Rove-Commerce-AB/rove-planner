@@ -29,6 +29,8 @@ function issue(
     key: "RT-1",
     status: "todo",
     sortOrder: 0,
+    issueType: "issue",
+    component: null,
     description: "",
     currentState: "",
     nextStep: "",
@@ -81,10 +83,24 @@ describe("issueMatchesOwnerFilter", () => {
 
 describe("visibleWorkIssueIds", () => {
   it("combines search with owner filter", () => {
-    expect([...visibleWorkIssueIds(issues, "rt-2", [anna.id, simon.id])]).toEqual(
-      ["2"]
-    );
-    expect([...visibleWorkIssueIds(issues, "Gamma", [])]).toEqual(["3"]);
+    expect([
+      ...visibleWorkIssueIds(issues, "rt-2", {
+        ownerIds: [anna.id, simon.id],
+        typeIds: [],
+        componentIds: [],
+        priorityIds: [],
+        sprintIds: [],
+      }),
+    ]).toEqual(["2"]);
+    expect([
+      ...visibleWorkIssueIds(issues, "Gamma", {
+        ownerIds: [],
+        typeIds: [],
+        componentIds: [],
+        priorityIds: [],
+        sprintIds: [],
+      }),
+    ]).toEqual(["3"]);
   });
 });
 
@@ -133,5 +149,7 @@ describe("columnIssueGroups", () => {
     expect(groupByTriggerLabel("none")).toBe("Group");
     expect(groupByTriggerLabel("owner")).toBe("Owner");
     expect(groupByTriggerLabel("label")).toBe("Label");
+    expect(groupByTriggerLabel("component")).toBe("Component");
+    expect(groupByTriggerLabel("priority")).toBe("Priority");
   });
 });

@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
-import { getProjectsByCustomerIds } from "@/lib/projects";
+import {
+  getProjectBillingTypesByIds,
+  getProjectsByCustomerIds,
+} from "@/lib/projects";
 import {
   getJiraIssuesByProjectKey,
   getDevOpsWorkItemsByProject,
@@ -14,12 +17,19 @@ import { getCustomerRates, getCustomerRatesByCustomerIds } from "@/lib/customerR
 import { getCustomersByIds } from "@/lib/customers";
 import { parseBillingCurrency, type BillingCurrency } from "@/lib/currency";
 import {
+  getBillingItemsForCustomerAndProject,
   getProjectRates,
   getProjectRatesByProjectIds,
-  getRolesWithRateForAllocation,
 } from "@/lib/projectRates";
+import { encodeBillingItemKey, parseBillingItemKey } from "@/lib/billingItem";
+import type { CustomerRate } from "@/lib/customerRatesQueries";
+import type { ProjectRate } from "@/lib/projectRatesQueries";
 import { getCalendarHolidays } from "@/lib/calendarHolidays";
-import { getISOWeekDateRange, getISOWeekDateStrings } from "@/lib/dateUtils";
+import {
+  getISOWeekDateRange,
+  getISOWeekDateStrings,
+  getYearWeekForDate,
+} from "@/lib/dateUtils";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCurrentAppUser } from "@/lib/appUsers";
 import { getInternalCustomerId } from "@/lib/customers";
@@ -42,7 +52,10 @@ import {
   workIssueIdsForCustomer,
   type WorkIssueTimeOption,
 } from "@/lib/workTimeReport";
-import { workIssueIdFromLinkKey } from "@/lib/workIssueTimeLink";
+import {
+  workIssueIdFromLinkKey,
+  workIssueLinkKey,
+} from "@/lib/workIssueTimeLink";
 
 async function getTimeReportAccessContext() {
   const [appUser, consultant] = await Promise.all([
@@ -211,18 +224,8 @@ export async function getTaskOptionsForCustomerAndProject(
     return [];
   }
 
-  if (projectId) {
-    const roles = await getRolesWithRateForAllocation(projectId, customerId);
-    return roles.map((r) => ({ value: r.id, label: r.name }));
-  }
-  const rates = await getCustomerRates(customerId);
-  const roleIds = [...new Set(rates.map((r) => r.role_id))];
-  if (roleIds.length === 0) return [];
-  const { rows: roles } = await cloudSqlPool.query<{ id: string; name: string }>(
-    `SELECT id, name FROM roles WHERE id = ANY($1::uuid[]) ORDER BY name`,
-    [roleIds]
-  );
-  return roles.map((r) => ({ value: r.id, label: r.name }));
+  const items = await getBillingItemsForCustomerAndProject(customerId, projectId);
+  return items.map((r) => ({ value: r.id, label: r.name }));
 }
 
 export type TimeReportBatchHydrateResult = {
@@ -295,20 +298,11 @@ export async function batchHydrateTimeReport(
   const taskEntries = await Promise.all(
     uniquePairs.map(async ({ customerId, projectId }) => {
       const key = timeReportTaskCacheKeyServer(customerId, projectId);
-      if (projectId) {
-        const roles = await getRolesWithRateForAllocation(projectId, customerId);
-        return [key, roles.map((r) => ({ value: r.id, label: r.name }))] as const;
-      }
-      const rates = await getCustomerRates(customerId);
-      const roleIds = [...new Set(rates.map((r) => r.role_id))];
-      if (roleIds.length === 0) {
-        return [key, [] as TaskOption[]] as const;
-      }
-      const { rows: roles } = await cloudSqlPool.query<{ id: string; name: string }>(
-        `SELECT id, name FROM roles WHERE id = ANY($1::uuid[]) ORDER BY name`,
-        [roleIds]
+      const items = await getBillingItemsForCustomerAndProject(
+        customerId,
+        projectId || null
       );
-      return [key, roles.map((r) => ({ value: r.id, label: r.name }))] as const;
+      return [key, items.map((r) => ({ value: r.id, label: r.name }))] as const;
     })
   );
 
@@ -389,32 +383,193 @@ export async function getHolidayDatesForRange(
     .map((h) => h.holiday_date);
 }
 
+type BillingSaveIdentity = {
+  role_id: string | null;
+  customer_rate_id: string | null;
+  project_rate_id: string | null;
+  role_name_snapshot: string | null;
+  rate: number | null;
+  currency: BillingCurrency;
+};
+
+function lineBillingKey(line: {
+  role_id: string | null;
+  customer_rate_id?: string | null;
+  project_rate_id?: string | null;
+}): string {
+  if (line.project_rate_id) {
+    return encodeBillingItemKey({ kind: "project_rate", id: line.project_rate_id });
+  }
+  if (line.customer_rate_id) {
+    return encodeBillingItemKey({ kind: "customer_rate", id: line.customer_rate_id });
+  }
+  return line.role_id ?? "";
+}
+
+function resolveBillingSaveIdentity(
+  billingKey: string,
+  projectId: string,
+  customerId: string,
+  projectRates: ProjectRate[],
+  customerRates: CustomerRate[],
+  customerCurrency: BillingCurrency
+): BillingSaveIdentity {
+  const parsed = parseBillingItemKey(billingKey);
+  const empty: BillingSaveIdentity = {
+    role_id: null,
+    customer_rate_id: null,
+    project_rate_id: null,
+    role_name_snapshot: null,
+    rate: null,
+    currency: customerCurrency,
+  };
+  if (!parsed) return empty;
+
+  if (parsed.kind === "customer_rate") {
+    const row = customerRates.find((r) => r.id === parsed.id);
+    if (!row) return empty;
+    return {
+      role_id: null,
+      customer_rate_id: row.id,
+      project_rate_id: null,
+      role_name_snapshot: row.display_name,
+      rate: Number(row.rate_per_hour),
+      currency: parseBillingCurrency(row.currency ?? customerCurrency),
+    };
+  }
+  if (parsed.kind === "project_rate") {
+    const row = projectRates.find((r) => r.id === parsed.id && r.project_id === projectId);
+    if (!row) return empty;
+    return {
+      role_id: null,
+      customer_rate_id: null,
+      project_rate_id: row.id,
+      role_name_snapshot: row.display_name,
+      rate: Number(row.rate_per_hour),
+      currency: parseBillingCurrency(row.currency ?? customerCurrency),
+    };
+  }
+
+  const projectRate = projectRates.find(
+    (r) => r.project_id === projectId && r.role_id === parsed.roleId
+  );
+  if (projectRate) {
+    return {
+      role_id: parsed.roleId,
+      customer_rate_id: null,
+      project_rate_id: null,
+      role_name_snapshot: projectRate.display_name,
+      rate: Number(projectRate.rate_per_hour),
+      currency: parseBillingCurrency(projectRate.currency ?? customerCurrency),
+    };
+  }
+  const customerRate = customerRates.find(
+    (r) => r.customer_id === customerId && r.role_id === parsed.roleId
+  );
+  if (customerRate) {
+    return {
+      role_id: parsed.roleId,
+      customer_rate_id: null,
+      project_rate_id: null,
+      role_name_snapshot: customerRate.display_name,
+      rate: Number(customerRate.rate_per_hour),
+      currency: parseBillingCurrency(customerRate.currency ?? customerCurrency),
+    };
+  }
+  return {
+    ...empty,
+    role_id: parsed.roleId,
+  };
+}
+
 async function getEffectiveRateSnapshot(
   projectId: string,
   customerId: string,
-  roleId: string
-): Promise<{ rate: number | null; currency: BillingCurrency }> {
-  const [projectRates, customerRates, customers] = await Promise.all([
-    getProjectRates(projectId),
-    getCustomerRates(customerId),
-    getCustomersByIds([customerId]),
-  ]);
+  billingKey: string
+): Promise<BillingSaveIdentity> {
+  const [projectRates, customerRates, customers, billingTypes] =
+    await Promise.all([
+      getProjectRates(projectId),
+      getCustomerRates(customerId),
+      getCustomersByIds([customerId]),
+      getProjectBillingTypesByIds([projectId]),
+    ]);
   const billingCurrency = parseBillingCurrency(customers[0]?.billing_currency);
-  const projectRate = projectRates.find((r) => r.role_id === roleId);
-  if (projectRate != null) {
+  const identity = resolveBillingSaveIdentity(
+    billingKey,
+    projectId,
+    customerId,
+    projectRates,
+    customerRates,
+    billingCurrency
+  );
+  // Fixed-price: track hours/tasks but do not snapshot a billable hourly rate.
+  if (billingTypes.get(projectId) === "fixed") {
+    return { ...identity, rate: null };
+  }
+  return identity;
+}
+
+/**
+ * Resolve a Role/rate that exists in Time Report dropdowns for the project.
+ * `billingItemId` must be one of the project's billing item ids (role UUID or cr:/pr: key).
+ */
+async function resolveBillingForWorkIssueLog(
+  projectId: string,
+  customerId: string,
+  billingItemId: string
+): Promise<
+  | { ok: true; billing: BillingSaveIdentity }
+  | { ok: false; error: string }
+> {
+  const selectedId = billingItemId.trim();
+  if (!selectedId) {
+    return { ok: false, error: "Role is required." };
+  }
+  const items = await getBillingItemsForCustomerAndProject(customerId, projectId);
+  if (items.length === 0) {
     return {
-      rate: Number(projectRate.rate_per_hour),
-      currency: parseBillingCurrency(projectRate.currency ?? billingCurrency),
+      ok: false,
+      error:
+        "No roles are configured for this project. Add a role or rate before logging time.",
     };
   }
-  const customerRate = customerRates.find((r) => r.role_id === roleId);
-  if (customerRate != null) {
+  const selected = items.find((item) => item.id === selectedId);
+  if (!selected) {
+    return { ok: false, error: "Select a valid role." };
+  }
+  let billing = await getEffectiveRateSnapshot(
+    projectId,
+    customerId,
+    selected.id
+  );
+  // Custom rates store identity on rate ids; plain roles must keep role_id for the UI.
+  if (
+    !billing.role_id &&
+    !billing.customer_rate_id &&
+    !billing.project_rate_id
+  ) {
+    const parsed = parseBillingItemKey(selected.id);
+    if (parsed?.kind === "role") {
+      billing = { ...billing, role_id: parsed.roleId };
+    } else if (parsed?.kind === "customer_rate") {
+      billing = { ...billing, customer_rate_id: parsed.id };
+    } else if (parsed?.kind === "project_rate") {
+      billing = { ...billing, project_rate_id: parsed.id };
+    }
+  }
+  if (
+    !billing.role_id &&
+    !billing.customer_rate_id &&
+    !billing.project_rate_id
+  ) {
     return {
-      rate: Number(customerRate.rate_per_hour),
-      currency: parseBillingCurrency(customerRate.currency ?? billingCurrency),
+      ok: false,
+      error:
+        "Could not resolve a role for this project. Check project rates and try again.",
     };
   }
-  return { rate: null, currency: billingCurrency };
+  return { ok: true, billing };
 }
 
 type TimeReportRowDb = {
@@ -422,7 +577,10 @@ type TimeReportRowDb = {
   entry_line_id: string;
   customer_id: string;
   project_id: string;
-  role_id: string;
+  role_id: string | null;
+  customer_rate_id: string | null;
+  project_rate_id: string | null;
+  role_name_snapshot: string | null;
   jira_devops_key: string | null;
   description: string | null;
   entry_date: string;
@@ -441,6 +599,8 @@ type TimeReportLineDb = {
   customer_id: string;
   project_id: string | null;
   role_id: string | null;
+  customer_rate_id: string | null;
+  project_rate_id: string | null;
   jira_devops_key: string | null;
   description: string | null;
   display_order: string | number | null;
@@ -464,6 +624,9 @@ function snapshotRowDb(r: TimeReportRowDb): Record<string, unknown> {
     customer_id: r.customer_id,
     project_id: r.project_id,
     role_id: r.role_id,
+    customer_rate_id: r.customer_rate_id,
+    project_rate_id: r.project_rate_id,
+    role_name_snapshot: r.role_name_snapshot,
     jira_devops_key: r.jira_devops_key,
     description: r.description,
     entry_date: r.entry_date,
@@ -482,7 +645,10 @@ type DesiredCell = {
   consultant_id: string;
   customer_id: string;
   project_id: string;
-  role_id: string;
+  role_id: string | null;
+  customer_rate_id: string | null;
+  project_rate_id: string | null;
+  role_name_snapshot: string | null;
   jira_devops_key: string | null;
   description: string | null;
   entry_date: string;
@@ -500,6 +666,9 @@ function desiredCellSnapshot(d: DesiredCell, dbId?: string): Record<string, unkn
     customer_id: d.customer_id,
     project_id: d.project_id,
     role_id: d.role_id,
+    customer_rate_id: d.customer_rate_id,
+    project_rate_id: d.project_rate_id,
+    role_name_snapshot: d.role_name_snapshot,
     jira_devops_key: d.jira_devops_key,
     description: d.description,
     entry_date: d.entry_date,
@@ -515,7 +684,10 @@ function cellDiffers(db: TimeReportRowDb, d: DesiredCell): boolean {
   return (
     db.customer_id !== d.customer_id ||
     db.project_id !== d.project_id ||
-    db.role_id !== d.role_id ||
+    (db.role_id ?? null) !== (d.role_id ?? null) ||
+    (db.customer_rate_id ?? null) !== (d.customer_rate_id ?? null) ||
+    (db.project_rate_id ?? null) !== (d.project_rate_id ?? null) ||
+    (db.role_name_snapshot ?? null) !== (d.role_name_snapshot ?? null) ||
     (db.jira_devops_key ?? "") !== (d.jira_devops_key ?? "") ||
     (db.description ?? "") !== (d.description ?? "") ||
     Number(db.hours ?? 0) !== d.hours ||
@@ -584,6 +756,7 @@ export async function getTimeReportEntries(
     ),
     cloudSqlPool.query<TimeReportLineDb>(
       `SELECT id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+              customer_rate_id, project_rate_id,
               jira_devops_key, description, display_order, work_issue_id
        FROM time_report_entry_lines l
        WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
@@ -609,7 +782,8 @@ export async function getTimeReportEntries(
       [consultantId, year, week, filterActive, bounds.start, bounds.end]
     ),
     cloudSqlPool.query<TimeReportRowDb>(
-      `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
+      `SELECT id, entry_line_id, customer_id, project_id, role_id, customer_rate_id, project_rate_id,
+              role_name_snapshot, jira_devops_key, description,
               entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, currency_snapshot, display_order
        FROM time_report_entries
        WHERE consultant_id = $1 AND entry_date = ANY($2::date[])
@@ -655,7 +829,7 @@ export async function getTimeReportEntries(
       id: line.id,
       displayOrder: Number(line.display_order ?? 0),
       projectId: line.project_id ?? "",
-      roleId: line.role_id ?? "",
+      roleId: lineBillingKey(line),
       jiraDevOpsValue:
         line.jira_devops_key?.trim() ||
         (line.work_issue_id ? `work:${line.work_issue_id}` : ""),
@@ -776,6 +950,8 @@ export async function saveTimeReportEntries(
     customer_id: string;
     project_id: string | null;
     role_id: string | null;
+    customer_rate_id: string | null;
+    project_rate_id: string | null;
     jira_devops_key: string | null;
     description: string | null;
     work_issue_id: string | null;
@@ -799,55 +975,22 @@ export async function saveTimeReportEntries(
       if (entry.projectId) projectIds.add(entry.projectId);
     }
   }
-  const [allProjectRates, allCustomerRates, customers] = await Promise.all([
-    getProjectRatesByProjectIds(Array.from(projectIds)),
-    getCustomerRatesByCustomerIds(Array.from(customerIds)),
-    getCustomersByIds(Array.from(customerIds)),
-  ]);
+  const [allProjectRates, allCustomerRates, customers, projectBillingTypes] =
+    await Promise.all([
+      getProjectRatesByProjectIds(Array.from(projectIds), {
+        includeInactive: true,
+      }),
+      getCustomerRatesByCustomerIds(Array.from(customerIds), {
+        includeInactive: true,
+      }),
+      getCustomersByIds(Array.from(customerIds)),
+      getProjectBillingTypesByIds(Array.from(projectIds)),
+    ]);
 
   const customerCurrencyMap = new Map<string, BillingCurrency>();
   for (const c of customers) {
     customerCurrencyMap.set(c.id, parseBillingCurrency(c.billing_currency));
   }
-
-  const projectRoleRateMap = new Map<string, Map<string, { rate: number; currency: BillingCurrency }>>();
-  for (const r of allProjectRates) {
-    let roleMap = projectRoleRateMap.get(r.project_id);
-    if (!roleMap) {
-      roleMap = new Map();
-      projectRoleRateMap.set(r.project_id, roleMap);
-    }
-    roleMap.set(r.role_id, {
-      rate: Number(r.rate_per_hour),
-      currency: parseBillingCurrency(r.currency),
-    });
-  }
-
-  const customerRoleRateMap = new Map<string, Map<string, { rate: number; currency: BillingCurrency }>>();
-  for (const r of allCustomerRates) {
-    let roleMap = customerRoleRateMap.get(r.customer_id);
-    if (!roleMap) {
-      roleMap = new Map();
-      customerRoleRateMap.set(r.customer_id, roleMap);
-    }
-    roleMap.set(r.role_id, {
-      rate: Number(r.rate_per_hour),
-      currency: parseBillingCurrency(r.currency),
-    });
-  }
-
-  const resolveRateSnapshot = (
-    projectId: string,
-    customerId: string,
-    roleId: string
-  ): { rate: number | null; currency: BillingCurrency } => {
-    const billingCurrency = customerCurrencyMap.get(customerId) ?? "SEK";
-    const fromProject = projectRoleRateMap.get(projectId)?.get(roleId);
-    if (fromProject != null) return fromProject;
-    const fromCustomer = customerRoleRateMap.get(customerId)?.get(roleId);
-    if (fromCustomer != null) return fromCustomer;
-    return { rate: null, currency: billingCurrency };
-  };
 
   for (let cgIndex = 0; cgIndex < customerGroups.length; cgIndex++) {
     const group = customerGroups[cgIndex];
@@ -864,6 +1007,26 @@ export async function saveTimeReportEntries(
       }
       const displayOrder = cgIndex * 1000 + eIndex;
       const entryLineId = (entry.id && entry.id.trim() !== "" ? entry.id : randomUUID()) as string;
+      let billing = entry.projectId && entry.roleId
+        ? resolveBillingSaveIdentity(
+            entry.roleId,
+            entry.projectId,
+            group.customerId,
+            allProjectRates,
+            allCustomerRates,
+            customerCurrencyMap.get(group.customerId) ?? "SEK"
+          )
+        : {
+            role_id: null,
+            customer_rate_id: null,
+            project_rate_id: null,
+            role_name_snapshot: null,
+            rate: null,
+            currency: customerCurrencyMap.get(group.customerId) ?? "SEK",
+          };
+      if (entry.projectId && projectBillingTypes.get(entry.projectId) === "fixed") {
+        billing = { ...billing, rate: null };
+      }
       desiredLines.push({
         id: entryLineId,
         consultant_id: consultantId,
@@ -871,7 +1034,9 @@ export async function saveTimeReportEntries(
         iso_week: week,
         customer_id: group.customerId,
         project_id: entry.projectId || null,
-        role_id: entry.roleId || null,
+        role_id: billing.role_id,
+        customer_rate_id: billing.customer_rate_id,
+        project_rate_id: billing.project_rate_id,
         jira_devops_key: entry.jiraDevOpsValue || null,
         description: (entry.task ?? "").trim() || null,
         work_issue_id: workIssueIdFromLinkKey(entry.jiraDevOpsValue),
@@ -889,20 +1054,22 @@ export async function saveTimeReportEntries(
         const hours = entry.hours[dayIndex] ?? 0;
         const comment = entry.comments[dayIndex]?.trim() ?? "";
         if (hours > 0 && entry.projectId && entry.roleId) {
-          const rateSnapshot = resolveRateSnapshot(entry.projectId, group.customerId, entry.roleId);
           desired.push({
             entry_line_id: entryLineId,
             consultant_id: consultantId,
             customer_id: group.customerId,
             project_id: entry.projectId,
-            role_id: entry.roleId,
+            role_id: billing.role_id,
+            customer_rate_id: billing.customer_rate_id,
+            project_rate_id: billing.project_rate_id,
+            role_name_snapshot: billing.role_name_snapshot,
             jira_devops_key: entry.jiraDevOpsValue || null,
             description: (entry.task ?? "").trim() || null,
             entry_date: entryDate,
             hours,
             internal_comment: comment || null,
-            rate_snapshot: rateSnapshot.rate,
-            currency_snapshot: rateSnapshot.rate != null ? rateSnapshot.currency : null,
+            rate_snapshot: billing.rate,
+            currency_snapshot: billing.rate != null ? billing.currency : null,
             display_order: displayOrder,
           });
         }
@@ -936,6 +1103,8 @@ export async function saveTimeReportEntries(
       line.customer_id,
       line.project_id ?? "",
       line.role_id ?? "",
+      line.customer_rate_id ?? "",
+      line.project_rate_id ?? "",
       line.jira_devops_key ?? "",
       line.description ?? "",
       line.work_issue_id ?? "",
@@ -980,6 +1149,7 @@ export async function saveTimeReportEntries(
 
     const { rows: existingLines } = await client.query<TimeReportLineDb>(
       `SELECT id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+              customer_rate_id, project_rate_id,
               jira_devops_key, description, display_order, work_issue_id
        FROM time_report_entry_lines
        WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
@@ -1053,8 +1223,9 @@ export async function saveTimeReportEntries(
         await client.query(
           `INSERT INTO time_report_entry_lines (
              id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+             customer_rate_id, project_rate_id,
              jira_devops_key, description, work_issue_id, display_order, created_at, updated_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12::date, now()), COALESCE($12::date, now()))`,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, COALESCE($14::date, now()), COALESCE($14::date, now()))`,
           [
             de.id,
             de.consultant_id,
@@ -1063,6 +1234,8 @@ export async function saveTimeReportEntries(
             de.customer_id,
             de.project_id,
             de.role_id,
+            de.customer_rate_id,
+            de.project_rate_id,
             de.jira_devops_key,
             de.description,
             de.work_issue_id,
@@ -1076,17 +1249,21 @@ export async function saveTimeReportEntries(
              customer_id = $3,
              project_id = $4,
              role_id = $5,
-             jira_devops_key = $6,
-             description = $7,
-             work_issue_id = $8,
-             display_order = $9
-           WHERE consultant_id = $1 AND iso_year = $10 AND iso_week = $11 AND id = $2`,
+             customer_rate_id = $6,
+             project_rate_id = $7,
+             jira_devops_key = $8,
+             description = $9,
+             work_issue_id = $10,
+             display_order = $11
+           WHERE consultant_id = $1 AND iso_year = $12 AND iso_week = $13 AND id = $2`,
           [
             consultantId,
             lineId,
             de.customer_id,
             de.project_id,
             de.role_id,
+            de.customer_rate_id,
+            de.project_rate_id,
             de.jira_devops_key,
             de.description,
             de.work_issue_id,
@@ -1100,7 +1277,8 @@ export async function saveTimeReportEntries(
 
     const lineIds = Array.from(desiredLineById.keys());
     const { rows: existingRows } = await client.query<TimeReportRowDb>(
-      `SELECT id, entry_line_id, customer_id, project_id, role_id, jira_devops_key, description,
+      `SELECT id, entry_line_id, customer_id, project_id, role_id, customer_rate_id, project_rate_id,
+              role_name_snapshot, jira_devops_key, description,
               entry_date::text AS entry_date, hours, internal_comment, rate_snapshot, currency_snapshot, display_order
        FROM time_report_entries
        WHERE consultant_id = $1
@@ -1148,16 +1326,20 @@ export async function saveTimeReportEntries(
       if (!ex) {
         const ins = await client.query<{ id: string }>(
           `INSERT INTO time_report_entries (
-             consultant_id, customer_id, project_id, role_id, jira_devops_key,
+             consultant_id, customer_id, project_id, role_id, customer_rate_id, project_rate_id,
+             role_name_snapshot, jira_devops_key,
              description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, currency_snapshot, display_order,
              entry_line_id
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12,$13)
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::date,$11,$11,$12,$13,$14,$15,$16)
            RETURNING id`,
           [
             de.consultant_id,
             de.customer_id,
             de.project_id,
             de.role_id,
+            de.customer_rate_id,
+            de.project_rate_id,
+            de.role_name_snapshot,
             de.jira_devops_key,
             de.description,
             de.entry_date,
@@ -1186,21 +1368,27 @@ export async function saveTimeReportEntries(
              customer_id = $2,
              project_id = $3,
              role_id = $4,
-             jira_devops_key = $5,
-             description = $6,
-             hours = $7,
-             pm_edited_hours = $7,
-             internal_comment = $8,
-             rate_snapshot = $9,
-             currency_snapshot = $10,
-             display_order = $11,
-             entry_line_id = $12
+             customer_rate_id = $5,
+             project_rate_id = $6,
+             role_name_snapshot = $7,
+             jira_devops_key = $8,
+             description = $9,
+             hours = $10,
+             pm_edited_hours = $10,
+             internal_comment = $11,
+             rate_snapshot = $12,
+             currency_snapshot = $13,
+             display_order = $14,
+             entry_line_id = $15
            WHERE id = $1`,
           [
             ex.id,
             de.customer_id,
             de.project_id,
             de.role_id,
+            de.customer_rate_id,
+            de.project_rate_id,
+            de.role_name_snapshot,
             de.jira_devops_key,
             de.description,
             de.hours,
@@ -1266,10 +1454,17 @@ async function buildDesiredCellsForCopy(
 ): Promise<{ toInsert: DesiredCell[]; error: string | null }> {
   const copyHours = entry.copyHours !== false;
   const weekDates = getISOWeekDateStrings(targetYear, targetWeek);
-  const rateSnapshot =
+  const billing =
     entry.projectId && entry.roleId
       ? await getEffectiveRateSnapshot(entry.projectId, customerId, entry.roleId)
-      : { rate: null, currency: "SEK" as BillingCurrency };
+      : {
+          role_id: null,
+          customer_rate_id: null,
+          project_rate_id: null,
+          role_name_snapshot: null,
+          rate: null,
+          currency: "SEK" as BillingCurrency,
+        };
 
   const toInsert: DesiredCell[] = [];
   const displayOrderPlaceholder = 0;
@@ -1285,14 +1480,17 @@ async function buildDesiredCellsForCopy(
           consultant_id: consultantId,
           customer_id: customerId,
           project_id: entry.projectId,
-          role_id: entry.roleId,
+          role_id: billing.role_id,
+          customer_rate_id: billing.customer_rate_id,
+          project_rate_id: billing.project_rate_id,
+          role_name_snapshot: billing.role_name_snapshot,
           jira_devops_key: entry.jiraDevOpsValue || null,
           description: (entry.task ?? "").trim() || null,
           entry_date: weekDates[dayIndex]!,
           hours: hoursNum,
           internal_comment: comment || null,
-          rate_snapshot: rateSnapshot.rate,
-          currency_snapshot: rateSnapshot.rate != null ? rateSnapshot.currency : null,
+          rate_snapshot: billing.rate,
+          currency_snapshot: billing.rate != null ? billing.currency : null,
           display_order: displayOrderPlaceholder,
         });
       } else if (comment) {
@@ -1301,14 +1499,17 @@ async function buildDesiredCellsForCopy(
           consultant_id: consultantId,
           customer_id: customerId,
           project_id: entry.projectId,
-          role_id: entry.roleId,
+          role_id: billing.role_id,
+          customer_rate_id: billing.customer_rate_id,
+          project_rate_id: billing.project_rate_id,
+          role_name_snapshot: billing.role_name_snapshot,
           jira_devops_key: entry.jiraDevOpsValue || null,
           description: (entry.task ?? "").trim() || null,
           entry_date: weekDates[dayIndex]!,
           hours: COMMENT_ONLY_PLACEHOLDER_HOURS,
           internal_comment: comment,
-          rate_snapshot: rateSnapshot.rate,
-          currency_snapshot: rateSnapshot.rate != null ? rateSnapshot.currency : null,
+          rate_snapshot: billing.rate,
+          currency_snapshot: billing.rate != null ? billing.currency : null,
           display_order: displayOrderPlaceholder,
         });
       }
@@ -1386,11 +1587,21 @@ async function copyEntryToWeekCore(
   const newRevision = currentRev + 1;
   const rowOnlyLineCreatedAt = !copyHours ? (entry.rowOnlyAnchorDate ?? null) : null;
 
+  const copyBilling =
+    entry.projectId && entry.roleId
+      ? await getEffectiveRateSnapshot(entry.projectId, customerId, entry.roleId)
+      : {
+          role_id: null as string | null,
+          customer_rate_id: null as string | null,
+          project_rate_id: null as string | null,
+        };
+
   await client.query(
     `INSERT INTO time_report_entry_lines (
        id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+       customer_rate_id, project_rate_id,
        jira_devops_key, description, work_issue_id, display_order, created_at, updated_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12::date, now()), COALESCE($12::date, now()))`,
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, COALESCE($14::date, now()), COALESCE($14::date, now()))`,
     [
       entryLineId,
       consultantId,
@@ -1398,7 +1609,9 @@ async function copyEntryToWeekCore(
       targetWeek,
       customerId,
       entry.projectId || null,
-      entry.roleId || null,
+      copyBilling.role_id,
+      copyBilling.customer_rate_id,
+      copyBilling.project_rate_id,
       entry.jiraDevOpsValue || null,
       (entry.task ?? "").trim() || null,
       workIssueIdFromLinkKey(entry.jiraDevOpsValue),
@@ -1410,16 +1623,20 @@ async function copyEntryToWeekCore(
   for (const de of toInsert) {
     const ins = await client.query<{ id: string }>(
       `INSERT INTO time_report_entries (
-         consultant_id, customer_id, project_id, role_id, jira_devops_key,
+         consultant_id, customer_id, project_id, role_id, customer_rate_id, project_rate_id,
+         role_name_snapshot, jira_devops_key,
          description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, currency_snapshot, display_order,
          entry_line_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8,$8,$9,$10,$11,$12,$13)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::date,$11,$11,$12,$13,$14,$15,$16)
        RETURNING id`,
       [
         de.consultant_id,
         de.customer_id,
         de.project_id,
         de.role_id,
+        de.customer_rate_id,
+        de.project_rate_id,
+        de.role_name_snapshot,
         de.jira_devops_key,
         de.description,
         de.entry_date,
@@ -1680,4 +1897,622 @@ export async function getTimeReportWeekRevisions(
     out[`${r.iso_year}-W${r.iso_week}`] = Number(r.revision);
   }
   return out;
+}
+
+function parseDateOnlyLocal(ymd: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+export type LogHoursAgainstWorkIssueResult =
+  | { success: true; loggedHours: number }
+  | { success: false; error: string; code?: "revision_conflict" | "unauthorized" };
+
+/**
+ * Log time on a Work issue as a new Time Report row (never merges same-day cells).
+ * Uses optimistic concurrency via week revision lock.
+ */
+export async function logHoursAgainstWorkIssue(input: {
+  customerId: string;
+  plannerProjectId: string;
+  workIssueId: string;
+  date: string;
+  hours: number;
+  /** Billing item id (role UUID or custom cr:/pr: key), same as Time Report Role. */
+  roleId: string;
+  note?: string | null;
+  lineDescription?: string | null;
+}): Promise<LogHoursAgainstWorkIssueResult> {
+  const ctx = await getTimeReportAccessContext();
+  const consultant = ctx.consultant;
+  if (!consultant?.id) {
+    return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
+  }
+  if (!ctx.allowedCustomerIds.has(input.customerId)) {
+    return { success: false, error: "Unauthorized customer.", code: "unauthorized" };
+  }
+  if (
+    isExternalConsultant(consultant) &&
+    !ctx.bookedProjectIds.has(input.plannerProjectId)
+  ) {
+    return { success: false, error: "Unauthorized project.", code: "unauthorized" };
+  }
+
+  const hours = Math.round(Number(input.hours) * 100) / 100;
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+    return { success: false, error: "Hours must be between 0 and 24." };
+  }
+
+  const entryDate = parseDateOnlyLocal(input.date);
+  if (!entryDate) {
+    return { success: false, error: "Invalid date." };
+  }
+  const dateStr = input.date.trim();
+  const { year, week } = getYearWeekForDate(entryDate);
+
+  const allowed = await workIssueIdsForCustomer([input.workIssueId], input.customerId);
+  if (!allowed.has(input.workIssueId)) {
+    return {
+      success: false,
+      error: "Work issue must belong to the same customer as the time report row.",
+    };
+  }
+
+  const resolved = await resolveBillingForWorkIssueLog(
+    input.plannerProjectId,
+    input.customerId,
+    input.roleId
+  );
+  if (!resolved.ok) {
+    return { success: false, error: resolved.error };
+  }
+  const lineBilling = resolved.billing;
+
+  const linkKey = workIssueLinkKey(input.workIssueId);
+  const note = (input.note ?? "").trim() || null;
+  const lineDescription = (input.lineDescription ?? "").trim() || null;
+  const appUserId = await getAppUserIdForAudit();
+
+  try {
+    return await withCloudSqlTransaction<LogHoursAgainstWorkIssueResult>(
+      `work-issue time log ${year}-W${week}`,
+      async (client, rollback) => {
+        await client.query(
+          `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
+           VALUES ($1, $2, $3, 0)
+           ON CONFLICT (consultant_id, iso_year, iso_week) DO NOTHING`,
+          [consultant.id, year, week]
+        );
+
+        const { rows: revLock } = await client.query<{ revision: string }>(
+          `SELECT revision::text FROM time_report_week_revisions
+           WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+           FOR UPDATE`,
+          [consultant.id, year, week]
+        );
+        const currentRev = Number(revLock[0]?.revision ?? 0);
+        const newRevision = currentRev + 1;
+
+        // Each Work log creates its own line+entry so same-day logs (e.g. with/without
+        // notes) stay as separate records. Time report unique is per line+date.
+
+        const { rows: ordRows } = await client.query<{
+          display_order: string | number | null;
+        }>(
+          `SELECT display_order
+           FROM time_report_entry_lines
+           WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3`,
+          [consultant.id, year, week]
+        );
+        const maxOrder =
+          ordRows.length && ordRows.every((r) => r.display_order != null)
+            ? Math.max(...ordRows.map((r) => Number(r.display_order)))
+            : 0;
+        const displayOrder = maxOrder + 1000;
+        const entryLineId = randomUUID();
+
+        await client.query(
+          `INSERT INTO time_report_entry_lines (
+             id, consultant_id, iso_year, iso_week, customer_id, project_id, role_id,
+             customer_rate_id, project_rate_id,
+             jira_devops_key, description, work_issue_id, display_order, created_at, updated_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now(), now())`,
+          [
+            entryLineId,
+            consultant.id,
+            year,
+            week,
+            input.customerId,
+            input.plannerProjectId,
+            lineBilling.role_id,
+            lineBilling.customer_rate_id,
+            lineBilling.project_rate_id,
+            linkKey,
+            lineDescription,
+            input.workIssueId,
+            displayOrder,
+          ]
+        );
+
+        if (hours > 99.99) {
+          return rollback({
+            success: false,
+            error: "Hours for that day would exceed the maximum.",
+          });
+        }
+
+        const desired: DesiredCell = {
+          entry_line_id: entryLineId,
+          consultant_id: consultant.id,
+          customer_id: input.customerId,
+          project_id: input.plannerProjectId,
+          role_id: lineBilling.role_id,
+          customer_rate_id: lineBilling.customer_rate_id,
+          project_rate_id: lineBilling.project_rate_id,
+          role_name_snapshot: lineBilling.role_name_snapshot,
+          jira_devops_key: linkKey,
+          description: lineDescription,
+          entry_date: dateStr,
+          hours,
+          internal_comment: note,
+          rate_snapshot: lineBilling.rate,
+          currency_snapshot:
+            lineBilling.rate != null ? lineBilling.currency : null,
+          display_order: displayOrder,
+        };
+
+        const ins = await client.query<{ id: string }>(
+          `INSERT INTO time_report_entries (
+             consultant_id, customer_id, project_id, role_id, customer_rate_id, project_rate_id,
+             role_name_snapshot, jira_devops_key,
+             description, entry_date, hours, pm_edited_hours, internal_comment, rate_snapshot, currency_snapshot, display_order,
+             entry_line_id
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::date,$11,$11,$12,$13,$14,$15,$16)
+           RETURNING id`,
+          [
+            desired.consultant_id,
+            desired.customer_id,
+            desired.project_id,
+            desired.role_id,
+            desired.customer_rate_id,
+            desired.project_rate_id,
+            desired.role_name_snapshot,
+            desired.jira_devops_key,
+            desired.description,
+            desired.entry_date,
+            desired.hours,
+            desired.internal_comment,
+            desired.rate_snapshot,
+            desired.currency_snapshot,
+            desired.display_order,
+            desired.entry_line_id,
+          ]
+        );
+        const newId = ins.rows[0]?.id;
+        await writeEntryHistory(client, {
+          timeReportEntryId: newId ?? null,
+          entryLineId,
+          consultantId: consultant.id,
+          operation: "insert",
+          before: null,
+          after: desiredCellSnapshot(desired, newId),
+          sourceRevision: newRevision,
+          changedByAppUserId: appUserId,
+        });
+
+        await client.query(
+          `UPDATE time_report_week_revisions
+           SET revision = $1::bigint,
+               updated_at = now(),
+               updated_by_app_user_id = $2
+           WHERE consultant_id = $3 AND iso_year = $4 AND iso_week = $5`,
+          [newRevision, appUserId, consultant.id, year, week]
+        );
+
+        const { rows: sumRows } = await client.query<{
+          hours: string | number | null;
+        }>(
+          `SELECT COALESCE(SUM(e.hours), 0) AS hours
+           FROM time_report_entry_lines l
+           JOIN time_report_entries e
+             ON e.entry_line_id = l.id
+            AND e.consultant_id = l.consultant_id
+           WHERE l.work_issue_id = $1`,
+          [input.workIssueId]
+        );
+
+        return {
+          success: true,
+          loggedHours: Number(sumRows[0]?.hours ?? 0),
+        };
+      }
+    );
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : "Failed to log time",
+    };
+  }
+}
+
+async function sumLoggedHoursForWorkIssue(
+  client: PoolClient,
+  workIssueId: string
+): Promise<number> {
+  const { rows } = await client.query<{ hours: string | number | null }>(
+    `SELECT COALESCE(SUM(e.hours), 0) AS hours
+     FROM time_report_entry_lines l
+     JOIN time_report_entries e
+       ON e.entry_line_id = l.id
+      AND e.consultant_id = l.consultant_id
+     WHERE l.work_issue_id = $1`,
+    [workIssueId]
+  );
+  return Number(rows[0]?.hours ?? 0);
+}
+
+type OwnedWorkIssueEntry = TimeReportRowDb & {
+  work_issue_id: string;
+  iso_year: number;
+  iso_week: number;
+};
+
+async function loadOwnedWorkIssueEntry(
+  client: PoolClient,
+  consultantId: string,
+  workIssueId: string,
+  entryId: string
+): Promise<OwnedWorkIssueEntry | null> {
+  const { rows } = await client.query<OwnedWorkIssueEntry>(
+    `SELECT e.id, e.entry_line_id, e.customer_id, e.project_id, e.role_id,
+            e.customer_rate_id, e.project_rate_id, e.role_name_snapshot,
+            e.jira_devops_key, e.description, e.entry_date::text AS entry_date,
+            e.hours, e.internal_comment, e.rate_snapshot, e.currency_snapshot,
+            e.display_order, l.work_issue_id, l.iso_year, l.iso_week
+     FROM time_report_entries e
+     JOIN time_report_entry_lines l
+       ON l.id = e.entry_line_id
+      AND l.consultant_id = e.consultant_id
+     WHERE e.id = $1
+       AND e.consultant_id = $2
+       AND l.work_issue_id = $3
+     FOR UPDATE OF e, l`,
+    [entryId, consultantId, workIssueId]
+  );
+  return rows[0] ?? null;
+}
+
+async function bumpWeekRevision(
+  client: PoolClient,
+  consultantId: string,
+  year: number,
+  week: number,
+  appUserId: string | null
+): Promise<number> {
+  await client.query(
+    `INSERT INTO time_report_week_revisions (consultant_id, iso_year, iso_week, revision)
+     VALUES ($1, $2, $3, 0)
+     ON CONFLICT (consultant_id, iso_year, iso_week) DO NOTHING`,
+    [consultantId, year, week]
+  );
+  const { rows: revLock } = await client.query<{ revision: string }>(
+    `SELECT revision::text FROM time_report_week_revisions
+     WHERE consultant_id = $1 AND iso_year = $2 AND iso_week = $3
+     FOR UPDATE`,
+    [consultantId, year, week]
+  );
+  const newRevision = Number(revLock[0]?.revision ?? 0) + 1;
+  await client.query(
+    `UPDATE time_report_week_revisions
+     SET revision = $1::bigint,
+         updated_at = now(),
+         updated_by_app_user_id = $2
+     WHERE consultant_id = $3 AND iso_year = $4 AND iso_week = $5`,
+    [newRevision, appUserId, consultantId, year, week]
+  );
+  return newRevision;
+}
+
+/**
+ * Update or delete the current consultant's time entry on a Work issue.
+ * Date changes within the same ISO week update in place; other weeks delete + re-log.
+ */
+export async function updateWorkIssueTimeEntry(input: {
+  customerId: string;
+  plannerProjectId: string;
+  workIssueId: string;
+  entryId: string;
+  hours: number;
+  date: string;
+  note?: string | null;
+  lineDescription?: string | null;
+}): Promise<LogHoursAgainstWorkIssueResult> {
+  const ctx = await getTimeReportAccessContext();
+  const consultant = ctx.consultant;
+  if (!consultant?.id) {
+    return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
+  }
+  if (!ctx.allowedCustomerIds.has(input.customerId)) {
+    return { success: false, error: "Unauthorized customer.", code: "unauthorized" };
+  }
+
+  const hours = Math.round(Number(input.hours) * 100) / 100;
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+    return { success: false, error: "Hours must be between 0 and 24." };
+  }
+  const entryDate = parseDateOnlyLocal(input.date);
+  if (!entryDate) {
+    return { success: false, error: "Invalid date." };
+  }
+  const dateStr = input.date.trim();
+  const note = (input.note ?? "").trim() || null;
+  const appUserId = await getAppUserIdForAudit();
+
+  type UpdateTxnResult =
+    | LogHoursAgainstWorkIssueResult
+    | {
+        success: true;
+        loggedHours: number;
+        movedWeek: true;
+        billingKey: string;
+      };
+
+  try {
+    const result = await withCloudSqlTransaction<UpdateTxnResult>(
+      `work-issue time update`,
+      async (client, rollback) => {
+        const existing = await loadOwnedWorkIssueEntry(
+          client,
+          consultant.id,
+          input.workIssueId,
+          input.entryId
+        );
+        if (!existing) {
+          return await rollback({
+            success: false,
+            error: "Time entry not found.",
+          });
+        }
+
+        const oldDate = existing.entry_date.slice(0, 10);
+        const oldWeek = {
+          year: Number(existing.iso_year),
+          week: Number(existing.iso_week),
+        };
+        const nextWeek = getYearWeekForDate(entryDate);
+
+        if (oldDate === dateStr) {
+          const newRevision = await bumpWeekRevision(
+            client,
+            consultant.id,
+            oldWeek.year,
+            oldWeek.week,
+            appUserId
+          );
+          await client.query(
+            `UPDATE time_report_entries SET
+               hours = $2,
+               pm_edited_hours = $2,
+               internal_comment = $3
+             WHERE id = $1`,
+            [existing.id, hours, note]
+          );
+          await writeEntryHistory(client, {
+            timeReportEntryId: existing.id,
+            entryLineId: existing.entry_line_id,
+            consultantId: consultant.id,
+            operation: "update",
+            before: snapshotRowDb(existing),
+            after: {
+              ...snapshotRowDb(existing),
+              hours,
+              internal_comment: note,
+            },
+            sourceRevision: newRevision,
+            changedByAppUserId: appUserId,
+          });
+          return {
+            success: true,
+            loggedHours: await sumLoggedHoursForWorkIssue(
+              client,
+              input.workIssueId
+            ),
+          };
+        }
+
+        if (
+          oldWeek.year === nextWeek.year &&
+          oldWeek.week === nextWeek.week
+        ) {
+          const { rows: conflict } = await client.query<{ id: string }>(
+            `SELECT id FROM time_report_entries
+             WHERE entry_line_id = $1 AND consultant_id = $2
+               AND entry_date = $3::date AND id <> $4
+             LIMIT 1
+             FOR UPDATE`,
+            [existing.entry_line_id, consultant.id, dateStr, existing.id]
+          );
+          if (conflict[0]) {
+            return await rollback({
+              success: false,
+              error: "You already have time on that date for this issue.",
+            });
+          }
+          const newRevision = await bumpWeekRevision(
+            client,
+            consultant.id,
+            oldWeek.year,
+            oldWeek.week,
+            appUserId
+          );
+          await client.query(
+            `UPDATE time_report_entries SET
+               entry_date = $2::date,
+               hours = $3,
+               pm_edited_hours = $3,
+               internal_comment = $4
+             WHERE id = $1`,
+            [existing.id, dateStr, hours, note]
+          );
+          await writeEntryHistory(client, {
+            timeReportEntryId: existing.id,
+            entryLineId: existing.entry_line_id,
+            consultantId: consultant.id,
+            operation: "update",
+            before: snapshotRowDb(existing),
+            after: {
+              ...snapshotRowDb(existing),
+              entry_date: dateStr,
+              hours,
+              internal_comment: note,
+            },
+            sourceRevision: newRevision,
+            changedByAppUserId: appUserId,
+          });
+          return {
+            success: true,
+            loggedHours: await sumLoggedHoursForWorkIssue(
+              client,
+              input.workIssueId
+            ),
+          };
+        }
+
+        // Different ISO week: delete here, then re-log after commit.
+        const newRevision = await bumpWeekRevision(
+          client,
+          consultant.id,
+          oldWeek.year,
+          oldWeek.week,
+          appUserId
+        );
+        await writeEntryHistory(client, {
+          timeReportEntryId: existing.id,
+          entryLineId: existing.entry_line_id,
+          consultantId: consultant.id,
+          operation: "delete",
+          before: snapshotRowDb(existing),
+          after: null,
+          sourceRevision: newRevision,
+          changedByAppUserId: appUserId,
+        });
+        await client.query(`DELETE FROM time_report_entries WHERE id = $1`, [
+          existing.id,
+        ]);
+        const billingKey = lineBillingKey(existing);
+        if (!billingKey) {
+          return await rollback({
+            success: false,
+            error: "Could not resolve role for this time entry.",
+          });
+        }
+        return {
+          success: true,
+          loggedHours: 0,
+          movedWeek: true as const,
+          billingKey,
+        };
+      }
+    );
+
+    if (!result.success) return result;
+    if (!("movedWeek" in result)) return result;
+    return logHoursAgainstWorkIssue({
+      customerId: input.customerId,
+      plannerProjectId: input.plannerProjectId,
+      workIssueId: input.workIssueId,
+      date: dateStr,
+      hours,
+      roleId: result.billingKey,
+      note,
+      lineDescription: input.lineDescription,
+    });
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : "Failed to update time",
+    };
+  }
+}
+
+export async function deleteWorkIssueTimeEntry(input: {
+  customerId: string;
+  workIssueId: string;
+  entryId: string;
+}): Promise<LogHoursAgainstWorkIssueResult> {
+  const ctx = await getTimeReportAccessContext();
+  const consultant = ctx.consultant;
+  if (!consultant?.id) {
+    return { success: false, error: "No consultant profile linked.", code: "unauthorized" };
+  }
+  if (!ctx.allowedCustomerIds.has(input.customerId)) {
+    return { success: false, error: "Unauthorized customer.", code: "unauthorized" };
+  }
+
+  const appUserId = await getAppUserIdForAudit();
+
+  try {
+    return await withCloudSqlTransaction<LogHoursAgainstWorkIssueResult>(
+      `work-issue time delete`,
+      async (client, rollback) => {
+        const existing = await loadOwnedWorkIssueEntry(
+          client,
+          consultant.id,
+          input.workIssueId,
+          input.entryId
+        );
+        if (!existing) {
+          return await rollback({
+            success: false,
+            error: "Time entry not found.",
+          });
+        }
+
+        const year = Number(existing.iso_year);
+        const week = Number(existing.iso_week);
+        const newRevision = await bumpWeekRevision(
+          client,
+          consultant.id,
+          year,
+          week,
+          appUserId
+        );
+        await writeEntryHistory(client, {
+          timeReportEntryId: existing.id,
+          entryLineId: existing.entry_line_id,
+          consultantId: consultant.id,
+          operation: "delete",
+          before: snapshotRowDb(existing),
+          after: null,
+          sourceRevision: newRevision,
+          changedByAppUserId: appUserId,
+        });
+        await client.query(`DELETE FROM time_report_entries WHERE id = $1`, [
+          existing.id,
+        ]);
+
+        return {
+          success: true,
+          loggedHours: await sumLoggedHoursForWorkIssue(client, input.workIssueId),
+        };
+      }
+    );
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : "Failed to delete time",
+    };
+  }
 }

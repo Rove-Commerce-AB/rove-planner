@@ -87,8 +87,10 @@ export function ProjectRatesTab({
     };
   }, []);
 
-  const getRoleName = (roleId: string) =>
-    roles.find((r) => r.id === roleId)?.name ?? "Unknown";
+  const getRateLabel = (rate: ProjectRate) =>
+    rate.display_name ||
+    (rate.role_id ? roles.find((r) => r.id === rate.role_id)?.name : null) ||
+    "Unknown";
 
   const handleUpdate = async (rate: ProjectRate, newVal: number) => {
     if (newVal === rate.rate_per_hour) return;
@@ -193,7 +195,7 @@ export function ProjectRatesTab({
                   className="flex min-w-0 flex-nowrap items-center gap-3 rounded-md bg-bg-muted/20 px-2 py-1"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-                    {getRoleName(r.role_id)}
+                    {getRateLabel(r)}
                   </span>
                   <div className="min-w-[5.5rem] shrink-0">
                     <InlineEditFieldContainer

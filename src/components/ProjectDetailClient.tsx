@@ -15,7 +15,11 @@ import { getConsultantsList } from "@/lib/consultantsClient";
 import { ROUTES, customerHref } from "@/lib/routes";
 import { moneyLabel } from "@/lib/currency";
 import { getProjectAllocationData } from "@/app/(app)/allocation/actions";
-import type { ProjectWithDetails, ProjectType } from "@/types";
+import type {
+  ProjectBillingType,
+  ProjectWithDetails,
+  ProjectType,
+} from "@/types";
 import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { DetailPageDeleteFooter } from "./detail/DetailPageDeleteFooter";
 import {
@@ -113,6 +117,9 @@ export function ProjectDetailClient({
   );
   const [isActive, setIsActive] = useState(initial.isActive);
   const [type, setType] = useState<ProjectType>(initial.type);
+  const [billingType, setBillingType] = useState<ProjectBillingType>(
+    initial.billingType ?? "hourly"
+  );
   const [startDate, setStartDate] = useState(initial.startDate ?? "");
   const [endDate, setEndDate] = useState(initial.endDate ?? "");
   const [probability, setProbability] = useState(initial.probability ?? 100);
@@ -247,6 +254,7 @@ export function ProjectDetailClient({
     setProjectManagerName(initial.projectManagerName ?? null);
     setIsActive(initial.isActive);
     setType(initial.type);
+    setBillingType(initial.billingType ?? "hourly");
     setStartDate(initial.startDate ?? "");
     setEndDate(initial.endDate ?? "");
     setProbability(initial.probability ?? 100);
@@ -516,8 +524,30 @@ export function ProjectDetailClient({
     setError(null);
     setSubmitting(true);
     try {
-      await updateProject(initial.id, { type: next });
+      const patch: { type: ProjectType; billing_type?: ProjectBillingType } = {
+        type: next,
+      };
+      if (next !== "customer" && billingType !== "hourly") {
+        patch.billing_type = "hourly";
+      }
+      await updateProject(initial.id, patch);
       setType(next);
+      if (patch.billing_type) setBillingType(patch.billing_type);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const setProjectBillingType = async (next: ProjectBillingType) => {
+    if (next === billingType) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateProject(initial.id, { billing_type: next });
+      setBillingType(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -807,7 +837,11 @@ export function ProjectDetailClient({
             </div>
 
             <div className="min-w-0">
-              <FieldLabel>Budget ({moneyLabel(initial.billingCurrency)})</FieldLabel>
+              <FieldLabel>
+                {billingType === "fixed"
+                  ? `Contract value (${moneyLabel(initial.billingCurrency)})`
+                  : `Budget (${moneyLabel(initial.billingCurrency)})`}
+              </FieldLabel>
               <div className="mt-0.5">
                 <InlineEditFieldContainer
                   isEditing={editingField === "budgetMoney"}
@@ -953,6 +987,24 @@ export function ProjectDetailClient({
             </div>
 
             <div className="min-w-0">
+              <FieldLabel>Billing</FieldLabel>
+              <div className="mt-0.5">
+                <OptionSegments
+                  name="Billing"
+                  value={billingType}
+                  onChange={(value) =>
+                    void setProjectBillingType(value as ProjectBillingType)
+                  }
+                  disabled={submitting || type !== "customer"}
+                  options={[
+                    { value: "hourly", label: "Hourly" },
+                    { value: "fixed", label: "Fixed price" },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="min-w-0">
               <FieldLabel>Probability</FieldLabel>
               <div className="mt-0.5">
                 <InlineEditFieldContainer
@@ -1023,7 +1075,9 @@ export function ProjectDetailClient({
             RATES/TASKS
           </PanelSectionTitle>
           <p className="px-3 pb-2 text-sm text-text-primary opacity-70">
-            Rates set here override customer rates for this project when both exist.
+            {billingType === "fixed"
+              ? "Tasks/roles for time reporting and planning. On fixed-price projects hourly rates are not billed (Standard report Income = 0)."
+              : "Rates set here override customer rates for this project when both exist."}
           </p>
           <div className="p-3 pt-0">
             {ratesError && (

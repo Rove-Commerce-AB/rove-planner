@@ -40,11 +40,23 @@ export function breadcrumbsForPathname(
   }
 
   if (pathname.startsWith(ROUTES.timeApproval)) {
-    return [root, { label: "Time report" }, { label: "Time approval" }];
+    return [
+      root,
+      { label: "Time report", href: ROUTES.timeReportHome },
+      { label: "Time approval" },
+    ];
+  }
+
+  if (pathname === ROUTES.timeReportHome) {
+    return [root, { label: "Time report" }];
   }
 
   if (pathname.startsWith("/time-report")) {
-    return [root, { label: "Time report" }, { label: "Time report" }];
+    return [
+      root,
+      { label: "Time report", href: ROUTES.timeReportHome },
+      { label: "Time report" },
+    ];
   }
 
   if (pathname.startsWith("/settings")) {

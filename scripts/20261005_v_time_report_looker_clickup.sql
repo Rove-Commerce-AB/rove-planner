@@ -34,7 +34,7 @@ SELECT
   p.project_manager_id::text AS "ProjectManagerId",
   pm.name AS "ProjectManagerName",
   r.id::text AS "RoleId",
-  r.name AS "RoleName",
+  COALESCE(tre.role_name_snapshot, r.name) AS "RoleName",
   t.id::text AS "TeamId",
   t.name AS "TeamName",
   COALESCE(ji.jira_key, ck.clickup_id) AS "JiraKey",

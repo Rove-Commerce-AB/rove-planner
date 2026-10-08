@@ -31,6 +31,7 @@ import {
   type ProjectVisibility,
 } from "@/lib/allocationPageView";
 import { allocationCellKey } from "@/lib/allocationCellKey";
+import { allocationIdentityKey } from "@/lib/billingItem";
 import {
   formatAllocationWeekLabel,
   getAllocationCellBgClass,
@@ -393,7 +394,7 @@ function AllocationPageClientImpl({
               ? a.consultant_id == null
               : a.consultant_id === consultantId) &&
             a.project_id === projectId &&
-            (a.role_id ?? null) === roleId &&
+            (allocationIdentityKey(a) || null) === roleId &&
             a.year === year &&
             a.week === week
         );

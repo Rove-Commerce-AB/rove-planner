@@ -7,6 +7,7 @@ import { fetchCalendarHolidaysByCalendarIds } from "@/lib/calendarHolidaysQuerie
 import { getInternalCustomerId } from "@/lib/customers";
 import { getMonthLabel, getWeeksInMonth, getWorkingDaysByMonthInWeek } from "@/lib/dateUtils";
 import { fetchCustomerRatesByCustomerIds } from "@/lib/customerRatesQueries";
+import { fetchProjectRatesByProjectIds } from "@/lib/projectRatesQueries";
 import { getProjectsWithCustomer } from "@/lib/projects";
 import type { ProbabilityDisplay } from "@/lib/allocationPageView";
 import { getRevenueForecast } from "@/lib/revenueForecast";
@@ -269,9 +270,10 @@ export async function getBillableUtilizationMonthlyReport(
       ),
     ];
     const allRates = await fetchCustomerRatesByCustomerIds(customerIds);
+    const allProjectRates = await fetchProjectRatesByProjectIds(projectIds);
     const ratesByCustomer = new Map<
       string,
-      { role_id: string; rate_per_hour: number; currency: string }[]
+      { id: string; role_id: string | null; rate_per_hour: number; currency: string }[]
     >();
     for (const cid of customerIds) {
       ratesByCustomer.set(
@@ -279,6 +281,7 @@ export async function getBillableUtilizationMonthlyReport(
         allRates
           .filter((r) => r.customer_id === cid)
           .map((r) => ({
+            id: r.id,
             role_id: r.role_id,
             rate_per_hour: r.rate_per_hour,
             currency: r.currency ?? "SEK",
@@ -293,11 +296,27 @@ export async function getBillableUtilizationMonthlyReport(
       if (internalCustomerId && project.customer_id === internalCustomerId) continue;
 
       const consultant = consultantById.get(a.consultant_id)!;
-      const roleId = a.role_id ?? (consultant as { role_id?: string }).role_id;
-      if (!roleId || !project.customer_id) continue;
-
-      const rates = ratesByCustomer.get(project.customer_id) ?? [];
-      const rateRow = rates.find((r) => r.role_id === roleId);
+      if (!project.customer_id) continue;
+      let rateRow:
+        | { rate_per_hour: number; currency: string }
+        | undefined;
+      if (a.project_rate_id) {
+        rateRow = allProjectRates.find((r) => r.id === a.project_rate_id);
+      } else if (a.customer_rate_id) {
+        rateRow = (ratesByCustomer.get(project.customer_id) ?? []).find(
+          (r) => r.id === a.customer_rate_id
+        );
+      } else {
+        const roleId = a.role_id ?? (consultant as { role_id?: string }).role_id;
+        if (!roleId) continue;
+        rateRow =
+          allProjectRates.find(
+            (r) => r.project_id === a.project_id && r.role_id === roleId
+          ) ??
+          (ratesByCustomer.get(project.customer_id) ?? []).find(
+            (r) => r.role_id === roleId
+          );
+      }
       if (!rateRow) continue;
 
       const holidays = holidaysByCalendar.get(consultant.calendar_id) ?? new Set();

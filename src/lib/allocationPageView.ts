@@ -2,6 +2,21 @@ import type { AllocationPageData } from "@/lib/allocationPageTypes";
 import { compareTextSv } from "@/lib/sort";
 import { TO_PLAN_CONSULTANT_ID } from "@/lib/allocationPageTypes";
 import { DEFAULT_CUSTOMER_COLOR } from "@/lib/constants";
+import { allocationIdentityKey } from "@/lib/billingItem";
+import type { AllocationRecord } from "@/lib/allocationsQueries";
+
+function allocationTaskId(a: AllocationRecord): string | null {
+  const key = allocationIdentityKey(a);
+  return key || null;
+}
+
+function allocationTaskName(
+  a: AllocationRecord,
+  roleMap: Map<string, string>
+): string {
+  if (a.custom_task_name) return a.custom_task_name;
+  return a.role_id ? (roleMap.get(a.role_id) ?? "Unknown") : "";
+}
 
 export type ProbabilityDisplay = "weighted" | "none";
 export type ProjectVisibility = "all" | "hideNon100" | "hide100";
@@ -98,7 +113,7 @@ export function buildPerConsultantView(
 
   for (const a of data.allocations) {
     const consultantKey = a.consultant_id ?? TO_PLAN_CONSULTANT_ID;
-    const projectRowKey = `${a.project_id}\0${a.role_id ?? ""}`;
+    const projectRowKey = `${a.project_id}\0${allocationTaskId(a) ?? ""}`;
 
     if (!byConsultant.has(consultantKey)) {
       byConsultant.set(consultantKey, new Map());
@@ -111,8 +126,8 @@ export function buildPerConsultantView(
     byWeek.set(weekKey(a.year, a.week), {
       id: a.id,
       hours: a.hours,
-      roleName: a.role_id ? (roleMap.get(a.role_id) ?? "Unknown") : "",
-      roleId: a.role_id,
+      roleName: allocationTaskName(a, roleMap),
+      roleId: allocationTaskId(a),
     });
   }
 
@@ -300,8 +315,8 @@ export function buildPerCustomerView(
     if (!proj) continue;
     const customerId = proj.customer_id;
     const projectName = proj.name ?? "Unknown";
-    const roleId = a.role_id ?? null;
-    const roleName = roleId ? (roleMap.get(roleId) ?? "Unknown") : "";
+    const roleId = allocationTaskId(a);
+    const roleName = allocationTaskName(a, roleMap);
     const rowKey = keyFor(a.consultant_id ?? TO_PLAN_CONSULTANT_ID, roleId);
 
     if (!byCustomerProject.has(customerId)) {
@@ -509,8 +524,8 @@ export function buildPerProjectView(
     const proj = projectMap.get(a.project_id);
     if (!proj) continue;
     const projectName = proj.name;
-    const roleId = a.role_id ?? null;
-    const roleName = roleId ? (roleMap.get(roleId) ?? "Unknown") : "";
+    const roleId = allocationTaskId(a);
+    const roleName = allocationTaskName(a, roleMap);
     const rowKey = keyFor(a.consultant_id ?? TO_PLAN_CONSULTANT_ID, roleId);
 
     if (!byProject.has(a.project_id)) {

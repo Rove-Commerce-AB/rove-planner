@@ -31,6 +31,7 @@ type Props =
       billingCurrency?: string;
       onError: (msg: string) => void;
       showDescription?: boolean;
+      refreshTrigger?: number;
     }
   | {
       mode: "create";
@@ -92,7 +93,11 @@ export function CustomerRatesTab(props: Props) {
     } else {
       setLoading(false);
     }
-  }, [props.mode, props.mode === "edit" ? props.customerId : null]);
+  }, [
+    props.mode,
+    props.mode === "edit" ? props.customerId : null,
+    props.mode === "edit" ? props.refreshTrigger : null,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -107,12 +112,14 @@ export function CustomerRatesTab(props: Props) {
   const currencyLabel = hourlyRateSuffix(displayCurrency);
   const ratePlaceholder = hourlyRateLabel(displayCurrency);
 
-  const getRoleName = (roleId: string) =>
-    roles.find((r) => r.id === roleId)?.name ?? "Unknown";
+  const getRateLabel = (rate: { display_name?: string; role_id: string | null }) =>
+    rate.display_name ||
+    (rate.role_id ? roles.find((r) => r.id === rate.role_id)?.name : null) ||
+    "Unknown";
 
   const usedRoleIds =
     props.mode === "edit"
-      ? rates.map((r) => r.role_id)
+      ? rates.map((r) => r.role_id).filter((id): id is string => Boolean(id))
       : props.pendingRates.map((r) => r.roleId);
   const availableRoles = roles.filter((r) => !usedRoleIds.includes(r.id));
 
@@ -125,7 +132,10 @@ export function CustomerRatesTab(props: Props) {
     }
     if (props.mode === "edit") {
       try {
-        await createCustomerRate(props.customerId, roleId, rateNum);
+        await createCustomerRate(props.customerId, {
+          roleId,
+          ratePerHour: rateNum,
+        });
         const updated = await getCustomerRates(props.customerId);
         setRates(updated);
         setSelectedRoleId("");
@@ -261,7 +271,7 @@ export function CustomerRatesTab(props: Props) {
                 >
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
                     {props.mode === "edit"
-                      ? getRoleName(rate.role_id)
+                      ? getRateLabel(rate)
                       : (r as { role_name: string }).role_name}
                   </span>
                   {props.mode === "edit" ? (
@@ -325,7 +335,7 @@ export function CustomerRatesTab(props: Props) {
                     onClick={() =>
                       props.mode === "edit"
                         ? handleRemoveEdit(rate)
-                        : props.onRemoveRate(r.role_id)
+                        : props.onRemoveRate((r as { role_id: string }).role_id)
                     }
                     aria-label="Remove rate"
                     className="shrink-0"

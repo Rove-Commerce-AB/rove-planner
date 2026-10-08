@@ -6,7 +6,15 @@ import * as customers from "./customersQueries";
 import * as consultants from "./consultantsQueries";
 import { DEFAULT_CUSTOMER_COLOR } from "./constants";
 import { parseBillingCurrency } from "./currency";
-import type { ProjectWithDetails, ProjectType } from "@/types";
+import type {
+  ProjectBillingType,
+  ProjectWithDetails,
+  ProjectType,
+} from "@/types";
+
+function parseBillingType(value: unknown): ProjectBillingType {
+  return value === "fixed" ? "fixed" : "hourly";
+}
 
 let clickupProjectColumnAvailable: boolean | null = null;
 
@@ -32,8 +40,8 @@ async function hasClickupProjectColumn(): Promise<boolean> {
 
 function projectSelectClause(includeClickupProjectId: boolean): string {
   return includeClickupProjectId
-    ? "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, clickup_project_id, budget_hours, budget_money"
-    : "id, customer_id, name, is_active, type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, NULL::text AS clickup_project_id, budget_hours, budget_money";
+    ? "id, customer_id, name, is_active, type, billing_type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, clickup_project_id, budget_hours, budget_money"
+    : "id, customer_id, name, is_active, type, billing_type, project_manager_id, start_date::text, end_date::text, probability, jira_project_key, devops_project, NULL::text AS clickup_project_id, budget_hours, budget_money";
 }
 
 function getInitials(name: string): string {
@@ -51,6 +59,7 @@ export type ProjectRecord = {
   name: string;
   is_active: boolean;
   type: ProjectType;
+  billing_type: ProjectBillingType;
   project_manager_id: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -67,6 +76,7 @@ export type CreateProjectInput = {
   customer_id: string;
   is_active?: boolean;
   type?: ProjectType;
+  billing_type?: ProjectBillingType;
   project_manager_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
@@ -83,6 +93,7 @@ export type UpdateProjectInput = {
   customer_id?: string;
   is_active?: boolean;
   type?: ProjectType;
+  billing_type?: ProjectBillingType;
   project_manager_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
@@ -101,6 +112,7 @@ function rowToProjectRecord(r: Record<string, unknown>): ProjectRecord {
     name: r.name as string,
     is_active: Boolean(r.is_active),
     type: (r.type as ProjectType) ?? "customer",
+    billing_type: parseBillingType(r.billing_type),
     project_manager_id: (r.project_manager_id as string | null) ?? null,
     start_date: (r.start_date as string | null) ?? null,
     end_date: (r.end_date as string | null) ?? null,
@@ -121,19 +133,21 @@ export async function createProjectQuery(
 ): Promise<ProjectRecord> {
   const prob = input.probability ?? 100;
   const includeClickupProjectId = await hasClickupProjectColumn();
+  const billingType = input.billing_type ?? "hourly";
   const { rows } = includeClickupProjectId
     ? await cloudSqlPool.query(
         `INSERT INTO projects (
-           name, customer_id, is_active, type, project_manager_id,
+           name, customer_id, is_active, type, billing_type, project_manager_id,
            start_date, end_date, probability, jira_project_key, devops_project, clickup_project_id,
            budget_hours, budget_money
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING ${projectSelectClause(true)}`,
         [
           input.name.trim(),
           input.customer_id,
           input.is_active ?? true,
           input.type ?? "customer",
+          billingType,
           input.project_manager_id ?? null,
           input.start_date?.trim() || null,
           input.end_date?.trim() || null,
@@ -147,16 +161,17 @@ export async function createProjectQuery(
       )
     : await cloudSqlPool.query(
         `INSERT INTO projects (
-           name, customer_id, is_active, type, project_manager_id,
+           name, customer_id, is_active, type, billing_type, project_manager_id,
            start_date, end_date, probability, jira_project_key, devops_project,
            budget_hours, budget_money
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING ${projectSelectClause(false)}`,
         [
           input.name.trim(),
           input.customer_id,
           input.is_active ?? true,
           input.type ?? "customer",
+          billingType,
           input.project_manager_id ?? null,
           input.start_date?.trim() || null,
           input.end_date?.trim() || null,
@@ -193,6 +208,10 @@ export async function updateProjectQuery(
   if (input.type !== undefined) {
     sets.push(`type = $${i++}`);
     values.push(input.type);
+  }
+  if (input.billing_type !== undefined) {
+    sets.push(`billing_type = $${i++}`);
+    values.push(input.billing_type);
   }
   if (input.project_manager_id !== undefined) {
     sets.push(`project_manager_id = $${i++}`);
@@ -330,12 +349,18 @@ export async function fetchProjectWithDetailsById(
   id: string
 ): Promise<ProjectWithDetails | null> {
   const includeClickupProjectId = await hasClickupProjectColumn();
-  const [projectRes, customersList] = await Promise.all([
+  const [projectRes, customersList, reportedRes] = await Promise.all([
     cloudSqlPool.query(
       `SELECT ${projectSelectClause(includeClickupProjectId)} FROM projects WHERE id = $1`,
       [id]
     ),
     customers.fetchCustomers(),
+    cloudSqlPool.query<{ hours: string | number | null }>(
+      `SELECT COALESCE(SUM(hours), 0) AS hours
+       FROM time_report_entries
+       WHERE project_id = $1`,
+      [id]
+    ),
   ]);
 
   const p = projectRes.rows[0] as Record<string, unknown> | undefined;
@@ -369,6 +394,7 @@ export async function fetchProjectWithDetailsById(
     name: p.name as string,
     isActive: Boolean(p.is_active),
     type: projectType,
+    billingType: parseBillingType(p.billing_type),
     customer_id: (p.customer_id as string) ?? "",
     customerName: cust?.name ?? "Unknown",
     projectManagerId,
@@ -384,6 +410,7 @@ export async function fetchProjectWithDetailsById(
     budgetMoney:
       p.budget_money != null ? Number(p.budget_money as number) : null,
     billingCurrency: cust?.billingCurrency ?? "SEK",
+    reportedHours: Number(reportedRes.rows[0]?.hours ?? 0),
     consultantCount: 0,
     totalHoursAllocated: 0,
     consultantInitials: [],
@@ -495,6 +522,7 @@ export async function fetchProjectsWithDetails(): Promise<
       name: p.name,
       isActive: p.is_active,
       type: projectType,
+      billingType: p.billing_type,
       customer_id: p.customer_id,
       customerName: cust?.name ?? "Unknown",
       projectManagerId,
@@ -510,6 +538,7 @@ export async function fetchProjectsWithDetails(): Promise<
       budgetHours: p.budget_hours != null ? Number(p.budget_hours) : null,
       budgetMoney: p.budget_money != null ? Number(p.budget_money) : null,
       billingCurrency: cust?.billingCurrency ?? "SEK",
+      reportedHours: 0,
       consultantCount: consultantIdsList.length,
       totalHoursAllocated: stats?.totalHours ?? 0,
       consultantInitials: initials,
@@ -541,6 +570,21 @@ export async function fetchProjectsByIds(
     [ids]
   );
   return rows;
+}
+
+export async function fetchProjectBillingTypesByIds(
+  ids: string[]
+): Promise<Map<string, ProjectBillingType>> {
+  const map = new Map<string, ProjectBillingType>();
+  if (ids.length === 0) return map;
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    billing_type: string;
+  }>(`SELECT id, billing_type FROM projects WHERE id = ANY($1::uuid[])`, [ids]);
+  for (const r of rows) {
+    map.set(r.id, parseBillingType(r.billing_type));
+  }
+  return map;
 }
 
 export async function fetchProjectsWithCustomerNames(

@@ -71,6 +71,7 @@ export function WorkIssueRelations({
   customerId,
   boardId,
   pending,
+  compact = false,
   onAdd,
   onRemove,
 }: {
@@ -79,6 +80,7 @@ export function WorkIssueRelations({
   customerId: string;
   boardId: string;
   pending: boolean;
+  compact?: boolean;
   onAdd: (otherIssueId: string, role: WorkRelationRole) => void;
   onRemove: (relationId: string) => void;
 }) {
@@ -114,10 +116,90 @@ export function WorkIssueRelations({
   }, [issue.id, issues, query, relations, role]);
 
   const parent = relations.parent ? [relations.parent] : [];
+  const hasAny =
+    parent.length > 0 ||
+    relations.children.length > 0 ||
+    relations.blocks.length > 0 ||
+    relations.blockedBy.length > 0 ||
+    relations.relates.length > 0;
+
+  const addButton = (
+    <button
+      type="button"
+      disabled={pending}
+      className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[13px] text-text-tertiary hover:bg-bg-muted hover:text-text-secondary disabled:opacity-50"
+      onClick={() => setAdding(true)}
+    >
+      + Relation
+    </button>
+  );
+
+  const addForm = (
+    <div className="space-y-2 rounded-lg bg-bg-muted/60 p-2">
+      <Select
+        value={role}
+        onValueChange={(value) => setRole(value as WorkRelationRole)}
+        options={ROLE_OPTIONS.map((option) => ({
+          value: option.value,
+          label: option.label,
+        }))}
+        disabled={pending}
+      />
+      <Input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search issues…"
+        aria-label="Search issues to relate"
+        autoFocus
+        disabled={pending}
+      />
+      <ul className="max-h-40 overflow-y-auto">
+        {candidates.length === 0 ? (
+          <li className="px-1 py-1.5 text-body-m text-text-tertiary">
+            No matching issues
+          </li>
+        ) : (
+          candidates.map((row) => (
+            <li key={row.id}>
+              <button
+                type="button"
+                disabled={pending}
+                className="flex w-full truncate px-1 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
+                onClick={() => {
+                  onAdd(row.id, role);
+                  setQuery("");
+                  setAdding(false);
+                }}
+              >
+                <span className="text-text-tertiary">{row.key}</span>
+                <span className="ml-1.5 truncate">{row.title}</span>
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+      <button
+        type="button"
+        className="text-[13px] text-text-secondary hover:text-text-primary"
+        onClick={() => {
+          setAdding(false);
+          setQuery("");
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+
+  if (compact && !hasAny && !adding) {
+    return addButton;
+  }
 
   return (
-    <div>
-      <p className="mb-1.5 text-[13px] text-text-secondary">Relations</p>
+    <div className={compact ? "w-full basis-full" : undefined}>
+      {hasAny || !compact ? (
+        <p className="mb-1.5 text-[13px] text-text-secondary">Relations</p>
+      ) : null}
       <div className="space-y-3">
         <RelationGroup
           title="Parent"
@@ -159,71 +241,7 @@ export function WorkIssueRelations({
           pending={pending}
           onRemove={onRemove}
         />
-        {adding ? (
-          <div className="space-y-2 rounded-lg border border-border-subtle p-2">
-            <Select
-              value={role}
-              onValueChange={(value) => setRole(value as WorkRelationRole)}
-              options={ROLE_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              disabled={pending}
-            />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search issues…"
-              aria-label="Search issues to relate"
-              autoFocus
-              disabled={pending}
-            />
-            <ul className="max-h-40 overflow-y-auto">
-              {candidates.length === 0 ? (
-                <li className="px-1 py-1.5 text-body-m text-text-tertiary">
-                  No matching issues
-                </li>
-              ) : (
-                candidates.map((row) => (
-                  <li key={row.id}>
-                    <button
-                      type="button"
-                      disabled={pending}
-                      className="flex w-full truncate px-1 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
-                      onClick={() => {
-                        onAdd(row.id, role);
-                        setQuery("");
-                        setAdding(false);
-                      }}
-                    >
-                      <span className="text-text-tertiary">{row.key}</span>
-                      <span className="ml-1.5 truncate">{row.title}</span>
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-            <button
-              type="button"
-              className="text-[13px] text-text-secondary hover:text-text-primary"
-              onClick={() => {
-                setAdding(false);
-                setQuery("");
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            disabled={pending}
-            className="text-[13px] text-text-secondary hover:text-text-primary"
-            onClick={() => setAdding(true)}
-          >
-            + Add relation
-          </button>
-        )}
+        {adding ? addForm : addButton}
       </div>
     </div>
   );

@@ -196,6 +196,7 @@ export function CustomerDrawerContent({
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [addRateOpen, setAddRateOpen] = useState(false);
   const [ratesError, setRatesError] = useState<string | null>(null);
+  const [ratesRefreshKey, setRatesRefreshKey] = useState(0);
   const [consultantError, setConsultantError] = useState<string | null>(null);
   const [userError, setUserError] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<CustomerConsultant | null>(
@@ -546,6 +547,7 @@ export function CustomerDrawerContent({
               billingCurrency={customer.billingCurrency}
               onError={setRatesError}
               showDescription={false}
+              refreshTrigger={ratesRefreshKey}
             />
           </div>
         </TabsContent>
@@ -577,7 +579,10 @@ export function CustomerDrawerContent({
       <AddCustomerRateModal
         isOpen={addRateOpen}
         onClose={() => setAddRateOpen(false)}
-        onSuccess={() => router.refresh()}
+        onSuccess={() => {
+          setRatesRefreshKey((k) => k + 1);
+          router.refresh();
+        }}
         customerId={customer.id}
         billingCurrency={customer.billingCurrency}
       />

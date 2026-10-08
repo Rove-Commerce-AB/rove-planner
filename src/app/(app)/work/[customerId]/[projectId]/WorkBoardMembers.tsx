@@ -25,6 +25,7 @@ export function WorkBoardMembers({
   onOpenSettings?: () => void;
 }) {
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
+  const [listPickerOpen, setListPickerOpen] = useState(false);
   const addable = useMemo(() => {
     const taken = new Set(members.map((person) => person.id));
     return people.filter((person) => !taken.has(person.id));
@@ -97,45 +98,25 @@ export function WorkBoardMembers({
           ))}
         </ul>
         {addable.length > 0 ? (
-          <>
-            <button
-              type="button"
-              data-board-add-person
-              disabled={disabled}
-              onClick={(event) => {
-                if (menu) {
-                  setMenu(null);
-                  return;
-                }
-                const rect = event.currentTarget.getBoundingClientRect();
-                setMenu({ top: rect.bottom + 4, left: rect.left });
-              }}
-              aria-label="Add person"
-              aria-expanded={menu != null}
-              aria-haspopup="listbox"
-              className="mt-1 inline-flex items-center gap-1.5 rounded-md px-1 py-1.5 text-sm text-text-secondary hover:bg-bg-muted hover:text-text-primary"
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-              Add person
-            </button>
-            {menu
-              ? createPortal(
-                  <div
-                    data-board-add-person
-                    role="listbox"
-                    aria-label="Add person"
-                    className="fixed z-50 max-h-60 min-w-44 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
-                    style={{ top: menu.top, left: menu.left }}
-                  >
-                    {addable.map((person) => (
+          <div className="mt-1 space-y-1">
+            {listPickerOpen ? (
+              <>
+                <p className="px-1 text-label-s text-text-tertiary">Add person</p>
+                <ul
+                  role="listbox"
+                  aria-label="Add person"
+                  className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1"
+                >
+                  {addable.map((person) => (
+                    <li key={person.id}>
                       <button
-                        key={person.id}
                         type="button"
                         role="option"
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted"
+                        disabled={disabled}
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-body-m text-text-primary hover:bg-bg-muted disabled:opacity-50"
                         onClick={() => {
                           onAdd?.(person);
-                          setMenu(null);
+                          setListPickerOpen(false);
                         }}
                       >
                         <InitialsAvatar
@@ -145,12 +126,30 @@ export function WorkBoardMembers({
                         />
                         <span className="truncate">{person.name}</span>
                       </button>
-                    ))}
-                  </div>,
-                  document.body
-                )
-              : null}
-          </>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="px-1 text-label-s text-text-tertiary hover:text-text-secondary"
+                  onClick={() => setListPickerOpen(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setListPickerOpen(true)}
+                aria-label="Add person"
+                className="inline-flex items-center gap-1.5 rounded-md px-1 py-1.5 text-sm text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                Add person
+              </button>
+            )}
+          </div>
         ) : null}
       </div>
     );
@@ -204,7 +203,7 @@ export function WorkBoardMembers({
               data-board-add-person
               role="listbox"
               aria-label="Add person"
-              className="fixed z-50 max-h-60 min-w-44 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
+              className="fixed z-[60] max-h-60 min-w-44 overflow-y-auto rounded-lg border border-border-subtle bg-bg-default py-1 shadow-lg"
               style={{ top: menu.top, left: menu.left }}
             >
               {addable.map((person) => (

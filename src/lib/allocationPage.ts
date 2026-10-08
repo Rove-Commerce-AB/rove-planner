@@ -31,6 +31,7 @@ import { getProjectsWithCustomer } from "./projects";
 import { getRoles } from "./roles";
 import { getTeams } from "./teams";
 import { debugLog, timedDebug } from "@/lib/debugLogs";
+import { allocationIdentityKey } from "./billingItem";
 
 // Stagger cache TTLs to avoid synchronized cache stampedes.
 const ROLES_CACHE_REVALIDATE = 10 * 60;
@@ -317,7 +318,7 @@ export async function getAllocationPageDataForProject(
   const consultantTotalHours: Record<string, number> = {};
   const seenSlot = new Set<string>();
   for (const a of allProjectAllocations) {
-    const slotKey = `${a.consultant_id ?? TO_PLAN_CONSULTANT_ID}-${a.year}-${a.week}-${a.role_id ?? ""}`;
+    const slotKey = `${a.consultant_id ?? TO_PLAN_CONSULTANT_ID}-${a.year}-${a.week}-${allocationIdentityKey(a)}`;
     if (seenSlot.has(slotKey)) continue;
     seenSlot.add(slotKey);
     const consultantKey = a.consultant_id ?? TO_PLAN_CONSULTANT_ID;

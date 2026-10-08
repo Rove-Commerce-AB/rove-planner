@@ -82,7 +82,8 @@ export async function getProjectManagerTimeEntries(args: {
     consultant_id: string;
     customer_id: string;
     project_id: string;
-    role_id: string;
+    role_id: string | null;
+    role_name_snapshot: string | null;
     jira_devops_key: string | null;
     description: string | null;
     hours: string | number;
@@ -92,7 +93,7 @@ export async function getProjectManagerTimeEntries(args: {
     invoiced_at: string | null;
   }>(
     `SELECT id, entry_date::text AS entry_date, consultant_id, customer_id, project_id, role_id,
-            jira_devops_key, description, hours, internal_comment,
+            role_name_snapshot, jira_devops_key, description, hours, internal_comment,
             pm_edited_hours, pm_edited_comment, invoiced_at::text AS invoiced_at
      FROM time_report_entries
      WHERE project_id = $1 AND entry_date >= $2::date AND entry_date <= $3::date
@@ -160,8 +161,8 @@ export async function getProjectManagerTimeEntries(args: {
     entryDate: r.entry_date,
     consultantId: r.consultant_id,
     consultantName: consultantMap.get(r.consultant_id) ?? "Unknown",
-    roleId: r.role_id,
-    roleName: roleMap.get(r.role_id) ?? "Unknown",
+    roleId: r.role_id ?? "",
+    roleName: r.role_name_snapshot || roleMap.get(r.role_id ?? "") || "Unknown",
     customerId: r.customer_id,
     customerName: customerMap.get(r.customer_id) ?? "Unknown",
     projectId: r.project_id,

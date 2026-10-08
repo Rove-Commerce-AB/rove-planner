@@ -14,7 +14,14 @@
 -- Optional sanity check (run before and after; counts must match):
 --   SELECT COUNT(*) AS time_report_entries_rows FROM public.time_report_entries;
 --
--- Safe to run once per database; skips constraints/indexes that mention entry_line_id.
+-- Safe to run once per database; skips:
+--   - constraints/indexes that mention entry_line_id (current model)
+--   - custom customer/project rate day indexes (intentional for role-less custom rates)
+--
+-- Known legacy names (truncated by PostgreSQL):
+--   time_report_entries_consultant_id_customer_id_project_id_ro_key
+--   time_report_entries_consultant_id_customer_id_project_id_no_key
+-- both enforce UNIQUE (consultant_id, customer_id, project_id, role_id, jira_devops_key, entry_date)
 
 DO $$
 DECLARE
@@ -34,6 +41,10 @@ BEGIN
     IF def LIKE '%entry_line_id%' THEN
       CONTINUE;
     END IF;
+    -- Keep custom-rate day uniques (no entry_line_id by design).
+    IF r.conname LIKE '%custom%rate%day%' THEN
+      CONTINUE;
+    END IF;
     EXECUTE format('ALTER TABLE public.time_report_entries DROP CONSTRAINT %I', r.conname);
     RAISE NOTICE 'Dropped unique constraint %', r.conname;
   END LOOP;
@@ -51,6 +62,7 @@ BEGIN
       AND indexdef ILIKE '%UNIQUE%'
       AND indexname NOT LIKE '%_pkey'
       AND indexdef NOT ILIKE '%entry_line_id%'
+      AND indexname NOT LIKE '%custom%rate%day%'
   LOOP
     EXECUTE format('DROP INDEX IF EXISTS public.%I', r.indexname);
     RAISE NOTICE 'Dropped unique index %', r.indexname;

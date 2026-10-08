@@ -32,11 +32,16 @@ export type Project = {
 
 export type ProjectType = "customer" | "internal" | "absence";
 
+/** How the project is billed. Fixed = contract in budgetMoney; hours tracked for margin only. */
+export type ProjectBillingType = "hourly" | "fixed";
+
 export type ProjectWithDetails = {
   id: string;
   name: string;
   isActive: boolean;
   type: ProjectType;
+  /** hourly (T&M) or fixed price. */
+  billingType: ProjectBillingType;
   customer_id: string;
   customerName: string;
   /** Optional dedicated project manager (consultant). */
@@ -55,10 +60,12 @@ export type ProjectWithDetails = {
   clickupProjectId: string | null;
   /** Optional budget in hours; shown in planning footer. */
   budgetHours: number | null;
-  /** Optional budget in the customer's billing currency. */
+  /** Optional budget / contract value in the customer's billing currency. */
   budgetMoney: number | null;
   /** Customer's billing currency (SEK or EUR). */
   billingCurrency: string;
+  /** Sum of reported time_report_entries hours (all time). */
+  reportedHours: number;
   consultantCount: number;
   totalHoursAllocated: number;
   consultantInitials: string[];

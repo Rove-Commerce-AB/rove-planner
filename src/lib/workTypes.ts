@@ -41,6 +41,14 @@ export type WorkLabel = {
 
 export type WorkIssuePriority = "low" | "medium" | "high";
 
+/** Fixed issue kinds. Default for new cards is chosen in the add-card UI. */
+export type WorkIssueType = "issue" | "bug";
+
+export type WorkComponent = {
+  id: string;
+  name: string;
+};
+
 export type WorkSprintStatus = "current" | "next" | "completed";
 
 export type WorkSprint = {
@@ -99,6 +107,8 @@ export type WorkIssue = {
   title: string;
   status: WorkIssueStatus;
   sortOrder: number;
+  issueType: WorkIssueType;
+  component: WorkComponent | null;
   description: string;
   currentState: string;
   nextStep: string;
@@ -128,11 +138,15 @@ export type WorkBoardView = {
   prefix: string;
   customerId: string;
   customerName: string;
+  /** Linked Planner `projects.id`, when set. */
+  plannerProjectId: string | null;
+  plannerProjectName: string | null;
   currentUser: WorkPerson;
   people: WorkPerson[];
   members: WorkPerson[];
   statuses: WorkBoardStatus[];
   boardLabels: WorkLabel[];
+  components: WorkComponent[];
   issues: WorkIssue[];
   sprints: WorkSprint[];
 };

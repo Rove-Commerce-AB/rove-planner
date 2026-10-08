@@ -14,6 +14,9 @@ export type WorkIssueRow = {
   title: string;
   status: WorkIssueStatus;
   sort_order: number;
+  issue_type: "issue" | "bug";
+  component_id: string | null;
+  component_name: string | null;
   description: string;
   current_state: string;
   next_step: string;
@@ -171,6 +174,9 @@ export async function fetchWorkIssuesForBoard(
        i.title,
        i.status,
        i.sort_order,
+       i.issue_type,
+       i.component_id,
+       c.name AS component_name,
        i.description,
        i.current_state,
        i.next_step,
@@ -187,6 +193,7 @@ export async function fetchWorkIssuesForBoard(
        i.start_date,
        i.due_date
      FROM work_issues i
+     LEFT JOIN work_components c ON c.id = i.component_id
      LEFT JOIN app_users r ON r.id = i.created_by_app_user_id
      LEFT JOIN app_users o ON o.id = i.owner_app_user_id
      WHERE i.project_id = $1
@@ -340,6 +347,8 @@ export async function insertWorkIssue(input: {
   /** Defaults to null (no owner). Pass an id to assign an owner on create. */
   ownerAppUserId?: string | null;
   description?: string;
+  issueType?: "issue" | "bug";
+  componentId?: string | null;
   /** Actor for the created event when reporter is null. */
   eventActorAppUserId?: string | null;
 }): Promise<string> {
@@ -361,11 +370,13 @@ export async function insertWorkIssue(input: {
     );
     const ownerAppUserId =
       input.ownerAppUserId === undefined ? null : input.ownerAppUserId;
+    const issueType = input.issueType === "bug" ? "bug" : "issue";
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO work_issues (
          project_id, number, title, status, sort_order,
-         owner_app_user_id, created_by_app_user_id, description
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         owner_app_user_id, created_by_app_user_id, description,
+         issue_type, component_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
         input.boardId,
@@ -376,6 +387,8 @@ export async function insertWorkIssue(input: {
         ownerAppUserId,
         input.createdByAppUserId,
         input.description ?? "",
+        issueType,
+        input.componentId ?? null,
       ]
     );
     const id = rows[0]?.id;
@@ -452,6 +465,131 @@ export async function updateWorkIssuePriority(
     [boardId, issueId, priority]
   );
   return (result.rowCount ?? 0) === 1;
+}
+
+export async function updateWorkIssueType(
+  boardId: string,
+  issueId: string,
+  issueType: "issue" | "bug"
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issues SET issue_type = $3 WHERE id = $2 AND project_id = $1`,
+    [boardId, issueId, issueType]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function updateWorkIssueComponent(
+  boardId: string,
+  issueId: string,
+  componentId: string | null
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issues SET component_id = $3 WHERE id = $2 AND project_id = $1`,
+    [boardId, issueId, componentId]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function fetchBoardComponents(boardId: string) {
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name
+     FROM work_components
+     WHERE project_id = $1
+     ORDER BY lower(name)`,
+    [boardId]
+  );
+  return rows;
+}
+
+export async function findOrCreateBoardComponent(
+  boardId: string,
+  name: string
+): Promise<{ id: string; name: string }> {
+  const trimmed = name.trim();
+  const { rows: existing } = await cloudSqlPool.query<{
+    id: string;
+    name: string;
+  }>(
+    `SELECT id, name
+     FROM work_components
+     WHERE project_id = $1 AND lower(btrim(name)) = lower($2)`,
+    [boardId, trimmed]
+  );
+  if (existing[0]) return existing[0];
+  try {
+    const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+      `INSERT INTO work_components (project_id, name)
+       VALUES ($1, $2)
+       RETURNING id, name`,
+      [boardId, trimmed]
+    );
+    const row = rows[0];
+    if (!row) throw new Error("Failed to save component");
+    return row;
+  } catch (error) {
+    const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+      `SELECT id, name
+       FROM work_components
+       WHERE project_id = $1 AND lower(btrim(name)) = lower($2)`,
+      [boardId, trimmed]
+    );
+    if (rows[0]) return rows[0];
+    throw error;
+  }
+}
+
+export async function findBoardComponentByName(
+  boardId: string,
+  name: string
+): Promise<{ id: string; name: string } | null> {
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `SELECT id, name
+     FROM work_components
+     WHERE project_id = $1 AND lower(btrim(name)) = lower($2)`,
+    [boardId, name.trim()]
+  );
+  return rows[0] ?? null;
+}
+
+export async function renameBoardComponent(
+  boardId: string,
+  componentId: string,
+  name: string
+): Promise<{ id: string; name: string } | null> {
+  const trimmed = name.trim();
+  const { rows } = await cloudSqlPool.query<{ id: string; name: string }>(
+    `UPDATE work_components
+     SET name = $3
+     WHERE id = $2 AND project_id = $1
+     RETURNING id, name`,
+    [boardId, componentId, trimmed]
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteBoardComponent(
+  boardId: string,
+  componentId: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `DELETE FROM work_components WHERE id = $1 AND project_id = $2`,
+    [componentId, boardId]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function countIssuesUsingComponent(
+  boardId: string,
+  componentId: string
+): Promise<number> {
+  const { rows } = await cloudSqlPool.query<{ n: string | number }>(
+    `SELECT COUNT(*)::int AS n
+     FROM work_issues
+     WHERE project_id = $1 AND component_id = $2`,
+    [boardId, componentId]
+  );
+  return Number(rows[0]?.n ?? 0);
 }
 
 export async function fetchIssueRequirements(issueIds: string[]) {

@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Inbox, Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
-import { workCustomerHref, workProjectHref } from "@/lib/routes";
+import { ROUTES, workCustomerHref, workProjectHref } from "@/lib/routes";
 import type { WorkSelectorCustomer } from "@/lib/workTypes";
 import { WorkCreateProjectDialog } from "./WorkCreateProjectDialog";
 
@@ -29,6 +29,22 @@ export function WorkSelectorPageClient({ customers }: Props) {
         description="Open a project to start working, or create one for a customer that has none yet."
         className="mb-6"
       />
+
+      <Link
+        href={ROUTES.workMine}
+        className="mb-6 flex items-center gap-3 rounded-xl border border-border-subtle bg-bg-default px-4 py-3 text-text-primary shadow-sm transition-colors hover:border-border-default hover:text-accent-primary-text"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-bg-muted text-text-secondary">
+          <Inbox className="h-4 w-4" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">My work</span>
+          <span className="block text-caption text-text-tertiary">
+            Issues where you are owner or assignee
+          </span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" aria-hidden />
+      </Link>
 
       {customers.length === 0 ? (
         <p className="rounded-xl border border-border-subtle bg-bg-default px-4 py-10 text-center text-sm text-text-secondary">

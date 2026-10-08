@@ -12,20 +12,21 @@ export async function getProjectRates(projectId: string) {
 
 export async function createProjectRate(
   projectId: string,
-  roleId: string,
-  ratePerHour: number,
-  currency?: string
+  input: {
+    roleId?: string | null;
+    name?: string | null;
+    ratePerHour: number;
+    currency?: string;
+  }
 ) {
   const project = await getProjectWithDetailsById(projectId);
   const billingCurrency = parseBillingCurrency(
-    currency ?? project?.billingCurrency
+    input.currency ?? project?.billingCurrency
   );
-  return q.createProjectRateQuery(
-    projectId,
-    roleId,
-    ratePerHour,
-    billingCurrency
-  );
+  return q.createProjectRateQuery(projectId, {
+    ...input,
+    currency: billingCurrency,
+  });
 }
 
 export async function updateProjectRate(id: string, ratePerHour: number) {

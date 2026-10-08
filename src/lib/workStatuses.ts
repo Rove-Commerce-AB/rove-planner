@@ -17,15 +17,3 @@ export const DEFAULT_WORK_PROJECT_STATUSES: {
   { name: "In review", isDone: false },
   { name: "Done", isDone: true },
 ];
-
-export const WORK_STATUS_DOTS = [
-  "border-2 border-text-tertiary bg-bg-default",
-  "bg-brand-signal",
-  "bg-[var(--color-avatar-4-bg)]",
-  "bg-brand-blue",
-  "bg-[var(--color-avatar-2-bg)]",
-] as const;
-
-export function workStatusDotClass(index: number): string {
-  return WORK_STATUS_DOTS[index % WORK_STATUS_DOTS.length] ?? WORK_STATUS_DOTS[0];
-}

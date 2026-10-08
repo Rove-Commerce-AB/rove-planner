@@ -30,7 +30,6 @@ const nextConfig = {
         destination: "/planner/consultant",
         permanent: false,
       },
-      { source: "/time-report", destination: "/time-report/time-report", permanent: false },
       {
         source: "/time-report/project-manager",
         destination: "/time-report/approval",

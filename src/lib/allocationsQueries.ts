@@ -2,22 +2,36 @@ import { cloudSqlPool } from "@/lib/cloudSqlPool";
 import { notifyAllocationInserts } from "@/lib/userNotifications";
 import { isoWeeksInYear, addWeeksToYearWeek } from "./dateUtils";
 import { timedDebug } from "@/lib/debugLogs";
+import { allocationIdentityKey, resolveAllocationIdentity } from "./billingItem";
 
 export type AllocationRecord = {
   id: string;
   consultant_id: string | null;
   project_id: string;
   role_id: string | null;
+  customer_rate_id: string | null;
+  project_rate_id: string | null;
+  custom_task_name: string | null;
   year: number;
   week: number;
   hours: number;
 };
+
+const ALLOCATION_SELECT = `a.id, a.consultant_id, a.project_id, a.role_id, a.customer_rate_id, a.project_rate_id,
+       a.year, a.week, a.hours, COALESCE(pr.name, cr.name) AS custom_task_name`;
+
+const ALLOCATION_FROM = `allocations a
+     LEFT JOIN customer_rates cr ON cr.id = a.customer_rate_id
+     LEFT JOIN project_rates pr ON pr.id = a.project_rate_id`;
 
 function mapAllocation(r: {
   id: string;
   consultant_id: string | null;
   project_id: string;
   role_id: string | null;
+  customer_rate_id?: string | null;
+  project_rate_id?: string | null;
+  custom_task_name?: string | null;
   year: number;
   week: number;
   hours: string | number;
@@ -27,6 +41,9 @@ function mapAllocation(r: {
     consultant_id: r.consultant_id ?? null,
     project_id: r.project_id,
     role_id: r.role_id ?? null,
+    customer_rate_id: r.customer_rate_id ?? null,
+    project_rate_id: r.project_rate_id ?? null,
+    custom_task_name: r.custom_task_name ?? null,
     year: r.year,
     week: r.week,
     hours: Number(r.hours),
@@ -37,7 +54,7 @@ export async function getAllocationsForWeek(
   consultantIds: string[],
   year: number,
   week: number
-): Promise<Omit<AllocationRecord, "year" | "week" | "role_id">[]> {
+): Promise<Pick<AllocationRecord, "id" | "consultant_id" | "project_id" | "hours">[]> {
   if (consultantIds.length === 0) return [];
 
   const { rows } = await cloudSqlPool.query(
@@ -58,7 +75,7 @@ export async function getAllocationsForWeek(
 
 export async function getAllocationsByProjectIds(
   projectIds: string[]
-): Promise<Omit<AllocationRecord, "year" | "week" | "role_id">[]> {
+): Promise<Pick<AllocationRecord, "id" | "consultant_id" | "project_id" | "hours">[]> {
   if (projectIds.length === 0) return [];
 
   const { rows } = await cloudSqlPool.query(
@@ -83,8 +100,8 @@ export async function getAllocationsForProjectWithWeeks(
     "getAllocationsForProjectWithWeeks",
     () =>
       cloudSqlPool.query(
-        `SELECT id, consultant_id, project_id, role_id, year, week, hours
-         FROM allocations WHERE project_id = $1`,
+        `SELECT ${ALLOCATION_SELECT}
+         FROM ${ALLOCATION_FROM} WHERE a.project_id = $1`,
         [projectId]
       ),
     { projectId }
@@ -120,9 +137,9 @@ async function getAllocationsForYearWeekList(
     "getAllocationsForYearWeekList",
     () =>
       cloudSqlPool.query(
-        `SELECT id, consultant_id, project_id, role_id, year, week, hours
-         FROM allocations
-         WHERE year = $1 AND week = ANY($2::int[])
+        `SELECT ${ALLOCATION_SELECT}
+         FROM ${ALLOCATION_FROM}
+         WHERE a.year = $1 AND a.week = ANY($2::int[])
          ORDER BY year, week, consultant_id, project_id, id`,
         [year, weekNumbers]
       ),
@@ -154,9 +171,9 @@ export async function getAllocationsForWeekRange(
 ): Promise<AllocationRecord[]> {
   if (weekFrom <= weekTo) {
     const { rows } = await cloudSqlPool.query(
-      `SELECT id, consultant_id, project_id, role_id, year, week, hours
-       FROM allocations
-       WHERE year = $1 AND week >= $2 AND week <= $3`,
+      `SELECT ${ALLOCATION_SELECT}
+       FROM ${ALLOCATION_FROM}
+       WHERE a.year = $1 AND a.week >= $2 AND a.week <= $3`,
       [year, weekFrom, weekTo]
     );
     return rows.map(mapAllocation);
@@ -165,13 +182,13 @@ export async function getAllocationsForWeekRange(
   const maxWeek = isoWeeksInYear(year);
   const [r1, r2] = await Promise.all([
     cloudSqlPool.query(
-      `SELECT id, consultant_id, project_id, role_id, year, week, hours
-       FROM allocations WHERE year = $1 AND week >= $2 AND week <= $3`,
+      `SELECT ${ALLOCATION_SELECT}
+       FROM ${ALLOCATION_FROM} WHERE a.year = $1 AND a.week >= $2 AND a.week <= $3`,
       [year, weekFrom, maxWeek]
     ),
     cloudSqlPool.query(
-      `SELECT id, consultant_id, project_id, role_id, year, week, hours
-       FROM allocations WHERE year = $1 AND week >= $2 AND week <= $3`,
+      `SELECT ${ALLOCATION_SELECT}
+       FROM ${ALLOCATION_FROM} WHERE a.year = $1 AND a.week >= $2 AND a.week <= $3`,
       [year + 1, 1, weekTo]
     ),
   ]);
@@ -202,24 +219,27 @@ export async function createAllocations(
   const values: unknown[] = [];
   const placeholders = inputs
     .map((_, i) => {
-      const o = i * 6;
-      return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+      const o = i * 8;
+      return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8})`;
     })
     .join(", ");
   for (const input of inputs) {
+    const ident = resolveAllocationIdentity(input);
     values.push(
       input.consultant_id,
       input.project_id,
-      input.role_id ?? null,
+      ident.role_id,
+      ident.customer_rate_id,
+      ident.project_rate_id,
       input.year,
       input.week,
       input.hours
     );
   }
   const { rows } = await cloudSqlPool.query(
-    `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
+    `INSERT INTO allocations (consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours)
      VALUES ${placeholders}
-     RETURNING id, consultant_id, project_id, role_id, year, week, hours`,
+     RETURNING id, consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours`,
     values
   );
   if (rows.length !== inputs.length) {
@@ -246,14 +266,24 @@ async function getExistingAllocationsInRange(
 
   const years = [...new Set(weeks.map((w) => w.y))];
 
+  const ident = resolveAllocationIdentity({ role_id });
   const { rows } = await cloudSqlPool.query(
-    `SELECT id, consultant_id, project_id, role_id, year, week, hours
-     FROM allocations
-     WHERE project_id = $1
-       AND year = ANY($2::int[])
-       AND consultant_id IS NOT DISTINCT FROM $3::uuid
-       AND role_id IS NOT DISTINCT FROM $4::uuid`,
-    [project_id, years, consultant_id, role_id]
+    `SELECT ${ALLOCATION_SELECT}
+     FROM ${ALLOCATION_FROM}
+     WHERE a.project_id = $1
+       AND a.year = ANY($2::int[])
+       AND a.consultant_id IS NOT DISTINCT FROM $3::uuid
+       AND a.role_id IS NOT DISTINCT FROM $4::uuid
+       AND a.customer_rate_id IS NOT DISTINCT FROM $5::uuid
+       AND a.project_rate_id IS NOT DISTINCT FROM $6::uuid`,
+    [
+      project_id,
+      years,
+      consultant_id,
+      ident.role_id,
+      ident.customer_rate_id,
+      ident.project_rate_id,
+    ]
   );
 
   const weekSet = new Set(weeks.map(({ y, w }) => weekKey(y, w)));
@@ -315,26 +345,29 @@ export async function createAllocationsForWeekRange(
   let insertResults: AllocationRecord[] = [];
   if (toCreate.length > 0) {
     const values: unknown[] = [];
+    const ident = resolveAllocationIdentity({ role_id });
     const placeholders = toCreate
       .map((_, i) => {
-        const o = i * 6;
-        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+        const o = i * 8;
+        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8})`;
       })
       .join(", ");
     for (const { y, w } of toCreate) {
       values.push(
         consultant_id,
         project_id,
-        role_id ?? null,
+        ident.role_id,
+        ident.customer_rate_id,
+        ident.project_rate_id,
         y,
         w,
         hoursPerWeek
       );
     }
     const { rows } = await cloudSqlPool.query(
-      `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
+      `INSERT INTO allocations (consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours)
        VALUES ${placeholders}
-       RETURNING id, consultant_id, project_id, role_id, year, week, hours`,
+       RETURNING id, consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours`,
       values
     );
     insertResults = rows.map(mapAllocation);
@@ -403,19 +436,29 @@ export async function createAllocationsForWeekRangeWithGetter(
   let insertResults: AllocationRecord[] = [];
   if (toCreate.length > 0) {
     const values: unknown[] = [];
+    const ident = resolveAllocationIdentity({ role_id });
     const placeholders = toCreate
       .map((_, i) => {
-        const o = i * 6;
-        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+        const o = i * 8;
+        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8})`;
       })
       .join(", ");
     for (const { y, w, hours } of toCreate) {
-      values.push(consultant_id, project_id, role_id ?? null, y, w, hours);
+      values.push(
+        consultant_id,
+        project_id,
+        ident.role_id,
+        ident.customer_rate_id,
+        ident.project_rate_id,
+        y,
+        w,
+        hours
+      );
     }
     const { rows } = await cloudSqlPool.query(
-      `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
+      `INSERT INTO allocations (consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours)
        VALUES ${placeholders}
-       RETURNING id, consultant_id, project_id, role_id, year, week, hours`,
+       RETURNING id, consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours`,
       values
     );
     insertResults = rows.map(mapAllocation);
@@ -445,8 +488,13 @@ export async function updateAllocation(
   const values: unknown[] = [];
   let i = 1;
   if (input.role_id !== undefined) {
+    const ident = resolveAllocationIdentity({ role_id: input.role_id });
     updates.push(`role_id = $${i++}`);
-    values.push(input.role_id);
+    values.push(ident.role_id);
+    updates.push(`customer_rate_id = $${i++}`);
+    values.push(ident.customer_rate_id);
+    updates.push(`project_rate_id = $${i++}`);
+    values.push(ident.project_rate_id);
   }
   if (input.hours !== undefined) {
     updates.push(`hours = $${i++}`);
@@ -454,8 +502,8 @@ export async function updateAllocation(
   }
   if (updates.length === 0) {
     const { rows } = await cloudSqlPool.query(
-      `SELECT id, consultant_id, project_id, role_id, year, week, hours
-       FROM allocations WHERE id = $1`,
+      `SELECT ${ALLOCATION_SELECT}
+       FROM ${ALLOCATION_FROM} WHERE a.id = $1`,
       [id]
     );
     if (!rows[0]) throw new Error("Allocation not found");
@@ -464,7 +512,7 @@ export async function updateAllocation(
   values.push(id);
   const { rows } = await cloudSqlPool.query(
     `UPDATE allocations SET ${updates.join(", ")} WHERE id = $${i}
-     RETURNING id, consultant_id, project_id, role_id, year, week, hours`,
+     RETURNING id, consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours`,
     values
   );
   if (!rows[0]) throw new Error("Failed to update allocation");
@@ -501,15 +549,17 @@ export async function moveAllocationsForProject(
   type Key = string;
   const groupKey = (
     c: string | null,
-    r: string | null,
+    identKey: string,
     y: number,
     w: number
-  ): Key => `${c ?? ""}|${r ?? ""}|${y}|${w}`;
+  ): Key => `${c ?? ""}|${identKey}|${y}|${w}`;
   const grouped = new Map<
     Key,
     {
       consultant_id: string | null;
       role_id: string | null;
+      customer_rate_id: string | null;
+      project_rate_id: string | null;
       year: number;
       week: number;
       hours: number;
@@ -521,7 +571,8 @@ export async function moveAllocationsForProject(
       a.week,
       deltaWeeks
     );
-    const key = groupKey(a.consultant_id, a.role_id, newYear, newWeek);
+    const identKey = allocationIdentityKey(a);
+    const key = groupKey(a.consultant_id, identKey, newYear, newWeek);
     const existing = grouped.get(key);
     const hours = Number(a.hours);
     if (existing) {
@@ -530,6 +581,8 @@ export async function moveAllocationsForProject(
       grouped.set(key, {
         consultant_id: a.consultant_id,
         role_id: a.role_id,
+        customer_rate_id: a.customer_rate_id,
+        project_rate_id: a.project_rate_id,
         year: newYear,
         week: newWeek,
         hours,
@@ -542,6 +595,8 @@ export async function moveAllocationsForProject(
     consultant_id: g.consultant_id,
     project_id: projectId,
     role_id: g.role_id,
+    customer_rate_id: g.customer_rate_id,
+    project_rate_id: g.project_rate_id,
     year: g.year,
     week: g.week,
     hours: g.hours,
@@ -553,8 +608,8 @@ export async function moveAllocationsForProject(
     const values: unknown[] = [];
     const placeholders = batch
       .map((_, idx) => {
-        const o = idx * 6;
-        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6})`;
+        const o = idx * 8;
+        return `($${o + 1}, $${o + 2}, $${o + 3}, $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8})`;
       })
       .join(", ");
     for (const row of batch) {
@@ -562,13 +617,15 @@ export async function moveAllocationsForProject(
         row.consultant_id,
         row.project_id,
         row.role_id,
+        row.customer_rate_id,
+        row.project_rate_id,
         row.year,
         row.week,
         row.hours
       );
     }
     await cloudSqlPool.query(
-      `INSERT INTO allocations (consultant_id, project_id, role_id, year, week, hours)
+      `INSERT INTO allocations (consultant_id, project_id, role_id, customer_rate_id, project_rate_id, year, week, hours)
        VALUES ${placeholders}`,
       values
     );

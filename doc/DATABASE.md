@@ -319,12 +319,15 @@ Belongs to one customer. Optional Jira / DevOps integration fields, PM, budgets.
 | jira_project_key | text | nullable; joins `jira_issues.project_key` |
 | devops_project | text | nullable; joins `devops_work_items.project` |
 | budget_hours | numeric | nullable |
-| budget_money | numeric | nullable |
+| budget_money | numeric | nullable; for `billing_type = fixed`, this is the contract value |
+| billing_type | text | NOT NULL, default `hourly`; check `hourly` or `fixed` |
 | project_manager_id | uuid | nullable; app links to `consultants.id` (no FK in this snapshot) |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Checks: `end_date >= start_date` when both are set; probability 1–100.
+Checks: `end_date >= start_date` when both are set; probability 1–100; `billing_type` in (`hourly`, `fixed`).
+
+`billing_type = fixed`: time is still reported; Looker/`v_time_report_looker` **Income** is **0** (hours × rate is not used). Contract value is `budget_money`. DDL: [`scripts/20261008_project_billing_type.sql`](../scripts/20261008_project_billing_type.sql).
 
 Trigger `trg_projects_updated_at` → `set_updated_at()`.
 
@@ -345,6 +348,8 @@ Consultant allocation per project (and optional role) per ISO week.
 | consultant_id | uuid | nullable, FK → `consultants.id`, ON DELETE CASCADE |
 | project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
 | role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
+| customer_rate_id | uuid | nullable, FK → `customer_rates.id`, ON DELETE RESTRICT |
+| project_rate_id | uuid | nullable, FK → `project_rates.id`, ON DELETE RESTRICT |
 | year | smallint | NOT NULL; check 2000–2100 |
 | week | smallint | NOT NULL; check 1–53 |
 | hours | numeric(6,2) | NOT NULL, ≥ 0 |
@@ -353,8 +358,12 @@ Consultant allocation per project (and optional role) per ISO week.
 
 Unique (partial):
 
-- `(consultant_id, project_id, year, week, role_id) WHERE role_id IS NOT NULL`
-- `(consultant_id, project_id, year, week) WHERE role_id IS NULL`
+- `(consultant_id, project_id, year, week, role_id)` WHERE `role_id` IS NOT NULL
+- `(consultant_id, project_id, year, week, customer_rate_id)` WHERE `customer_rate_id` IS NOT NULL
+- `(consultant_id, project_id, year, week, project_rate_id)` WHERE `project_rate_id` IS NOT NULL
+- `(consultant_id, project_id, year, week)` WHERE all task FKs are null
+
+(Equivalent unique indexes exist for `consultant_id IS NULL` / To plan.)
 
 Indexes: `(consultant_id)`; `(consultant_id, project_id, year, week)`;
 `(year, week)`.
@@ -401,19 +410,21 @@ Index: `(customer_id, created_at DESC)`.
 
 ## customer_rates
 
-Customer-level hourly rates per role.
+Customer-level hourly rates: either a **global role** (`role_id`) or a **custom task** (`name`).
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
-| role_id | uuid | NOT NULL, FK → `roles.id`, ON DELETE RESTRICT |
+| role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
+| name | text | custom task name when `role_id` is null |
+| active | boolean | NOT NULL, default true; deactivate when the rate is referenced |
 | rate_per_hour | numeric(12,2) | NOT NULL, ≥ 0 |
 | currency | text | NOT NULL, default `SEK` |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Unique: `(customer_id, role_id)`.
+Check: exactly one of `role_id` or `name`. Unique: `(customer_id, role_id)` where `role_id` is not null; `(customer_id, lower(btrim(name)))` where `role_id` is null.
 
 Trigger `trg_customer_rates_updated_at` → `set_updated_at()`.
 
@@ -421,19 +432,21 @@ Trigger `trg_customer_rates_updated_at` → `set_updated_at()`.
 
 ## project_rates
 
-Project-level rates per role (override customer rates when present).
+Project-level rates (override customer rates for the same global `role_id`). Custom project tasks (`name`) are **project-only**.
 
 | Column | Type | Notes |
 |--------|------|--------|
 | id | uuid | PK, default `gen_random_uuid()` |
 | project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
-| role_id | uuid | NOT NULL, FK → `roles.id`, ON DELETE CASCADE |
+| role_id | uuid | nullable, FK → `roles.id`, ON DELETE CASCADE |
+| name | text | custom task name when `role_id` is null |
+| active | boolean | NOT NULL, default true |
 | rate_per_hour | numeric | NOT NULL |
 | currency | text | NOT NULL, default `SEK` |
 | created_at | timestamptz | NOT NULL, default `now()` |
 | updated_at | timestamptz | NOT NULL, default `now()` |
 
-Unique: `(project_id, role_id)`. Indexes: `(project_id)`, `(role_id)`.
+Check: exactly one of `role_id` or `name`. Unique: `(project_id, role_id)` where `role_id` is not null; `(project_id, lower(btrim(name)))` where `role_id` is null. Indexes: `(project_id)`, `(role_id)`.
 
 ---
 
@@ -472,6 +485,8 @@ Jira-DevOps key / description / optional Work issue). Day cells live in
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE RESTRICT |
 | project_id | uuid | nullable, FK → `projects.id`, ON DELETE RESTRICT |
 | role_id | uuid | nullable, FK → `roles.id`, ON DELETE RESTRICT |
+| customer_rate_id | uuid | nullable, FK → `customer_rates.id`, ON DELETE RESTRICT |
+| project_rate_id | uuid | nullable, FK → `project_rates.id`, ON DELETE RESTRICT |
 | jira_devops_key | text | nullable |
 | description | text | nullable; row-level task text |
 | work_issue_id | uuid | nullable, FK → `work_issues.id`, ON DELETE SET NULL; set when `jira_devops_key` is `work:<issue-id>` |
@@ -496,7 +511,10 @@ One row per **calendar day** on a week line. The UI groups by week.
 | consultant_id | uuid | NOT NULL, FK → `consultants.id`, ON DELETE CASCADE |
 | customer_id | uuid | NOT NULL, FK → `customers.id`, ON DELETE CASCADE |
 | project_id | uuid | NOT NULL, FK → `projects.id`, ON DELETE CASCADE |
-| role_id | uuid | NOT NULL, FK → `roles.id`, ON DELETE CASCADE |
+| role_id | uuid | nullable, FK → `roles.id`, ON DELETE CASCADE |
+| customer_rate_id | uuid | nullable, FK → `customer_rates.id`, ON DELETE RESTRICT |
+| project_rate_id | uuid | nullable, FK → `project_rates.id`, ON DELETE RESTRICT |
+| role_name_snapshot | text | nullable; Looker `RoleName` for custom tasks |
 | jira_devops_key | text | nullable |
 | entry_date | date | NOT NULL |
 | hours | numeric(4,2) | NOT NULL, default 0; check `hours > 0` |
@@ -516,8 +534,11 @@ One row per **calendar day** on a week line. The UI groups by week.
 
 Unique:
 
-- `(consultant_id, entry_line_id, entry_date)`
-- `(consultant_id, customer_id, project_id, role_id, jira_devops_key, entry_date)`
+- `(consultant_id, entry_line_id, entry_date)` — one cell per line per day
+- Partial (custom rates, no role): `(consultant_id, customer_rate_id, COALESCE(jira_devops_key,''), entry_date)` where `customer_rate_id` set and `role_id` null
+- Partial (custom rates, no role): `(consultant_id, project_rate_id, COALESCE(jira_devops_key,''), entry_date)` where `project_rate_id` set and `role_id` null
+
+Do **not** keep a table unique on `(consultant_id, customer_id, project_id, role_id, jira_devops_key, entry_date)` — that legacy constraint blocks multiple Work/time-report lines that share the same billing dimensions on the same day. Drop it with `scripts/alter_time_report_drop_legacy_row_day_unique.sql` if it still exists.
 
 Indexes: `(consultant_id, entry_date)`; `(entry_date)`.
 
@@ -797,6 +818,8 @@ Issues on a Work project. Keys are `{prefix}-{number}` with `number` unique per 
 | title | text | NOT NULL |
 | status | uuid | NOT NULL, FK → `work_project_statuses.id` |
 | sort_order | integer | NOT NULL, default 0; order within a status |
+| issue_type | text | NOT NULL, default `issue`; check `issue` or `bug` |
+| component_id | uuid | nullable, FK → `work_components.id`, ON DELETE SET NULL |
 | owner_app_user_id | uuid | nullable, FK → `app_users.id`, ON DELETE SET NULL |
 | description | text | NOT NULL, default `''` |
 | current_state | text | NOT NULL, default `''` |
@@ -824,7 +847,28 @@ DDL: [`scripts/20260913_work_issues.sql`](../scripts/20260913_work_issues.sql),
 [`scripts/20260924_work_issue_nullable_reporter.sql`](../scripts/20260924_work_issue_nullable_reporter.sql),
 [`scripts/20260924_work_issue_priority_requirements.sql`](../scripts/20260924_work_issue_priority_requirements.sql),
 [`scripts/20260924_work_issue_requirements_sections.sql`](../scripts/20260924_work_issue_requirements_sections.sql),
-[`scripts/20260924_work_sprints_schedule.sql`](../scripts/20260924_work_sprints_schedule.sql).
+[`scripts/20260924_work_sprints_schedule.sql`](../scripts/20260924_work_sprints_schedule.sql),
+[`scripts/20261008_work_issue_type_component.sql`](../scripts/20261008_work_issue_type_component.sql).
+
+---
+
+## work_components
+
+Named product areas on a Work project (Checkout, PLP, …). Optional on each issue
+(at most one). Distinct from free-form labels.
+
+| Column | Type | Notes |
+|--------|------|--------|
+| id | uuid | PK, default `gen_random_uuid()` |
+| project_id | uuid | NOT NULL, FK → `work_projects.id`, ON DELETE CASCADE |
+| name | text | NOT NULL; blank names rejected |
+| created_at | timestamptz | NOT NULL, default `now()` |
+| updated_at | timestamptz | NOT NULL, default `now()` |
+
+Unique: `(project_id, lower(btrim(name)))`. Deleting a component sets
+`work_issues.component_id` to null.
+
+DDL: [`scripts/20261008_work_issue_type_component.sql`](../scripts/20261008_work_issue_type_component.sql).
 
 ---
 
@@ -1091,10 +1135,17 @@ use `JiraKeyAndSummary` / `JiraType` / `JiraEstimate` include ClickUp without
 Looker chart changes. Dedicated `ClickUp*` columns are available for new
 charts. Also exposes `EntryCreatedAt` and `LateEntry` (created month after
 entry month). `Currency` is `currency_snapshot`, else the customer's
-`billing_currency`, else `SEK`. `Income` is hours × rate in that currency —
-do not sum across currencies.
+`billing_currency`, else `SEK`. `Income` is hours × rate in that currency for
+**hourly** projects; for `projects.billing_type = fixed`, **Rate** is null and
+**Income** is 0 (contract value is not row-allocated). Do not sum Income across
+currencies. Exposes `BillingType`. `RoleName` is
+`COALESCE(role_name_snapshot, roles.name)` so custom customer/project tasks
+(Workshop, Onsite, …) appear in RoleName.
 
-Apply / refresh: [`scripts/20261005_v_time_report_looker_clickup.sql`](../scripts/20261005_v_time_report_looker_clickup.sql).
+Apply / refresh: [`scripts/20261008_project_billing_type.sql`](../scripts/20261008_project_billing_type.sql)
+(also updates `v_time_report_looker`). Prior:
+[`scripts/20261006_customer_project_custom_rates.sql`](../scripts/20261006_customer_project_custom_rates.sql),
+[`scripts/20261005_v_time_report_looker_clickup.sql`](../scripts/20261005_v_time_report_looker_clickup.sql).
 Customer currency DDL: [`scripts/20261005_customer_billing_currency.sql`](../scripts/20261005_customer_billing_currency.sql).
 
 ---

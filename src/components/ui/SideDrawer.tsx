@@ -40,13 +40,20 @@ export function SideDrawer({
         <DialogPrimitive.Content
           className="side-drawer-content fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[40rem] flex-col border-l border-border-subtle bg-bg-default shadow-lg focus:outline-none"
           onPointerDownOutside={(e) => {
-            const el = eventTargetElement(e.target);
+            const original = (
+              e as unknown as { detail?: { originalEvent?: Event } }
+            ).detail?.originalEvent;
+            const el =
+              eventTargetElement(original?.target ?? null) ??
+              eventTargetElement(e.target);
             if (
               el?.closest?.("[data-combobox-list]") ||
               el?.closest?.("[data-radix-select-content]") ||
               el?.closest?.("[data-radix-alert-dialog-content]") ||
               el?.closest?.("[data-radix-dialog-content]") ||
               el?.closest?.("[data-board-add-person]") ||
+              el?.closest?.("[data-card-issue-type]") ||
+              el?.closest?.("[data-card-assign-people]") ||
               document.querySelector("[data-radix-alert-dialog-content]") ||
               document.querySelectorAll("[data-radix-dialog-content]").length > 1
             ) {
@@ -54,6 +61,36 @@ export function SideDrawer({
               return;
             }
             onOpenChange(false);
+          }}
+          onInteractOutside={(e) => {
+            const original = (
+              e as unknown as { detail?: { originalEvent?: Event } }
+            ).detail?.originalEvent;
+            const el =
+              eventTargetElement(original?.target ?? null) ??
+              eventTargetElement(e.target);
+            if (
+              el?.closest?.("[data-board-add-person]") ||
+              el?.closest?.("[data-card-issue-type]") ||
+              el?.closest?.("[data-card-assign-people]")
+            ) {
+              e.preventDefault();
+            }
+          }}
+          onFocusOutside={(e) => {
+            const original = (
+              e as unknown as { detail?: { originalEvent?: Event } }
+            ).detail?.originalEvent;
+            const el =
+              eventTargetElement(original?.target ?? null) ??
+              eventTargetElement(e.target);
+            if (
+              el?.closest?.("[data-board-add-person]") ||
+              el?.closest?.("[data-card-issue-type]") ||
+              el?.closest?.("[data-card-assign-people]")
+            ) {
+              e.preventDefault();
+            }
           }}
           onEscapeKeyDown={(e) => {
             const el = eventTargetElement(e.target);

@@ -17,9 +17,11 @@ export const ROUTES = {
   /** Default planner allocation view (consultant). */
   allocation: "/planner/consultant",
   timeReport: "/time-report/time-report",
+  timeReportHome: "/time-report",
   timeApproval: "/time-report/approval",
   insights: "/insights",
   work: "/work",
+  workMine: "/work/mine",
   settings: "/settings/general",
   people: "/settings/people",
   consultants: "/settings/consultants",

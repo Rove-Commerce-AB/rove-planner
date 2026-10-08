@@ -10,26 +10,30 @@ export async function getCustomerRates(customerId: string) {
   return q.fetchCustomerRates(customerId);
 }
 
-export async function getCustomerRatesByCustomerIds(customerIds: string[]) {
-  return q.fetchCustomerRatesByCustomerIds(customerIds);
+export async function getCustomerRatesByCustomerIds(
+  customerIds: string[],
+  opts?: { includeInactive?: boolean }
+) {
+  return q.fetchCustomerRatesByCustomerIds(customerIds, opts);
 }
 
 export async function createCustomerRate(
   customerId: string,
-  roleId: string,
-  ratePerHour: number,
-  currency?: string
+  input: {
+    roleId?: string | null;
+    name?: string | null;
+    ratePerHour: number;
+    currency?: string;
+  }
 ) {
   const customer = await getCustomerById(customerId);
   const billingCurrency = parseBillingCurrency(
-    currency ?? customer?.billingCurrency
+    input.currency ?? customer?.billingCurrency
   );
-  return q.createCustomerRateQuery(
-    customerId,
-    roleId,
-    ratePerHour,
-    billingCurrency
-  );
+  return q.createCustomerRateQuery(customerId, {
+    ...input,
+    currency: billingCurrency,
+  });
 }
 
 export async function updateCustomerRate(id: string, ratePerHour: number) {

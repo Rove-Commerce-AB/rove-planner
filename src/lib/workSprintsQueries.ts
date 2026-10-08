@@ -1,19 +1,19 @@
 import { cloudSqlPool, withCloudSqlTransaction } from "@/lib/cloudSqlPool";
+import { pgDateToDateOnly } from "@/lib/pgDateOnly";
 
 export type WorkSprintRow = {
   id: string;
   project_id: string;
   number: number;
   title: string;
-  starts_on: Date;
-  ends_on: Date;
+  starts_on: Date | string;
+  ends_on: Date | string;
   status: "current" | "next" | "completed";
   capacity_hours: string | number | null;
 };
 
 function toDateOnly(value: Date | string): string {
-  if (typeof value === "string") return value.slice(0, 10);
-  return value.toISOString().slice(0, 10);
+  return pgDateToDateOnly(value);
 }
 
 export function mapWorkSprintRow(row: WorkSprintRow) {

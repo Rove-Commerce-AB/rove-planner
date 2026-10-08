@@ -1,14 +1,14 @@
+import { pgDateToDateOnly } from "@/lib/pgDateOnly";
+
 /** Serialize Postgres `DATE` (Date or YYYY-MM-DD string) for `<input type="date" />`. */
 export function todoDueDateToInputValue(d: unknown): string {
   if (d == null) return "";
-  if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-  if (d instanceof Date && !Number.isNaN(d.getTime())) {
-    // Never use toISOString() for calendar dates: UTC midnight can become the wrong
-    // calendar day in some timezones. Prefer UTC *calendar* parts (matches pg DATE → UTC midnight).
-    const y = d.getUTCFullYear();
-    const m = d.getUTCMonth() + 1;
-    const day = d.getUTCDate();
-    return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  if (typeof d === "string" || (d instanceof Date && !Number.isNaN(d.getTime()))) {
+    try {
+      return pgDateToDateOnly(d);
+    } catch {
+      return "";
+    }
   }
   return "";
 }

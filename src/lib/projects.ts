@@ -61,6 +61,10 @@ export async function getProjectsByIds(ids: string[]) {
   return q.fetchProjectsByIds(ids);
 }
 
+export async function getProjectBillingTypesByIds(ids: string[]) {
+  return q.fetchProjectBillingTypesByIds(ids);
+}
+
 export async function getProjectsWithCustomerNames(ids: string[]) {
   return q.fetchProjectsWithCustomerNames(ids);
 }

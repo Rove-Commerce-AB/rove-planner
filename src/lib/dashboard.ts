@@ -7,6 +7,7 @@ import { getProjectsWithCustomerNames } from "./projects";
 import { getConsultantForCurrentUser } from "./consultants";
 import { getAllocationsForWeeks } from "./allocations";
 import { getRoles } from "./roles";
+import { allocationIdentityKey } from "./billingItem";
 
 const DASHBOARD_CACHE_REVALIDATE = 2 * 60;
 
@@ -63,8 +64,8 @@ export async function getPersonalDashboardData(): Promise<PersonalDashboardData>
       customerName: proj?.customerName ?? "Unknown",
       projectName: proj?.name ?? "Unknown",
       projectId: a.project_id,
-      roleId: a.role_id ?? null,
-      roleName: a.role_id ? roleMap.get(a.role_id) ?? "—" : "—",
+      roleId: allocationIdentityKey(a) || null,
+      roleName: a.custom_task_name ?? (a.role_id ? roleMap.get(a.role_id) ?? "—" : "—"),
       hours: a.hours,
     };
   });

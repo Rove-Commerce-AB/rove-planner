@@ -6,6 +6,7 @@ import { workBoardHref, workIssueHref } from "@/lib/routes";
 import { getConsultantForCurrentUser } from "@/lib/consultants";
 import { getCustomersForAppUser } from "@/lib/customerAppUsers";
 import { getCustomerIdsForConsultant } from "@/lib/customerConsultants";
+import { pgDateToDateOnlyOrNull } from "@/lib/pgDateOnly";
 import { compareTextSv } from "@/lib/sort";
 import {
   canSeeWorkBoard,
@@ -23,11 +24,13 @@ import type {
   WorkAccessPerson,
   WorkBoardView,
   WorkComment,
+  WorkComponent,
   WorkCustomerView,
   WorkEvent,
   WorkFile,
   WorkIssue,
   WorkIssuePriority,
+  WorkIssueType,
   WorkLabel,
   WorkPerson,
   WorkReference,
@@ -37,6 +40,7 @@ import type {
   WorkSprint,
 } from "@/lib/workTypes";
 import {
+  fetchBoardComponents,
   fetchBoardLabels,
   fetchIssueAssignees,
   fetchIssueComments,
@@ -309,15 +313,23 @@ export async function getWorkBoardView(
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return null;
   const { board } = visible;
-  const [issueRows, peopleRows, memberRows, statuses, boardLabels, sprintRows] =
-    await Promise.all([
-      fetchWorkIssuesForBoard(board.id),
-      fetchWorkAccessPickerPeople(board.customer_id),
-      fetchWorkBoardMembers(board.id),
-      q.fetchWorkBoardStatuses(board.id),
-      fetchBoardLabels(board.id),
-      fetchWorkSprintsForBoard(board.id),
-    ]);
+  const [
+    issueRows,
+    peopleRows,
+    memberRows,
+    statuses,
+    boardLabels,
+    boardComponents,
+    sprintRows,
+  ] = await Promise.all([
+    fetchWorkIssuesForBoard(board.id),
+    fetchWorkAccessPickerPeople(board.customer_id),
+    fetchWorkBoardMembers(board.id),
+    q.fetchWorkBoardStatuses(board.id),
+    fetchBoardLabels(board.id),
+    fetchBoardComponents(board.id),
+    fetchWorkSprintsForBoard(board.id),
+  ]);
   const statusIds = new Set(statuses.map((status) => status.id));
   const issueIds = issueRows.map((row) => row.id);
   const [
@@ -438,11 +450,11 @@ export async function getWorkBoardView(
 
   const sprints: WorkSprint[] = sprintRows.map(mapWorkSprintRow);
 
-  function dateOnly(value: Date | string | null): string | null {
-    if (value == null) return null;
-    if (typeof value === "string") return value.slice(0, 10);
-    return value.toISOString().slice(0, 10);
-  }
+  const components: WorkComponent[] = boardComponents.map((row) => ({
+    id: row.id,
+    name: row.name,
+  }));
+  const componentById = new Map(components.map((row) => [row.id, row]));
 
   const issues: WorkIssue[] = issueRows
     .filter((row) => statusIds.has(row.status))
@@ -453,6 +465,13 @@ export async function getWorkBoardView(
       title: row.title,
       status: row.status,
       sortOrder: row.sort_order,
+      issueType: (row.issue_type === "bug" ? "bug" : "issue") as WorkIssueType,
+      component: row.component_id
+        ? (componentById.get(row.component_id) ??
+          (row.component_name
+            ? { id: row.component_id, name: row.component_name }
+            : null))
+        : null,
       description: row.description,
       currentState: row.current_state,
       nextStep: row.next_step,
@@ -485,8 +504,8 @@ export async function getWorkBoardView(
         row.estimate_hours == null ? null : Number(row.estimate_hours),
       loggedHours: loggedHoursByIssue.get(row.id) ?? 0,
       sprintId: row.sprint_id,
-      startDate: dateOnly(row.start_date),
-      dueDate: dateOnly(row.due_date),
+      startDate: pgDateToDateOnlyOrNull(row.start_date),
+      dueDate: pgDateToDateOnlyOrNull(row.due_date),
     }));
 
   const doneByStatus = new Map(
@@ -525,6 +544,8 @@ export async function getWorkBoardView(
     prefix: board.prefix,
     customerId: board.customer_id,
     customerName: board.customer_name,
+    plannerProjectId: board.planner_project_id ?? null,
+    plannerProjectName: board.planner_project_name ?? null,
     currentUser: workPersonFromUser({
       id: user.id,
       name: user.name,
@@ -534,6 +555,7 @@ export async function getWorkBoardView(
     members: memberRows.map(workPersonFromUser),
     statuses,
     boardLabels,
+    components,
     issues,
     sprints,
   };
@@ -761,6 +783,41 @@ export async function listLinkablePlannerProjects(
     throw new Error("Unauthorized");
   }
   return q.fetchLinkablePlannerProjects(customerId);
+}
+
+export async function linkWorkProjectToPlannerProject(
+  boardId: string,
+  plannerProjectId: string
+): Promise<{ plannerProjectId: string; plannerProjectName: string }> {
+  const visible = await requireVisibleWorkBoard(boardId);
+  if (!visible) throw new Error("Unauthorized");
+  const { board } = visible;
+  if (board.planner_project_id) {
+    throw new Error("This Work project is already linked to a customer project");
+  }
+  const trimmed = plannerProjectId.trim();
+  if (!trimmed) throw new Error("Select a customer project");
+
+  try {
+    return await q.linkWorkBoardToPlannerProject(board.id, trimmed);
+  } catch (error) {
+    const maybePg = error as { code?: string; constraint?: string; message?: string };
+    if (
+      maybePg.code === "23505" &&
+      maybePg.constraint === "work_projects_planner_project_uidx"
+    ) {
+      throw new Error("That customer project already has a Work project");
+    }
+    if (
+      error instanceof Error &&
+      error.message === "Could not link project"
+    ) {
+      throw new Error(
+        "Customer project not found, inactive, or already linked elsewhere"
+      );
+    }
+    throw error;
+  }
 }
 
 export async function setWorkProjectPreferredView(

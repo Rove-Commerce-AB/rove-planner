@@ -2,12 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { WorkSprint } from "@/lib/workTypes";
-
-function sprintName(sprint: WorkSprint) {
-  return sprint.title.trim()
-    ? `Sprint ${sprint.number} · ${sprint.title.trim()}`
-    : `Sprint ${sprint.number}`;
-}
+import { workSprintLabel } from "@/lib/workSprintLabel";
 
 function statusLabel(status: WorkSprint["status"]) {
   if (status === "current") return "Current";
@@ -26,14 +21,19 @@ function formatShortDate(iso: string) {
 
 export function WorkSprintPicker({
   sprints,
-  selectedId,
-  onSelect,
+  selectedIds = [],
+  onChange,
+  multi = false,
 }: {
   sprints: WorkSprint[];
-  selectedId: string | null;
-  onSelect: (sprintId: string) => void;
+  selectedIds?: readonly string[];
+  onChange: (ids: string[]) => void;
+  /** When true, chips toggle independently (Board filter). */
+  multi?: boolean;
 }) {
   const selectedRef = useRef<HTMLButtonElement | null>(null);
+  const selectedSet = new Set(selectedIds);
+  const focusId = selectedIds[selectedIds.length - 1] ?? null;
 
   useEffect(() => {
     selectedRef.current?.scrollIntoView({
@@ -41,28 +41,41 @@ export function WorkSprintPicker({
       inline: "nearest",
       block: "nearest",
     });
-  }, [selectedId]);
+  }, [focusId]);
 
   if (sprints.length === 0) return null;
 
+  function selectSprint(sprintId: string) {
+    if (multi) {
+      if (selectedSet.has(sprintId)) {
+        onChange(selectedIds.filter((id) => id !== sprintId));
+        return;
+      }
+      onChange([...selectedIds, sprintId]);
+      return;
+    }
+    onChange([sprintId]);
+  }
+
   return (
     <div
-      role="tablist"
-      aria-label="Sprints"
+      role={multi ? "group" : "tablist"}
+      aria-label={multi ? "Filter by sprint" : "Sprints"}
       className="-mx-0.5 flex min-w-0 gap-1.5 overflow-x-auto px-0.5 pb-0.5"
     >
       {sprints.map((sprint) => {
-        const selected = sprint.id === selectedId;
+        const selected = selectedSet.has(sprint.id);
         const status = statusLabel(sprint.status);
         return (
           <button
             key={sprint.id}
-            ref={selected ? selectedRef : undefined}
+            ref={sprint.id === focusId ? selectedRef : undefined}
             type="button"
-            role="tab"
-            aria-selected={selected}
-            title={`${sprintName(sprint)} · ${status} · ${sprint.startsOn} → ${sprint.endsOn}`}
-            onClick={() => onSelect(sprint.id)}
+            role={multi ? "checkbox" : "tab"}
+            aria-checked={multi ? selected : undefined}
+            aria-selected={multi ? undefined : selected}
+            title={`${workSprintLabel(sprint)} · ${status} · ${sprint.startsOn} → ${sprint.endsOn}`}
+            onClick={() => selectSprint(sprint.id)}
             className={`flex min-w-[7.5rem] shrink-0 flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
               selected
                 ? "border-accent-primary bg-accent-primary-subtle"
@@ -74,7 +87,7 @@ export function WorkSprintPicker({
                 selected ? "text-accent-primary-text" : "text-text-primary"
               }`}
             >
-              {sprintName(sprint)}
+              {workSprintLabel(sprint)}
             </span>
             <span className="flex w-full items-center justify-between gap-2">
               <span
@@ -91,7 +104,8 @@ export function WorkSprintPicker({
                 {status}
               </span>
               <span className="text-caption tabular-nums text-text-tertiary">
-                {formatShortDate(sprint.startsOn)}–{formatShortDate(sprint.endsOn)}
+                {formatShortDate(sprint.startsOn)}–
+                {formatShortDate(sprint.endsOn)}
               </span>
             </span>
           </button>

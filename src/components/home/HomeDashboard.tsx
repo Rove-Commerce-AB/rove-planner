@@ -66,7 +66,7 @@ export function HomeDashboard({ data }: Props) {
         {timeReport ? (
           <HomeAppSurface
             title="Time report"
-            href={ROUTES.timeReport}
+            href={ROUTES.timeReportHome}
             icon={Clock}
             description={`ISO week ${timeReport.week}`}
           >

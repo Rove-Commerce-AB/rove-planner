@@ -96,13 +96,21 @@ export function WorkCommentComposer({
   value,
   disabled,
   className,
+  rows = 3,
+  showShortcutHint = true,
   onChange,
+  onFocus,
+  onBlur,
 }: {
   people: WorkPerson[];
   value: string;
   disabled?: boolean;
   className: string;
+  rows?: number;
+  showShortcutHint?: boolean;
   onChange: (value: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mention, setMention] = useState<MentionQuery | null>(null);
@@ -133,7 +141,7 @@ export function WorkCommentComposer({
   }
 
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className="relative w-full min-w-0">
       {mention ? (
         <div
           role="listbox"
@@ -174,11 +182,13 @@ export function WorkCommentComposer({
       ) : null}
       <textarea
         ref={textareaRef}
-        className={`${className} pb-6`}
-        rows={3}
+        className={`${className}${showShortcutHint ? " pb-6" : ""}`}
+        rows={rows}
         placeholder="Write a comment… Use @ to mention"
         value={value}
         disabled={disabled}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onChange={(event) => {
           onChange(event.target.value);
           syncMention(event.target);
@@ -219,9 +229,11 @@ export function WorkCommentComposer({
           }
         }}
       />
-      <p className="pointer-events-none absolute bottom-1.5 left-3 text-caption text-text-tertiary">
-        Ctrl+Enter to send
-      </p>
+      {showShortcutHint ? (
+        <p className="pointer-events-none absolute bottom-1.5 left-3 text-caption text-text-tertiary">
+          Ctrl+Enter to send
+        </p>
+      ) : null}
     </div>
   );
 }

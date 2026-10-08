@@ -7,6 +7,7 @@ export type WorkBoardRow = {
   customer_id: string;
   title: string;
   prefix: string;
+  planner_project_id: string | null;
   created_by_app_user_id: string;
   created_at: Date;
   updated_at: Date;
@@ -63,6 +64,7 @@ export async function fetchWorkBoardsForCustomerIds(
        b.customer_id,
        b.title,
        b.prefix,
+       b.planner_project_id,
        b.created_by_app_user_id,
        b.created_at,
        b.updated_at,
@@ -86,12 +88,19 @@ export async function fetchWorkBoardsForCustomerIds(
 
 export async function fetchWorkBoardById(
   boardId: string
-): Promise<(WorkBoardRow & { customer_name: string; customer_is_internal: boolean }) | null> {
+): Promise<
+  (WorkBoardRow & {
+    customer_name: string;
+    customer_is_internal: boolean;
+    planner_project_name: string | null;
+  }) | null
+> {
   const { rows } = await cloudSqlPool.query<
     Omit<WorkBoardRow, "member_ids"> & {
       member_ids: string[] | null;
       customer_name: string;
       customer_is_internal: boolean;
+      planner_project_name: string | null;
     }
   >(
     `SELECT
@@ -99,21 +108,24 @@ export async function fetchWorkBoardById(
        b.customer_id,
        b.title,
        b.prefix,
+       b.planner_project_id,
        b.created_by_app_user_id,
        b.created_at,
        b.updated_at,
        c.name AS customer_name,
        c.is_internal AS customer_is_internal,
+       p.name AS planner_project_name,
        COALESCE(
          array_agg(m.app_user_id::text) FILTER (WHERE m.app_user_id IS NOT NULL),
          ARRAY[]::text[]
        ) AS member_ids
      FROM work_projects b
      JOIN customers c ON c.id = b.customer_id
+     LEFT JOIN projects p ON p.id = b.planner_project_id
      LEFT JOIN work_project_members m ON m.project_id = b.id
      WHERE b.id = $1
        AND b.archived_at IS NULL
-     GROUP BY b.id, c.name, c.is_internal`,
+     GROUP BY b.id, c.name, c.is_internal, p.name`,
     [boardId]
   );
   const row = rows[0];
@@ -121,6 +133,37 @@ export async function fetchWorkBoardById(
   return {
     ...row,
     member_ids: row.member_ids ?? [],
+  };
+}
+
+export async function linkWorkBoardToPlannerProject(
+  boardId: string,
+  plannerProjectId: string
+): Promise<{ plannerProjectId: string; plannerProjectName: string }> {
+  const { rows } = await cloudSqlPool.query<{
+    planner_project_id: string;
+    planner_project_name: string;
+  }>(
+    `UPDATE work_projects wp
+     SET planner_project_id = p.id
+     FROM projects p
+     WHERE wp.id = $1
+       AND wp.archived_at IS NULL
+       AND wp.planner_project_id IS NULL
+       AND p.id = $2
+       AND p.customer_id = wp.customer_id
+       AND p.is_active = true
+       AND p.type <> 'absence'
+     RETURNING wp.planner_project_id, p.name AS planner_project_name`,
+    [boardId, plannerProjectId]
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Could not link project");
+  }
+  return {
+    plannerProjectId: row.planner_project_id,
+    plannerProjectName: row.planner_project_name,
   };
 }
 
@@ -244,6 +287,7 @@ export async function fetchArchivedWorkBoardById(
        b.customer_id,
        b.title,
        b.prefix,
+       b.planner_project_id,
        b.created_by_app_user_id,
        b.created_at,
        b.updated_at,

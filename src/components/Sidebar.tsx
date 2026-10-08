@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Inbox,
   Settings,
   LogOut,
   Briefcase,
@@ -465,9 +466,7 @@ export function Sidebar({
   }>({ planner: false, timeReport: false, settings: false, work: false });
 
   const plannerActive = pathMatches(pathname, ROUTES.planner, "prefix");
-  const timeReportChildActive =
-    pathMatches(pathname, ROUTES.timeReport, "exact") ||
-    pathMatches(pathname, ROUTES.timeApproval, "prefix");
+  const timeReportChildActive = pathMatches(pathname, "/time-report", "prefix");
   const settingsChildActive = pathname.startsWith("/settings");
   const workActive = pathMatches(pathname, ROUTES.work, "prefix");
   const activeWorkCustomerId = pathname.startsWith(`${ROUTES.work}/`)
@@ -641,7 +640,7 @@ export function Sidebar({
             <AppGroup
               label="Time report"
               icon={Clock}
-              href={ROUTES.timeReport}
+              href={ROUTES.timeReportHome}
               pathname={pathname}
               open={openApps.timeReport}
               onToggle={() =>
@@ -651,7 +650,7 @@ export function Sidebar({
                 }))
               }
               collapsed={collapsed}
-              collapsedHref={ROUTES.timeReport}
+              collapsedHref={ROUTES.timeReportHome}
               active={timeReportChildActive}
             >
               <NavLink
@@ -684,6 +683,13 @@ export function Sidebar({
               collapsed={collapsed}
               active={workActive}
             >
+              <NavLink
+                href={ROUTES.workMine}
+                label="My work"
+                pathname={pathname}
+                depth={1}
+                leading={<Inbox className="h-3.5 w-3.5 text-text-tertiary" aria-hidden />}
+              />
               {workNav.length === 0 ? (
                 <p className="px-2 py-1.5 pl-10 text-body-m text-text-tertiary">
                   No customers yet

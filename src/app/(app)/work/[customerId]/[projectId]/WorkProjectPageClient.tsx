@@ -24,7 +24,13 @@ import {
 } from "@/components/ui";
 import { SetWorkTrail } from "@/components/WorkTrailContext";
 import { workBoardHref, workCustomerHref, workIssueHref } from "@/lib/routes";
-import type { WorkIssue, WorkBoardView } from "@/lib/workTypes";
+import type {
+  WorkIssue,
+  WorkBoardView,
+  WorkIssueType,
+  WorkPerson,
+  WorkSprint,
+} from "@/lib/workTypes";
 import type { WorkBoardStatus, WorkIssueStatus } from "@/lib/workStatuses";
 import {
   addWorkBoardMemberAction,
@@ -34,19 +40,27 @@ import {
   createWorkBoardStatusAction,
   createWorkIssueAction,
   deleteWorkBoardStatusAction,
+  createWorkComponentAction,
+  deleteWorkComponentAction,
+  renameWorkComponentAction,
   moveWorkIssueAction,
   renameWorkBoardAction,
   renameWorkBoardStatusAction,
   removeWorkBoardMemberAction,
   reorderWorkBoardStatusesAction,
+  linkWorkProjectToPlannerProjectAction,
   setWorkProjectPreferredViewAction,
+  updateWorkIssueEstimateAction,
   updateWorkIssueOwnerAction,
+  updateWorkIssueTypeAction,
 } from "../../actions";
 import {
+  collectBoardComponents,
   collectOwnerFilterPeople,
   columnIssueGroups,
   visibleWorkIssueIds,
   type WorkBoardGroupBy,
+  type WorkBoardPriorityFilterId,
 } from "@/lib/workBoardView";
 import {
   issueScrollElFromPoint,
@@ -56,18 +70,68 @@ import {
 import { WorkBoardMembers } from "./WorkBoardMembers";
 import {
   WorkBoardViewControls,
+  WorkCardComponent,
   WorkCardLabels,
+  WorkCardTypeBadge,
   WorkColumnGroupHeader,
 } from "./WorkBoardViewControls";
 import { WorkCardPeople, WorkIssueDrawer } from "./WorkIssueDrawer";
+import { WorkIssueTypePicker } from "./WorkIssueTypeIcon";
 import { WorkProjectSettingsDrawer } from "./WorkProjectSettingsDrawer";
+import { WorkCardEstimate } from "./WorkCardEstimate";
+import { WorkSprintPicker } from "./WorkSprintPicker";
 import { WorkSprintView } from "./WorkSprintView";
 import { WorkTimelineView } from "./WorkTimelineView";
 import { WorkTimeGraph } from "./WorkTimeGraph";
 import { isIssueBlocked } from "@/lib/workIssueRelations";
-import type { WorkPerson, WorkSprint } from "@/lib/workTypes";
+import { formatWorkHours } from "@/lib/workTime";
 
 type BoardMode = "board" | "sprint" | "timeline";
+
+function NewIssueTitleField({
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={1}
+      onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onCancel();
+          return;
+        }
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          onSubmit();
+        }
+      }}
+      placeholder="Title"
+      aria-label="New issue title"
+      autoFocus
+      className="box-border min-h-[2.25rem] min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-form bg-bg-default px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-brand-signal focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-signal"
+    />
+  );
+}
 
 type Props = {
   board: WorkBoardView;
@@ -196,7 +260,14 @@ export function WorkBoardPageClient({
   const [boardMode, setBoardMode] = useState<BoardMode>(initialView);
   const [search, setSearch] = useState("");
   const [ownerFilterIds, setOwnerFilterIds] = useState<string[]>([]);
+  const [typeFilterIds, setTypeFilterIds] = useState<WorkIssueType[]>([]);
+  const [componentFilterIds, setComponentFilterIds] = useState<string[]>([]);
+  const [priorityFilterIds, setPriorityFilterIds] = useState<
+    WorkBoardPriorityFilterId[]
+  >([]);
+  const [sprintFilterIds, setSprintFilterIds] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState<WorkBoardGroupBy>("none");
+  const [components, setComponents] = useState(board.components);
   const [dragOverStatus, setDragOverStatus] = useState<WorkIssueStatus | null>(
     null
   );
@@ -219,6 +290,43 @@ export function WorkBoardPageClient({
     null
   );
   const [draftTitle, setDraftTitle] = useState("");
+  const [draftIssueType, setDraftIssueType] = useState<WorkIssueType>("issue");
+  const addIssueFormRef = useRef<HTMLFormElement>(null);
+
+  function cancelAddingIssue() {
+    setAddingStatus(null);
+    setDraftTitle("");
+    setDraftIssueType("issue");
+  }
+
+  useEffect(() => {
+    if (addingStatus == null) return;
+
+    function onPointerDown(event: PointerEvent) {
+      const form = addIssueFormRef.current;
+      if (
+        form &&
+        event.target instanceof Node &&
+        form.contains(event.target)
+      ) {
+        return;
+      }
+      cancelAddingIssue();
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancelAddingIssue();
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [addingStatus]);
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState(board.members);
   const [statuses, setStatuses] = useState(board.statuses);
@@ -234,6 +342,12 @@ export function WorkBoardPageClient({
     left: number;
   } | null>(null);
   const [boardTitle, setBoardTitle] = useState(board.title);
+  const [plannerProjectId, setPlannerProjectId] = useState(
+    board.plannerProjectId
+  );
+  const [plannerProjectName, setPlannerProjectName] = useState(
+    board.plannerProjectName
+  );
   const [renamingBoard, setRenamingBoard] = useState(false);
   const [boardRenameDraft, setBoardRenameDraft] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -292,8 +406,20 @@ export function WorkBoardPageClient({
   }, [board.issues]);
 
   useEffect(() => {
+    setComponents(board.components);
+  }, [board.components]);
+
+  useEffect(() => {
     setSprints(board.sprints);
   }, [board.sprints]);
+
+  useEffect(() => {
+    const valid = new Set(sprints.map((sprint) => sprint.id));
+    setSprintFilterIds((ids) => {
+      const next = ids.filter((id) => valid.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [sprints]);
 
   useEffect(() => {
     setMembers(board.members);
@@ -307,6 +433,11 @@ export function WorkBoardPageClient({
   useEffect(() => {
     setBoardTitle(board.title);
   }, [board.title]);
+
+  useEffect(() => {
+    setPlannerProjectId(board.plannerProjectId);
+    setPlannerProjectName(board.plannerProjectName);
+  }, [board.plannerProjectId, board.plannerProjectName]);
 
   useEffect(() => {
     if (!statusMenu) return;
@@ -329,10 +460,33 @@ export function WorkBoardPageClient({
     () => collectOwnerFilterPeople(board.people, issues),
     [board.people, issues]
   );
+  const filterComponents = useMemo(
+    () => collectBoardComponents(components, issues),
+    [components, issues]
+  );
+  const orderedSprints = useMemo(
+    () => sprints.slice().sort((a, b) => a.number - b.number),
+    [sprints]
+  );
 
   const visibleIds = useMemo(
-    () => visibleWorkIssueIds(issues, search, ownerFilterIds),
-    [issues, search, ownerFilterIds]
+    () =>
+      visibleWorkIssueIds(issues, search, {
+        ownerIds: ownerFilterIds,
+        typeIds: typeFilterIds,
+        componentIds: componentFilterIds,
+        priorityIds: priorityFilterIds,
+        sprintIds: sprintFilterIds,
+      }),
+    [
+      issues,
+      search,
+      ownerFilterIds,
+      typeFilterIds,
+      componentFilterIds,
+      priorityFilterIds,
+      sprintFilterIds,
+    ]
   );
 
   function openIssue(issueId: string) {
@@ -744,12 +898,14 @@ export function WorkBoardPageClient({
       boardId: board.id,
       title: trimmed,
       status,
+      issueType: draftIssueType,
     });
     if (!result.ok) {
       setError(result.error);
       return;
     }
     setDraftTitle("");
+    setDraftIssueType("issue");
     setAddingStatus(null);
     router.refresh();
   }
@@ -818,7 +974,7 @@ export function WorkBoardPageClient({
             {(
               [
                 ["board", "Board"],
-                ["sprint", "Sprint"],
+                ["sprint", "Planning"],
                 ["timeline", "Timeline"],
               ] as const
             ).map(([mode, label]) => (
@@ -874,8 +1030,15 @@ export function WorkBoardPageClient({
           {boardMode === "board" ? (
             <WorkBoardViewControls
               people={ownerPeople}
+              components={filterComponents}
               ownerFilterIds={ownerFilterIds}
               onOwnerFilterChange={setOwnerFilterIds}
+              typeFilterIds={typeFilterIds}
+              onTypeFilterChange={setTypeFilterIds}
+              componentFilterIds={componentFilterIds}
+              onComponentFilterChange={setComponentFilterIds}
+              priorityFilterIds={priorityFilterIds}
+              onPriorityFilterChange={setPriorityFilterIds}
               groupBy={groupBy}
               onGroupByChange={setGroupBy}
             />
@@ -889,6 +1052,17 @@ export function WorkBoardPageClient({
         </p>
       ) : null}
 
+      {boardMode === "board" && orderedSprints.length > 0 ? (
+        <div className="mb-3 shrink-0">
+          <WorkSprintPicker
+            sprints={orderedSprints}
+            selectedIds={sprintFilterIds}
+            onChange={setSprintFilterIds}
+            multi
+          />
+        </div>
+      ) : null}
+
       {boardMode === "sprint" ? (
         <WorkSprintView
           board={{ ...board, issues, sprints }}
@@ -900,9 +1074,7 @@ export function WorkBoardPageClient({
             setIssues(next);
           }}
           onSprintsChange={setSprints}
-          onOpenIssue={(issueId) =>
-            router.push(workIssueHref(board.customerId, board.id, issueId))
-          }
+          onOpenIssue={(issueId) => openIssue(issueId)}
           onError={setError}
           onChanged={() => router.refresh()}
         />
@@ -931,6 +1103,18 @@ export function WorkBoardPageClient({
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
             updateDragAutoScroll(event.clientX, event.clientY, "status");
+            // Gap / padding left of the first column: treat as insert at start.
+            const firstSection = event.currentTarget.querySelector("section");
+            if (firstSection instanceof HTMLElement) {
+              const firstId = statusesRef.current[0]?.id ?? null;
+              if (
+                firstId &&
+                firstId !== draggingStatusIdRef.current &&
+                event.clientX < firstSection.getBoundingClientRect().left + 16
+              ) {
+                setStatusInsertHint(firstId);
+              }
+            }
             return;
           }
           if (dragIssueIdRef.current) {
@@ -945,8 +1129,13 @@ export function WorkBoardPageClient({
             visibleIds.has(issue.id)
           );
           const issueGroups = columnIssueGroups(columnIssues, groupBy);
+          const columnEstimateSum = columnIssues.reduce(
+            (sum, issue) => sum + (issue.estimateHours ?? 0),
+            0
+          );
           const isDone = column.isDone;
           const isDragOver = dragOverStatus === status && !draggingStatusId;
+          const isFirstColumn = columnIndex === 0;
           const isLastColumn = columnIndex === statuses.length - 1;
           const showInsertBefore =
             draggingStatusId != null &&
@@ -991,13 +1180,18 @@ export function WorkBoardPageClient({
             >
               {showInsertBefore ? (
                 <span
-                  className="pointer-events-none absolute -left-2 top-2 bottom-2 w-1 rounded-full bg-brand-signal"
+                  className={`pointer-events-none absolute top-2 bottom-2 w-1 rounded-full bg-brand-signal ${
+                    // First column: keep indicator inside so overflow-x doesn't clip it.
+                    isFirstColumn ? "left-1" : "-left-2"
+                  }`}
                   aria-hidden
                 />
               ) : null}
               {showInsertAfter ? (
                 <span
-                  className="pointer-events-none absolute -right-2 top-2 bottom-2 w-1 rounded-full bg-brand-signal"
+                  className={`pointer-events-none absolute top-2 bottom-2 w-1 rounded-full bg-brand-signal ${
+                    isLastColumn ? "right-1" : "-right-2"
+                  }`}
                   aria-hidden
                 />
               ) : null}
@@ -1074,33 +1268,43 @@ export function WorkBoardPageClient({
                     <span className="truncate">{column.name}</span>
                   )}
                 </span>
-                <button
-                  type="button"
-                  data-status-menu
-                  aria-label={`Status options for ${column.name}`}
-                  aria-expanded={statusMenu?.id === status}
-                  aria-haspopup="menu"
-                  title="Status options"
-                  className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-current/45 hover:bg-current/10 hover:text-current"
-                  onClick={(event) => {
-                    if (statusMenu?.id === status) {
-                      setStatusMenu(null);
-                      return;
-                    }
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    const width = 128;
-                    setStatusMenu({
-                      id: status,
-                      top: rect.bottom + 4,
-                      left: Math.min(
-                        rect.right - width,
-                        window.innerWidth - width - 8
-                      ),
-                    });
-                  }}
-                >
-                  <MoreHorizontal className="h-4 w-4" aria-hidden />
-                </button>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {columnEstimateSum > 0 ? (
+                    <span
+                      className="tabular-nums text-caption text-current/55"
+                      title={`Total estimate ${formatWorkHours(columnEstimateSum)}`}
+                    >
+                      {formatWorkHours(columnEstimateSum)}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    data-status-menu
+                    aria-label={`Status options for ${column.name}`}
+                    aria-expanded={statusMenu?.id === status}
+                    aria-haspopup="menu"
+                    title="Status options"
+                    className="inline-flex shrink-0 items-center rounded-sm p-0.5 text-current/45 hover:bg-current/10 hover:text-current"
+                    onClick={(event) => {
+                      if (statusMenu?.id === status) {
+                        setStatusMenu(null);
+                        return;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const width = 128;
+                      setStatusMenu({
+                        id: status,
+                        top: rect.bottom + 4,
+                        left: Math.min(
+                          rect.right - width,
+                          window.innerWidth - width - 8
+                        ),
+                      });
+                    }}
+                  >
+                    <MoreHorizontal className="h-4 w-4" aria-hidden />
+                  </button>
+                </span>
               </header>
 
               <div
@@ -1233,17 +1437,40 @@ export function WorkBoardPageClient({
                     >
                       <div className="text-left">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="min-w-0 truncate text-label-s text-text-tertiary">
-                            {issue.key}
+                          <span className="flex min-w-0 items-center gap-1.5 truncate text-label-s text-text-tertiary">
+                            <WorkCardTypeBadge
+                              issueType={issue.issueType}
+                              onChange={(issueType) => {
+                                setIssues((current) => {
+                                  const next = current.map((row) =>
+                                    row.id === issue.id
+                                      ? { ...row, issueType }
+                                      : row
+                                  );
+                                  issuesRef.current = next;
+                                  return next;
+                                });
+                                void updateWorkIssueTypeAction(
+                                  board.id,
+                                  issue.id,
+                                  issueType
+                                ).then((result) => {
+                                  if (result.ok) return;
+                                  setError(result.error);
+                                  issuesRef.current = board.issues;
+                                  setIssues(board.issues);
+                                });
+                              }}
+                            />
+                            <span className="min-w-0 truncate">{issue.key}</span>
                             {isIssueBlocked(issue.relations) ? (
-                              <span className="ml-1.5 text-caption">Blocked</span>
+                              <span className="text-caption">Blocked</span>
                             ) : null}
                           </span>
                           <WorkCardPeople
                             owner={issue.owner}
                             assignees={issue.assignees}
                             people={board.people}
-                            disabled={pending}
                             onSetOwner={(person) => {
                               setIssues((current) => {
                                 const next = current.map((row) =>
@@ -1254,18 +1481,16 @@ export function WorkBoardPageClient({
                                 issuesRef.current = next;
                                 return next;
                               });
-                              startTransition(() => {
-                                void updateWorkIssueOwnerAction(
-                                  board.id,
-                                  issue.id,
-                                  person?.id ?? null,
-                                  person?.name ?? ""
-                                ).then((result) => {
-                                  if (result.ok) return;
-                                  setError(result.error);
-                                  issuesRef.current = board.issues;
-                                  setIssues(board.issues);
-                                });
+                              void updateWorkIssueOwnerAction(
+                                board.id,
+                                issue.id,
+                                person?.id ?? null,
+                                person?.name ?? ""
+                              ).then((result) => {
+                                if (result.ok) return;
+                                setError(result.error);
+                                issuesRef.current = board.issues;
+                                setIssues(board.issues);
                               });
                             }}
                             onAddAssignee={(person) => {
@@ -1287,18 +1512,16 @@ export function WorkBoardPageClient({
                                 issuesRef.current = next;
                                 return next;
                               });
-                              startTransition(() => {
-                                void addWorkIssueAssigneeAction(
-                                  board.id,
-                                  issue.id,
-                                  person.id,
-                                  person.name
-                                ).then((result) => {
-                                  if (result.ok) return;
-                                  setError(result.error);
-                                  issuesRef.current = board.issues;
-                                  setIssues(board.issues);
-                                });
+                              void addWorkIssueAssigneeAction(
+                                board.id,
+                                issue.id,
+                                person.id,
+                                person.name
+                              ).then((result) => {
+                                if (result.ok) return;
+                                setError(result.error);
+                                issuesRef.current = board.issues;
+                                setIssues(board.issues);
                               });
                             }}
                             onRemoveAssignee={(person) => {
@@ -1317,18 +1540,16 @@ export function WorkBoardPageClient({
                                 issuesRef.current = next;
                                 return next;
                               });
-                              startTransition(() => {
-                                void removeWorkIssueAssigneeAction(
-                                  board.id,
-                                  issue.id,
-                                  person.id,
-                                  person.name
-                                ).then((result) => {
-                                  if (result.ok) return;
-                                  setError(result.error);
-                                  issuesRef.current = board.issues;
-                                  setIssues(board.issues);
-                                });
+                              void removeWorkIssueAssigneeAction(
+                                board.id,
+                                issue.id,
+                                person.id,
+                                person.name
+                              ).then((result) => {
+                                if (result.ok) return;
+                                setError(result.error);
+                                issuesRef.current = board.issues;
+                                setIssues(board.issues);
                               });
                             }}
                           />
@@ -1336,7 +1557,35 @@ export function WorkBoardPageClient({
                         <p className="mt-2 text-body-m text-text-primary">
                           {issue.title}
                         </p>
+                        <WorkCardComponent component={issue.component} />
                         <WorkCardLabels labels={issue.labels} />
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <WorkCardEstimate
+                            estimateHours={issue.estimateHours}
+                            onError={setError}
+                            onChange={(value) => {
+                              setIssues((current) => {
+                                const next = current.map((row) =>
+                                  row.id === issue.id
+                                    ? { ...row, estimateHours: value }
+                                    : row
+                                );
+                                issuesRef.current = next;
+                                return next;
+                              });
+                              void updateWorkIssueEstimateAction(
+                                board.id,
+                                issue.id,
+                                value == null ? "" : String(value)
+                              ).then((result) => {
+                                if (result.ok) return;
+                                setError(result.error);
+                                issuesRef.current = board.issues;
+                                setIssues(board.issues);
+                              });
+                            }}
+                          />
+                        </div>
                       </div>
                       <WorkTimeGraph
                         estimateHours={issue.estimateHours}
@@ -1359,22 +1608,31 @@ export function WorkBoardPageClient({
 
               {addingStatus === status ? (
                 <form
-                  className="px-2 pb-3"
+                  ref={addIssueFormRef}
+                  className="space-y-2 px-2 pb-3"
                   onSubmit={(event) => {
                     event.preventDefault();
                     startTransition(() => void submitNewIssue(status, draftTitle));
                   }}
                 >
-                  <Input
-                    value={draftTitle}
-                    onChange={(event) => setDraftTitle(event.target.value)}
-                    placeholder="Issue title"
-                    aria-label="New issue title"
-                    autoFocus
-                    onBlur={() => {
-                      if (!draftTitle.trim()) setAddingStatus(null);
-                    }}
-                  />
+                  <div className="flex items-start gap-2">
+                    <WorkIssueTypePicker
+                      name={`New issue type ${status}`}
+                      value={draftIssueType}
+                      onChange={setDraftIssueType}
+                      size="sm"
+                    />
+                    <NewIssueTitleField
+                      value={draftTitle}
+                      onChange={setDraftTitle}
+                      onCancel={cancelAddingIssue}
+                      onSubmit={() => {
+                        startTransition(() =>
+                          void submitNewIssue(status, draftTitle)
+                        );
+                      }}
+                    />
+                  </div>
                 </form>
               ) : (
                 <button
@@ -1383,6 +1641,7 @@ export function WorkBoardPageClient({
                   onClick={() => {
                     setAddingStatus(status);
                     setDraftTitle("");
+                    setDraftIssueType("issue");
                   }}
                 >
                   <Plus className="h-4 w-4" aria-hidden />
@@ -1442,10 +1701,31 @@ export function WorkBoardPageClient({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         title={boardTitle}
+        customerId={board.customerId}
         customerName={board.customerName}
+        plannerProjectId={plannerProjectId}
+        plannerProjectName={plannerProjectName}
         members={members}
         people={board.people}
+        components={components}
         onRename={applyBoardRename}
+        onLinkPlannerProject={async (nextPlannerProjectId) => {
+          const result = await linkWorkProjectToPlannerProjectAction(
+            board.id,
+            nextPlannerProjectId
+          );
+          if (!result.ok) {
+            setError(result.error);
+            return null;
+          }
+          setPlannerProjectId(result.plannerProjectId);
+          setPlannerProjectName(result.plannerProjectName);
+          router.refresh();
+          return {
+            plannerProjectId: result.plannerProjectId,
+            plannerProjectName: result.plannerProjectName,
+          };
+        }}
         onAddMember={(person) => {
           setMembers((current) =>
             current.some((row) => row.id === person.id)
@@ -1478,6 +1758,88 @@ export function WorkBoardPageClient({
               setError(result.error);
             }
           );
+        }}
+        onCreateComponent={async (name) => {
+          const trimmed = name.trim();
+          if (
+            components.some(
+              (row) => row.name.toLowerCase() === trimmed.toLowerCase()
+            )
+          ) {
+            setError("A component with that name already exists");
+            return null;
+          }
+          const result = await createWorkComponentAction(board.id, trimmed);
+          if (!result.ok) {
+            setError(result.error);
+            return null;
+          }
+          setComponents((current) => {
+            if (current.some((row) => row.id === result.component.id)) {
+              return current;
+            }
+            return [...current, result.component].sort((a, b) =>
+              a.name.localeCompare(b.name)
+            );
+          });
+          router.refresh();
+          return result.component;
+        }}
+        onRenameComponent={async (component, name) => {
+          const result = await renameWorkComponentAction(
+            board.id,
+            component.id,
+            name
+          );
+          if (!result.ok) {
+            setError(result.error);
+            return null;
+          }
+          setComponents((current) =>
+            current
+              .map((row) =>
+                row.id === result.component.id ? result.component : row
+              )
+              .sort((a, b) => a.name.localeCompare(b.name))
+          );
+          setIssues((current) => {
+            const next = current.map((issue) =>
+              issue.component?.id === result.component.id
+                ? { ...issue, component: result.component }
+                : issue
+            );
+            issuesRef.current = next;
+            return next;
+          });
+          router.refresh();
+          return result.component;
+        }}
+        onDeleteComponent={async (component) => {
+          const result = await deleteWorkComponentAction(
+            board.id,
+            component.id
+          );
+          if (!result.ok) {
+            setError(result.error);
+            return false;
+          }
+          setComponents((current) =>
+            current.filter((row) => row.id !== component.id)
+          );
+          setIssues((current) => {
+            const next = current.map((issue) =>
+              issue.component?.id === component.id
+                ? { ...issue, component: null }
+                : issue
+            );
+            issuesRef.current = next;
+            return next;
+          });
+          setComponentFilterIds((current) =>
+            current.filter((id) => id !== component.id)
+          );
+          router.refresh();
+          return true;
         }}
         onArchive={() => {
           setSettingsOpen(false);
@@ -1609,7 +1971,13 @@ export function WorkBoardPageClient({
       >
         {selected ? (
           <WorkIssueDrawer
-            board={board}
+            board={{
+              ...board,
+              components,
+              issues,
+              plannerProjectId,
+              plannerProjectName,
+            }}
             issue={selected}
             onStatus={(status) => {
               moveIssue(selected.id, status, null);
@@ -1622,8 +1990,19 @@ export function WorkBoardPageClient({
               setError(message);
               issuesRef.current = board.issues;
               setIssues(board.issues);
+              setComponents(board.components);
             }}
             onIssuePatch={(patch) => {
+              if (
+                patch.component &&
+                !components.some((row) => row.id === patch.component!.id)
+              ) {
+                setComponents((current) =>
+                  [...current, patch.component!].sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  )
+                );
+              }
               setIssues((current) => {
                 const next = current.map((issue) =>
                   issue.id === selected.id ? { ...issue, ...patch } : issue

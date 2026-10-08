@@ -1,9 +1,42 @@
-import type { WorkIssue, WorkPerson } from "@/lib/workTypes";
+import type {
+  WorkComponent,
+  WorkIssue,
+  WorkIssuePriority,
+  WorkIssueType,
+  WorkPerson,
+} from "@/lib/workTypes";
 
 export const UNASSIGNED_OWNER_ID = "unassigned";
 export const NO_LABEL_ID = "no-label";
+export const NO_COMPONENT_ID = "no-component";
+export const NO_PRIORITY_ID = "no-priority";
 
-export type WorkBoardGroupBy = "none" | "owner" | "label";
+export type WorkBoardPriorityFilterId =
+  | WorkIssuePriority
+  | typeof NO_PRIORITY_ID;
+
+export type WorkBoardGroupBy =
+  | "none"
+  | "owner"
+  | "label"
+  | "component"
+  | "priority";
+
+export type WorkBoardIssueFilters = {
+  ownerIds: readonly string[];
+  typeIds: readonly WorkIssueType[];
+  componentIds: readonly string[];
+  priorityIds: readonly WorkBoardPriorityFilterId[];
+  /** Empty = no sprint filter. Otherwise issue must be in one of these sprints. */
+  sprintIds: readonly string[];
+};
+
+const PRIORITY_GROUP_ORDER: WorkBoardPriorityFilterId[] = [
+  "high",
+  "medium",
+  "low",
+  NO_PRIORITY_ID,
+];
 
 export type WorkColumnGroup = {
   key: string;
@@ -16,12 +49,65 @@ export function ownerFilterKey(issue: WorkIssue): string {
   return issue.owner?.id ?? UNASSIGNED_OWNER_ID;
 }
 
+export function componentFilterKey(issue: WorkIssue): string {
+  return issue.component?.id ?? NO_COMPONENT_ID;
+}
+
+export function priorityFilterKey(issue: WorkIssue): WorkBoardPriorityFilterId {
+  return issue.priority ?? NO_PRIORITY_ID;
+}
+
 export function issueMatchesOwnerFilter(
   issue: WorkIssue,
   ownerFilterIds: readonly string[]
 ): boolean {
   if (ownerFilterIds.length === 0) return true;
   return ownerFilterIds.includes(ownerFilterKey(issue));
+}
+
+export function issueMatchesTypeFilter(
+  issue: WorkIssue,
+  typeIds: readonly WorkIssueType[]
+): boolean {
+  if (typeIds.length === 0) return true;
+  return typeIds.includes(issue.issueType);
+}
+
+export function issueMatchesComponentFilter(
+  issue: WorkIssue,
+  componentIds: readonly string[]
+): boolean {
+  if (componentIds.length === 0) return true;
+  return componentIds.includes(componentFilterKey(issue));
+}
+
+export function issueMatchesPriorityFilter(
+  issue: WorkIssue,
+  priorityIds: readonly WorkBoardPriorityFilterId[]
+): boolean {
+  if (priorityIds.length === 0) return true;
+  return priorityIds.includes(priorityFilterKey(issue));
+}
+
+export function issueMatchesSprintFilter(
+  issue: WorkIssue,
+  sprintIds: readonly string[]
+): boolean {
+  if (sprintIds.length === 0) return true;
+  return issue.sprintId != null && sprintIds.includes(issue.sprintId);
+}
+
+export function issueMatchesBoardFilters(
+  issue: WorkIssue,
+  filters: WorkBoardIssueFilters
+): boolean {
+  return (
+    issueMatchesOwnerFilter(issue, filters.ownerIds) &&
+    issueMatchesTypeFilter(issue, filters.typeIds) &&
+    issueMatchesComponentFilter(issue, filters.componentIds) &&
+    issueMatchesPriorityFilter(issue, filters.priorityIds) &&
+    issueMatchesSprintFilter(issue, filters.sprintIds)
+  );
 }
 
 export function collectOwnerFilterPeople(
@@ -37,16 +123,29 @@ export function collectOwnerFilterPeople(
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export function collectBoardComponents(
+  components: WorkComponent[],
+  issues: WorkIssue[]
+): WorkComponent[] {
+  const byId = new Map(components.map((row) => [row.id, row]));
+  for (const issue of issues) {
+    if (issue.component && !byId.has(issue.component.id)) {
+      byId.set(issue.component.id, issue.component);
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function visibleWorkIssueIds(
   issues: WorkIssue[],
   search: string,
-  ownerFilterIds: readonly string[]
+  filters: WorkBoardIssueFilters
 ): Set<string> {
   const query = search.trim().toLowerCase();
   return new Set(
     issues
       .filter((issue) => {
-        if (!issueMatchesOwnerFilter(issue, ownerFilterIds)) return false;
+        if (!issueMatchesBoardFilters(issue, filters)) return false;
         if (!query) return true;
         return (
           issue.title.toLowerCase().includes(query) ||
@@ -106,17 +205,77 @@ export function groupIssuesByLabel(issues: WorkIssue[]): WorkColumnGroup[] {
   return sortNamedGroups([...groups.values()], NO_LABEL_ID);
 }
 
+export function groupIssuesByComponent(issues: WorkIssue[]): WorkColumnGroup[] {
+  const groups = new Map<string, WorkColumnGroup>();
+  for (const issue of issues) {
+    const key = componentFilterKey(issue);
+    const current = groups.get(key);
+    if (current) {
+      current.issues.push(issue);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      title: issue.component?.name ?? "No component",
+      owner: null,
+      issues: [issue],
+    });
+  }
+  return sortNamedGroups([...groups.values()], NO_COMPONENT_ID);
+}
+
+export function groupIssuesByPriority(issues: WorkIssue[]): WorkColumnGroup[] {
+  const groups = new Map<string, WorkColumnGroup>();
+  for (const issue of issues) {
+    const key = priorityFilterKey(issue);
+    const current = groups.get(key);
+    if (current) {
+      current.issues.push(issue);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      title: workIssuePriorityLabel(issue.priority),
+      owner: null,
+      issues: [issue],
+    });
+  }
+  return [...groups.values()].sort((a, b) => {
+    return (
+      PRIORITY_GROUP_ORDER.indexOf(a.key as WorkBoardPriorityFilterId) -
+      PRIORITY_GROUP_ORDER.indexOf(b.key as WorkBoardPriorityFilterId)
+    );
+  });
+}
+
 export function columnIssueGroups(
   issues: WorkIssue[],
   groupBy: WorkBoardGroupBy
 ): WorkColumnGroup[] {
   if (groupBy === "owner") return groupIssuesByOwner(issues);
   if (groupBy === "label") return groupIssuesByLabel(issues);
+  if (groupBy === "component") return groupIssuesByComponent(issues);
+  if (groupBy === "priority") return groupIssuesByPriority(issues);
   return [{ key: "all", title: "", owner: null, issues }];
 }
 
 export function groupByTriggerLabel(groupBy: WorkBoardGroupBy): string {
   if (groupBy === "owner") return "Owner";
   if (groupBy === "label") return "Label";
+  if (groupBy === "component") return "Component";
+  if (groupBy === "priority") return "Priority";
   return "Group";
+}
+
+export function workIssueTypeLabel(type: WorkIssueType): string {
+  return type === "bug" ? "Bug" : "Issue";
+}
+
+export function workIssuePriorityLabel(
+  priority: WorkIssuePriority | null
+): string {
+  if (priority === "high") return "High";
+  if (priority === "medium") return "Medium";
+  if (priority === "low") return "Low";
+  return "No priority";
 }
