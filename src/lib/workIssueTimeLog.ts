@@ -10,6 +10,7 @@ import {
   logHoursAgainstWorkIssue,
   updateWorkIssueTimeEntry,
 } from "@/lib/timeReportEntries";
+import { canLogWorkTime, canSeeWorkTime } from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { workIssueKey } from "@/lib/workIssueKey";
 import type {
@@ -103,11 +104,19 @@ export async function getWorkIssueTimeLogState(
     return emptyTimeLogState({ cannotLogReason: "Unauthorized" });
   }
 
+  const showTime = canSeeWorkTime(
+    visible.actor,
+    visible.board.work_show_time_to_customer_users
+  );
+  const allowLog = canLogWorkTime(visible.actor);
+
   const [appUser, consultant, issue, entries] = await Promise.all([
     getCurrentAppUser(),
     getConsultantForCurrentUser(),
     loadIssueOnBoard(boardId, issueId),
-    listTimeEntriesForWorkIssue(boardId, issueId),
+    showTime
+      ? listTimeEntriesForWorkIssue(boardId, issueId)
+      : Promise.resolve([] as WorkIssueTimeLogEntry[]),
   ]);
 
   const loggedHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
@@ -119,6 +128,13 @@ export async function getWorkIssueTimeLogState(
       currentConsultantId,
       entries,
       loggedHours,
+    });
+  }
+
+  if (!showTime) {
+    return emptyTimeLogState({
+      cannotLogReason: "Time is not shared with customer users on this account.",
+      currentConsultantId,
     });
   }
 
@@ -148,7 +164,9 @@ export async function getWorkIssueTimeLogState(
   }
 
   let cannotLogReason: string | null = null;
-  if (!appUser?.appKeys.includes("time_report")) {
+  if (!allowLog) {
+    cannotLogReason = "Customer users cannot log time.";
+  } else if (!appUser?.appKeys.includes("time_report")) {
     cannotLogReason = "Time report access is required to log hours.";
   } else if (!consultant?.id) {
     cannotLogReason = "Link a consultant profile to log time.";
@@ -181,6 +199,9 @@ export async function logTimeOnWorkIssue(
 > {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return { ok: false, error: "Unauthorized" };
+  if (!canLogWorkTime(visible.actor)) {
+    return { ok: false, error: "Customer users cannot log time." };
+  }
 
   const appUser = await getCurrentAppUser();
   if (!appUser?.appKeys.includes("time_report")) {
@@ -236,6 +257,9 @@ export async function updateTimeOnWorkIssue(
 > {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return { ok: false, error: "Unauthorized" };
+  if (!canLogWorkTime(visible.actor)) {
+    return { ok: false, error: "Customer users cannot log time." };
+  }
 
   const appUser = await getCurrentAppUser();
   if (!appUser?.appKeys.includes("time_report")) {
@@ -285,6 +309,9 @@ export async function deleteTimeOnWorkIssue(
 > {
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return { ok: false, error: "Unauthorized" };
+  if (!canLogWorkTime(visible.actor)) {
+    return { ok: false, error: "Customer users cannot log time." };
+  }
 
   const appUser = await getCurrentAppUser();
   if (!appUser?.appKeys.includes("time_report")) {

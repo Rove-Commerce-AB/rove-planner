@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { canSeeWorkTime } from "@/lib/workAccess";
 import { requireVisibleWorkBoard } from "@/lib/workBoards";
 import { workIssueKey } from "@/lib/workIssueKey";
 import {
@@ -216,7 +217,12 @@ export async function setWorkIssueEstimate(
   issueId: string,
   rawHours: string
 ): Promise<void> {
-  const { actor } = await requireBoardAccess(boardId);
+  const { actor, board } = await requireBoardAccess(boardId);
+  if (
+    !canSeeWorkTime(actor, board.work_show_time_to_customer_users)
+  ) {
+    throw new Error("Unauthorized");
+  }
   const parsed = parseWorkEstimateHours(rawHours);
   if (!parsed.ok) throw new Error("Estimate must be a number of hours");
   const ok = await updateWorkIssueEstimate(boardId, issueId, parsed.value);

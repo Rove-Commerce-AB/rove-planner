@@ -80,6 +80,8 @@ export function CustomerDetailClient({
   const [logoUrl, setLogoUrl] = useState(initialCustomer.logoUrl ?? "");
   const [url, setUrl] = useState(initialCustomer.url ?? "");
   const [isInternal, setIsInternal] = useState(initialCustomer.isInternal ?? false);
+  const [workShowTimeToCustomerUsers, setWorkShowTimeToCustomerUsers] =
+    useState(initialCustomer.workShowTimeToCustomerUsers ?? false);
   const [isActive, setIsActive] = useState(initialCustomer.isActive ?? true);
   const [error, setError] = useState<string | null>(null);
   const [ratesError, setRatesError] = useState<string | null>(null);
@@ -111,6 +113,9 @@ export function CustomerDetailClient({
     setColor(initialCustomer.color ?? DEFAULT_CUSTOMER_COLOR);
     setLogoUrl(initialCustomer.logoUrl ?? "");
     setIsInternal(initialCustomer.isInternal ?? false);
+    setWorkShowTimeToCustomerUsers(
+      initialCustomer.workShowTimeToCustomerUsers ?? false
+    );
     setIsActive(initialCustomer.isActive ?? true);
     setLogoImageError(false);
   }, [initialCustomer]);
@@ -253,6 +258,23 @@ export function CustomerDetailClient({
     try {
       await updateCustomerAction(initialCustomer.id, { is_active: next });
       setIsActive(next);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSetWorkShowTime = async (next: boolean) => {
+    if (next === workShowTimeToCustomerUsers) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateCustomerAction(initialCustomer.id, {
+        work_show_time_to_customer_users: next,
+      });
+      setWorkShowTimeToCustomerUsers(next);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
@@ -581,6 +603,26 @@ export function CustomerDetailClient({
                   ]}
                 />
               </DetailBadgeFieldRow>
+
+              {!isInternal ? (
+                <DetailBadgeFieldRow
+                  label="Work time"
+                  info="Customer users can see estimates and reported time"
+                >
+                  <OptionSegments
+                    name="Work time visibility"
+                    value={workShowTimeToCustomerUsers ? "show" : "hide"}
+                    onChange={(value) =>
+                      void handleSetWorkShowTime(value === "show")
+                    }
+                    disabled={submitting}
+                    options={[
+                      { value: "hide", label: "Hidden" },
+                      { value: "show", label: "Visible" },
+                    ]}
+                  />
+                </DetailBadgeFieldRow>
+              ) : null}
               </div>
             </div>
           </Panel>

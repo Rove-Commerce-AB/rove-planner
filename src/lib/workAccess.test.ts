@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  canLogWorkTime,
   canSeeWorkBoard,
   canSeeWorkCustomer,
+  canSeeWorkTime,
   filterVisibleWorkBoards,
 } from "./workAccess";
 
@@ -43,6 +45,26 @@ describe("canSeeWorkBoard", () => {
     expect(canSeeWorkBoard({ id: "other", role: "member" }, board)).toBe(
       false
     );
+  });
+});
+
+describe("canSeeWorkTime", () => {
+  it("always allows non-customer roles", () => {
+    expect(canSeeWorkTime(admin, false)).toBe(true);
+    expect(canSeeWorkTime(member, false)).toBe(true);
+  });
+
+  it("follows the customer setting for customer users", () => {
+    expect(canSeeWorkTime(customer, false)).toBe(false);
+    expect(canSeeWorkTime(customer, true)).toBe(true);
+  });
+});
+
+describe("canLogWorkTime", () => {
+  it("blocks customer users and allows others", () => {
+    expect(canLogWorkTime(customer)).toBe(false);
+    expect(canLogWorkTime(admin)).toBe(true);
+    expect(canLogWorkTime(member)).toBe(true);
   });
 });
 

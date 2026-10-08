@@ -27,6 +27,7 @@ export { PanelSectionTitle } from "./PanelSectionTitle";
 export {
   FieldLabel,
   FieldValue,
+  FieldInfoTip,
   DetailBadgeFieldRow,
   DetailFieldStack,
   DrawerFieldRow,

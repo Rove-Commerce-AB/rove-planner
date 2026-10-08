@@ -416,6 +416,10 @@ export function WorkIssueDrawer({
   const [tab, setTab] = useState("details");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!board.showTime && tab === "time") setTab("details");
+  }, [board.showTime, tab]);
   const [feed, setFeed] = useState<"comments" | "activity">("comments");
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(
@@ -587,6 +591,12 @@ export function WorkIssueDrawer({
   }, [issue.id]);
 
   useEffect(() => {
+    if (!board.showTime) {
+      setTimeEntries([]);
+      setTimeCanLog(false);
+      setTimeCannotLogReason(null);
+      return;
+    }
     let cancelled = false;
     void getWorkIssueTimeLogAction(board.id, issue.id).then((state) => {
       if (cancelled) return;
@@ -608,7 +618,7 @@ export function WorkIssueDrawer({
     return () => {
       cancelled = true;
     };
-  }, [board.id, issue.id, board.plannerProjectId]);
+  }, [board.id, issue.id, board.plannerProjectId, board.showTime]);
 
   useEffect(() => {
     return () => {
@@ -986,9 +996,11 @@ export function WorkIssueDrawer({
             <TabsTrigger value="requirements" className="px-3 !px-3">
               Requirements
             </TabsTrigger>
-            <TabsTrigger value="time" className="px-3 !px-3">
-              Time
-            </TabsTrigger>
+            {board.showTime ? (
+              <TabsTrigger value="time" className="px-3 !px-3">
+                Time
+              </TabsTrigger>
+            ) : null}
             <TabsTrigger value="files" className="px-3 !px-3">
               Files
             </TabsTrigger>
@@ -1147,34 +1159,36 @@ export function WorkIssueDrawer({
                   />
                 </div>
               </div>
-              <div>
-                <label
-                  className={`${propertyChipClass} cursor-text gap-1`}
-                  title="Estimate in hours"
-                >
-                  <Clock
-                    className="h-3 w-3 shrink-0 text-text-tertiary"
-                    aria-hidden
-                  />
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={estimateDraft}
-                    disabled={pending}
-                    aria-label="Estimate in hours"
-                    placeholder="Est"
-                    onChange={(event) => setEstimateDraft(event.target.value)}
-                    onBlur={saveEstimate}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.currentTarget.blur();
-                      }
-                    }}
-                    className="w-6 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
-                  />
-                  <span className="text-[13px] text-text-tertiary">h</span>
-                </label>
-              </div>
+              {board.showTime ? (
+                <div>
+                  <label
+                    className={`${propertyChipClass} cursor-text gap-1`}
+                    title="Estimate in hours"
+                  >
+                    <Clock
+                      className="h-3 w-3 shrink-0 text-text-tertiary"
+                      aria-hidden
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={estimateDraft}
+                      disabled={pending}
+                      aria-label="Estimate in hours"
+                      placeholder="Est"
+                      onChange={(event) => setEstimateDraft(event.target.value)}
+                      onBlur={saveEstimate}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      className="w-6 border-0 bg-transparent p-0 text-right text-[13px] tabular-nums text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+                    />
+                    <span className="text-[13px] text-text-tertiary">h</span>
+                  </label>
+                </div>
+              ) : null}
               <div>
                 {showDates ? (
                   <div className={`${propertyChipClass} gap-1.5`}>

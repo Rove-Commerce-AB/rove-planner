@@ -11,6 +11,7 @@ import { compareTextSv } from "@/lib/sort";
 import {
   canSeeWorkBoard,
   canSeeWorkCustomer,
+  canSeeWorkTime,
   type WorkActor,
 } from "@/lib/workAccess";
 import * as q from "@/lib/workBoardsQueries";
@@ -312,7 +313,11 @@ export async function getWorkBoardView(
   if (!user || !user.appKeys.includes("work")) redirect("/access-denied");
   const visible = await requireVisibleWorkBoard(boardId);
   if (!visible) return null;
-  const { board } = visible;
+  const { actor, board } = visible;
+  const showTime = canSeeWorkTime(
+    actor,
+    board.work_show_time_to_customer_users
+  );
   const [
     issueRows,
     peopleRows,
@@ -351,7 +356,9 @@ export async function getWorkBoardView(
     fetchIssueRequirements(issueIds),
     fetchIssueReferences(issueIds),
     fetchWorkIssueRelations(board.id),
-    fetchLoggedHoursByIssueIds(issueIds),
+    showTime
+      ? fetchLoggedHoursByIssueIds(issueIds)
+      : Promise.resolve(new Map<string, number>()),
   ]);
 
   const people = peopleRows.map(workPersonFromUser);
@@ -500,9 +507,12 @@ export async function getWorkBoardView(
       definitionOfDone: dodByIssue.get(row.id) ?? [],
       references: referencesByIssue.get(row.id) ?? [],
       relations: emptyWorkIssueRelations(),
-      estimateHours:
-        row.estimate_hours == null ? null : Number(row.estimate_hours),
-      loggedHours: loggedHoursByIssue.get(row.id) ?? 0,
+      estimateHours: showTime
+        ? row.estimate_hours == null
+          ? null
+          : Number(row.estimate_hours)
+        : null,
+      loggedHours: showTime ? loggedHoursByIssue.get(row.id) ?? 0 : 0,
       sprintId: row.sprint_id,
       startDate: pgDateToDateOnlyOrNull(row.start_date),
       dueDate: pgDateToDateOnlyOrNull(row.due_date),
@@ -546,6 +556,7 @@ export async function getWorkBoardView(
     customerName: board.customer_name,
     plannerProjectId: board.planner_project_id ?? null,
     plannerProjectName: board.planner_project_name ?? null,
+    showTime,
     currentUser: workPersonFromUser({
       id: user.id,
       name: user.name,

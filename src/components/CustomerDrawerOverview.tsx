@@ -68,6 +68,8 @@ export function CustomerDrawerOverview({
   const [color, setColor] = useState(customer.color);
   const [isActive, setIsActive] = useState(customer.isActive);
   const [isInternal, setIsInternal] = useState(customer.isInternal);
+  const [workShowTimeToCustomerUsers, setWorkShowTimeToCustomerUsers] =
+    useState(customer.workShowTimeToCustomerUsers ?? false);
   const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(
     parseBillingCurrency(customer.billingCurrency)
   );
@@ -89,6 +91,13 @@ export function CustomerDrawerOverview({
   useEffect(() => {
     setLitiumVersion(customer.litiumVersion ?? "");
   }, [customer.litiumVersion]);
+
+  useEffect(() => {
+    setIsInternal(customer.isInternal);
+    setWorkShowTimeToCustomerUsers(
+      customer.workShowTimeToCustomerUsers ?? false
+    );
+  }, [customer.isInternal, customer.workShowTimeToCustomerUsers]);
 
   useEffect(() => {
     return () => {
@@ -243,6 +252,25 @@ export function CustomerDrawerOverview({
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update type");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function setWorkShowTime(next: boolean) {
+    if (next === workShowTimeToCustomerUsers) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateCustomerAction(customer.id, {
+        work_show_time_to_customer_users: next,
+      });
+      setWorkShowTimeToCustomerUsers(next);
+      router.refresh();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to update Work time setting"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -442,7 +470,27 @@ export function CustomerDrawerOverview({
               ]}
             />
           </DrawerFieldRow>
-          <DrawerFieldRow label="Billing currency">
+          {!isInternal ? (
+            <DrawerFieldRow
+              label="Work time"
+              info="Customer users can see estimates and reported time"
+            >
+              <OptionSegments
+                name="Work time visibility"
+                value={workShowTimeToCustomerUsers ? "show" : "hide"}
+                onChange={(value) => void setWorkShowTime(value === "show")}
+                disabled={submitting}
+                options={[
+                  { value: "hide", label: "Hidden" },
+                  { value: "show", label: "Visible" },
+                ]}
+              />
+            </DrawerFieldRow>
+          ) : null}
+          <DrawerFieldRow
+            label="Billing currency"
+            info="Existing rates keep their numbers but switch label to this currency. Update hourly amounts if the contract price changed."
+          >
             <OptionSegments
               name="Billing currency"
               value={billingCurrency}
@@ -457,10 +505,6 @@ export function CustomerDrawerOverview({
               ]}
             />
           </DrawerFieldRow>
-          <p className="px-0 pb-3 text-xs text-text-muted">
-            Existing rates keep their numbers but switch label to this currency.
-            Update hourly amounts if the contract price changed.
-          </p>
         </div>
 
         <div className="border-t border-border-subtle px-6">

@@ -203,10 +203,12 @@ export function WorkCardTypeBadge({
 export function WorkColumnGroupHeader({
   groupBy,
   group,
+  showTime = true,
   className = "",
 }: {
   groupBy: WorkBoardGroupBy;
   group: WorkColumnGroup;
+  showTime?: boolean;
   className?: string;
 }) {
   if (groupBy === "none") return null;
@@ -221,6 +223,9 @@ export function WorkColumnGroupHeader({
   const hasEstimate = group.issues.some(
     (issue) => issue.estimateHours != null
   );
+  const timeLabel = showTime
+    ? formatWorkHoursPair(loggedSum, hasEstimate ? estimateSum : null)
+    : null;
   return (
     <div className={`flex min-w-0 items-center gap-1.5 px-0.5 ${className}`.trim()}>
       {groupBy === "owner" ? (
@@ -244,11 +249,19 @@ export function WorkColumnGroupHeader({
       </span>
       <span
         className="shrink-0 tabular-nums text-body-xs text-text-tertiary"
-        title={`${group.issues.length} issues · Logged ${formatWorkHoursPair(loggedSum, hasEstimate ? estimateSum : null)}`}
+        title={
+          timeLabel
+            ? `${group.issues.length} issues · Logged ${timeLabel}`
+            : `${group.issues.length} issues`
+        }
       >
         {group.issues.length}
-        <span className="text-text-muted"> · </span>
-        {formatWorkHoursPair(loggedSum, hasEstimate ? estimateSum : null)}
+        {timeLabel ? (
+          <>
+            <span className="text-text-muted"> · </span>
+            {timeLabel}
+          </>
+        ) : null}
       </span>
     </div>
   );

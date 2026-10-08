@@ -36,3 +36,20 @@ export function filterVisibleWorkBoards<T extends WorkBoardVisibilityInput>(
 ): T[] {
   return boards.filter((board) => canSeeWorkBoard(actor, board));
 }
+
+/**
+ * Customer-role users only see estimate/logged time when the customer setting
+ * allows it. Everyone else always sees time.
+ */
+export function canSeeWorkTime(
+  actor: WorkActor,
+  customerAllowsTimeForCustomerUsers: boolean
+): boolean {
+  if (actor.role !== "customer") return true;
+  return customerAllowsTimeForCustomerUsers;
+}
+
+/** Customer-role users never log time on Work issues. */
+export function canLogWorkTime(actor: WorkActor): boolean {
+  return actor.role !== "customer";
+}

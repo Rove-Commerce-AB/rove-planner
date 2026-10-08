@@ -14,6 +14,7 @@ export type WorkMyIssueRow = {
   status_sort: number;
   customer_id: string;
   customer_name: string;
+  work_show_time_to_customer_users: boolean;
   project_id: string;
   project_title: string;
   project_prefix: string;
@@ -57,6 +58,7 @@ export async function fetchMyWorkIssues(
        s.sort_order AS status_sort,
        c.id AS customer_id,
        c.name AS customer_name,
+       c.work_show_time_to_customer_users,
        p.id AS project_id,
        p.title AS project_title,
        p.prefix AS project_prefix,

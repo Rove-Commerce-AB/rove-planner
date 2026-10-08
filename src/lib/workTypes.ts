@@ -141,6 +141,11 @@ export type WorkBoardView = {
   /** Linked Planner `projects.id`, when set. */
   plannerProjectId: string | null;
   plannerProjectName: string | null;
+  /**
+   * Whether the current viewer may see estimates and reported time.
+   * False for customer-role users when the customer setting is off.
+   */
+  showTime: boolean;
   currentUser: WorkPerson;
   people: WorkPerson[];
   members: WorkPerson[];

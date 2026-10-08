@@ -532,6 +532,7 @@ export function WorkSprintView({
         <div className="flex flex-wrap items-center gap-2">
           {viewing ? (
             <>
+              {board.showTime ? (
               <div
                 className="flex items-center gap-2"
                 title={
@@ -633,6 +634,7 @@ export function WorkSprintView({
                   </span>
                 )}
               </div>
+              ) : null}
               {isViewingCurrent ? (
                 <Button
                   type="button"
@@ -1239,14 +1241,16 @@ function SprintColumn({
             onRemoveAssignee={(person) => onRemoveAssignee(issue.id, person)}
           />
           {/* Fixed slot so edit mode does not push avatars left. */}
-          <div className="flex w-14 shrink-0 justify-end">
-            <WorkCardEstimate
-              estimateHours={issue.estimateHours}
-              disabled={estimateDisabled}
-              onError={onError}
-              onChange={(value) => onEstimateChange(issue.id, value)}
-            />
-          </div>
+          {board?.showTime !== false ? (
+            <div className="flex w-14 shrink-0 justify-end">
+              <WorkCardEstimate
+                estimateHours={issue.estimateHours}
+                disabled={estimateDisabled}
+                onError={onError}
+                onChange={(value) => onEstimateChange(issue.id, value)}
+              />
+            </div>
+          ) : null}
         </div>
       </li>
     );
@@ -1344,6 +1348,7 @@ function SprintColumn({
                   <WorkColumnGroupHeader
                     groupBy={groupBy}
                     group={group}
+                    showTime={board.showTime}
                     className={groupIndex === 0 ? "" : "mt-1"}
                   />
                 </li>

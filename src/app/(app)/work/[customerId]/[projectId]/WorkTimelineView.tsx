@@ -837,6 +837,7 @@ export function WorkTimelineView({
                     <WorkColumnGroupHeader
                       groupBy={groupBy}
                       group={row.group}
+                      showTime={board.showTime}
                     />
                   </div>
                   <div style={{ width: chartW, height: GROUP_HEADER_H }} />

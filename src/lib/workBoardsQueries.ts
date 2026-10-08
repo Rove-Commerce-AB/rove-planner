@@ -92,6 +92,7 @@ export async function fetchWorkBoardById(
   (WorkBoardRow & {
     customer_name: string;
     customer_is_internal: boolean;
+    work_show_time_to_customer_users: boolean;
     planner_project_name: string | null;
   }) | null
 > {
@@ -100,6 +101,7 @@ export async function fetchWorkBoardById(
       member_ids: string[] | null;
       customer_name: string;
       customer_is_internal: boolean;
+      work_show_time_to_customer_users: boolean;
       planner_project_name: string | null;
     }
   >(
@@ -114,6 +116,7 @@ export async function fetchWorkBoardById(
        b.updated_at,
        c.name AS customer_name,
        c.is_internal AS customer_is_internal,
+       c.work_show_time_to_customer_users,
        p.name AS planner_project_name,
        COALESCE(
          array_agg(m.app_user_id::text) FILTER (WHERE m.app_user_id IS NOT NULL),
@@ -125,7 +128,7 @@ export async function fetchWorkBoardById(
      LEFT JOIN work_project_members m ON m.project_id = b.id
      WHERE b.id = $1
        AND b.archived_at IS NULL
-     GROUP BY b.id, c.name, c.is_internal, p.name`,
+     GROUP BY b.id, c.name, c.is_internal, c.work_show_time_to_customer_users, p.name`,
     [boardId]
   );
   const row = rows[0];

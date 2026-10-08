@@ -225,12 +225,14 @@ export function WorkMyIssuesPageClient({ issues }: { issues: WorkMyIssue[] }) {
                           {workIssuePriorityLabel(issue.priority)}
                         </span>
                       ) : null}
-                      <span className="shrink-0 tabular-nums text-caption text-text-tertiary">
-                        {formatWorkHoursPair(
-                          issue.loggedHours,
-                          issue.estimateHours
-                        )}
-                      </span>
+                      {issue.showTime ? (
+                        <span className="shrink-0 tabular-nums text-caption text-text-tertiary">
+                          {formatWorkHoursPair(
+                            issue.loggedHours,
+                            issue.estimateHours
+                          )}
+                        </span>
+                      ) : null}
                       <span className="w-20 shrink-0 text-right text-caption tabular-nums text-text-tertiary">
                         {issue.dueDate ?? "—"}
                       </span>

@@ -1275,7 +1275,7 @@ export function WorkBoardPageClient({
                   )}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
-                  {columnEstimateSum > 0 ? (
+                  {board.showTime && columnEstimateSum > 0 ? (
                     <span
                       className="tabular-nums text-caption text-current/55"
                       title={`Total estimate ${formatWorkHours(columnEstimateSum)}`}
@@ -1347,6 +1347,7 @@ export function WorkBoardPageClient({
                         <WorkColumnGroupHeader
                           groupBy={groupBy}
                           group={group}
+                          showTime={board.showTime}
                           className={groupIndex === 0 ? "" : "mt-1"}
                         />
                       </li>
@@ -1565,38 +1566,42 @@ export function WorkBoardPageClient({
                         </p>
                         <WorkCardComponent component={issue.component} />
                         <WorkCardLabels labels={issue.labels} />
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <WorkCardEstimate
-                            estimateHours={issue.estimateHours}
-                            onError={setError}
-                            onChange={(value) => {
-                              setIssues((current) => {
-                                const next = current.map((row) =>
-                                  row.id === issue.id
-                                    ? { ...row, estimateHours: value }
-                                    : row
-                                );
-                                issuesRef.current = next;
-                                return next;
-                              });
-                              void updateWorkIssueEstimateAction(
-                                board.id,
-                                issue.id,
-                                value == null ? "" : String(value)
-                              ).then((result) => {
-                                if (result.ok) return;
-                                setError(result.error);
-                                issuesRef.current = board.issues;
-                                setIssues(board.issues);
-                              });
-                            }}
-                          />
-                        </div>
+                        {board.showTime ? (
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <WorkCardEstimate
+                              estimateHours={issue.estimateHours}
+                              onError={setError}
+                              onChange={(value) => {
+                                setIssues((current) => {
+                                  const next = current.map((row) =>
+                                    row.id === issue.id
+                                      ? { ...row, estimateHours: value }
+                                      : row
+                                  );
+                                  issuesRef.current = next;
+                                  return next;
+                                });
+                                void updateWorkIssueEstimateAction(
+                                  board.id,
+                                  issue.id,
+                                  value == null ? "" : String(value)
+                                ).then((result) => {
+                                  if (result.ok) return;
+                                  setError(result.error);
+                                  issuesRef.current = board.issues;
+                                  setIssues(board.issues);
+                                });
+                              }}
+                            />
+                          </div>
+                        ) : null}
                       </div>
-                      <WorkTimeGraph
-                        estimateHours={issue.estimateHours}
-                        loggedHours={issue.loggedHours}
-                      />
+                      {board.showTime ? (
+                        <WorkTimeGraph
+                          estimateHours={issue.estimateHours}
+                          loggedHours={issue.loggedHours}
+                        />
+                      ) : null}
                     </article>
                   </li>
                   );

@@ -2,6 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/appUsers";
+import { canSeeWorkTime } from "@/lib/workAccess";
 import { fetchLoggedHoursByIssueIds } from "@/lib/workIssuesQueries";
 import { workIssueKey } from "@/lib/workIssueKey";
 import { workSprintLabel } from "@/lib/workSprintLabel";
@@ -25,6 +26,7 @@ export type WorkMyIssue = {
   projectId: string;
   projectTitle: string;
   sprintLabel: string | null;
+  showTime: boolean;
   estimateHours: number | null;
   loggedHours: number;
   dueDate: string | null;
@@ -38,33 +40,49 @@ export async function listMyWorkIssues(): Promise<WorkMyIssue[]> {
 
   const projectIds = await fetchMemberWorkProjectIds(user.id);
   const rows = await fetchMyWorkIssues(projectIds, user.id);
-  const loggedHours = await fetchLoggedHoursByIssueIds(rows.map((row) => row.id));
+  const actor = { id: user.id, role: user.role };
+  const needsHours = rows.some((row) =>
+    canSeeWorkTime(actor, row.work_show_time_to_customer_users)
+  );
+  const loggedHours = needsHours
+    ? await fetchLoggedHoursByIssueIds(rows.map((row) => row.id))
+    : new Map<string, number>();
 
-  return rows.map((row) => ({
-    id: row.id,
-    key: workIssueKey(row.project_prefix, row.number),
-    title: row.title,
-    issueType: row.issue_type,
-    priority: row.priority,
-    statusId: row.status_id,
-    statusName: row.status_name,
-    isDone: row.is_done,
-    customerId: row.customer_id,
-    customerName: row.customer_name,
-    projectId: row.project_id,
-    projectTitle: row.project_title,
-    sprintLabel:
-      row.sprint_number == null
-        ? null
-        : workSprintLabel({
-            number: row.sprint_number,
-            title: row.sprint_title ?? "",
-          }),
-    estimateHours:
-      row.estimate_hours == null ? null : Number(row.estimate_hours),
-    loggedHours: loggedHours.get(row.id) ?? 0,
-    dueDate: typeof row.due_date === "string" ? row.due_date : null,
-    isOwner: row.is_owner,
-    isAssignee: row.is_assignee,
-  }));
+  return rows.map((row) => {
+    const showTime = canSeeWorkTime(
+      actor,
+      row.work_show_time_to_customer_users
+    );
+    return {
+      id: row.id,
+      key: workIssueKey(row.project_prefix, row.number),
+      title: row.title,
+      issueType: row.issue_type,
+      priority: row.priority,
+      statusId: row.status_id,
+      statusName: row.status_name,
+      isDone: row.is_done,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      projectId: row.project_id,
+      projectTitle: row.project_title,
+      sprintLabel:
+        row.sprint_number == null
+          ? null
+          : workSprintLabel({
+              number: row.sprint_number,
+              title: row.sprint_title ?? "",
+            }),
+      showTime,
+      estimateHours: showTime
+        ? row.estimate_hours == null
+          ? null
+          : Number(row.estimate_hours)
+        : null,
+      loggedHours: showTime ? loggedHours.get(row.id) ?? 0 : 0,
+      dueDate: typeof row.due_date === "string" ? row.due_date : null,
+      isOwner: row.is_owner,
+      isAssignee: row.is_assignee,
+    };
+  });
 }

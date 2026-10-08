@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import { Check, AlertCircle, ChevronDown } from "lucide-react";
+import { Check, AlertCircle, ChevronDown, Info } from "lucide-react";
 import { Select, type SelectOption } from "./Select";
 import {
   inlineEditTriggerClass,
@@ -159,6 +159,28 @@ export function FieldLabel({ children, className = "" }: Props) {
   );
 }
 
+/** Info (i) icon with hover/focus tooltip for field helper copy. */
+export function FieldInfoTip({ text }: { text: string }) {
+  return (
+    <span className="group/infotip relative inline-flex shrink-0">
+      <span
+        tabIndex={0}
+        role="img"
+        aria-label={text}
+        className="inline-flex cursor-help rounded-full text-text-tertiary transition-colors hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal"
+      >
+        <Info className="h-3.5 w-3.5" aria-hidden />
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-56 rounded-md border border-border-subtle bg-bg-default px-2.5 py-1.5 text-left text-xs font-normal normal-case tracking-normal text-text-secondary opacity-0 shadow-md transition-opacity group-hover/infotip:opacity-100 group-focus-within/infotip:opacity-100"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 /**
  * Value text for a field on detail pages. Semibold, primary color, small size to match label scale.
  */
@@ -214,14 +236,20 @@ export function InlineEditTrigger({
  */
 export function DetailBadgeFieldRow({
   label,
+  info,
   children,
 }: {
   label: React.ReactNode;
+  /** Helper copy shown on hover via an (i) icon next to the label. */
+  info?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel className="flex items-center gap-1">
+        <span>{label}</span>
+        {info ? <FieldInfoTip text={info} /> : null}
+      </FieldLabel>
       <div className="flex w-full min-w-0 flex-col">
         <div
           className={`flex w-full min-w-0 flex-1 items-center gap-2 ${INLINE_EDIT_VALUE_ROW_MIN_H}`}
@@ -254,17 +282,23 @@ export function DetailFieldStack({
 /** Figma drawer row: label left, value box in a right column. */
 export function DrawerFieldRow({
   label,
+  info,
   children,
   variant = "field",
 }: {
   label: string;
+  /** Helper copy shown on hover via an (i) icon next to the label. */
+  info?: string;
   children: React.ReactNode;
   variant?: "field" | "summary";
 }) {
   if (variant === "summary") {
     return (
       <div className="flex items-center justify-between gap-4 py-3.5">
-        <span className="text-[13px] font-semibold text-text-primary">{label}</span>
+        <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-text-primary">
+          {label}
+          {info ? <FieldInfoTip text={info} /> : null}
+        </span>
         <div className="min-w-0 shrink-0">{children}</div>
       </div>
     );
@@ -272,7 +306,10 @@ export function DrawerFieldRow({
 
   return (
     <div className="flex items-center justify-between gap-4 py-3">
-      <span className="shrink-0 text-[13px] text-text-secondary">{label}</span>
+      <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-text-secondary">
+        {label}
+        {info ? <FieldInfoTip text={info} /> : null}
+      </span>
       <div className="w-[14.5rem] shrink-0">{children}</div>
     </div>
   );
