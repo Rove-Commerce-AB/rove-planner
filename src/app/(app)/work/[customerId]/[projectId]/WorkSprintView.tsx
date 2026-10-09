@@ -1348,7 +1348,7 @@ function SprintColumn({
                   <WorkColumnGroupHeader
                     groupBy={groupBy}
                     group={group}
-                    showTime={board.showTime}
+                    showTime={board?.showTime}
                     className={groupIndex === 0 ? "" : "mt-1"}
                   />
                 </li>
