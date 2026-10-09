@@ -77,20 +77,25 @@ export function TimeReportSummaryClient({ initial }: Props) {
   const [typeFilter, setTypeFilter] = useState<"all" | ProjectType>("all");
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [monthFilter, setMonthFilter] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
 
   const typeScoped = useMemo(() => {
-    if (typeFilter === "all") return data.buckets;
-    return data.buckets.filter((b) => b.projectType === typeFilter);
-  }, [data.buckets, typeFilter]);
+    return data.buckets.filter((b) => {
+      if (typeFilter !== "all" && b.projectType !== typeFilter) return false;
+      if (monthFilter != null && b.month !== monthFilter) return false;
+      return true;
+    });
+  }, [data.buckets, typeFilter, monthFilter]);
 
   const scoped = useMemo(() => {
     return data.buckets.filter((b) => {
+      if (monthFilter != null && b.month !== monthFilter) return false;
       if (customerId && b.customerId !== customerId) return false;
       if (projectId && b.projectId !== projectId) return false;
       return true;
     });
-  }, [data.buckets, customerId, projectId]);
+  }, [data.buckets, customerId, projectId, monthFilter]);
 
   const totals = useMemo(() => {
     const customer = sumHours(scoped.filter((b) => b.projectType === "customer"));
@@ -103,11 +108,6 @@ export function TimeReportSummaryClient({ initial }: Props) {
       total: customer + internal + absence,
     };
   }, [scoped]);
-
-  const visible = useMemo(() => {
-    if (typeFilter === "all") return scoped;
-    return scoped.filter((b) => b.projectType === typeFilter);
-  }, [scoped, typeFilter]);
 
   const byCustomer = useMemo(
     () =>
@@ -136,19 +136,33 @@ export function TimeReportSummaryClient({ initial }: Props) {
   const absenceProjects = useMemo(
     () =>
       groupBy(
-        data.buckets.filter((b) => b.projectType === "absence"),
+        data.buckets.filter(
+          (b) =>
+            b.projectType === "absence" &&
+            (monthFilter == null || b.month === monthFilter)
+        ),
         (b) => ({ id: b.projectId, name: b.projectName })
       ),
-    [data.buckets]
+    [data.buckets, monthFilter]
   );
+
+  /** Month chart ignores monthFilter so all bars stay visible while one is selected. */
+  const monthChartBuckets = useMemo(() => {
+    return data.buckets.filter((b) => {
+      if (typeFilter !== "all" && b.projectType !== typeFilter) return false;
+      if (customerId && b.customerId !== customerId) return false;
+      if (projectId && b.projectId !== projectId) return false;
+      return true;
+    });
+  }, [data.buckets, typeFilter, customerId, projectId]);
 
   const byMonth = useMemo(() => {
     const hours = Array.from({ length: 12 }, () => 0);
-    for (const b of visible) {
+    for (const b of monthChartBuckets) {
       if (b.month >= 1 && b.month <= 12) hours[b.month - 1]! += b.hours;
     }
     return hours;
-  }, [visible]);
+  }, [monthChartBuckets]);
 
   const maxMonth = Math.max(1, ...byMonth);
 
@@ -159,7 +173,12 @@ export function TimeReportSummaryClient({ initial }: Props) {
       setData(next);
       setCustomerId(null);
       setProjectId(null);
+      setMonthFilter(null);
     });
+  };
+
+  const toggleMonth = (month: number) => {
+    setMonthFilter((prev) => (prev === month ? null : month));
   };
 
   const toggleCustomer = (id: string) => {
@@ -315,6 +334,55 @@ export function TimeReportSummaryClient({ initial }: Props) {
             </Panel>
           ) : null}
 
+          <Panel>
+            <PanelSectionTitle>By month</PanelSectionTitle>
+            <div className="grid grid-cols-4 gap-3 px-3 pb-3 sm:grid-cols-6 lg:grid-cols-12">
+              {byMonth.map((hours, i) => {
+                const month = i + 1;
+                const selected = monthFilter === month;
+                return (
+                  <button
+                    key={MONTH_LABELS[i]}
+                    type="button"
+                    aria-pressed={selected}
+                    title={`Filter ${MONTH_LABELS[i]}: ${formatHours(hours)} h`}
+                    onClick={() => toggleMonth(month)}
+                    className={`min-w-0 rounded-md px-0.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:ring-offset-2 ${
+                      selected
+                        ? "bg-interactive-primary/10 ring-1 ring-interactive-primary"
+                        : "hover:bg-bg-muted"
+                    }`}
+                  >
+                    <div className="flex h-16 items-end">
+                      <div
+                        className={`w-full rounded-sm ${
+                          selected ? "bg-interactive-primary" : "bg-brand-signal/80"
+                        }`}
+                        style={{
+                          height: `${Math.max(hours > 0 ? 8 : 0, (hours / maxMonth) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <p
+                      className={`mt-1 text-center text-[10px] ${
+                        selected ? "font-medium text-text-primary" : "text-text-tertiary"
+                      }`}
+                    >
+                      {MONTH_LABELS[i]}
+                    </p>
+                    <p
+                      className={`text-center text-[11px] tabular-nums ${
+                        selected ? "text-text-primary" : "text-text-secondary"
+                      }`}
+                    >
+                      {formatHours(hours)}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </Panel>
+
           {typeFilter !== "absence" ? (
             <Panel>
               <PanelSectionTitle>By customer</PanelSectionTitle>
@@ -382,31 +450,6 @@ export function TimeReportSummaryClient({ initial }: Props) {
                   onRowClick={(row) => toggleProject(row.id)}
                 />
               )}
-            </div>
-          </Panel>
-
-          <Panel>
-            <PanelSectionTitle>By month</PanelSectionTitle>
-            <div className="grid grid-cols-4 gap-3 px-3 pb-3 sm:grid-cols-6 lg:grid-cols-12">
-              {byMonth.map((hours, i) => (
-                <div key={MONTH_LABELS[i]} className="min-w-0">
-                  <div className="flex h-16 items-end">
-                    <div
-                      className="w-full rounded-sm bg-brand-signal/80"
-                      style={{
-                        height: `${Math.max(hours > 0 ? 8 : 0, (hours / maxMonth) * 100)}%`,
-                      }}
-                      title={`${MONTH_LABELS[i]}: ${formatHours(hours)} h`}
-                    />
-                  </div>
-                  <p className="mt-1 text-center text-[10px] text-text-tertiary">
-                    {MONTH_LABELS[i]}
-                  </p>
-                  <p className="text-center text-[11px] tabular-nums text-text-secondary">
-                    {formatHours(hours)}
-                  </p>
-                </div>
-              ))}
             </div>
           </Panel>
         </div>

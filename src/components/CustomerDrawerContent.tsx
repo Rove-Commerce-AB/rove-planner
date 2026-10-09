@@ -10,6 +10,7 @@ import {
   IconButton,
   InitialsAvatar,
   Input,
+  OptionSegments,
   Tabs,
   TabsContent,
   TabsList,
@@ -20,6 +21,10 @@ import { AddCustomerRateModal } from "@/components/AddCustomerRateModal";
 import { AddCustomerUserModal } from "@/components/AddCustomerUserModal";
 import { CustomerDrawerOverview } from "@/components/CustomerDrawerOverview";
 import { CustomerRatesTab } from "@/components/CustomerRatesTab";
+import {
+  deleteCustomerAction,
+  updateCustomerAction,
+} from "@/app/(app)/customers/actions";
 import { groupCustomerProjectsForList } from "@/lib/customerProjectsList";
 import { removeCustomerUserFromCustomer } from "@/lib/customerAppUsersClient";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
@@ -29,10 +34,11 @@ import { createProject } from "@/lib/projectsClient";
 import {
   personHrefForConsultant,
   personHrefForUser,
+  ROUTES,
 } from "@/lib/routes";
 import type { CustomerProjectSummary, CustomerWithDetails } from "@/types";
 
-type CustomerTab = "overview" | "projects" | "people" | "rates";
+type CustomerTab = "overview" | "projects" | "people" | "rates" | "danger";
 
 type Props = {
   customer: CustomerWithDetails;
@@ -93,6 +99,119 @@ function ProjectGroup({
         ))}
       </ul>
     </section>
+  );
+}
+
+function CustomerDrawerDanger({
+  customer,
+}: {
+  customer: CustomerWithDetails;
+}) {
+  const router = useRouter();
+  const [isActive, setIsActive] = useState(customer.isActive);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  async function setActive(next: boolean) {
+    if (next === isActive) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateCustomerAction(customer.id, { is_active: next });
+      setIsActive(next);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update status");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete() {
+    setError(null);
+    setDeleting(true);
+    try {
+      await deleteCustomerAction(customer.id);
+      setShowDeleteConfirm(false);
+      router.push(ROUTES.customers);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete customer");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="space-y-8 px-6 py-6">
+        <div>
+          <h2 className="text-sm font-medium text-text-primary">Danger zone</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Inactivate hides the customer from normal workflows. Delete removes
+            it permanently.
+          </p>
+        </div>
+
+        {error ? (
+          <p className="text-sm text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div>
+          <h3 className="text-sm font-medium text-text-primary">Status</h3>
+          <p className="mt-1 text-sm text-text-secondary">
+            Inactive customers are filtered out of default lists and pickers.
+          </p>
+          <div className="mt-4">
+            <OptionSegments
+              name="Status"
+              value={isActive ? "active" : "inactive"}
+              onChange={(value) => void setActive(value === "active")}
+              disabled={submitting || deleting}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ]}
+            />
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-medium text-text-primary">
+            Delete customer
+          </h3>
+          <p className="mt-1 text-sm text-text-secondary">
+            Permanently deletes this customer. This cannot be undone.
+          </p>
+          <Button
+            type="button"
+            variant="danger"
+            className="mt-4"
+            disabled={submitting || deleting}
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            Delete customer
+          </Button>
+        </div>
+      </div>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete customer"
+        message={`Delete ${customer.name}? This cannot be undone.`}
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        variant="danger"
+        onClose={() => {
+          if (deleting) return;
+          setShowDeleteConfirm(false);
+        }}
+        onConfirm={() => void handleDelete()}
+      />
+    </>
   );
 }
 
@@ -278,6 +397,11 @@ export function CustomerDrawerContent({
           <TabsTrigger value="rates" className="px-1 !px-1">
             Rates/Tasks
           </TabsTrigger>
+          {isAdmin ? (
+            <TabsTrigger value="danger" className="px-1 !px-1">
+              Danger
+            </TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent
@@ -288,7 +412,6 @@ export function CustomerDrawerContent({
             customer={customer}
             allConsultants={allConsultants}
             assignedUsers={assignedUsers}
-            isAdmin={isAdmin}
           />
         </TabsContent>
 
@@ -551,6 +674,18 @@ export function CustomerDrawerContent({
             />
           </div>
         </TabsContent>
+
+        {isAdmin ? (
+          <TabsContent
+            value="danger"
+            className="min-h-0 flex-1 overflow-y-auto"
+          >
+            <CustomerDrawerDanger
+              key={`${customer.id}-${customer.isActive}`}
+              customer={customer}
+            />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <AddCustomerConsultantModal

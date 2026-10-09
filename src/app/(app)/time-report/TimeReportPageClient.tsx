@@ -66,6 +66,7 @@ import {
   getWeeksInMonthLocal,
   getWeekDates,
   getCalendarDatesInMonth,
+  getYearWeekForDateLocal,
   weekSliceKey,
 } from "@/lib/timeReportBrowserWeek";
 import {
@@ -1675,6 +1676,35 @@ export function TimeReportPageClient({
     [flushSave, week, year]
   );
 
+  const goToCurrentWeek = useCallback(async () => {
+    if (isWeekStripTransitioning) return;
+    const now = new Date();
+    const { year: currentY, week: currentW } = getYearWeekForDateLocal(now);
+    const currentCalYear = now.getFullYear();
+    const currentCalMonth = now.getMonth() + 1;
+    if (
+      year === currentY &&
+      week === currentW &&
+      displayYear === currentCalYear &&
+      displayMonth === currentCalMonth
+    ) {
+      return;
+    }
+    const ok = await flushSave();
+    if (!ok) return;
+    setDisplayYear(currentCalYear);
+    setDisplayMonth(currentCalMonth);
+    setYear(currentY);
+    setWeek(currentW);
+  }, [
+    displayMonth,
+    displayYear,
+    flushSave,
+    isWeekStripTransitioning,
+    week,
+    year,
+  ]);
+
   const onPickCalendarMonth = useCallback(
     async (ym: string) => {
       if (isWeekStripTransitioning) return;
@@ -2653,6 +2683,10 @@ export function TimeReportPageClient({
     [displayMonth, displayYear]
   );
 
+  const liveCurrentWeek = getYearWeekForDateLocal(new Date());
+  const isOnLiveCurrentWeek =
+    year === liveCurrentWeek.year && week === liveCurrentWeek.week;
+
   const monthCalendarDates = useMemo(
     () => getCalendarDatesInMonth(displayYear, displayMonth),
     [displayYear, displayMonth]
@@ -2822,7 +2856,8 @@ export function TimeReportPageClient({
               >
                 {monthWeeks.map(({ year: wY, week: w }) => {
                   const isSelected = wY === year && w === week;
-                  const isCurrentWeek = wY === initialYear && w === initialWeek;
+                  const isCurrentWeek =
+                    wY === liveCurrentWeek.year && w === liveCurrentWeek.week;
                   return (
                     <button
                       key={`${wY}-${w}`}
@@ -2841,6 +2876,17 @@ export function TimeReportPageClient({
                     </button>
                   );
                 })}
+                {!isOnLiveCurrentWeek ? (
+                  <button
+                    type="button"
+                    onClick={() => void goToCurrentWeek()}
+                    disabled={isWeekStripTransitioning}
+                    className="ml-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-interactive-primary hover:bg-bg-muted disabled:opacity-50"
+                    title={`Go to current week (W${liveCurrentWeek.week})`}
+                  >
+                    This week
+                  </button>
+                ) : null}
               </div>
             )}
           </div>

@@ -72,6 +72,7 @@ import {
   WorkBoardViewControls,
   WorkCardComponent,
   WorkCardLabels,
+  WorkCardPreDeployHint,
   WorkCardTypeBadge,
   WorkColumnGroupHeader,
 } from "./WorkBoardViewControls";
@@ -1470,6 +1471,9 @@ export function WorkBoardPageClient({
                               }}
                             />
                             <span className="min-w-0 truncate">{issue.key}</span>
+                            <WorkCardPreDeployHint
+                              actions={issue.preDeployActions}
+                            />
                             {isIssueBlocked(issue.relations) ? (
                               <span className="text-caption">Blocked</span>
                             ) : null}

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Box, Check, Group, ListFilter, User } from "lucide-react";
+import { Box, Check, Group, ListFilter, Rocket, User } from "lucide-react";
 import { InitialsAvatar } from "@/components/ui";
-import type { WorkComponent } from "@/lib/workTypes";
+import type { WorkComponent, WorkPreDeployAction } from "@/lib/workTypes";
 import {
   NO_COMPONENT_ID,
   NO_PRIORITY_ID,
@@ -82,6 +82,24 @@ export function WorkCardLabels({ labels }: { labels: WorkLabel[] }) {
         </span>
       ))}
     </div>
+  );
+}
+
+/** Discrete card hint when at least one pre-deploy action is still open. */
+export function WorkCardPreDeployHint({
+  actions,
+}: {
+  actions: WorkPreDeployAction[];
+}) {
+  if (!actions.some((action) => !action.isDone)) return null;
+  return (
+    <span
+      className="inline-flex shrink-0 text-text-tertiary"
+      title="Open pre-deploy actions"
+      aria-label="Open pre-deploy actions"
+    >
+      <Rocket className="h-3.5 w-3.5" aria-hidden />
+    </span>
   );
 }
 

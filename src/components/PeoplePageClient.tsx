@@ -18,12 +18,12 @@ import { AddConsultantModal } from "@/components/AddConsultantModal";
 import { CustomerFavicon } from "@/components/CustomerFavicon";
 import { ConsultantDetailClient } from "@/components/ConsultantDetailClient";
 import { PersonCustomersTab, type PersonCustomerOption } from "@/components/PersonCustomersTab";
-import { DetailPageDeleteFooter } from "@/components/detail/DetailPageDeleteFooter";
 import {
   createConsultantProfileForUser,
   createUserPerson,
   setPersonApps,
 } from "@/lib/people";
+import { deleteConsultantAction } from "@/app/(app)/consultants/actions";
 import {
   APP_KEYS,
   APP_LABELS,
@@ -479,13 +479,7 @@ const USER_ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
 ] as const;
 
-function AccountOverview({
-  person,
-  onDeleted,
-}: {
-  person: PersonListItem;
-  onDeleted: () => void;
-}) {
+function AccountOverview({ person }: { person: PersonListItem }) {
   const router = useRouter();
   const [name, setName] = useState(person.name);
   const [email, setEmail] = useState(person.email ?? "");
@@ -496,8 +490,6 @@ function AccountOverview({
   const [editValue, setEditValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [lastSavedField, setLastSavedField] = useState<
     "name" | "email" | "role" | null
@@ -577,22 +569,6 @@ function AccountOverview({
     void saveField(editingField, value);
   }
 
-  async function remove() {
-    if (!person.appUserId) return;
-    setError(null);
-    setDeleting(true);
-    try {
-      await removeAppUser(person.appUserId);
-      setShowDeleteConfirm(false);
-      onDeleted();
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to remove user");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
   const inlineStatus = submitting
     ? "saving"
     : showSaved
@@ -602,145 +578,291 @@ function AccountOverview({
         : "idle";
 
   return (
+    <div className="flex min-h-full flex-col">
+      {error ? (
+        <p className="px-6 pt-4 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="px-6 pt-4 pb-6">
+        <DrawerFieldRow label="Name">
+          <InlineEditFieldContainer
+            isEditing={editingField === "name"}
+            onRequestClose={commitEdit}
+            hideAccessory
+            reserveStatusRow={false}
+            showSavedIndicator={showSaved && lastSavedField === "name"}
+            displayContent={
+              <InlineEditTrigger
+                boxed
+                onClick={() => startEdit("name", name)}
+                className={name ? "" : "text-text-tertiary"}
+              >
+                <span className="truncate text-sm text-text-primary">
+                  {name || "—"}
+                </span>
+              </InlineEditTrigger>
+            }
+            editContent={
+              <input
+                type="text"
+                value={editValue}
+                onChange={(event) => setEditValue(event.target.value)}
+                onFocus={(event) => event.target.select()}
+                onBlur={() => commitEdit()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitEdit();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelEdit();
+                  }
+                }}
+                className={editInputClass}
+                autoFocus
+              />
+            }
+            statusContent={
+              <InlineEditStatus status={inlineStatus} message={error} />
+            }
+          />
+        </DrawerFieldRow>
+
+        <DrawerFieldRow label="Email">
+          <InlineEditFieldContainer
+            isEditing={editingField === "email"}
+            onRequestClose={commitEdit}
+            hideAccessory
+            reserveStatusRow={false}
+            showSavedIndicator={showSaved && lastSavedField === "email"}
+            displayContent={
+              <InlineEditTrigger
+                boxed
+                onClick={() => startEdit("email", email)}
+                className={email ? "" : "text-text-tertiary"}
+              >
+                <span className="truncate text-sm text-text-link">
+                  {email || "—"}
+                </span>
+              </InlineEditTrigger>
+            }
+            editContent={
+              <input
+                type="email"
+                value={editValue}
+                onChange={(event) => setEditValue(event.target.value)}
+                onFocus={(event) => event.target.select()}
+                onBlur={() => commitEdit()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitEdit();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelEdit();
+                  }
+                }}
+                className={editInputClass}
+                autoFocus
+              />
+            }
+            statusContent={
+              <InlineEditStatus status={inlineStatus} message={error} />
+            }
+          />
+        </DrawerFieldRow>
+
+        <DrawerFieldRow label="System role">
+          {person.userRole === "customer" ? (
+            <span className="flex h-9 items-center text-sm text-text-primary">
+              Customer user
+            </span>
+          ) : (
+            <DrawerSelectField
+              value={role}
+              onValueChange={(value) => {
+                if (!isInlineEditValueChanged(role, value)) return;
+                void saveField("role", value);
+              }}
+              options={[...USER_ROLE_OPTIONS]}
+            />
+          )}
+        </DrawerFieldRow>
+      </div>
+    </div>
+  );
+}
+
+function PersonDangerZone({
+  person,
+  onCloseDrawer,
+}: {
+  person: PersonListItem;
+  onCloseDrawer: () => void;
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"login" | "consultant" | null>(null);
+  const [confirm, setConfirm] = useState<"login" | "consultant" | null>(null);
+
+  const canRemoveLogin = Boolean(person.appUserId);
+  const canRemoveConsultant = Boolean(person.consultantId);
+
+  async function removeLogin() {
+    if (!person.appUserId) return;
+    setError(null);
+    setBusy("login");
+    try {
+      await removeAppUser(person.appUserId);
+      setConfirm(null);
+      if (person.consultantId) {
+        router.push(personHref(`consultant-${person.consultantId}`));
+        router.refresh();
+      } else {
+        onCloseDrawer();
+        router.refresh();
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Failed to remove login"
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeConsultant() {
+    if (!person.consultantId) return;
+    setError(null);
+    setBusy("consultant");
+    try {
+      await deleteConsultantAction(person.consultantId);
+      setConfirm(null);
+      if (person.appUserId) {
+        router.push(personHref(`user-${person.appUserId}`));
+        router.refresh();
+      } else {
+        onCloseDrawer();
+        router.refresh();
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to remove consultant profile"
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!canRemoveLogin && !canRemoveConsultant) {
+    return (
+      <div className="px-6 py-6">
+        <p className="text-sm text-text-secondary">
+          No destructive actions available for this person.
+        </p>
+      </div>
+    );
+  }
+
+  return (
     <>
-      <div className="flex min-h-full flex-col">
+      <div className="space-y-8 px-6 py-6">
+        <div>
+          <h2 className="text-sm font-medium text-text-primary">Danger zone</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            These actions are permanent or hard to reverse. Use with care.
+          </p>
+        </div>
+
         {error ? (
-          <p className="px-6 pt-4 text-sm text-danger" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {error}
           </p>
         ) : null}
 
-        <div className="px-6 pt-4">
-          <DrawerFieldRow label="Name">
-            <InlineEditFieldContainer
-              isEditing={editingField === "name"}
-              onRequestClose={commitEdit}
-              hideAccessory
-              reserveStatusRow={false}
-              showSavedIndicator={showSaved && lastSavedField === "name"}
-              displayContent={
-                <InlineEditTrigger
-                  boxed
-                  onClick={() => startEdit("name", name)}
-                  className={name ? "" : "text-text-tertiary"}
-                >
-                  <span className="truncate text-sm text-text-primary">
-                    {name || "—"}
-                  </span>
-                </InlineEditTrigger>
-              }
-              editContent={
-                <input
-                  type="text"
-                  value={editValue}
-                  onChange={(event) => setEditValue(event.target.value)}
-                  onFocus={(event) => event.target.select()}
-                  onBlur={() => commitEdit()}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitEdit();
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      cancelEdit();
-                    }
-                  }}
-                  className={editInputClass}
-                  autoFocus
-                />
-              }
-              statusContent={
-                <InlineEditStatus status={inlineStatus} message={error} />
-              }
-            />
-          </DrawerFieldRow>
+        {canRemoveLogin ? (
+          <div>
+            <h3 className="text-sm font-medium text-text-primary">
+              Remove login access
+            </h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              {person.consultantId
+                ? "Removes the login account. The consultant profile and its history remain."
+                : "Removes the login account. This cannot be undone."}
+            </p>
+            <Button
+              type="button"
+              variant="danger"
+              className="mt-4"
+              disabled={busy != null}
+              onClick={() => setConfirm("login")}
+            >
+              Remove login
+            </Button>
+          </div>
+        ) : null}
 
-          <DrawerFieldRow label="Email">
-            <InlineEditFieldContainer
-              isEditing={editingField === "email"}
-              onRequestClose={commitEdit}
-              hideAccessory
-              reserveStatusRow={false}
-              showSavedIndicator={showSaved && lastSavedField === "email"}
-              displayContent={
-                <InlineEditTrigger
-                  boxed
-                  onClick={() => startEdit("email", email)}
-                  className={email ? "" : "text-text-tertiary"}
-                >
-                  <span className="truncate text-sm text-text-link">
-                    {email || "—"}
-                  </span>
-                </InlineEditTrigger>
-              }
-              editContent={
-                <input
-                  type="email"
-                  value={editValue}
-                  onChange={(event) => setEditValue(event.target.value)}
-                  onFocus={(event) => event.target.select()}
-                  onBlur={() => commitEdit()}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitEdit();
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      cancelEdit();
-                    }
-                  }}
-                  className={editInputClass}
-                  autoFocus
-                />
-              }
-              statusContent={
-                <InlineEditStatus status={inlineStatus} message={error} />
-              }
-            />
-          </DrawerFieldRow>
-
-          <DrawerFieldRow label="System role">
-            {person.userRole === "customer" ? (
-              <span className="flex h-9 items-center text-sm text-text-primary">
-                Customer user
-              </span>
-            ) : (
-              <DrawerSelectField
-                value={role}
-                onValueChange={(value) => {
-                  if (!isInlineEditValueChanged(role, value)) return;
-                  void saveField("role", value);
-                }}
-                options={[...USER_ROLE_OPTIONS]}
-              />
-            )}
-          </DrawerFieldRow>
-        </div>
-
-        <div className="mt-auto border-t border-border-subtle px-6 pb-6 pt-2">
-          <DetailPageDeleteFooter
-            onRequestDelete={() => setShowDeleteConfirm(true)}
-            disabled={submitting || deleting}
-            label="Remove login access"
-            className="pt-2"
-          />
-        </div>
+        {canRemoveConsultant ? (
+          <div>
+            <h3 className="text-sm font-medium text-text-primary">
+              Remove consultant profile
+            </h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              {person.appUserId
+                ? "Removes the consultant profile used for planning and time. The login account remains."
+                : "Removes the consultant profile. This cannot be undone."}
+            </p>
+            <Button
+              type="button"
+              variant="danger"
+              className="mt-4"
+              disabled={busy != null}
+              onClick={() => setConfirm("consultant")}
+            >
+              Remove profile
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <ConfirmModal
-        isOpen={showDeleteConfirm}
+        isOpen={confirm === "login"}
         title="Remove login access"
         message={
           person.consultantId
             ? "Remove login access? The consultant profile and its history will remain."
             : "Remove login access? This cannot be undone."
         }
-        confirmLabel="Remove login"
+        confirmLabel={busy === "login" ? "Removing…" : "Remove login"}
         variant="danger"
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={remove}
+        onClose={() => {
+          if (busy) return;
+          setConfirm(null);
+        }}
+        onConfirm={() => void removeLogin()}
+      />
+
+      <ConfirmModal
+        isOpen={confirm === "consultant"}
+        title="Remove consultant profile"
+        message={
+          person.appUserId
+            ? "Remove this consultant profile? The login account will remain."
+            : `Remove ${person.name}'s consultant profile? This cannot be undone.`
+        }
+        confirmLabel={busy === "consultant" ? "Removing…" : "Remove profile"}
+        variant="danger"
+        onClose={() => {
+          if (busy) return;
+          setConfirm(null);
+        }}
+        onConfirm={() => void removeConsultant()}
       />
     </>
   );
@@ -900,14 +1022,7 @@ function PersonConsultantSection({
         afterDeleteHref={
           person.appUserId ? personHref(person.key) : ROUTES.people
         }
-        deleteLabel="Remove consultant profile"
-        deleteTitle="Remove consultant profile"
-        deleteMessage={
-          person.appUserId
-            ? "Remove this consultant profile? The login account will remain."
-            : `Remove ${person.name}'s consultant profile? This cannot be undone.`
-        }
-        deleteConfirmLabel="Remove profile"
+        hideDelete
       />
     );
   }
@@ -1253,17 +1368,18 @@ export function PeoplePageClient({
                   Customers
                 </TabsTrigger>
               ) : null}
+              {selected.appUserId || selected.consultantId ? (
+                <TabsTrigger value="danger" className="px-1 !px-1">
+                  Danger
+                </TabsTrigger>
+              ) : null}
             </TabsList>
             <TabsContent
               value="overview"
               className="min-h-0 flex-1 overflow-y-auto data-[state=active]:flex data-[state=active]:flex-col"
             >
               {selected.appUserId ? (
-                <AccountOverview
-                  key={selected.key}
-                  person={selected}
-                  onDeleted={closeDrawer}
-                />
+                <AccountOverview key={selected.key} person={selected} />
               ) : (
                 <div className="px-6 pt-4 pb-6">
                   <p className="text-body-m text-text-secondary">
@@ -1319,6 +1435,18 @@ export function PeoplePageClient({
                   key={`${selected.key}-customers`}
                   person={selected}
                   customers={customers}
+                />
+              </TabsContent>
+            ) : null}
+            {selected.appUserId || selected.consultantId ? (
+              <TabsContent
+                value="danger"
+                className="min-h-0 flex-1 overflow-y-auto data-[state=active]:flex data-[state=active]:flex-col"
+              >
+                <PersonDangerZone
+                  key={`${selected.key}-danger`}
+                  person={selected}
+                  onCloseDrawer={closeDrawer}
                 />
               </TabsContent>
             ) : null}

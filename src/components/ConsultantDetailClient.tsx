@@ -67,6 +67,8 @@ type Props = {
   deleteTitle?: string;
   deleteMessage?: string;
   deleteConfirmLabel?: string;
+  /** Hide delete UI (e.g. when People drawer shows it under Danger). */
+  hideDelete?: boolean;
 };
 
 function ConsultantField({
@@ -115,6 +117,7 @@ export function ConsultantDetailClient({
   deleteTitle = "Delete consultant",
   deleteMessage,
   deleteConfirmLabel = "Delete",
+  hideDelete = false,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
@@ -907,7 +910,7 @@ export function ConsultantDetailClient({
             {calendarField}
             {typeField}
           </div>
-          {isAdmin ? (
+          {isAdmin && !hideDelete ? (
             <div className="mt-auto border-t border-border-subtle px-6 pb-6 pt-2">
               <DetailPageDeleteFooter
                 onRequestDelete={() => setShowDeleteConfirm(true)}
@@ -937,7 +940,7 @@ export function ConsultantDetailClient({
         </Panel>
       )}
 
-      {isAdmin && !embedded && (
+      {isAdmin && !embedded && !hideDelete && (
         <DetailPageDeleteFooter
           onRequestDelete={() => setShowDeleteConfirm(true)}
           disabled={submitting || deleting}
@@ -946,7 +949,7 @@ export function ConsultantDetailClient({
         />
       )}
 
-      {isAdmin && (
+      {isAdmin && !hideDelete && (
         <ConfirmModal
           isOpen={showDeleteConfirm}
           title={deleteTitle}

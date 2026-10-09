@@ -43,6 +43,7 @@ function issue(
     files: [],
     requirements: [],
     definitionOfDone: [],
+    preDeployActions: [],
     outOfScope: "",
     references: [],
     relations: emptyWorkIssueRelations(),

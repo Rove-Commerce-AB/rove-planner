@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ConfirmModal,
   DrawerFieldRow,
   DrawerSelectField,
   InlineEditFieldContainer,
@@ -13,11 +12,9 @@ import {
   SAVED_DURATION_MS,
   editInputClass,
 } from "@/components/ui";
-import { updateCustomerAction, deleteCustomerAction } from "@/app/(app)/customers/actions";
-import { DetailPageDeleteFooter } from "@/components/detail/DetailPageDeleteFooter";
+import { updateCustomerAction } from "@/app/(app)/customers/actions";
 import { isInlineEditValueChanged } from "@/lib/inlineEdit";
 import { parseBillingCurrency, type BillingCurrency } from "@/lib/currency";
-import { ROUTES } from "@/lib/routes";
 import type { CustomerAppUser } from "@/lib/customerAppUsersQueries";
 import type { CustomerWithDetails } from "@/types";
 
@@ -37,14 +34,12 @@ type Props = {
   customer: CustomerWithDetails;
   allConsultants: { id: string; name: string }[];
   assignedUsers: CustomerAppUser[];
-  isAdmin: boolean;
 };
 
 export function CustomerDrawerOverview({
   customer,
   allConsultants = [],
   assignedUsers = [],
-  isAdmin,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(customer.name);
@@ -66,7 +61,6 @@ export function CustomerDrawerOverview({
   );
   const [logoUrl, setLogoUrl] = useState(customer.logoUrl ?? "");
   const [color, setColor] = useState(customer.color);
-  const [isActive, setIsActive] = useState(customer.isActive);
   const [isInternal, setIsInternal] = useState(customer.isInternal);
   const [workShowTimeToCustomerUsers, setWorkShowTimeToCustomerUsers] =
     useState(customer.workShowTimeToCustomerUsers ?? false);
@@ -77,8 +71,6 @@ export function CustomerDrawerOverview({
   const [editValue, setEditValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [lastSavedField, setLastSavedField] = useState<EditField>(null);
   const originalEditValueRef = useRef("");
@@ -227,21 +219,6 @@ export function CustomerDrawerOverview({
     void saveField(editingField, value);
   }
 
-  async function setActive(next: boolean) {
-    if (next === isActive) return;
-    setError(null);
-    setSubmitting(true);
-    try {
-      await updateCustomerAction(customer.id, { is_active: next });
-      setIsActive(next);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update status");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function setInternal(next: boolean) {
     if (next === isInternal) return;
     setError(null);
@@ -273,21 +250,6 @@ export function CustomerDrawerOverview({
       );
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleDelete() {
-    setError(null);
-    setDeleting(true);
-    try {
-      await deleteCustomerAction(customer.id);
-      setShowDeleteConfirm(false);
-      router.push(ROUTES.customers);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete customer");
-    } finally {
-      setDeleting(false);
     }
   }
 
@@ -446,18 +408,6 @@ export function CustomerDrawerOverview({
         </div>
 
         <div className="border-t border-border-subtle px-6">
-          <DrawerFieldRow label="Status">
-            <OptionSegments
-              name="Status"
-              value={isActive ? "active" : "inactive"}
-              onChange={(value) => void setActive(value === "active")}
-              disabled={submitting}
-              options={[
-                { value: "active", label: "Active" },
-                { value: "inactive", label: "Inactive" },
-              ]}
-            />
-          </DrawerFieldRow>
           <DrawerFieldRow label="Type">
             <OptionSegments
               name="Type"
@@ -555,29 +505,7 @@ export function CustomerDrawerOverview({
           </DrawerFieldRow>
         </div>
 
-        {isAdmin ? (
-          <div className="mt-auto border-t border-border-subtle px-6 pb-6 pt-2">
-            <DetailPageDeleteFooter
-              onRequestDelete={() => setShowDeleteConfirm(true)}
-              disabled={submitting || deleting}
-              label="Delete customer"
-              className="pt-2"
-            />
-          </div>
-        ) : null}
       </div>
-
-      {isAdmin ? (
-        <ConfirmModal
-          isOpen={showDeleteConfirm}
-          title="Delete customer"
-          message={`Delete ${name}? This cannot be undone.`}
-          confirmLabel="Delete"
-          variant="danger"
-          onClose={() => setShowDeleteConfirm(false)}
-          onConfirm={handleDelete}
-        />
-      ) : null}
     </>
   );
 }

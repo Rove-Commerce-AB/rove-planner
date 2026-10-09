@@ -49,6 +49,7 @@ import {
 import { formatWorkHours } from "@/lib/workTime";
 import {
   WorkBoardViewControls,
+  WorkCardPreDeployHint,
   WorkCardTypeBadge,
   WorkColumnGroupHeader,
 } from "./WorkBoardViewControls";
@@ -1221,6 +1222,7 @@ function SprintColumn({
               <span className="shrink-0 tabular-nums text-text-tertiary">
                 {issue.key}
               </span>
+              <WorkCardPreDeployHint actions={issue.preDeployActions} />
               <span className="min-w-0 flex-1 truncate">{issue.title}</span>
             </span>
             {blockedIds.has(issue.id) ? (

@@ -32,6 +32,7 @@ import {
   addIssueComment,
   addIssueLabel,
   addIssueRelation,
+  addIssuePreDeployAction,
   addIssueRequirement,
   addIssueReference,
   assignOrCreateIssueComponent,
@@ -45,9 +46,12 @@ import {
   removeIssueFile,
   removeIssueLabel,
   removeIssueRelation,
+  removeIssuePreDeployAction,
   removeIssueRequirement,
   removeIssueReference,
   reorderWorkIssues,
+  setIssuePreDeployActionBody,
+  setIssuePreDeployActionDone,
   setIssueRequirementBody,
   setIssueRequirementDone,
   setWorkIssueComponent,
@@ -548,6 +552,64 @@ export async function deleteWorkIssueRequirementAction(
 ): Promise<Ok | Err> {
   try {
     await removeIssueRequirement(boardId, issueId, requirementId);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function addWorkIssuePreDeployActionAction(
+  boardId: string,
+  issueId: string,
+  body: string
+): Promise<(Ok & { id: string; sortOrder: number }) | Err> {
+  try {
+    const created = await addIssuePreDeployAction(boardId, issueId, body);
+    revalidateBoard(boardId, issueId);
+    return { ok: true, ...created };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssuePreDeployActionBodyAction(
+  boardId: string,
+  issueId: string,
+  actionId: string,
+  body: string
+): Promise<Ok | Err> {
+  try {
+    await setIssuePreDeployActionBody(boardId, issueId, actionId, body);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateWorkIssuePreDeployActionDoneAction(
+  boardId: string,
+  issueId: string,
+  actionId: string,
+  isDone: boolean
+): Promise<Ok | Err> {
+  try {
+    await setIssuePreDeployActionDone(boardId, issueId, actionId, isDone);
+    revalidateBoard(boardId, issueId);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteWorkIssuePreDeployActionAction(
+  boardId: string,
+  issueId: string,
+  actionId: string
+): Promise<Ok | Err> {
+  try {
+    await removeIssuePreDeployAction(boardId, issueId, actionId);
     revalidateBoard(boardId, issueId);
     return { ok: true };
   } catch (error) {

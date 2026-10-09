@@ -34,6 +34,7 @@ import type {
   WorkIssueType,
   WorkLabel,
   WorkPerson,
+  WorkPreDeployAction,
   WorkReference,
   WorkRequirement,
   WorkSelectorBoard,
@@ -48,6 +49,7 @@ import {
   fetchIssueEvents,
   fetchIssueFiles,
   fetchIssueLabels,
+  fetchIssuePreDeployActions,
   fetchIssueReferences,
   fetchIssueRequirements,
   fetchWorkIssueRelations,
@@ -344,6 +346,7 @@ export async function getWorkBoardView(
     eventRows,
     fileRows,
     requirementRows,
+    preDeployRows,
     referenceRows,
     relationRows,
     loggedHoursByIssue,
@@ -354,6 +357,7 @@ export async function getWorkBoardView(
     fetchIssueEvents(issueIds),
     fetchIssueFiles(issueIds),
     fetchIssueRequirements(issueIds),
+    fetchIssuePreDeployActions(issueIds),
     fetchIssueReferences(issueIds),
     fetchWorkIssueRelations(board.id),
     showTime
@@ -443,6 +447,17 @@ export async function getWorkBoardView(
       requirementsByIssue.set(row.issue_id, list);
     }
   }
+  const preDeployByIssue = new Map<string, WorkPreDeployAction[]>();
+  for (const row of preDeployRows) {
+    const list = preDeployByIssue.get(row.issue_id) ?? [];
+    list.push({
+      id: row.id,
+      body: row.body,
+      isDone: row.is_done,
+      sortOrder: row.sort_order,
+    });
+    preDeployByIssue.set(row.issue_id, list);
+  }
   const referencesByIssue = new Map<string, WorkReference[]>();
   for (const row of referenceRows) {
     const list = referencesByIssue.get(row.issue_id) ?? [];
@@ -505,6 +520,7 @@ export async function getWorkBoardView(
       files: filesByIssue.get(row.id) ?? [],
       requirements: requirementsByIssue.get(row.id) ?? [],
       definitionOfDone: dodByIssue.get(row.id) ?? [],
+      preDeployActions: preDeployByIssue.get(row.id) ?? [],
       references: referencesByIssue.get(row.id) ?? [],
       relations: emptyWorkIssueRelations(),
       estimateHours: showTime

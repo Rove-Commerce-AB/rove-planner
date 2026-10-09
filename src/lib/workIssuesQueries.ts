@@ -690,6 +690,88 @@ export async function deleteWorkIssueRequirement(
   return (result.rowCount ?? 0) === 1;
 }
 
+export async function fetchIssuePreDeployActions(issueIds: string[]) {
+  if (issueIds.length === 0) return [];
+  const { rows } = await cloudSqlPool.query<{
+    id: string;
+    issue_id: string;
+    body: string;
+    is_done: boolean;
+    sort_order: number;
+  }>(
+    `SELECT id, issue_id, body, is_done, sort_order
+     FROM work_issue_pre_deploy_actions
+     WHERE issue_id = ANY($1::uuid[])
+     ORDER BY sort_order ASC, created_at ASC`,
+    [issueIds]
+  );
+  return rows;
+}
+
+export async function insertWorkIssuePreDeployAction(input: {
+  issueId: string;
+  body: string;
+}): Promise<{ id: string; sortOrder: number }> {
+  return withCloudSqlTransaction("work-add-pre-deploy", async (client) => {
+    const { rows: orderRows } = await client.query<{ next: number }>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+       FROM work_issue_pre_deploy_actions
+       WHERE issue_id = $1`,
+      [input.issueId]
+    );
+    const sortOrder = orderRows[0]?.next ?? 0;
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO work_issue_pre_deploy_actions (issue_id, body, sort_order)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [input.issueId, input.body, sortOrder]
+    );
+    const id = rows[0]?.id;
+    if (!id) throw new Error("Failed to create pre-deploy action");
+    return { id, sortOrder };
+  });
+}
+
+export async function updateWorkIssuePreDeployActionBody(
+  issueId: string,
+  actionId: string,
+  body: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issue_pre_deploy_actions
+     SET body = $3, updated_at = now()
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, actionId, body]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function updateWorkIssuePreDeployActionDone(
+  issueId: string,
+  actionId: string,
+  isDone: boolean
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `UPDATE work_issue_pre_deploy_actions
+     SET is_done = $3, updated_at = now()
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, actionId, isDone]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+export async function deleteWorkIssuePreDeployAction(
+  issueId: string,
+  actionId: string
+): Promise<boolean> {
+  const result = await cloudSqlPool.query(
+    `DELETE FROM work_issue_pre_deploy_actions
+     WHERE id = $2 AND issue_id = $1`,
+    [issueId, actionId]
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
 export async function fetchIssueReferences(issueIds: string[]) {
   if (issueIds.length === 0) return [];
   const { rows } = await cloudSqlPool.query<{

@@ -24,6 +24,7 @@ import {
   insertWorkIssueFile,
   insertWorkIssueRelation,
   insertWorkIssueRequirement,
+  insertWorkIssuePreDeployAction,
   insertWorkIssueReference,
   linkWorkIssueLabel,
   moveWorkIssue,
@@ -40,6 +41,9 @@ import {
   updateWorkIssueRequirementBody,
   updateWorkIssueRequirementDone,
   deleteWorkIssueRequirement,
+  updateWorkIssuePreDeployActionBody,
+  updateWorkIssuePreDeployActionDone,
+  deleteWorkIssuePreDeployAction,
   deleteWorkIssueReference,
   updateWorkIssueTitle,
   isWorkBoardMember,
@@ -423,6 +427,87 @@ export async function removeIssueRequirement(
   const ok = await deleteWorkIssueRequirement(issueId, requirementId);
   if (!ok) throw new Error("Requirement not found");
   await logEvent(issueId, actor.id, "requirement", "removed a requirement");
+}
+
+export async function addIssuePreDeployAction(
+  boardId: string,
+  issueId: string,
+  body: string
+): Promise<{ id: string; sortOrder: number }> {
+  const { actor } = await requireBoardAccess(boardId);
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Pre-deploy action text is required");
+  const created = await insertWorkIssuePreDeployAction({
+    issueId,
+    body: trimmed,
+  });
+  await logEvent(
+    issueId,
+    actor.id,
+    "pre_deploy",
+    "added a pre-deploy action"
+  );
+  return created;
+}
+
+export async function setIssuePreDeployActionBody(
+  boardId: string,
+  issueId: string,
+  actionId: string,
+  body: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Pre-deploy action text is required");
+  const ok = await updateWorkIssuePreDeployActionBody(
+    issueId,
+    actionId,
+    trimmed
+  );
+  if (!ok) throw new Error("Pre-deploy action not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "pre_deploy",
+    "updated a pre-deploy action"
+  );
+}
+
+export async function setIssuePreDeployActionDone(
+  boardId: string,
+  issueId: string,
+  actionId: string,
+  isDone: boolean
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await updateWorkIssuePreDeployActionDone(
+    issueId,
+    actionId,
+    isDone
+  );
+  if (!ok) throw new Error("Pre-deploy action not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "pre_deploy",
+    isDone ? "checked a pre-deploy action" : "unchecked a pre-deploy action"
+  );
+}
+
+export async function removeIssuePreDeployAction(
+  boardId: string,
+  issueId: string,
+  actionId: string
+): Promise<void> {
+  const { actor } = await requireBoardAccess(boardId);
+  const ok = await deleteWorkIssuePreDeployAction(issueId, actionId);
+  if (!ok) throw new Error("Pre-deploy action not found");
+  await logEvent(
+    issueId,
+    actor.id,
+    "pre_deploy",
+    "removed a pre-deploy action"
+  );
 }
 
 function normalizeReferenceUrl(raw: string): string {

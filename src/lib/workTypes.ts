@@ -70,6 +70,14 @@ export type WorkRequirement = {
 
 export type WorkRequirementKind = "acceptance" | "dod";
 
+/** Checklist item for DB / Litium BO setup before deploy. */
+export type WorkPreDeployAction = {
+  id: string;
+  body: string;
+  isDone: boolean;
+  sortOrder: number;
+};
+
 export type WorkReference = {
   id: string;
   url: string;
@@ -122,6 +130,7 @@ export type WorkIssue = {
   files: WorkFile[];
   requirements: WorkRequirement[];
   definitionOfDone: WorkRequirement[];
+  preDeployActions: WorkPreDeployAction[];
   outOfScope: string;
   references: WorkReference[];
   relations: WorkIssueRelations;

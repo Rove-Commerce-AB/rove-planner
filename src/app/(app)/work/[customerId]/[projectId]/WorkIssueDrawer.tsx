@@ -38,7 +38,6 @@ import {
   type WorkIssue,
   type WorkIssuePriority,
   type WorkPerson,
-  type WorkRequirement,
 } from "@/lib/workTypes";
 import type { WorkIssueStatus } from "@/lib/workStatuses";
 import {
@@ -46,12 +45,14 @@ import {
   addWorkIssueCommentAction,
   addWorkIssueLabelAction,
   addWorkIssueRelationAction,
+  addWorkIssuePreDeployActionAction,
   addWorkIssueReferenceAction,
   addWorkIssueRequirementAction,
   assignWorkIssueComponentAction,
   deleteWorkIssueAction,
   deleteWorkIssueCommentAction,
   deleteWorkIssueFileAction,
+  deleteWorkIssuePreDeployActionAction,
   deleteWorkIssueReferenceAction,
   deleteWorkIssueRequirementAction,
   removeWorkIssueAssigneeAction,
@@ -63,6 +64,8 @@ import {
   updateWorkIssueFieldAction,
   updateWorkIssueOwnerAction,
   updateWorkIssuePriorityAction,
+  updateWorkIssuePreDeployActionBodyAction,
+  updateWorkIssuePreDeployActionDoneAction,
   updateWorkIssueRequirementBodyAction,
   updateWorkIssueRequirementDoneAction,
   deleteWorkIssueTimeEntryAction,
@@ -271,7 +274,7 @@ function RequirementsChecklistSection({
   description: string;
   emptyLabel: string;
   placeholder: string;
-  items: WorkRequirement[];
+  items: Array<{ id: string; body: string; isDone: boolean }>;
   draft: string;
   onDraftChange: (value: string) => void;
   editingId: string | null;
@@ -279,9 +282,15 @@ function RequirementsChecklistSection({
   pending: boolean;
   onEditingIdChange: (id: string | null) => void;
   onEditingValueChange: (value: string) => void;
-  onToggle: (item: WorkRequirement, isDone: boolean) => void;
-  onSaveBody: (item: WorkRequirement, body: string) => void;
-  onRemove: (item: WorkRequirement) => void;
+  onToggle: (
+    item: { id: string; body: string; isDone: boolean },
+    isDone: boolean
+  ) => void;
+  onSaveBody: (
+    item: { id: string; body: string; isDone: boolean },
+    body: string
+  ) => void;
+  onRemove: (item: { id: string; body: string; isDone: boolean }) => void;
   onAdd: (body: string) => void;
 }) {
   return (
@@ -435,6 +444,7 @@ export function WorkIssueDrawer({
   const [addingComponent, setAddingComponent] = useState(false);
   const [requirementDraft, setRequirementDraft] = useState("");
   const [dodDraft, setDodDraft] = useState("");
+  const [preDeployDraft, setPreDeployDraft] = useState("");
   const [outOfScope, setOutOfScope] = useState(issue.outOfScope);
   const [referenceUrlDraft, setReferenceUrlDraft] = useState("");
   const [referenceLabelDraft, setReferenceLabelDraft] = useState("");
@@ -445,6 +455,10 @@ export function WorkIssueDrawer({
     null
   );
   const [editingRequirementValue, setEditingRequirementValue] = useState("");
+  const [editingPreDeployId, setEditingPreDeployId] = useState<string | null>(
+    null
+  );
+  const [editingPreDeployValue, setEditingPreDeployValue] = useState("");
   const [estimateDraft, setEstimateDraft] = useState(
     issue.estimateHours == null ? "" : String(issue.estimateHours)
   );
@@ -995,6 +1009,9 @@ export function WorkIssueDrawer({
             </TabsTrigger>
             <TabsTrigger value="requirements" className="px-3 !px-3">
               Requirements
+            </TabsTrigger>
+            <TabsTrigger value="pre-deploy" className="px-3 !px-3">
+              Pre-deploy
             </TabsTrigger>
             {board.showTime ? (
               <TabsTrigger value="time" className="px-3 !px-3">
@@ -1989,6 +2006,78 @@ export function WorkIssueDrawer({
               </form>
             </div>
           </TabsContent>
+
+          <TabsContent value="pre-deploy" className="mt-5 space-y-8">
+            <RequirementsChecklistSection
+              title="Pre-deploy actions"
+              description="Database or Litium back-office steps to complete before deploy."
+              emptyLabel="No pre-deploy actions yet."
+              placeholder="Add a pre-deploy action…"
+              items={issue.preDeployActions}
+              draft={preDeployDraft}
+              onDraftChange={setPreDeployDraft}
+              editingId={editingPreDeployId}
+              editingValue={editingPreDeployValue}
+              pending={pending}
+              onEditingIdChange={setEditingPreDeployId}
+              onEditingValueChange={setEditingPreDeployValue}
+              onToggle={(item, isDone) => {
+                onIssuePatch({
+                  preDeployActions: issue.preDeployActions.map((row) =>
+                    row.id === item.id ? { ...row, isDone } : row
+                  ),
+                });
+                run(
+                  () =>
+                    updateWorkIssuePreDeployActionDoneAction(
+                      board.id,
+                      issue.id,
+                      item.id,
+                      isDone
+                    ),
+                  { refresh: false }
+                );
+              }}
+              onSaveBody={(item, body) => {
+                onIssuePatch({
+                  preDeployActions: issue.preDeployActions.map((row) =>
+                    row.id === item.id ? { ...row, body } : row
+                  ),
+                });
+                run(() =>
+                  updateWorkIssuePreDeployActionBodyAction(
+                    board.id,
+                    issue.id,
+                    item.id,
+                    body
+                  )
+                );
+              }}
+              onRemove={(item) => {
+                onIssuePatch({
+                  preDeployActions: issue.preDeployActions.filter(
+                    (row) => row.id !== item.id
+                  ),
+                });
+                run(
+                  () =>
+                    deleteWorkIssuePreDeployActionAction(
+                      board.id,
+                      issue.id,
+                      item.id
+                    ),
+                  { refresh: false }
+                );
+              }}
+              onAdd={(body) => {
+                setPreDeployDraft("");
+                run(() =>
+                  addWorkIssuePreDeployActionAction(board.id, issue.id, body)
+                );
+              }}
+            />
+          </TabsContent>
+
           <TabsContent value="files" className="mt-5 space-y-4">
             <div className="space-y-1">
               <label className="block">

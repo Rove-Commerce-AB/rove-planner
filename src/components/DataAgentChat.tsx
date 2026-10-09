@@ -7,11 +7,46 @@ import {
 import type { DataAgentTable } from "@/lib/dataAgentParse";
 import { Button, Input } from "@/components/ui";
 
+const INSIGHTS_CHAT_STORAGE_KEY = "roveplanner.insights.chat-v1";
+
 type ChatMessage = {
   role: "user" | "agent" | "error";
   text: string;
   table?: DataAgentTable | null;
 };
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return (
+    (row.role === "user" || row.role === "agent" || row.role === "error") &&
+    typeof row.text === "string"
+  );
+}
+
+function readStoredMessages(): ChatMessage[] {
+  try {
+    const raw = sessionStorage.getItem(INSIGHTS_CHAT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isChatMessage);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredMessages(messages: ChatMessage[]) {
+  try {
+    if (messages.length === 0) {
+      sessionStorage.removeItem(INSIGHTS_CHAT_STORAGE_KEY);
+      return;
+    }
+    sessionStorage.setItem(INSIGHTS_CHAT_STORAGE_KEY, JSON.stringify(messages));
+  } catch {
+    // Ignore quota / private mode failures.
+  }
+}
 
 function formatCell(value: unknown): string {
   if (value == null) return "";
@@ -63,14 +98,26 @@ function AnswerTable({ table }: { table: DataAgentTable }) {
 
 export function DataAgentChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [ready, setReady] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setMessages(readStoredMessages());
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    writeStoredMessages(messages);
+  }, [messages, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, ready]);
 
   useEffect(() => {
     if (!loading) {
@@ -79,6 +126,14 @@ export function DataAgentChat() {
   }, [loading]);
 
   const canSubmit = !loading && question.trim().length > 0;
+
+  function resetConversation() {
+    if (loading) return;
+    setMessages([]);
+    setQuestion("");
+    writeStoredMessages([]);
+    inputRef.current?.focus();
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -117,6 +172,19 @@ export function DataAgentChat() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {messages.length > 0 ? (
+        <div className="mb-3 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={loading}
+            onClick={resetConversation}
+          >
+            New conversation
+          </Button>
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {messages.length === 0 && !loading ? (
           <p className="text-sm text-text-primary/70">
