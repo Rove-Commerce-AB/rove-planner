@@ -74,9 +74,13 @@ async function resolveFeatureRequestBoard(): Promise<{
  * Any signed-in user may submit; board membership is not required.
  * Reporter = submitter. Owner is left empty.
  */
-export async function createFeatureRequest(content: string): Promise<void> {
+export async function createFeatureRequest(
+  content: string,
+  issueType: "issue" | "bug" = "issue"
+): Promise<void> {
   const trimmed = content?.trim();
   if (!trimmed) throw new Error("Content is required");
+  const type = issueType === "bug" ? "bug" : "issue";
 
   const user = await getCurrentAppUser();
   if (!user?.id) throw new Error("Unauthorized");
@@ -107,8 +111,8 @@ export async function createFeatureRequest(content: string): Promise<void> {
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO work_issues (
          project_id, number, title, status, sort_order,
-         owner_app_user_id, created_by_app_user_id, description
-       ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7)
+         owner_app_user_id, created_by_app_user_id, description, issue_type
+       ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8)
        RETURNING id`,
       [
         boardId,
@@ -118,14 +122,19 @@ export async function createFeatureRequest(content: string): Promise<void> {
         orderRows[0]?.next ?? 0,
         user.id,
         description,
+        type,
       ]
     );
     const issueId = rows[0]?.id;
     if (!issueId) throw new Error("Failed to create feature request");
     await client.query(
       `INSERT INTO work_issue_events (issue_id, actor_app_user_id, kind, summary)
-       VALUES ($1, $2, 'created', 'created the issue')`,
-      [issueId, user.id]
+       VALUES ($1, $2, 'created', $3)`,
+      [
+        issueId,
+        user.id,
+        type === "bug" ? "created the bug" : "created the issue",
+      ]
     );
   });
 }
